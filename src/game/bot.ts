@@ -44,6 +44,20 @@ function affordableTroops(state: BattleState): CardId[] {
   });
 }
 
+/**
+ * Cards that can actually fight `threat`: no building-seekers (they
+ * stroll right past invaders) and, against flyers, air-targeters only.
+ */
+function defenseCandidates(state: BattleState, threat: Entity): CardId[] {
+  return affordableTroops(state).filter((id) => {
+    const card = getCard(id);
+    if (card.kind !== "troop" && card.kind !== "building") return false;
+    if (card.unit.targetsBuildingsOnly) return false;
+    if (threat.flying && !card.unit.targetsAir) return false;
+    return true;
+  });
+}
+
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
@@ -89,7 +103,7 @@ function findCluster(
 }
 
 function trySpellCluster(state: BattleState): boolean {
-  for (const id of ["fireball", "arrows"] as const) {
+  for (const id of ["fireball", "arrows", "zap"] as const) {
     if (!state.enemy.hand.cards.includes(id)) continue;
     const card = getCard(id);
     if (card.kind !== "spell" || card.cost > state.enemy.elixir.amount) continue;
@@ -104,9 +118,9 @@ function trySpellCluster(state: BattleState): boolean {
 function tryDefend(state: BattleState, bot: BotState): boolean {
   const invaders = playerTroops(state).filter((e) => e.y < RIVER_Y + 1);
   if (invaders.length === 0) return false;
-  const cards = affordableTroops(state);
-  if (cards.length === 0) return false;
   const threat = invaders.reduce((a, b) => (a.y < b.y ? a : b));
+  const cards = defenseCandidates(state, threat);
+  if (cards.length === 0) return false;
   const card = cards[Math.floor(bot.rng() * cards.length)];
   const spot = defenseSpot(threat);
   return deployCard(state, "enemy", card, spot.x, spot.y);

@@ -28,7 +28,10 @@ no Supercell assets are used.
   towers.
 - Destroy the enemy king tower for an instant win, otherwise most crowns
   when the clock runs out (with sudden-death overtime on a tie).
-- Opponent is a simple elixir-aware AI bot.
+- Opponent is an elixir-aware AI bot: it holds spells for clusters
+  worth more than they cost, defends with troops that can actually
+  hit the invader (air-targeters vs flyers, never building-seekers),
+  and saves elixir when it has no good answer.
 
 ## Stack
 

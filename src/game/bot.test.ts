@@ -2,9 +2,16 @@ import { describe, expect, it } from "vitest";
 import { RIVER_Y } from "./arena";
 import { createBattle, spawnUnits } from "./battle";
 import { botThink, createBot, tickBot } from "./bot";
+import { createHand } from "./hand";
 
 function troopsOf(b: ReturnType<typeof createBattle>, side: "player" | "enemy") {
   return b.entities.filter((e) => e.side === side && e.kind === "troop");
+}
+
+/** Put specific cards in the bot's hand with full elixir. */
+function giveBotHand(b: ReturnType<typeof createBattle>, cards: string[]): void {
+  b.enemy.hand = createHand([...cards, "knight", "archers", "giant", "fireball"] as never);
+  b.enemy.elixir = { amount: 10 };
 }
 
 describe("bot", () => {
@@ -56,6 +63,41 @@ describe("bot", () => {
     expect(b.effects.length).toBeGreaterThan(0);
     const hurt = troopsOf(b, "player").filter((e) => e.hp < e.maxHp);
     expect(hurt.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("defends an air invader only with troops that can hit it", () => {
+    for (const seed of [1, 7, 42, 99]) {
+      const b = createBattle();
+      giveBotHand(b, ["knight", "mini-pekka", "valkyrie", "musketeer"]);
+      spawnUnits(b, "player", "balloon", 3.5, RIVER_Y - 2);
+      botThink(b, createBot(seed));
+      const defenders = troopsOf(b, "enemy");
+      expect(defenders.length).toBeGreaterThan(0);
+      for (const d of defenders) expect(d.targetsAir).toBe(true);
+    }
+  });
+
+  it("never defends with troops that ignore the invader", () => {
+    for (const seed of [1, 7, 42, 99]) {
+      const b = createBattle();
+      giveBotHand(b, ["giant", "hog-rider", "balloon", "knight"]);
+      spawnUnits(b, "player", "knight", 3.5, RIVER_Y - 2);
+      botThink(b, createBot(seed));
+      const defenders = troopsOf(b, "enemy");
+      expect(defenders.length).toBeGreaterThan(0);
+      for (const d of defenders) expect(d.targetsBuildingsOnly).toBe(false);
+    }
+  });
+
+  it("zaps a valuable cluster when zap is the spell in hand", () => {
+    const b = createBattle();
+    giveBotHand(b, ["zap", "knight", "giant", "hog-rider"]);
+    spawnUnits(b, "player", "knight", 9, RIVER_Y - 3);
+    spawnUnits(b, "player", "knight", 9.4, RIVER_Y - 3.2);
+    spawnUnits(b, "player", "knight", 8.6, RIVER_Y - 2.8);
+    botThink(b, createBot(42));
+    const stunned = troopsOf(b, "player").filter((e) => e.stunTimer > 0);
+    expect(stunned.length).toBeGreaterThanOrEqual(3);
   });
 
   it("only thinks at its decision interval", () => {
