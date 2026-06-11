@@ -165,6 +165,71 @@
         font-size: 12px;
         font-weight: bold;
       }
+      #banner {
+        position: absolute;
+        top: 34%;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 46px;
+        font-weight: bold;
+        color: #facc15;
+        text-shadow:
+          0 0 18px rgba(0, 0, 0, 0.9),
+          0 3px 0 rgba(0, 0, 0, 0.6);
+        pointer-events: none;
+        opacity: 0;
+        z-index: 5;
+      }
+      #banner.show {
+        animation: bannerPop 1.6s ease-out forwards;
+      }
+      #banner.countdown {
+        font-size: 86px;
+      }
+      @keyframes bannerPop {
+        0% {
+          opacity: 0;
+          transform: scale(0.3);
+        }
+        12% {
+          opacity: 1;
+          transform: scale(1.15);
+        }
+        20% {
+          transform: scale(1);
+        }
+        78% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        100% {
+          opacity: 0;
+          transform: scale(1.05) translateY(-14px);
+        }
+      }
+      .emote-bar {
+        position: absolute;
+        right: 8px;
+        bottom: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        z-index: 4;
+      }
+      .emote-bar button {
+        width: 40px;
+        height: 40px;
+        font-size: 22px;
+        border: none;
+        border-radius: 50%;
+        background: rgba(20, 26, 38, 0.75);
+        cursor: pointer;
+        transition: transform 0.08s ease;
+      }
+      .emote-bar button:hover {
+        transform: scale(1.18);
+      }
       #overlay {
         position: fixed;
         inset: 0;
@@ -212,7 +277,10 @@
   <body>
     <div id="app">
       <div id="topbar"></div>
-      <div id="stage"></div>
+      <div id="stage">
+        <div id="banner"></div>
+        <div class="emote-bar" id="emotes"></div>
+      </div>
       <div id="hud"></div>
     </div>
     <div id="overlay"></div>

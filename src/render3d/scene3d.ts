@@ -449,6 +449,73 @@ export class Battle3D {
     this.scene.add(sun);
   }
 
+  private decorate(): void {
+    // Outer apron of darker grass framing the arena.
+    const apron = new THREE.Mesh(
+      new THREE.BoxGeometry(ARENA_WIDTH + 10, 0.36, ARENA_HEIGHT + 10),
+      toon(0x3e7d41),
+    );
+    apron.position.y = -0.24;
+    apron.receiveShadow = true;
+    this.scene.add(apron);
+
+    const tree = (x: number, z: number, s: number): void => {
+      const g = new THREE.Group();
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.5, 8), toon(0x6e4a28));
+      trunk.position.y = 0.25;
+      trunk.castShadow = true;
+      g.add(trunk);
+      for (let i = 0; i < 3; i++) {
+        const layer = new THREE.Mesh(
+          new THREE.ConeGeometry(0.75 - i * 0.18, 0.7, 10),
+          toon(i % 2 ? 0x3f8f45 : 0x4ba14f),
+        );
+        layer.position.y = 0.62 + i * 0.42;
+        layer.castShadow = true;
+        g.add(layer);
+      }
+      g.position.set(x, 0, z);
+      g.scale.setScalar(s);
+      this.scene.add(g);
+    };
+    const rock = (x: number, z: number, s: number): void => {
+      const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 0), toon(0x8e9aa5));
+      m.position.set(x, 0.16 * s, z);
+      m.scale.set(s, s * 0.7, s);
+      m.castShadow = true;
+      this.scene.add(m);
+    };
+
+    const hw = ARENA_WIDTH / 2;
+    const hd = ARENA_HEIGHT / 2;
+    // Tree lines along both sides, plus a few behind each king.
+    const treeSpots: Array<[number, number, number]> = [
+      [-hw - 1.6, -12, 1.2], [-hw - 2.4, -6, 0.9], [-hw - 1.8, -1, 1.1],
+      [-hw - 2.2, 4, 1.0], [-hw - 1.5, 9, 1.3], [-hw - 2.6, 14, 0.8],
+      [hw + 1.7, -13, 1.0], [hw + 2.3, -7, 1.2], [hw + 1.6, -2, 0.9],
+      [hw + 2.5, 3, 1.1], [hw + 1.8, 8, 1.0], [hw + 2.2, 13, 1.2],
+      [-5, -hd - 2.2, 1.1], [3, -hd - 2.8, 0.9], [7, hd + 2.4, 1.2], [-6, hd + 2.6, 1.0],
+    ];
+    for (const [x, z, s] of treeSpots) tree(x, z, s);
+    const rockSpots: Array<[number, number, number]> = [
+      [-hw - 1.3, 6.5, 0.8], [hw + 1.4, -4.5, 1.0], [-hw - 2.0, -9.5, 0.6],
+      [hw + 1.2, 10.5, 0.7], [2, -hd - 1.8, 0.9], [-3, hd + 1.9, 0.8],
+    ];
+    for (const [x, z, s] of rockSpots) rock(x, z, s);
+
+    // Flower dots on the playfield grass.
+    const flowerSpots: Array<[number, number, number]> = [
+      [1.5, -11, 0xfff176], [-6.5, -4, 0xf48fb1], [6.8, -13, 0xffffff],
+      [-2.2, 11, 0xfff176], [7.1, 5.5, 0xf48fb1], [-7.4, 13.2, 0xffffff],
+      [4.4, 9.8, 0xf48fb1], [-4.8, -13.5, 0xffffff],
+    ];
+    for (const [x, z, color] of flowerSpots) {
+      const f = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5), toon(color));
+      f.position.set(x, 0.06, z);
+      this.scene.add(f);
+    }
+  }
+
   private buildArena(): void {
     const halfD = ARENA_HEIGHT / 2;
     const mkHalf = (color: number, zCenter: number): THREE.Mesh => {
@@ -461,6 +528,7 @@ export class Battle3D {
       return m;
     };
     this.scene.add(mkHalf(0x4c9e4f, -halfD / 2), mkHalf(0x55a858, halfD / 2));
+    this.decorate();
 
     for (const bx of BRIDGE_XS) {
       const stripe = new THREE.Mesh(
@@ -736,6 +804,70 @@ export class Battle3D {
     this.blast(ax, ay, radius, 0xdce6ff, 0.32);
   }
 
+  /** A golden crown rises, spins, and fades over a fallen tower. */
+  private crownPop(ax: number, ay: number): void {
+    const w = toWorld(ax, ay);
+    const crown = new THREE.Group();
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, 0.3, 10), toon(0xfbbf24));
+    crown.add(band);
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.28, 6), toon(0xfbbf24));
+      spike.position.set(Math.cos(a) * 0.45, 0.26, Math.sin(a) * 0.45);
+      crown.add(spike);
+    }
+    crown.position.set(w.x, 0.6, w.z);
+    this.addEffect(crown, 1.2, (frac) => {
+      const t = 1 - frac;
+      crown.position.y = 0.6 + t * 2.4;
+      crown.rotation.y = t * Math.PI * 3;
+      crown.scale.setScalar(1 + t * 0.4);
+      crown.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh) {
+          const mat = mesh.material as THREE.Material & { opacity: number };
+          mat.transparent = true;
+          mat.opacity = Math.min(1, frac * 2.5);
+        }
+      });
+    });
+  }
+
+  /** An emote bubble floating above a side's king tower. */
+  showEmote(side: Side, emoji: string): void {
+    const z = side === "player" ? 13.5 : -13.5; // just above each king tower
+    const c = document.createElement("canvas");
+    c.width = c.height = 128;
+    const ctx = c.getContext("2d")!;
+    // Speech bubble.
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.beginPath();
+    ctx.arc(64, 56, 46, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(50, 96);
+    ctx.lineTo(64, 122);
+    ctx.lineTo(76, 96);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = "56px serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(emoji, 64, 58);
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true }),
+    );
+    sprite.position.set(0, 4.2, z);
+    sprite.scale.setScalar(0.1);
+    this.addEffect(sprite, 2.4, (frac) => {
+      const t = 1 - frac;
+      const pop = Math.min(1, t * 6);
+      sprite.scale.setScalar(2.2 * (0.2 + 0.8 * pop));
+      sprite.position.y = 4.2 + t * 0.5;
+      sprite.material.opacity = frac < 0.15 ? frac / 0.15 : 1;
+    });
+  }
+
   /** Visual reactions to gameplay events. */
   onEvent(ev: BattleEvent): void {
     switch (ev.type) {
@@ -748,7 +880,10 @@ export class Battle3D {
         break;
       case "death":
         if (ev.kind === "troop") this.puff(ev.x, ev.y, 0xcccccc, 0.5);
-        else this.puff(ev.x, ev.y, 0x8b7c69, 1.6);
+        else {
+          this.puff(ev.x, ev.y, 0x8b7c69, 1.6);
+          if (ev.kind !== "building") this.crownPop(ev.x, ev.y);
+        }
         break;
       default:
         break;

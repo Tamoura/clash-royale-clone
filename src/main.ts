@@ -10,6 +10,8 @@ const stage = document.getElementById("stage")!;
 const topbar = document.getElementById("topbar")!;
 const hudRoot = document.getElementById("hud")!;
 const overlay = document.getElementById("overlay")!;
+const bannerEl = document.getElementById("banner")!;
+const emoteBar = document.getElementById("emotes")!;
 
 let battle: BattleState = createBattle();
 let bot: BotState = createBot(Date.now() & 0xffff);
@@ -41,6 +43,7 @@ function restart(): void {
   selectCard(null);
   scene.reset();
   audio.restartMusic();
+  startCountdown();
 }
 
 const hud = new Hud(topbar, hudRoot, overlay, {
@@ -54,6 +57,80 @@ const hud = new Hud(topbar, hudRoot, overlay, {
 
 // Audio can only start from a user gesture.
 window.addEventListener("pointerdown", () => audio.resume(), { once: false });
+
+// ---- Banners & match phases -------------------------------------------
+
+let phase: "countdown" | "playing" = "countdown";
+let countdownStep = 4; // 3, 2, 1, FIGHT!
+let countdownTimer = 0;
+let lastMinuteShown = false;
+let overtimeShown = false;
+
+function showBanner(text: string, big = false): void {
+  bannerEl.textContent = text;
+  bannerEl.classList.remove("show");
+  bannerEl.classList.toggle("countdown", big);
+  void bannerEl.offsetWidth; // restart the CSS animation
+  bannerEl.classList.add("show");
+}
+
+function startCountdown(): void {
+  phase = "countdown";
+  countdownStep = 4;
+  countdownTimer = 0;
+  lastMinuteShown = false;
+  overtimeShown = false;
+}
+
+function tickCountdown(dt: number): void {
+  countdownTimer -= dt;
+  if (countdownTimer > 0) return;
+  countdownTimer = 0.85;
+  countdownStep -= 1;
+  if (countdownStep > 0) {
+    showBanner(String(countdownStep), true);
+    audio.countdownBeep(false);
+  } else {
+    showBanner("FIGHT!", true);
+    audio.countdownBeep(true);
+    phase = "playing";
+  }
+}
+
+function checkBanners(): void {
+  if (!lastMinuteShown && battle.time >= 120 && !battle.result) {
+    lastMinuteShown = true;
+    showBanner("Last minute — 2x elixir!");
+    audio.sting();
+  }
+  if (!overtimeShown && battle.overtime && !battle.result) {
+    overtimeShown = true;
+    showBanner("OVERTIME!");
+    audio.sting();
+  }
+}
+
+// ---- Emotes ------------------------------------------------------------
+
+const EMOTES = ["😂", "😭", "👍", "😡"];
+for (const emoji of EMOTES) {
+  const btn = document.createElement("button");
+  btn.textContent = emoji;
+  btn.addEventListener("click", () => {
+    scene.showEmote("player", emoji);
+    audio.emotePop();
+  });
+  emoteBar.appendChild(btn);
+}
+
+let botEmoteCooldown = 0;
+
+function botEmote(emoji: string): void {
+  if (botEmoteCooldown > 0) return;
+  botEmoteCooldown = 6;
+  scene.showEmote("enemy", emoji);
+  audio.emotePop();
+}
 
 scene.renderer.domElement.addEventListener("click", (ev) => {
   if (battle.result || !selectedCard) return;
@@ -89,17 +166,27 @@ let acc = 0;
 
 function frame(now: number): void {
   const dt = Math.min(0.25, (now - last) / 1000);
-  acc += dt;
   last = now;
-  while (acc >= SIM_DT) {
-    tick(battle, SIM_DT);
-    tickBot(battle, bot, SIM_DT);
-    acc -= SIM_DT;
+
+  if (phase === "countdown") {
+    tickCountdown(dt);
+  } else {
+    acc += dt;
+    while (acc >= SIM_DT) {
+      tick(battle, SIM_DT);
+      tickBot(battle, bot, SIM_DT);
+      acc -= SIM_DT;
+    }
   }
+  botEmoteCooldown = Math.max(0, botEmoteCooldown - dt);
   for (const ev of battle.events.splice(0)) {
     audio.onEvent(ev);
     scene.onEvent(ev);
+    // The bot has feelings about crowns.
+    if (ev.type === "crown") botEmote(ev.winner === "enemy" ? "😂" : "😭");
+    if (ev.type === "finish") botEmote(ev.winner === "enemy" ? "🎉" : "😭");
   }
+  checkBanners();
   scene.sync(battle, dt);
   scene.render(dt);
   hud.update(battle);

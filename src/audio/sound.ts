@@ -162,6 +162,26 @@ export class SoundEngine {
     notes.forEach((f, i) =>
       this.tone(f, 0.16, { type: "square", vol: 0.14, delay: i * 0.09 }),
     );
+    // Crowd cheer: a swell of filtered noise.
+    this.noise(0.7, { vol: 0.18, filterFreq: 1500, delay: 0.1 });
+    this.noise(0.5, { vol: 0.12, filterFreq: 2600, delay: 0.25 });
+  }
+
+  /** Countdown beeps before the battle; `go` is the final higher one. */
+  countdownBeep(go: boolean): void {
+    this.tone(go ? 880 : 440, go ? 0.35 : 0.15, { type: "square", vol: 0.2 });
+  }
+
+  /** Short sting for banners (last minute / overtime). */
+  sting(): void {
+    this.tone(392, 0.14, { type: "square", vol: 0.16 });
+    this.tone(523, 0.14, { type: "square", vol: 0.16, delay: 0.12 });
+    this.tone(659, 0.26, { type: "square", vol: 0.18, delay: 0.24 });
+  }
+
+  /** Bubbly pop for emotes. */
+  emotePop(): void {
+    this.tone(700, 0.1, { type: "sine", slideTo: 1200, vol: 0.18 });
   }
 
   private jingle(kind: "win" | "lose" | "draw"): void {
