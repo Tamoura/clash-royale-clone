@@ -472,6 +472,9 @@ export class Battle3D {
   private shakeTime = 0;
   /** Rubble piles left by fallen towers; cleared on reset. */
   private rubble: THREE.Object3D[] = [];
+  /** Scrolling river texture + accumulated flow time. */
+  private waterTex: THREE.CanvasTexture | null = null;
+  private waterTime = 0;
   private readonly zonePlane: THREE.Mesh;
   private readonly container: HTMLElement;
 
@@ -671,16 +674,55 @@ export class Battle3D {
       this.scene.add(stripe);
     }
 
+    // Bright CR-blue water with drifting light streaks.
+    const waterCanvas = document.createElement("canvas");
+    waterCanvas.width = 128;
+    waterCanvas.height = 32;
+    const wctx = waterCanvas.getContext("2d")!;
+    wctx.fillStyle = "#3f97e0";
+    wctx.fillRect(0, 0, 128, 32);
+    wctx.strokeStyle = "rgba(255,255,255,0.5)";
+    wctx.lineWidth = 1.6;
+    for (let i = 0; i < 9; i++) {
+      const y = 3 + ((i * 37) % 26);
+      const x = (i * 29) % 110;
+      wctx.beginPath();
+      wctx.moveTo(x, y);
+      wctx.quadraticCurveTo(x + 7, y - 2, x + 14, y);
+      wctx.stroke();
+    }
+    this.waterTex = new THREE.CanvasTexture(waterCanvas);
+    this.waterTex.wrapS = THREE.RepeatWrapping;
+    this.waterTex.colorSpace = THREE.SRGBColorSpace;
     const river = new THREE.Mesh(
       new THREE.BoxGeometry(ARENA_WIDTH + 0.6, 0.22, 2.2),
-      toon(0x3b82c4),
+      new THREE.MeshToonMaterial({ map: this.waterTex }),
     );
     river.position.set(0, -0.04, 0);
     this.scene.add(river);
 
+    // Wooden plank bridges with seams and side rails.
+    const plankCanvas = document.createElement("canvas");
+    plankCanvas.width = 64;
+    plankCanvas.height = 64;
+    const pctx = plankCanvas.getContext("2d")!;
+    pctx.fillStyle = "#a8754a";
+    pctx.fillRect(0, 0, 64, 64);
+    pctx.fillStyle = "#8d5f3a";
+    for (let i = 0; i < 8; i++) pctx.fillRect(0, i * 8, 64, 1.6);
+    pctx.fillStyle = "rgba(60,38,20,0.45)";
+    for (let i = 0; i < 10; i++) {
+      pctx.fillRect((i * 23) % 60, ((i * 17) % 7) * 8 + 3, 2.5, 1.5);
+    }
+    const plankTex = new THREE.CanvasTexture(plankCanvas);
+    plankTex.colorSpace = THREE.SRGBColorSpace;
+
     for (const bx of BRIDGE_XS) {
       const w = toWorld(bx, RIVER_Y);
-      const deck = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.18, 2.6), toon(0x9a6b3f));
+      const deck = new THREE.Mesh(
+        new THREE.BoxGeometry(2.0, 0.18, 2.6),
+        new THREE.MeshToonMaterial({ map: plankTex }),
+      );
       deck.position.set(w.x, 0.1, 0);
       deck.castShadow = true;
       deck.receiveShadow = true;
@@ -690,6 +732,16 @@ export class Battle3D {
         rail.position.set(w.x + side * 0.95, 0.3, 0);
         rail.castShadow = true;
         this.scene.add(rail);
+        // Rail posts at each end of the bridge.
+        for (const ez of [-1.18, 1.18]) {
+          const post = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.09, 0.09, 0.5, 8),
+            toon(0x5d3f24),
+          );
+          post.position.set(w.x + side * 0.95, 0.32, ez);
+          post.castShadow = true;
+          this.scene.add(post);
+        }
       }
     }
   }
@@ -1582,6 +1634,12 @@ export class Battle3D {
   }
 
   render(dt: number): void {
+    // The river drifts sideways forever.
+    if (this.waterTex) {
+      this.waterTime += dt;
+      this.waterTex.offset.x = this.waterTime * 0.04;
+    }
+
     // Camera shake: fast decaying jitter around the fixed viewpoint.
     if (this.shake > 0) {
       this.shakeTime += dt;
