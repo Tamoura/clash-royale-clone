@@ -814,6 +814,42 @@ export class Battle3D {
     this.blast(ax, ay, radius, 0xfff176, 0.1);
   }
 
+  /** Rage: a pulsing purple ring marks the boost zone for its lifetime. */
+  private rageZone(ax: number, ay: number, radius: number, seconds: number): void {
+    const w = toWorld(ax, ay);
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(radius * 0.85, radius, 36),
+      new THREE.MeshBasicMaterial({
+        color: 0xd81b60,
+        transparent: true,
+        opacity: 0.55,
+        side: THREE.DoubleSide,
+      }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(w.x, 0.06, w.z);
+    const haze = new THREE.Mesh(
+      new THREE.CircleGeometry(radius * 0.85, 36),
+      new THREE.MeshBasicMaterial({
+        color: 0x8e24aa,
+        transparent: true,
+        opacity: 0.16,
+        side: THREE.DoubleSide,
+      }),
+    );
+    haze.rotation.x = -Math.PI / 2;
+    haze.position.set(w.x, 0.05, w.z);
+    const group = new THREE.Group();
+    group.add(ring, haze);
+    this.addEffect(group, seconds, (frac) => {
+      const pulse = 1 + Math.sin((1 - frac) * seconds * Math.PI * 4) * 0.04;
+      group.scale.set(pulse, 1, pulse);
+      const fade = frac < 0.15 ? frac / 0.15 : 1;
+      (ring.material as THREE.MeshBasicMaterial).opacity = 0.55 * fade;
+      (haze.material as THREE.MeshBasicMaterial).opacity = 0.16 * fade;
+    });
+  }
+
   /** Arrows: a volley rains down across the radius, then a ring pop. */
   private arrowVolley(ax: number, ay: number, radius: number): void {
     for (let i = 0; i < 10; i++) {
@@ -911,6 +947,7 @@ export class Battle3D {
       case "spell":
         if (ev.cardId === "fireball") this.fireballStrike(ev.x, ev.y);
         else if (ev.cardId === "zap") this.zapStrike(ev.x, ev.y, 2);
+        else if (ev.cardId === "rage") this.rageZone(ev.x, ev.y, 2.5, 6);
         else this.arrowVolley(ev.x, ev.y, 4);
         break;
       case "attack":

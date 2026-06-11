@@ -93,6 +93,16 @@ export interface SpellEffect {
   ttl: number;
 }
 
+/** A lingering area that boosts one side's troops (Rage). */
+export interface BuffZone {
+  side: Side;
+  x: number;
+  y: number;
+  radius: number;
+  /** Seconds of boost remaining. */
+  ttl: number;
+}
+
 export interface BattleResult {
   winner: Side | "draw";
   playerCrowns: number;
@@ -136,6 +146,7 @@ export interface BattleState {
   overtime: boolean;
   result: BattleResult | null;
   effects: SpellEffect[];
+  buffZones: BuffZone[];
   events: BattleEvent[];
   nextEntityId: number;
 }
@@ -203,6 +214,7 @@ export function createBattle(): BattleState {
     overtime: false,
     result: null,
     effects: [],
+    buffZones: [],
     events: [],
     nextEntityId: 1,
   };
@@ -384,7 +396,12 @@ export function deployCard(
   me.hand = playCard(me.hand, cardId);
   if (card.kind === "spell") {
     state.events.push({ type: "spell", side, cardId, x, y });
-    applySpell(state, side, cardId, x, y, card.damage, card.radius, card.stunSeconds);
+    if (card.rageSeconds > 0) {
+      state.buffZones.push({ side, x, y, radius: card.radius, ttl: card.rageSeconds });
+      state.effects.push({ cardId, x, y, radius: card.radius, ttl: card.rageSeconds });
+    } else {
+      applySpell(state, side, cardId, x, y, card.damage, card.radius, card.stunSeconds);
+    }
   } else if (card.kind === "building") {
     state.events.push({ type: "deploy", side, cardId });
     spawnBuilding(state, side, card, x, y);

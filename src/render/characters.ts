@@ -704,6 +704,39 @@ function drawZapArt(ctx: Ctx): void {
   });
 }
 
+function drawRageArt(ctx: Ctx): void {
+  // bubbling purple potion cloud
+  const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 9);
+  g.addColorStop(0, "#f06292");
+  g.addColorStop(1, "#8e24aa");
+  ctx.fillStyle = g;
+  for (const [dx, dy, r] of [
+    [0, 1, 6.5],
+    [-5, -3, 4],
+    [5, -3, 4],
+    [0, -6, 3.5],
+  ] as const) {
+    ctx.beginPath();
+    ctx.arc(dx, dy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // angry brows
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(-4, -2.5);
+  ctx.lineTo(-1, -0.5);
+  ctx.moveTo(4, -2.5);
+  ctx.lineTo(1, -0.5);
+  ctx.stroke();
+  // gritted mouth
+  ctx.strokeStyle = "#fff";
+  ctx.beginPath();
+  ctx.moveTo(-2.5, 3.5);
+  ctx.lineTo(2.5, 3.5);
+  ctx.stroke();
+}
+
 /** Static portrait used for HUD card slots and the next-card preview. */
 export function drawCardArt(
   ctx: Ctx,
@@ -719,6 +752,7 @@ export function drawCardArt(
   if (cardId === "fireball") drawFireballArt(ctx);
   else if (cardId === "arrows") drawArrowsArt(ctx);
   else if (cardId === "zap") drawZapArt(ctx);
+  else if (cardId === "rage") drawRageArt(ctx);
   else TROOP_PAINTERS[cardId]?.(ctx, STILL);
   ctx.restore();
 }

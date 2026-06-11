@@ -8,6 +8,7 @@ export type CardId =
   | "fireball"
   | "arrows"
   | "zap"
+  | "rage"
   | "wizard"
   | "witch"
   | "hog-rider"
@@ -90,6 +91,8 @@ export interface SpellCard {
   radius: number;
   /** Seconds enemies hit are frozen in place (0 = no stun). */
   stunSeconds: number;
+  /** Seconds the spell leaves a friendly speed-boost zone (0 = none). */
+  rageSeconds: number;
 }
 
 export type Card = TroopCard | BuildingCard | SpellCard;
@@ -393,6 +396,7 @@ export const CARDS: Record<CardId, Card> = {
     damage: 570,
     radius: 2.5,
     stunSeconds: 0,
+    rageSeconds: 0,
   },
   arrows: {
     id: "arrows",
@@ -402,6 +406,7 @@ export const CARDS: Record<CardId, Card> = {
     damage: 240,
     radius: 4,
     stunSeconds: 0,
+    rageSeconds: 0,
   },
   zap: {
     id: "zap",
@@ -411,6 +416,17 @@ export const CARDS: Record<CardId, Card> = {
     damage: 250,
     radius: 2,
     stunSeconds: 0.5,
+    rageSeconds: 0,
+  },
+  rage: {
+    id: "rage",
+    name: "Rage",
+    kind: "spell",
+    cost: 2,
+    damage: 0,
+    radius: 2.5,
+    stunSeconds: 0,
+    rageSeconds: 6,
   },
 };
 
@@ -435,6 +451,7 @@ export const DECK: CardId[] = [
   "gargoyles",
   "arrows",
   "zap",
+  "rage",
 ];
 
 export function getCard(id: CardId): Card {

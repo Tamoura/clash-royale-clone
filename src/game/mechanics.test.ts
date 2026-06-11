@@ -227,6 +227,48 @@ describe("stun", () => {
   });
 });
 
+describe("rage", () => {
+  /** Distance a fresh knight covers in 3s, optionally raged at spawn. */
+  function knightProgress(raged: boolean): number {
+    const b = createBattle();
+    const [knight] = spawnUnits(b, "player", "knight", 9, 20);
+    if (raged) {
+      giveHand(b, "player", ["rage"]);
+      expect(deployCard(b, "player", "rage", 9, 20)).toBe(true);
+    }
+    run(b, 3);
+    return Math.hypot(knight.x - 9, knight.y - 20);
+  }
+
+  it("troops inside a friendly rage zone hustle", () => {
+    expect(knightProgress(true)).toBeGreaterThan(knightProgress(false));
+  });
+
+  it("enemy troops get nothing from the zone", () => {
+    const b = createBattle();
+    const [foe] = spawnUnits(b, "enemy", "knight", 9, 12);
+    giveHand(b, "player", ["rage"]);
+    expect(deployCard(b, "player", "rage", 9, 12)).toBe(true);
+    run(b, 3);
+    const control = createBattle();
+    const [free] = spawnUnits(control, "enemy", "knight", 9, 12);
+    run(control, 3);
+    expect(Math.hypot(foe.x - 9, foe.y - 12)).toBeCloseTo(
+      Math.hypot(free.x - 9, free.y - 12),
+      5,
+    );
+  });
+
+  it("the boost dies with the zone", () => {
+    const b = createBattle();
+    giveHand(b, "player", ["rage"]);
+    deployCard(b, "player", "rage", 9, 20);
+    expect(b.buffZones.length).toBe(1);
+    run(b, 10);
+    expect(b.buffZones.length).toBe(0);
+  });
+});
+
 describe("deploy delay", () => {
   it("troops stand frozen for the first second", () => {
     const b = createBattle();

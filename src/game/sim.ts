@@ -145,6 +145,18 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
   });
 }
 
+/** Speed/attack-rate multiplier for troops inside a friendly rage zone. */
+export const RAGE_BOOST = 1.35;
+
+function rageBoost(state: BattleState, e: Entity): number {
+  for (const z of state.buffZones) {
+    if (z.side === e.side && distance(e, z) <= z.radius + e.radius) {
+      return RAGE_BOOST;
+    }
+  }
+  return 1;
+}
+
 /** Spawner troops (e.g. the Witch) summon a wave every spawnInterval. */
 function tickSpawner(state: BattleState, e: Entity, dt: number): void {
   if (!e.spawnUnitId) return;
@@ -156,7 +168,9 @@ function tickSpawner(state: BattleState, e: Entity, dt: number): void {
 }
 
 function actEntity(state: BattleState, e: Entity, dt: number): void {
-  e.cooldown = Math.max(0, e.cooldown - dt);
+  // Raged units recover from attacks and cover ground faster.
+  const boostedDt = dt * rageBoost(state, e);
+  e.cooldown = Math.max(0, e.cooldown - boostedDt);
   if (!e.active) return;
 
   // Stunned units stand helpless until the stun wears off.
@@ -179,7 +193,7 @@ function actEntity(state: BattleState, e: Entity, dt: number): void {
   if (gap(e, target) <= e.attackRange) {
     if (e.cooldown === 0) dealDamage(state, e, target);
   } else if (e.kind === "troop") {
-    const step = moveToward(e, moveGoal(e, target), dt);
+    const step = moveToward(e, moveGoal(e, target), boostedDt);
     if (e.chargeDistance > 0) e.chargeProgress += step;
   }
 }
@@ -249,6 +263,9 @@ export function tick(state: BattleState, dt: number): void {
 
   for (const effect of state.effects) effect.ttl -= dt;
   state.effects = state.effects.filter((f) => f.ttl > 0);
+
+  for (const zone of state.buffZones) zone.ttl -= dt;
+  state.buffZones = state.buffZones.filter((z) => z.ttl > 0);
 
   // Deployed buildings decay over their lifetime.
   for (const e of state.entities) {

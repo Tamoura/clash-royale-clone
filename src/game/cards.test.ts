@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CARDS, DECK, getCard } from "./cards";
 
 describe("cards", () => {
-  it("defines the 19-card deck", () => {
+  it("defines the 20-card deck", () => {
     expect(DECK).toEqual([
       "knight",
       "archers",
@@ -23,8 +23,18 @@ describe("cards", () => {
       "gargoyles",
       "arrows",
       "zap",
+      "rage",
     ]);
     for (const id of DECK) expect(CARDS[id]).toBeDefined();
+  });
+
+  it("rage is a damage-free spell with a lingering boost zone", () => {
+    const rage = getCard("rage");
+    expect(rage.kind).toBe("spell");
+    if (rage.kind !== "spell") return;
+    expect(rage.cost).toBe(2);
+    expect(rage.damage).toBe(0);
+    expect(rage.rageSeconds).toBeGreaterThan(0);
   });
 
   it("zap is a cheap spell that stuns", () => {

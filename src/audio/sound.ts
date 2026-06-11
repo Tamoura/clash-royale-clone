@@ -137,6 +137,12 @@ export class SoundEngine {
     this.tone(1200, 0.16, { type: "square", slideTo: 150, vol: 0.1, delay: 0.02 });
   }
 
+  private rage(): void {
+    // Rising aggressive swell.
+    this.tone(180, 0.5, { type: "sawtooth", slideTo: 520, vol: 0.16 });
+    this.tone(90, 0.5, { type: "square", slideTo: 260, vol: 0.12, delay: 0.04 });
+  }
+
   private arrows(): void {
     for (let i = 0; i < 3; i++) {
       this.noise(0.1, { vol: 0.12, filterFreq: 5000, delay: i * 0.07 });
@@ -247,6 +253,7 @@ export class SoundEngine {
       case "spell":
         if (ev.cardId === "fireball") this.fireball();
         else if (ev.cardId === "zap") this.zap();
+        else if (ev.cardId === "rage") this.rage();
         else this.arrows();
         break;
       case "attack":
