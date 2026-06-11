@@ -596,18 +596,67 @@ export class Battle3D {
     }
   }
 
+  /** CR-style checkerboard grass: two greens, one canvas pixel per tile. */
+  private makeGrassTexture(): THREE.CanvasTexture {
+    const c = document.createElement("canvas");
+    c.width = ARENA_WIDTH;
+    c.height = ARENA_HEIGHT;
+    const ctx = c.getContext("2d")!;
+    for (let y = 0; y < ARENA_HEIGHT; y++) {
+      for (let x = 0; x < ARENA_WIDTH; x++) {
+        ctx.fillStyle = (x + y) % 2 ? "#5cb15f" : "#54a657";
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.magFilter = THREE.NearestFilter; // crisp tile edges
+    tex.minFilter = THREE.NearestFilter;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
   private buildArena(): void {
-    const halfD = ARENA_HEIGHT / 2;
-    const mkHalf = (color: number, zCenter: number): THREE.Mesh => {
-      const m = new THREE.Mesh(
-        new THREE.BoxGeometry(ARENA_WIDTH + 0.6, 0.4, halfD),
-        toon(color),
-      );
-      m.position.set(0, -0.2, zCenter);
-      m.receiveShadow = true;
-      return m;
-    };
-    this.scene.add(mkHalf(0x4c9e4f, -halfD / 2), mkHalf(0x55a858, halfD / 2));
+    // One checkered playfield slab instead of two flat halves.
+    const fieldMat = new THREE.MeshToonMaterial({ map: this.makeGrassTexture() });
+    const field = new THREE.Mesh(
+      new THREE.BoxGeometry(ARENA_WIDTH + 0.6, 0.4, ARENA_HEIGHT),
+      [
+        toon(0x4c9e4f).clone(), // sides
+        toon(0x4c9e4f).clone(),
+        fieldMat, // top
+        toon(0x4c9e4f).clone(),
+        toon(0x4c9e4f).clone(),
+        toon(0x4c9e4f).clone(),
+      ],
+    );
+    field.position.set(0, -0.2, 0);
+    field.receiveShadow = true;
+    this.scene.add(field);
+
+    // Pale stone edging around the playfield, post at each corner.
+    const hw = ARENA_WIDTH / 2 + 0.45;
+    const hd = ARENA_HEIGHT / 2 + 0.15;
+    const stone = 0xc6bda9;
+    for (const side of [-1, 1]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.34, ARENA_HEIGHT + 0.9), toon(stone));
+      rail.position.set(side * hw, 0.05, 0);
+      rail.castShadow = true;
+      rail.receiveShadow = true;
+      this.scene.add(rail);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(ARENA_WIDTH + 1.4, 0.34, 0.5), toon(stone));
+      cap.position.set(0, 0.05, side * hd);
+      cap.castShadow = true;
+      cap.receiveShadow = true;
+      this.scene.add(cap);
+    }
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), toon(0xb3a890));
+        post.position.set(sx * hw, 0.18, sz * hd);
+        post.castShadow = true;
+        this.scene.add(post);
+      }
+    }
     this.decorate();
 
     for (const bx of BRIDGE_XS) {
