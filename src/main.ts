@@ -20,9 +20,11 @@ try {
   scene = new Battle3D(stage);
 } catch {
   stage.innerHTML =
-    '<div style="color:#e5e7eb;text-align:center;padding-top:40vh;font-size:18px">' +
-    "This game needs WebGL (3D graphics), which your browser/tab refused to provide.<br/>" +
-    "Try a regular visible browser window with hardware acceleration enabled.</div>";
+    '<div style="color:#e5e7eb;text-align:center;padding-top:34vh;font-size:18px;line-height:1.7">' +
+    "<b>This game needs WebGL (3D graphics).</b><br/>" +
+    "In Chrome: open <code>chrome://settings/system</code>,<br/>" +
+    "turn on <b>“Use graphics acceleration when available”</b>, and relaunch.<br/>" +
+    "(Safari and Firefox usually work out of the box.)</div>";
   throw new Error("WebGL unavailable");
 }
 const audio = new SoundEngine();
