@@ -1,4 +1,18 @@
 import type { BattleEvent } from "../game/battle";
+import { getCard } from "../game/cards";
+
+/**
+ * Music tempo per intensity level: 0 = normal time, 1 = double
+ * elixir, 2 = overtime. Milliseconds per 16th-note step.
+ */
+export const MUSIC_STEP_MS = [220, 190, 160] as const;
+
+export type Intensity = 0 | 1 | 2;
+
+/** Deploy thump frequency: pricier cards land deeper. */
+export function deployPitch(cost: number): number {
+  return 500 - cost * 38;
+}
 
 /**
  * Fully synthesized game audio (Web Audio API) — no audio files.
@@ -12,6 +26,7 @@ export class SoundEngine {
   private musicStep = 0;
   private lastPlayed = new Map<string, number>();
   muted = false;
+  intensity: Intensity = 0;
 
   private ensure(): AudioContext | null {
     if (typeof AudioContext === "undefined") return null;
@@ -103,9 +118,14 @@ export class SoundEngine {
     src.start(t0);
   }
 
-  private deploy(): void {
-    this.tone(420, 0.12, { type: "sine", slideTo: 180, vol: 0.25 });
-    this.tone(620, 0.08, { type: "triangle", vol: 0.12, delay: 0.03 });
+  private deploy(cost: number): void {
+    const pitch = deployPitch(cost);
+    this.tone(pitch, 0.12 + cost * 0.012, {
+      type: "sine",
+      slideTo: pitch * 0.42,
+      vol: 0.22 + cost * 0.012,
+    });
+    this.tone(pitch * 1.5, 0.08, { type: "triangle", vol: 0.12, delay: 0.03 });
   }
 
   private melee(): void {
@@ -219,12 +239,27 @@ export class SoundEngine {
     );
   }
 
-  /** A tiny 16-step medieval-ish loop: bass drone + lead melody. */
+  /**
+   * Raise/lower musical tension (0 normal, 1 double elixir,
+   * 2 overtime). Retimes the loop live and layers in percussion.
+   */
+  setIntensity(level: Intensity): void {
+    if (level === this.intensity) return;
+    this.intensity = level;
+    if (this.musicTimer !== null) {
+      this.stopMusic();
+      this.startMusic();
+    }
+  }
+
+  /**
+   * A tiny 16-step medieval-ish loop: bass drone + lead melody.
+   * Higher intensity speeds the loop and adds hat/drum percussion.
+   */
   private startMusic(): void {
     if (this.musicTimer !== null || !this.ctx) return;
     const lead = [440, 0, 523, 440, 587, 523, 440, 0, 392, 0, 440, 523, 440, 392, 330, 0];
     const bass = [110, 0, 110, 0, 147, 0, 110, 0, 98, 0, 98, 0, 110, 0, 110, 0];
-    const stepMs = 220;
     this.musicTimer = window.setInterval(() => {
       if (this.muted || !this.musicGain) return;
       const i = this.musicStep % 16;
@@ -234,8 +269,15 @@ export class SoundEngine {
       if (bass[i]) {
         this.tone(bass[i], 0.3, { type: "sine", vol: 0.7, out: this.musicGain });
       }
+      // Percussion layers join as the match heats up.
+      if (this.intensity >= 1 && i % 2 === 1) {
+        this.noise(0.03, { vol: 0.05, filterFreq: 7000 }); // hat
+      }
+      if (this.intensity >= 2 && i % 4 === 0) {
+        this.tone(70, 0.12, { type: "sine", slideTo: 40, vol: 0.5, out: this.musicGain });
+      }
       this.musicStep++;
-    }, stepMs);
+    }, MUSIC_STEP_MS[this.intensity]);
   }
 
   stopMusic(): void {
@@ -255,7 +297,7 @@ export class SoundEngine {
     if (!this.ctx) return;
     switch (ev.type) {
       case "deploy":
-        this.deploy();
+        this.deploy(getCard(ev.cardId).cost);
         break;
       case "spell":
         if (ev.cardId === "fireball") this.fireball();
@@ -269,8 +311,9 @@ export class SoundEngine {
         else this.melee();
         break;
       case "death":
-        if (ev.kind === "troop") this.death(ev.cardId === "skeletons");
-        else this.towerDown();
+        if (ev.kind !== "troop") this.towerDown();
+        else if (ev.cardId === "balloon") this.fireball(); // death bomb
+        else this.death(ev.cardId === "skeletons");
         break;
       case "crown":
         this.crown();

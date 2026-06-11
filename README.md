@@ -39,7 +39,9 @@ no Supercell assets are used.
 ## Stack
 
 - TypeScript, Vite (dev server on port **3101**), Vitest for tests,
-  Three.js for rendering, Web Audio for synthesized SFX/music.
+  Three.js for rendering, Web Audio for synthesized SFX/music (the
+  battle tune speeds up and gains percussion in double elixir and
+  overtime).
 - Game simulation is pure, deterministic, and fully unit-tested
   (`src/game/`); the 3D renderer, DOM HUD, and audio (`src/render3d/`,
   `src/audio/`, `src/main.ts`) are a thin shell driven by the sim's

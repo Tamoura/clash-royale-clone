@@ -2,7 +2,7 @@ import { SoundEngine } from "./audio/sound";
 import { checkDeploy, createBattle, deployCard, type BattleState } from "./game/battle";
 import { createBot, tickBot, type BotState } from "./game/bot";
 import { getCard, type CardId } from "./game/cards";
-import { tick } from "./game/sim";
+import { isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
 import { Battle3D } from "./render3d/scene3d";
 
@@ -42,6 +42,7 @@ function restart(): void {
   bot = createBot(Date.now() & 0xffff);
   selectCard(null);
   scene.reset();
+  audio.setIntensity(0);
   audio.restartMusic();
   startCountdown();
 }
@@ -209,6 +210,10 @@ function frame(now: number): void {
     if (ev.type === "finish") botEmote(ev.winner === "enemy" ? "🎉" : "😭");
   }
   checkBanners();
+  // Music tension follows the match: double elixir, then overtime.
+  if (!battle.result) {
+    audio.setIntensity(battle.overtime ? 2 : isDoubleElixir(battle) ? 1 : 0);
+  }
   scene.sync(battle, dt);
   scene.render(dt);
   hud.update(battle);
