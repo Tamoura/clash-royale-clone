@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CARDS, DECK, getCard } from "./cards";
 
 describe("cards", () => {
-  it("defines the 14-card deck", () => {
+  it("defines the 15-card deck", () => {
     expect(DECK).toEqual([
       "knight",
       "archers",
@@ -15,11 +15,23 @@ describe("cards", () => {
       "skeletons",
       "wizard",
       "prince",
+      "pekka",
       "cannon",
       "gargoyles",
       "arrows",
     ]);
     for (const id of DECK) expect(CARDS[id]).toBeDefined();
+  });
+
+  it("the P.E.K.K.A is a 7-elixir single-target ground tank", () => {
+    const pekka = getCard("pekka");
+    expect(pekka.cost).toBe(7);
+    if (pekka.kind !== "troop") throw new Error("pekka should be a troop");
+    expect(pekka.unit.maxHp).toBeGreaterThan(2500);
+    expect(pekka.unit.damage).toBeGreaterThan(600);
+    expect(pekka.unit.splashRadius).toBe(0);
+    expect(pekka.unit.targetsAir).toBe(false);
+    expect(pekka.unit.speed).toBe("slow");
   });
 
   it("flying units and air-targeting are modeled", () => {

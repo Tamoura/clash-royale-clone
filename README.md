@@ -13,9 +13,9 @@ no Supercell assets are used.
   sleeps until damaged or a princess tower falls). Towers show a live
   numeric HP readout.
 - Elixir regenerates over time (max 10, double-elixir in the last 60s).
-- 14-card deck, 4-card rotating hand: Knight, Archers, Giant,
+- 15-card deck, 4-card rotating hand: Knight, Archers, Giant,
   Musketeer, Mini P.E.K.K.A, Skeletons, Wizard, Baby Dragon,
-  Gargoyles, Valkyrie, Prince, Cannon, Fireball, Arrows.
+  Gargoyles, Valkyrie, Prince, P.E.K.K.A, Cannon, Fireball, Arrows.
 - CR-style mechanics: flying units (straight paths, only
   air-targeters can hit them), splash damage, the Prince's charge
   (2x damage after a run-up), deployable buildings that decay and

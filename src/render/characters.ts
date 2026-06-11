@@ -446,6 +446,40 @@ function drawCannon(ctx: Ctx, _anim: Anim): void {
   circle(ctx, 0, 2, 2.6, "#263238"); // breech
 }
 
+function drawPekka(ctx: Ctx, _anim: Anim): void {
+  // great sword at the side
+  ctx.save();
+  ctx.translate(7, 0);
+  box(ctx, -1.2, -10.5, 2.4, 12, 1, "#dde4ec"); // blade
+  box(ctx, -2.6, 1.5, 5.2, 1.6, 0.8, "#39455c"); // crossguard
+  ctx.restore();
+
+  box(ctx, -5, -1.5, 10, 9, 2, "#1a2333"); // armored body
+  // glowing chest gem
+  ctx.fillStyle = "#8c7bff";
+  ctx.beginPath();
+  ctx.arc(0, 2, 1.4, 0, Math.PI * 2);
+  ctx.fill();
+  box(ctx, -6, -11.5, 12, 9, 2.5, "#222f47"); // massive helmet
+  // glowing eye strip
+  ctx.fillStyle = "#8c7bff";
+  ctx.fillRect(-3.6, -8, 7.2, 1.8);
+  outlined(ctx, "#b7c2cc", () => {
+    ctx.beginPath();
+    ctx.moveTo(-6, -10);
+    ctx.lineTo(-9.6, -14.5);
+    ctx.lineTo(-4, -11.5);
+    ctx.closePath();
+  });
+  outlined(ctx, "#b7c2cc", () => {
+    ctx.beginPath();
+    ctx.moveTo(6, -10);
+    ctx.lineTo(9.6, -14.5);
+    ctx.lineTo(4, -11.5);
+    ctx.closePath();
+  });
+}
+
 const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = {
   knight: drawKnight,
   archers: drawArcher,
@@ -458,6 +492,7 @@ const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = 
   gargoyles: drawGargoyle,
   valkyrie: drawValkyrie,
   prince: drawPrince,
+  pekka: drawPekka,
   cannon: drawCannon,
 };
 

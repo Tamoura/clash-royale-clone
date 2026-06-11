@@ -12,6 +12,7 @@ export type CardId =
   | "gargoyles"
   | "valkyrie"
   | "prince"
+  | "pekka"
   | "cannon";
 
 export type Speed = "slow" | "medium" | "fast";
@@ -276,6 +277,21 @@ export const CARDS: Record<CardId, Card> = {
       radius: 0.6,
     }),
   },
+  pekka: {
+    id: "pekka",
+    name: "P.E.K.K.A",
+    kind: "troop",
+    cost: 7,
+    count: 1,
+    unit: unit({
+      maxHp: 3000,
+      damage: 750,
+      hitSpeed: 1.8,
+      attackRange: MELEE,
+      speed: "slow",
+      radius: 0.7,
+    }),
+  },
   cannon: {
     id: "cannon",
     name: "Cannon",
@@ -322,6 +338,7 @@ export const DECK: CardId[] = [
   "skeletons",
   "wizard",
   "prince",
+  "pekka",
   "cannon",
   "gargoyles",
   "arrows",

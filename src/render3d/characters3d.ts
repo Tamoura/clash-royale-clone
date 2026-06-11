@@ -581,6 +581,47 @@ function buildPrince(): TroopRig {
   return { group: g, arm, armRest: -0.12, swingAmp: 0.6, height: 2.2, legs, offArm };
 }
 
+function buildPekka(): TroopRig {
+  const g = new THREE.Group();
+  const legs = [
+    makeLeg(0x10141c, -0.22, 0.4, 0.24),
+    makeLeg(0x10141c, 0.22, 0.4, 0.24),
+  ];
+  g.add(...legs);
+  g.add(box(0.78, 0.62, 0.52, 0x1a2333, 0, 0.7, 0)); // armored body
+  g.add(box(0.5, 0.1, 0.54, 0x39455c, 0, 0.95, 0)); // chest plate ridge
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), glow(0x8c7bff, 1.8));
+  chest.position.set(0, 0.74, 0.28);
+  g.add(chest);
+  g.add(box(0.86, 0.62, 0.7, 0x222f47, 0, 1.5, 0)); // massive helmet head
+  const eye = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.04), glow(0x8c7bff, 2.4));
+  eye.position.set(0, 1.52, 0.36);
+  g.add(eye);
+  for (const s of [-1, 1]) {
+    const horn = cone(0.12, 0.55, 0xb7c2cc, s * 0.46, 1.98, 0);
+    horn.rotation.z = -s * 0.5;
+    g.add(horn);
+    g.add(sphere(0.13, 0xb7c2cc, s * 0.46, 0.98, 0)); // shoulder bolt
+    g.add(cone(0.09, 0.24, 0xb7c2cc, s * 0.5, 1.18, 0)); // shoulder spike
+  }
+
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.52, 0.92, 0);
+  offArm.add(box(0.2, 0.46, 0.2, 0x1a2333, 0, -0.24, 0));
+  offArm.add(sphere(0.13, 0x39455c, 0, -0.5, 0)); // gauntlet
+  g.add(offArm);
+
+  // Two-handed great sword.
+  const arm = new THREE.Group();
+  arm.position.set(0.54, 0.96, 0);
+  arm.add(box(0.2, 0.42, 0.2, 0x1a2333, 0, -0.22, 0));
+  arm.add(box(0.4, 0.08, 0.14, 0x39455c, 0, -0.46, 0)); // crossguard
+  arm.add(box(0.11, 1.05, 0.22, 0xdde4ec, 0, 0.12, 0)); // huge blade
+  arm.add(cone(0.11, 0.2, 0xdde4ec, 0, 0.74, 0)); // blade point
+  g.add(arm);
+  return { group: g, arm, armRest: -0.5, swingAmp: 1.8, height: 2.25, legs, offArm };
+}
+
 const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   knight: buildKnight,
   archers: buildArcher,
@@ -593,6 +634,7 @@ const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   gargoyles: buildGargoyle,
   valkyrie: buildValkyrie,
   prince: buildPrince,
+  pekka: buildPekka,
 };
 
 export function buildTroop(cardId: CardId): TroopRig {
