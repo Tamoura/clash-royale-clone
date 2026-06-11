@@ -142,6 +142,7 @@ export type BattleEvent =
       y: number;
     }
   | { type: "crown"; winner: Side }
+  | { type: "king-wake"; side: Side }
   | { type: "finish"; winner: Side | "draw" };
 
 export interface BattleState {

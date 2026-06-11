@@ -10,8 +10,10 @@ no Supercell assets are used.
 
 - One arena: two lanes, a river, two bridges.
 - Each side has 2 princess (crown) towers and 1 king tower (the king
-  sleeps until damaged or a princess tower falls). Towers show a live
-  numeric HP readout.
+  sleeps until damaged or a princess tower falls — and wakes with a
+  war-horn, shockwave, and screen shake). Towers show a live numeric
+  HP readout and collapse into rubble with a camera shake when they
+  fall.
 - Elixir regenerates over time (max 10, double-elixir in the last 60s).
 - 20-card deck, 4-card rotating hand: Knight, Archers, Giant,
   Musketeer, Mini P.E.K.K.A, Skeletons, Wizard, Witch, Hog Rider,

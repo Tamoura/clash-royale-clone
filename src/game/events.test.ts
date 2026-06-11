@@ -83,3 +83,33 @@ describe("battle events", () => {
     expect(b.events).toContainEqual({ type: "finish", winner: "player" });
   });
 });
+
+describe("king wake events", () => {
+  it("fires once when tower damage wakes the king", () => {
+    const b = createBattle();
+    const king = b.entities.find(
+      (e) => e.side === "enemy" && e.kind === "king-tower",
+    )!;
+    king.hp -= 10;
+    tick(b, TICK);
+    tick(b, TICK);
+    const wakes = b.events.filter((e) => e.type === "king-wake");
+    expect(wakes).toEqual([{ type: "king-wake", side: "enemy" }]);
+  });
+
+  it("fires when a princess tower falls", () => {
+    const b = createBattle();
+    const tower = b.entities.find(
+      (e) => e.side === "enemy" && e.kind === "princess-tower",
+    )!;
+    tower.hp = 0;
+    tick(b, TICK);
+    expect(b.events).toContainEqual({ type: "king-wake", side: "enemy" });
+  });
+
+  it("never fires for kings that stay asleep", () => {
+    const b = createBattle();
+    for (let i = 0; i < 40; i++) tick(b, TICK);
+    expect(b.events.filter((e) => e.type === "king-wake")).toHaveLength(0);
+  });
+});

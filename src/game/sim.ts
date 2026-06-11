@@ -250,13 +250,18 @@ function processDeaths(state: BattleState): void {
 
 function wakeKing(state: BattleState, side: Entity["side"]): void {
   for (const e of state.entities) {
-    if (e.side === side && e.kind === "king-tower") e.active = true;
+    if (e.side === side && e.kind === "king-tower" && !e.active) {
+      e.active = true;
+      state.events.push({ type: "king-wake", side: e.side });
+    }
   }
 }
 
 function wakeDamagedKings(state: BattleState): void {
   for (const e of state.entities) {
-    if (e.kind === "king-tower" && e.hp < e.maxHp) e.active = true;
+    if (e.kind === "king-tower" && e.hp < e.maxHp && !e.active) {
+      wakeKing(state, e.side);
+    }
   }
 }
 

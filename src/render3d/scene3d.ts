@@ -393,6 +393,11 @@ export class Battle3D {
   private dying: DyingView[] = [];
   private readonly hoverDisc: THREE.Mesh;
   private ghost: { id: CardId; rig: TroopRig } | null = null;
+  /** Remaining camera-shake energy (seconds-ish, decays each frame). */
+  private shake = 0;
+  private shakeTime = 0;
+  /** Rubble piles left by fallen towers; cleared on reset. */
+  private rubble: THREE.Object3D[] = [];
   private readonly zonePlane: THREE.Mesh;
   private readonly container: HTMLElement;
 
@@ -915,6 +920,79 @@ export class Battle3D {
     this.blast(ax, ay, radius, 0xdce6ff, 0.32);
   }
 
+  /** Permanent pile of broken masonry where a tower used to stand. */
+  private dropRubble(ax: number, ay: number, king: boolean): void {
+    const w = toWorld(ax, ay);
+    const pile = new THREE.Group();
+    const base = king ? 1.4 : 1.1;
+    const stones = king ? 9 : 6;
+    for (let i = 0; i < stones; i++) {
+      const a = (i / stones) * Math.PI * 2 + i * 1.7;
+      const r = (i % 3) * 0.3 + 0.2;
+      const s = 0.5 - (i % 3) * 0.13;
+      const stone = new THREE.Mesh(
+        new THREE.BoxGeometry(s * base, s * 0.7, s * base),
+        toon(i % 2 ? 0x9b8d7b : 0x8b7c69),
+      );
+      stone.position.set(Math.cos(a) * r, s * 0.3, Math.sin(a) * r);
+      stone.rotation.set(0, a, (i % 5) * 0.12);
+      stone.castShadow = true;
+      pile.add(stone);
+    }
+    pile.position.set(w.x, 0, w.z);
+    this.scene.add(pile);
+    this.rubble.push(pile);
+  }
+
+  /** Roaring red shockwave + steam when a sleeping king wakes up. */
+  private kingWakeBurst(side: Side): void {
+    const z = side === "player" ? 14.5 : -14.5; // king tower rows
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.6, 1.0, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0xff5252,
+        transparent: true,
+        side: THREE.DoubleSide,
+      }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(0, 0.15, z);
+    this.addEffect(ring, 0.7, (frac) => {
+      const t = 1 - frac;
+      ring.scale.setScalar(1 + t * 4);
+      (ring.material as THREE.MeshBasicMaterial).opacity = frac * 0.85;
+    });
+    // Angry steam puffs popping out of the keep.
+    for (let i = 0; i < 5; i++) {
+      const puff = new THREE.Mesh(
+        new THREE.SphereGeometry(0.22, 10, 8),
+        new THREE.MeshBasicMaterial({
+          color: 0xff8a80,
+          transparent: true,
+          opacity: 0.8,
+        }),
+      );
+      const a = (i / 5) * Math.PI * 2;
+      puff.position.set(Math.cos(a) * 0.7, 2.6, z + Math.sin(a) * 0.7);
+      this.addEffect(
+        puff,
+        0.6,
+        (frac) => {
+          puff.position.y = 2.6 + (1 - frac) * 1.6;
+          puff.scale.setScalar(1 + (1 - frac) * 1.6);
+          (puff.material as THREE.MeshBasicMaterial).opacity = 0.8 * frac;
+        },
+        i * 0.07,
+      );
+    }
+    this.addShake(0.35);
+  }
+
+  /** Kick the camera; intensity stacks but is clamped. */
+  private addShake(amount: number): void {
+    this.shake = Math.min(1, this.shake + amount);
+  }
+
   /** A golden crown rises, spins, and fades over a fallen tower. */
   private crownPop(ax: number, ay: number): void {
     const w = toWorld(ax, ay);
@@ -995,8 +1073,15 @@ export class Battle3D {
         if (ev.kind === "troop") this.puff(ev.x, ev.y, 0xcccccc, 0.5);
         else {
           this.puff(ev.x, ev.y, 0x8b7c69, 1.6);
-          if (ev.kind !== "building") this.crownPop(ev.x, ev.y);
+          if (ev.kind !== "building") {
+            this.crownPop(ev.x, ev.y);
+            this.dropRubble(ev.x, ev.y, ev.kind === "king-tower");
+            this.addShake(ev.kind === "king-tower" ? 0.9 : 0.55);
+          }
         }
+        break;
+      case "king-wake":
+        this.kingWakeBurst(ev.side);
         break;
       default:
         break;
@@ -1128,6 +1213,19 @@ export class Battle3D {
   }
 
   render(dt: number): void {
+    // Camera shake: fast decaying jitter around the fixed viewpoint.
+    if (this.shake > 0) {
+      this.shakeTime += dt;
+      const s = this.shake * 0.35;
+      this.camera.position.set(
+        Math.sin(this.shakeTime * 53) * s,
+        24 + Math.sin(this.shakeTime * 61) * s * 0.6,
+        27 + Math.cos(this.shakeTime * 47) * s,
+      );
+      this.shake = Math.max(0, this.shake - dt * 1.8);
+      if (this.shake === 0) this.camera.position.set(0, 24, 27);
+    }
+
     this.effects = this.effects.filter((f) => {
       if (f.delay > 0) {
         f.delay -= dt;
@@ -1172,5 +1270,9 @@ export class Battle3D {
       this.scene.remove(this.ghost.rig.group);
       this.ghost = null;
     }
+    for (const pile of this.rubble) this.scene.remove(pile);
+    this.rubble = [];
+    this.shake = 0;
+    this.camera.position.set(0, 24, 27);
   }
 }

@@ -169,6 +169,13 @@ export class SoundEngine {
     this.tone(120, 0.6, { type: "sawtooth", slideTo: 40, vol: 0.25 });
   }
 
+  private kingWake(): void {
+    // Low war-horn blast with a growl underneath.
+    this.tone(98, 0.7, { type: "sawtooth", slideTo: 147, vol: 0.3 });
+    this.tone(49, 0.7, { type: "square", slideTo: 73, vol: 0.2, delay: 0.05 });
+    this.noise(0.3, { vol: 0.12, filterFreq: 500, delay: 0.1 });
+  }
+
   private crown(): void {
     const notes = [523, 659, 784, 1047]; // C5 E5 G5 C6
     notes.forEach((f, i) =>
@@ -267,6 +274,9 @@ export class SoundEngine {
         break;
       case "crown":
         this.crown();
+        break;
+      case "king-wake":
+        this.kingWake();
         break;
       case "finish":
         this.jingle(
