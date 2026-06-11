@@ -12,6 +12,7 @@ import { projectileStyle } from "./projectiles";
 import { damageLabel } from "./popups";
 import { deathStyle } from "./deathfx";
 import { DUST_INTERVAL, blobShadowScale } from "./ground";
+import { spawnStyle } from "./spawnfx";
 import {
   animateTroop,
   buildTowerKing,
@@ -65,6 +66,8 @@ interface EntityView {
   blobShadow?: THREE.Mesh;
   /** Seconds until the next footstep dust puff. */
   dustT?: number;
+  /** How this troop enters the field. */
+  spawnStyle?: "rise" | "pop";
 }
 
 interface DyingView {
@@ -447,6 +450,7 @@ function buildTroopMesh(e: Entity): EntityView {
     spawnT: 0,
     isTroop: true,
     blobShadow,
+    spawnStyle: spawnStyle(e.cardId),
   };
 }
 
@@ -1076,6 +1080,35 @@ export class Battle3D {
     this.shake = Math.min(1, this.shake + amount);
   }
 
+  /** Dark necromantic disc that summoned skeletons rise through. */
+  private summonPortal(ax: number, ay: number): void {
+    const w = toWorld(ax, ay);
+    const disc = new THREE.Mesh(
+      new THREE.CircleGeometry(0.55, 24),
+      new THREE.MeshBasicMaterial({ color: 0x2e1a47, transparent: true }),
+    );
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.set(w.x, 0.04, w.z);
+    this.addEffect(disc, 0.6, (frac) => {
+      disc.scale.setScalar(0.4 + (1 - frac) * 0.8);
+      (disc.material as THREE.MeshBasicMaterial).opacity = frac * 0.75;
+    });
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.5, 0.6, 24),
+      new THREE.MeshBasicMaterial({
+        color: 0x76ff03,
+        transparent: true,
+        side: THREE.DoubleSide,
+      }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(w.x, 0.05, w.z);
+    this.addEffect(ring, 0.6, (frac) => {
+      ring.scale.setScalar(0.5 + (1 - frac) * 1.1);
+      (ring.material as THREE.MeshBasicMaterial).opacity = frac * 0.8;
+    });
+  }
+
   /** Bone shards scattering from a fallen skeleton. */
   private boneScatter(ax: number, ay: number, color: number): void {
     const w = toWorld(ax, ay);
@@ -1325,18 +1358,27 @@ export class Battle3D {
               : buildTowerMesh(e);
         this.views.set(e.id, view);
         this.scene.add(view.root);
+        // Entry flourish: a dark portal for risers, dust for poppers.
+        if (view.spawnStyle === "rise") this.summonPortal(e.x, e.y);
+        else if (view.isTroop) this.puff(e.x, e.y, 0xd9cdb8, 0.45);
       }
       const w = toWorld(e.x, e.y);
       view.root.position.x = w.x;
       view.root.position.z = w.z;
 
-      // Spawn pop-in.
+      // Spawn entrance: rise out of the ground, or pop-in bounce.
       if (view.spawnT < SPAWN_POP_TIME) {
         view.spawnT += dt;
-        const k = easeOutBack(Math.min(1, view.spawnT / SPAWN_POP_TIME));
-        view.root.scale.setScalar(Math.max(0.05, k));
-      } else if (view.root.scale.x !== 1) {
+        const f = Math.min(1, view.spawnT / SPAWN_POP_TIME);
+        if (view.spawnStyle === "rise") {
+          view.root.position.y = -1.0 * (1 - f) * (1 - f);
+          view.root.scale.setScalar(1);
+        } else {
+          view.root.scale.setScalar(Math.max(0.05, easeOutBack(f)));
+        }
+      } else if (view.root.scale.x !== 1 || view.root.position.y !== 0) {
         view.root.scale.setScalar(1);
+        view.root.position.y = 0;
       }
 
       // Emissive glow chain: damage flash > rage pink > charge gold.
