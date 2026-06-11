@@ -114,7 +114,7 @@ function updateHpText(t: HpText, hp: number): void {
   t.last = value;
   const ctx = t.ctx;
   ctx.clearRect(0, 0, 128, 48);
-  ctx.font = "bold 30px 'Trebuchet MS', sans-serif";
+  ctx.font = "bold 30px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.lineJoin = "round";
@@ -165,10 +165,10 @@ function nameSpriteMaterial(cardId: CardId, side: Side): THREE.SpriteMaterial {
   c.height = 64;
   const ctx = c.getContext("2d")!;
   let size = 34;
-  ctx.font = `bold ${size}px 'Trebuchet MS', sans-serif`;
+  ctx.font = `bold ${size}px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif`;
   while (ctx.measureText(name).width > 236 && size > 16) {
     size -= 2;
-    ctx.font = `bold ${size}px 'Trebuchet MS', sans-serif`;
+    ctx.font = `bold ${size}px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif`;
   }
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -196,7 +196,7 @@ function makeStunSprite(): THREE.Sprite {
     c.width = 128;
     c.height = 48;
     const ctx = c.getContext("2d")!;
-    ctx.font = "bold 30px 'Trebuchet MS', sans-serif";
+    ctx.font = "bold 30px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
     ctx.textAlign = "center";
     ctx.fillStyle = "#ffe14d";
     ctx.strokeStyle = "rgba(10,14,22,0.9)";
@@ -223,11 +223,11 @@ function makeZzzSprite(): THREE.Sprite {
   const c = document.createElement("canvas");
   c.width = c.height = 64;
   const ctx = c.getContext("2d")!;
-  ctx.font = "bold 30px 'Trebuchet MS', sans-serif";
+  ctx.font = "bold 30px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
   ctx.fillStyle = "rgba(255,255,255,0.9)";
   ctx.textAlign = "center";
   ctx.fillText("z", 22, 44);
-  ctx.font = "bold 20px 'Trebuchet MS', sans-serif";
+  ctx.font = "bold 20px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
   ctx.fillText("z", 42, 26);
   const sprite = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true }),
@@ -1367,7 +1367,7 @@ export class Battle3D {
     c.width = 128;
     c.height = 64;
     const ctx = c.getContext("2d")!;
-    ctx.font = "bold 44px 'Trebuchet MS', sans-serif";
+    ctx.font = "bold 44px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
