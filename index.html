@@ -259,6 +259,39 @@
         font-size: 28px;
         color: #e5e7eb;
       }
+      .overlay-stats {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        background: rgba(255, 255, 255, 0.07);
+        border-radius: 10px;
+        padding: 12px 20px;
+        min-width: 320px;
+      }
+      .overlay-stats .stat-row {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        gap: 16px;
+        align-items: baseline;
+        font-size: 18px;
+        color: #e5e7eb;
+      }
+      .overlay-stats .stat-row span:first-child {
+        text-align: right;
+        color: #facc15;
+        font-weight: bold;
+      }
+      .overlay-stats .stat-row span:last-child {
+        text-align: left;
+        color: #f87171;
+        font-weight: bold;
+      }
+      .overlay-stats .stat-row label {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #9ca3af;
+      }
       #overlay .again {
         font-size: 20px;
         font-weight: bold;

@@ -43,6 +43,7 @@ export class Hud {
   private readonly overlay: HTMLElement;
   private readonly overlayTitle: HTMLElement;
   private readonly overlayScore: HTMLElement;
+  private readonly overlayStats: HTMLElement;
   private handKey = "";
   private nextKey = "";
   private selected: CardId | null = null;
@@ -88,6 +89,7 @@ export class Hud {
     this.overlay = overlay;
     this.overlayTitle = el("div", "overlay-title", overlay);
     this.overlayScore = el("div", "overlay-score", overlay);
+    this.overlayStats = el("div", "overlay-stats", overlay);
     const again = el("button", "again", overlay);
     again.textContent = "Play again";
     again.addEventListener("click", () => this.cb.onRestart());
@@ -153,6 +155,13 @@ export class Hud {
         winner === "player" ? "VICTORY! 🎉" : winner === "enemy" ? "DEFEAT" : "DRAW";
       this.overlayTitle.dataset.kind = winner;
       this.overlayScore.textContent = `👑 ${playerCrowns} — ${enemyCrowns} 👑`;
+      const p = state.player.stats;
+      const e = state.enemy.stats;
+      this.overlayStats.innerHTML =
+        `<div class="stat-row"><span>${Math.round(p.damageDealt)}</span>` +
+        `<label>damage</label><span>${Math.round(e.damageDealt)}</span></div>` +
+        `<div class="stat-row"><span>${p.elixirSpent}</span>` +
+        `<label>elixir spent</label><span>${e.elixirSpent}</span></div>`;
       this.overlay.classList.add("show");
     } else {
       this.overlay.classList.remove("show");

@@ -124,11 +124,16 @@ function moveToward(e: Entity, goal: { x: number; y: number }, dt: number): numb
 function dealDamage(state: BattleState, e: Entity, target: Entity): void {
   const charged = e.chargeDistance > 0 && e.chargeProgress >= e.chargeDistance;
   const damage = e.damage * (charged ? 2 : 1);
+  const myStats = sideState(state, e.side).stats;
   target.hp -= damage;
+  myStats.damageDealt += damage;
   if (e.splashRadius > 0) {
     for (const o of livingEnemiesOf(state, e)) {
       if (o === target || !canHit(e, o)) continue;
-      if (distance(o, target) <= e.splashRadius + o.radius) o.hp -= damage;
+      if (distance(o, target) <= e.splashRadius + o.radius) {
+        o.hp -= damage;
+        myStats.damageDealt += damage;
+      }
     }
   }
   e.chargeProgress = 0;
@@ -202,7 +207,10 @@ function actEntity(state: BattleState, e: Entity, dt: number): void {
 function explodeOnDeath(state: BattleState, e: Entity): void {
   if (e.deathDamage <= 0) return;
   for (const o of livingEnemiesOf(state, e)) {
-    if (distance(o, e) <= e.deathRadius + o.radius) o.hp -= e.deathDamage;
+    if (distance(o, e) <= e.deathRadius + o.radius) {
+      o.hp -= e.deathDamage;
+      sideState(state, e.side).stats.damageDealt += e.deathDamage;
+    }
   }
   state.effects.push({
     cardId: e.cardId ?? "fireball",

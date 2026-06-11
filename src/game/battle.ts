@@ -78,10 +78,17 @@ export interface Entity {
   active: boolean;
 }
 
+/** Running battle statistics shown on the result screen. */
+export interface SideStats {
+  damageDealt: number;
+  elixirSpent: number;
+}
+
 export interface SideState {
   elixir: ElixirState;
   hand: HandState;
   crowns: number;
+  stats: SideStats;
 }
 
 export interface SpellEffect {
@@ -208,8 +215,18 @@ function makeTower(state: BattleState, side: Side, kind: TowerKind, x: number, y
 export function createBattle(): BattleState {
   const state: BattleState = {
     entities: [],
-    player: { elixir: createElixir(), hand: createHand(DECK), crowns: 0 },
-    enemy: { elixir: createElixir(), hand: createHand(DECK), crowns: 0 },
+    player: {
+      elixir: createElixir(),
+      hand: createHand(DECK),
+      crowns: 0,
+      stats: { damageDealt: 0, elixirSpent: 0 },
+    },
+    enemy: {
+      elixir: createElixir(),
+      hand: createHand(DECK),
+      crowns: 0,
+      stats: { damageDealt: 0, elixirSpent: 0 },
+    },
     time: 0,
     overtime: false,
     result: null,
@@ -364,7 +381,9 @@ export function applySpell(
     if (distance(e, { x, y }) > radius + e.radius) continue;
     // Only crown towers resist spells; deployed buildings take full damage.
     const isCrownTower = e.kind === "princess-tower" || e.kind === "king-tower";
-    e.hp -= damage * (isCrownTower ? TOWER_SPELL_DAMAGE_FACTOR : 1);
+    const dealt = damage * (isCrownTower ? TOWER_SPELL_DAMAGE_FACTOR : 1);
+    e.hp -= dealt;
+    sideState(state, side).stats.damageDealt += dealt;
     e.stunTimer = Math.max(e.stunTimer, stunSeconds);
   }
   state.effects.push({ cardId, x, y, radius, ttl: 0.6 });
@@ -393,6 +412,7 @@ export function deployCard(
   if (!spent) return false;
 
   me.elixir = spent;
+  me.stats.elixirSpent += card.cost;
   me.hand = playCard(me.hand, cardId);
   if (card.kind === "spell") {
     state.events.push({ type: "spell", side, cardId, x, y });
