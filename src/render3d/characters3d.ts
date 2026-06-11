@@ -124,6 +124,8 @@ export interface TroopRig {
   wings?: Wing[];
   legs?: THREE.Group[];
   offArm?: THREE.Group;
+  /** Per-character idle quirk, driven every frame with (time, phase). */
+  extras?: (t: number, phase: number) => void;
 }
 
 function buildKnight(): TroopRig {
@@ -378,7 +380,12 @@ function buildWizard(): TroopRig {
   orb.position.set(0, -0.34, 0.1);
   arm.add(orb);
   g.add(arm);
-  return { group: g, arm, armRest: -0.9, swingAmp: 1.1, height: 1.75, offArm };
+  const flicker = (t: number, phase: number) => {
+    // Fire orb breathes and sputters.
+    const s = 1 + Math.sin(t * 11 + phase) * 0.12 + Math.sin(t * 23 + phase * 2) * 0.05;
+    orb.scale.setScalar(s);
+  };
+  return { group: g, arm, armRest: -0.9, swingAmp: 1.1, height: 1.75, offArm, extras: flicker };
 }
 
 function buildWitch(): TroopRig {
@@ -402,6 +409,11 @@ function buildWitch(): TroopRig {
   skull.add(sphere(0.025, 0x1f2430, -0.03, 0.01, 0.075));
   skull.add(sphere(0.025, 0x1f2430, 0.03, 0.01, 0.075));
   g.add(skull);
+  const orbitSkull = (t: number, phase: number) => {
+    const a = t * 1.6 + phase;
+    skull.position.set(Math.cos(a) * 0.45, 1.1 + Math.sin(t * 3 + phase) * 0.07, Math.sin(a) * 0.45);
+    skull.rotation.y = -a + Math.PI / 2; // always faces outward
+  };
 
   // Staff hand.
   const offArm = new THREE.Group();
@@ -420,7 +432,7 @@ function buildWitch(): TroopRig {
   orb.position.set(0, -0.34, 0.1);
   arm.add(orb);
   g.add(arm);
-  return { group: g, arm, armRest: -0.9, swingAmp: 1.1, height: 1.8, offArm };
+  return { group: g, arm, armRest: -0.9, swingAmp: 1.1, height: 1.8, offArm, extras: orbitSkull };
 }
 
 function buildBalloon(): TroopRig {
@@ -488,6 +500,9 @@ function buildBabyDragon(): TroopRig {
   const tail = cone(0.12, 0.6, 0x4caf50, 0, 0.42, -0.66);
   tail.rotation.x = Math.PI / 2.3;
   g.add(tail);
+  const wagTail = (t: number, phase: number) => {
+    tail.rotation.z = Math.sin(t * 5 + phase) * 0.35;
+  };
   g.add(sphere(0.12, 0x59b75d, -0.2, 0.12, 0.1)); // foot
   g.add(sphere(0.12, 0x59b75d, 0.2, 0.12, 0.1)); // foot
 
@@ -502,7 +517,16 @@ function buildBabyDragon(): TroopRig {
     g.add(wing);
     wings.push({ obj: wing, base: s * 0.3, amp: s * 0.6 });
   }
-  return { group: g, arm: null, armRest: 0, swingAmp: 0, height: 1.5, hover: 1.0, wings };
+  return {
+    group: g,
+    arm: null,
+    armRest: 0,
+    swingAmp: 0,
+    height: 1.5,
+    hover: 1.0,
+    wings,
+    extras: wagTail,
+  };
 }
 
 function buildGargoyle(): TroopRig {
@@ -925,4 +949,5 @@ export function animateTroop(
       (opts.moving ? walk * 0.18 : 0) -
       (opts.charging ? 0.55 : 0); // weapon couched for the charge
   }
+  rig.extras?.(t, opts.phase);
 }

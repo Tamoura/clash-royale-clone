@@ -102,3 +102,19 @@ describe("charge telegraph", () => {
     expect(lean).toBeGreaterThan(rig.group.rotation.x);
   });
 });
+
+describe("idle personality", () => {
+  it("animateTroop drives the rig's extras hook with time", async () => {
+    const { vi } = await import("vitest");
+    const rig = buildTroop("knight");
+    rig.extras = vi.fn();
+    animateTroop(rig, { moving: false, swing: 0, time: 1.5, phase: 0.3 });
+    expect(rig.extras).toHaveBeenCalledWith(1.5, 0.3);
+  });
+
+  it("the witch's skull familiar and wizard's orb have extras", () => {
+    expect(buildTroop("witch").extras).toBeDefined();
+    expect(buildTroop("wizard").extras).toBeDefined();
+    expect(buildTroop("baby-dragon").extras).toBeDefined();
+  });
+});
