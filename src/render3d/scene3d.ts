@@ -9,6 +9,7 @@ import {
 import { getCard, type CardId } from "../game/cards";
 import { isRaged, moveGoal } from "../game/sim";
 import { projectileStyle } from "./projectiles";
+import { damageLabel } from "./popups";
 import {
   animateTroop,
   buildTowerKing,
@@ -54,6 +55,10 @@ interface EntityView {
   defender?: TroopRig;
   /** Mount group carrying the defender (owns yaw/slump). */
   defenderMount?: THREE.Group;
+  /** Damage batched since the last floating number. */
+  pendingDmg?: number;
+  /** Seconds until the next floating number may appear. */
+  popupT?: number;
 }
 
 interface DyingView {
@@ -1052,6 +1057,44 @@ export class Battle3D {
     this.shake = Math.min(1, this.shake + amount);
   }
 
+  /** Floating combat text that rises and fades. */
+  private damagePopup(
+    x: number,
+    y: number,
+    z: number,
+    label: { text: string; scale: number; color: string },
+  ): void {
+    const c = document.createElement("canvas");
+    c.width = 128;
+    c.height = 64;
+    const ctx = c.getContext("2d")!;
+    ctx.font = "bold 44px 'Trebuchet MS', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 9;
+    ctx.strokeStyle = "rgba(10,14,22,0.9)";
+    ctx.strokeText(label.text, 64, 32);
+    ctx.fillStyle = label.color;
+    ctx.fillText(label.text, 64, 32);
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: new THREE.CanvasTexture(c),
+        transparent: true,
+        depthWrite: false,
+      }),
+    );
+    const s = 0.9 * label.scale;
+    sprite.position.set(x, y + 0.3, z);
+    this.addEffect(sprite, 0.75, (frac) => {
+      const t = 1 - frac;
+      sprite.position.y = y + 0.3 + t * 1.1;
+      const pop = Math.min(1, t * 8);
+      sprite.scale.set(s * 2 * pop, s * pop, 1);
+      sprite.material.opacity = frac < 0.25 ? frac / 0.25 : 1;
+    });
+  }
+
   /** A golden crown rises, spins, and fades over a fallen tower. */
   private crownPop(ax: number, ay: number): void {
     const w = toWorld(ax, ay);
@@ -1203,8 +1246,26 @@ export class Battle3D {
       }
 
       // Emissive glow chain: damage flash > rage pink > charge gold.
-      if (e.hp < view.lastHp - 0.5) view.flashT = FLASH_TIME;
+      const lost = view.lastHp - e.hp;
+      if (lost > 0.5) view.flashT = FLASH_TIME;
       view.lastHp = e.hp;
+
+      // Floating combat text, batched so swarms don't spam numbers.
+      if (lost > 0.5) view.pendingDmg = (view.pendingDmg ?? 0) + lost;
+      view.popupT = Math.max(0, (view.popupT ?? 0) - dt);
+      if ((view.pendingDmg ?? 0) > 0 && view.popupT === 0) {
+        const label = damageLabel(view.pendingDmg!);
+        view.pendingDmg = 0;
+        view.popupT = 0.35;
+        if (label) {
+          const lift = view.rig
+            ? (view.rig.hover ?? 0) + view.rig.height
+            : e.kind === "building"
+              ? 1.2
+              : 2.4;
+          this.damagePopup(w.x, lift, w.z, label);
+        }
+      }
       const raged = e.kind === "troop" && isRaged(state, e);
       const charging = e.chargeDistance > 0 && e.chargeProgress >= e.chargeDistance;
       if (view.flashT > 0) {
