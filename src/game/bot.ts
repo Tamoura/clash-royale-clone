@@ -56,19 +56,29 @@ function defenseSpot(threat: Entity): { x: number; y: number } {
   };
 }
 
+/** Rough elixir value of one unit: its card's cost split across the count. */
+function unitValue(t: Entity): number {
+  if (!t.cardId) return 0;
+  const card = getCard(t.cardId);
+  return card.kind === "troop" ? card.cost / card.count : card.cost;
+}
+
 /**
  * Find a point where a spell of this radius would hit `minCount`
- * player troops, or null if no such cluster exists.
+ * player troops worth more elixir than the spell costs, or null.
+ * A human never arrows a 1-elixir skeleton pack.
  */
 function findCluster(
   state: BattleState,
   radius: number,
   minCount: number,
+  minValue: number,
 ): { x: number; y: number } | null {
   const troops = playerTroops(state);
   for (const center of troops) {
     const hit = troops.filter((t) => distance(center, t) <= radius);
-    if (hit.length >= minCount) {
+    const value = hit.reduce((s, t) => s + unitValue(t), 0);
+    if (hit.length >= minCount && value > minValue) {
       return {
         x: hit.reduce((s, t) => s + t.x, 0) / hit.length,
         y: hit.reduce((s, t) => s + t.y, 0) / hit.length,
@@ -83,7 +93,7 @@ function trySpellCluster(state: BattleState): boolean {
     if (!state.enemy.hand.cards.includes(id)) continue;
     const card = getCard(id);
     if (card.kind !== "spell" || card.cost > state.enemy.elixir.amount) continue;
-    const cluster = findCluster(state, card.radius, 3);
+    const cluster = findCluster(state, card.radius, 3, card.cost);
     if (cluster && deployCard(state, "enemy", id, cluster.x, cluster.y)) {
       return true;
     }

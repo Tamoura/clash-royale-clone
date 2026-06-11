@@ -34,6 +34,16 @@ describe("bot", () => {
     expect(troopsOf(b, "enemy").length).toBeGreaterThan(0);
   });
 
+  it("never wastes a spell on a cheap swarm", () => {
+    const b = createBattle();
+    b.enemy.elixir = { amount: 10 };
+    // Three 1-elixir-total skeletons: arrows/fireball would lose elixir.
+    spawnUnits(b, "player", "skeletons", 9, RIVER_Y - 3);
+    const bot = createBot(42);
+    botThink(b, bot);
+    expect(b.effects).toHaveLength(0); // no spell cast
+  });
+
   it("spells a cluster of player troops instead of deploying", () => {
     const b = createBattle();
     b.enemy.elixir = { amount: 10 };
