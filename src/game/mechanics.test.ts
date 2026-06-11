@@ -199,6 +199,34 @@ describe("death bomb", () => {
   });
 });
 
+describe("stun", () => {
+  it("zap freezes enemies in place for its stun duration", () => {
+    const b = createBattle();
+    const [knight] = spawnUnits(b, "enemy", "knight", 9, 16);
+    run(b, 1.5); // deploy freeze over, knight walking
+    const yBefore = knight.y;
+    giveHand(b, "player", ["zap"]);
+    expect(deployCard(b, "player", "zap", 9, knight.y)).toBe(true);
+    expect(knight.hp).toBeLessThan(knight.maxHp); // zap damage landed
+    run(b, 0.4); // still inside the stun window
+    expect(knight.y).toBe(yBefore); // rooted to the spot
+    run(b, 1);
+    expect(knight.y).not.toBe(yBefore); // free again
+  });
+
+  it("zap does not stun the caster's own troops", () => {
+    const b = createBattle();
+    const [mine] = spawnUnits(b, "player", "knight", 9, 16);
+    run(b, 1.5);
+    const yBefore = mine.y;
+    giveHand(b, "player", ["zap"]);
+    expect(deployCard(b, "player", "zap", 9, mine.y)).toBe(true);
+    run(b, 0.4);
+    expect(mine.hp).toBe(mine.maxHp);
+    expect(mine.y).not.toBe(yBefore); // kept walking
+  });
+});
+
 describe("deploy delay", () => {
   it("troops stand frozen for the first second", () => {
     const b = createBattle();

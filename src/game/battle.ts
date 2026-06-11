@@ -56,6 +56,8 @@ export interface Entity {
   chargeProgress: number;
   /** Seconds of post-deployment freeze remaining. */
   deployTimer: number;
+  /** Seconds of stun remaining (no moving or attacking). */
+  stunTimer: number;
   /** HP lost per second (deployable buildings decay; 0 otherwise). */
   decayPerSec: number;
   /** Damage dealt to nearby enemies on death (0 = none). */
@@ -178,6 +180,7 @@ function makeTower(state: BattleState, side: Side, kind: TowerKind, x: number, y
     chargeDistance: 0,
     chargeProgress: 0,
     deployTimer: 0,
+    stunTimer: 0,
     decayPerSec: 0,
     deathDamage: 0,
     deathRadius: 0,
@@ -279,6 +282,7 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       chargeDistance: card.unit.chargeDistance,
       chargeProgress: 0,
       deployTimer: DEPLOY_DELAY,
+      stunTimer: 0,
       radius: card.unit.radius,
       decayPerSec: 0,
       deathDamage: card.unit.deathDamage,
@@ -319,6 +323,7 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
     chargeDistance: 0,
     chargeProgress: 0,
     deployTimer: DEPLOY_DELAY,
+    stunTimer: 0,
     decayPerSec: u.maxHp / card.lifetime,
     deathDamage: u.deathDamage,
     deathRadius: u.deathRadius,
@@ -340,6 +345,7 @@ export function applySpell(
   y: number,
   damage: number,
   radius: number,
+  stunSeconds = 0,
 ): void {
   for (const e of state.entities) {
     if (e.side === side || e.hp <= 0) continue;
@@ -347,6 +353,7 @@ export function applySpell(
     // Only crown towers resist spells; deployed buildings take full damage.
     const isCrownTower = e.kind === "princess-tower" || e.kind === "king-tower";
     e.hp -= damage * (isCrownTower ? TOWER_SPELL_DAMAGE_FACTOR : 1);
+    e.stunTimer = Math.max(e.stunTimer, stunSeconds);
   }
   state.effects.push({ cardId, x, y, radius, ttl: 0.6 });
 }
@@ -377,7 +384,7 @@ export function deployCard(
   me.hand = playCard(me.hand, cardId);
   if (card.kind === "spell") {
     state.events.push({ type: "spell", side, cardId, x, y });
-    applySpell(state, side, cardId, x, y, card.damage, card.radius);
+    applySpell(state, side, cardId, x, y, card.damage, card.radius, card.stunSeconds);
   } else if (card.kind === "building") {
     state.events.push({ type: "deploy", side, cardId });
     spawnBuilding(state, side, card, x, y);

@@ -777,6 +777,43 @@ export class Battle3D {
     this.blast(ax, ay, 2.5, 0xff7814, FALL);
   }
 
+  /** Zap: a jagged lightning bolt slams down with an electric flash. */
+  private zapStrike(ax: number, ay: number, radius: number): void {
+    const w = toWorld(ax, ay);
+    // Jagged bolt built from stacked, offset segments.
+    const bolt = new THREE.Group();
+    let x = w.x;
+    let z = w.z;
+    let y = 7;
+    while (y > 0.2) {
+      const len = 0.9 + ((y * 7) % 5) * 0.12;
+      const seg = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.06, len, 6),
+        new THREE.MeshBasicMaterial({ color: 0xfff176 }),
+      );
+      const nx = x + (((y * 13) % 7) - 3) * 0.12;
+      const nz = z + (((y * 11) % 5) - 2) * 0.12;
+      seg.position.set((x + nx) / 2, y - len / 2, (z + nz) / 2);
+      seg.lookAt(nx, y - len, nz);
+      seg.rotateX(Math.PI / 2);
+      bolt.add(seg);
+      x = nx;
+      z = nz;
+      y -= len * 0.85;
+    }
+    this.addEffect(bolt, 0.25, (frac) => {
+      bolt.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh) {
+          const mat = mesh.material as THREE.MeshBasicMaterial;
+          mat.transparent = true;
+          mat.opacity = frac;
+        }
+      });
+    });
+    this.blast(ax, ay, radius, 0xfff176, 0.1);
+  }
+
   /** Arrows: a volley rains down across the radius, then a ring pop. */
   private arrowVolley(ax: number, ay: number, radius: number): void {
     for (let i = 0; i < 10; i++) {
@@ -873,6 +910,7 @@ export class Battle3D {
     switch (ev.type) {
       case "spell":
         if (ev.cardId === "fireball") this.fireballStrike(ev.x, ev.y);
+        else if (ev.cardId === "zap") this.zapStrike(ev.x, ev.y, 2);
         else this.arrowVolley(ev.x, ev.y, 4);
         break;
       case "attack":

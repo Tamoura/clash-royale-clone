@@ -131,6 +131,12 @@ export class SoundEngine {
     this.noise(0.4, { vol: 0.25, filterFreq: 350, delay: 0.06 });
   }
 
+  private zap(): void {
+    this.noise(0.08, { vol: 0.25, filterFreq: 6000 });
+    this.tone(2400, 0.12, { type: "sawtooth", slideTo: 300, vol: 0.18 });
+    this.tone(1200, 0.16, { type: "square", slideTo: 150, vol: 0.1, delay: 0.02 });
+  }
+
   private arrows(): void {
     for (let i = 0; i < 3; i++) {
       this.noise(0.1, { vol: 0.12, filterFreq: 5000, delay: i * 0.07 });
@@ -240,6 +246,7 @@ export class SoundEngine {
         break;
       case "spell":
         if (ev.cardId === "fireball") this.fireball();
+        else if (ev.cardId === "zap") this.zap();
         else this.arrows();
         break;
       case "attack":

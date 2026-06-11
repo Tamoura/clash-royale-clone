@@ -159,6 +159,12 @@ function actEntity(state: BattleState, e: Entity, dt: number): void {
   e.cooldown = Math.max(0, e.cooldown - dt);
   if (!e.active) return;
 
+  // Stunned units stand helpless until the stun wears off.
+  if (e.stunTimer > 0) {
+    e.stunTimer -= dt;
+    return;
+  }
+
   const target = retarget(state, e);
   e.targetId = target?.id ?? null;
 

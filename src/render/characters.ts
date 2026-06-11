@@ -682,6 +682,28 @@ function drawArrowsArt(ctx: Ctx): void {
   }
 }
 
+function drawZapArt(ctx: Ctx): void {
+  // glow
+  const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 9);
+  g.addColorStop(0, "rgba(255,241,118,0.9)");
+  g.addColorStop(1, "rgba(255,241,118,0)");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(0, 0, 9, 0, Math.PI * 2);
+  ctx.fill();
+  // jagged bolt
+  outlined(ctx, "#ffd600", () => {
+    ctx.beginPath();
+    ctx.moveTo(2.5, -9);
+    ctx.lineTo(-3.5, 0.5);
+    ctx.lineTo(-0.5, 0.5);
+    ctx.lineTo(-2.5, 9);
+    ctx.lineTo(3.5, -1.5);
+    ctx.lineTo(0.5, -1.5);
+    ctx.closePath();
+  });
+}
+
 /** Static portrait used for HUD card slots and the next-card preview. */
 export function drawCardArt(
   ctx: Ctx,
@@ -696,6 +718,7 @@ export function drawCardArt(
   ctx.scale(s, s);
   if (cardId === "fireball") drawFireballArt(ctx);
   else if (cardId === "arrows") drawArrowsArt(ctx);
+  else if (cardId === "zap") drawZapArt(ctx);
   else TROOP_PAINTERS[cardId]?.(ctx, STILL);
   ctx.restore();
 }
