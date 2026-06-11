@@ -11,6 +11,7 @@ import { isRaged, moveGoal } from "../game/sim";
 import { projectileStyle } from "./projectiles";
 import { damageLabel } from "./popups";
 import { deathStyle } from "./deathfx";
+import { DUST_INTERVAL, blobShadowScale } from "./ground";
 import {
   animateTroop,
   buildTowerKing,
@@ -60,6 +61,10 @@ interface EntityView {
   pendingDmg?: number;
   /** Seconds until the next floating number may appear. */
   popupT?: number;
+  /** Soft contact shadow under a flyer. */
+  blobShadow?: THREE.Mesh;
+  /** Seconds until the next footstep dust puff. */
+  dustT?: number;
 }
 
 interface DyingView {
@@ -410,6 +415,18 @@ function buildTroopMesh(e: Entity): EntityView {
   ring.position.y = 0.02;
   root.add(ring);
 
+  // Flyers get a soft blob shadow tying them to the ground.
+  let blobShadow: THREE.Mesh | undefined;
+  if (rig.hover) {
+    blobShadow = new THREE.Mesh(
+      new THREE.CircleGeometry(e.radius * 0.8, 20),
+      new THREE.MeshBasicMaterial({ color: 0x0a0e16, transparent: true, opacity: 0.3 }),
+    );
+    blobShadow.rotation.x = -Math.PI / 2;
+    blobShadow.position.y = 0.025;
+    root.add(blobShadow);
+  }
+
   const lift = (rig.hover ?? 0) + rig.height * scale;
   const bar = makeHpBar(0.9, SIDE_COLOR[e.side], lift + 0.25);
   bar.group.visible = false; // shown once damaged
@@ -429,6 +446,7 @@ function buildTroopMesh(e: Entity): EntityView {
     flashT: 0,
     spawnT: 0,
     isTroop: true,
+    blobShadow,
   };
 }
 
@@ -1420,13 +1438,27 @@ export class Battle3D {
           distance(e, target) - e.radius - target.radius <= e.attackRange + 0.05;
         const swing =
           e.cooldown > e.hitSpeed - 0.3 ? (e.cooldown - (e.hitSpeed - 0.3)) / 0.3 : 0;
+        const moving = !inRange && e.deployTimer <= 0;
         animateTroop(view.rig, {
-          moving: !inRange && e.deployTimer <= 0,
+          moving,
           swing,
           time: state.time,
           phase: e.id * 1.7,
           charging,
         });
+
+        // Flyer blob shadow tracks the bob; walkers kick up dust.
+        if (view.blobShadow && view.rig.hover) {
+          const s = blobShadowScale(view.rig.hover, view.rig.group.position.y);
+          view.blobShadow.scale.setScalar(s);
+        }
+        if (!view.rig.hover && moving && e.stunTimer <= 0) {
+          view.dustT = (view.dustT ?? Math.random() * DUST_INTERVAL) - dt;
+          if (view.dustT <= 0) {
+            view.dustT = DUST_INTERVAL;
+            this.puff(e.x, e.y, 0xcfc4b2, 0.16);
+          }
+        }
         // Face the attack target, or the spot being walked toward —
         // turning smoothly rather than snapping.
         let targetYaw: number | null = null;
