@@ -13,15 +13,16 @@ no Supercell assets are used.
   sleeps until damaged or a princess tower falls). Towers show a live
   numeric HP readout.
 - Elixir regenerates over time (max 10, double-elixir in the last 60s).
-- 16-card deck, 4-card rotating hand: Knight, Archers, Giant,
-  Musketeer, Mini P.E.K.K.A, Skeletons, Wizard, Witch, Baby Dragon,
-  Gargoyles, Valkyrie, Prince, P.E.K.K.A, Cannon, Fireball, Arrows.
+- 17-card deck, 4-card rotating hand: Knight, Archers, Giant,
+  Musketeer, Mini P.E.K.K.A, Skeletons, Wizard, Witch, Hog Rider,
+  Baby Dragon, Gargoyles, Valkyrie, Prince, P.E.K.K.A, Cannon,
+  Fireball, Arrows.
 - CR-style mechanics: flying units (straight paths, only
   air-targeters can hit them), splash damage, the Prince's charge
   (2x damage after a run-up), deployable buildings that decay and
   bait building-seekers, a 1s deploy freeze, spawner troops (the
-  Witch summons skeleton waves), and spells dealing reduced damage
-  to crown towers.
+  Witch summons skeleton waves), river-jumpers (the Hog Rider skips
+  the bridges), and spells dealing reduced damage to crown towers.
 - Destroy the enemy king tower for an instant win, otherwise most crowns
   when the clock runs out (with sudden-death overtime on a tie).
 - Opponent is a simple elixir-aware AI bot.

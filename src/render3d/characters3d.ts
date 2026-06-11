@@ -623,6 +623,66 @@ function buildPrince(): TroopRig {
   return { group: g, arm, armRest: -0.12, swingAmp: 0.6, height: 2.2, legs, offArm };
 }
 
+function buildHogRider(): TroopRig {
+  const g = new THREE.Group();
+  const HOG = 0x8a6a52;
+  // Four stout hog legs.
+  const legs = [
+    makeLeg(0x6f5340, -0.22, 0.36, 0.14, 0.34),
+    makeLeg(0x6f5340, 0.22, 0.36, 0.14, 0.34),
+    makeLeg(0x6f5340, -0.22, 0.36, 0.14, -0.34),
+    makeLeg(0x6f5340, 0.22, 0.36, 0.14, -0.34),
+  ];
+  g.add(...legs);
+  const hogBody = sphere(0.42, HOG, 0, 0.62, 0);
+  hogBody.scale.set(0.85, 0.75, 1.4);
+  g.add(hogBody);
+  const snout = sphere(0.18, 0xc99b84, 0, 0.6, 0.66);
+  snout.scale.set(1, 0.8, 0.7);
+  g.add(snout);
+  g.add(sphere(0.035, 0x1f2430, -0.06, 0.62, 0.78)); // nostril
+  g.add(sphere(0.035, 0x1f2430, 0.06, 0.62, 0.78)); // nostril
+  g.add(sphere(0.05, 0x1f2430, -0.13, 0.78, 0.56)); // hog eye
+  g.add(sphere(0.05, 0x1f2430, 0.13, 0.78, 0.56)); // hog eye
+  for (const s of [-1, 1]) {
+    const tusk = cone(0.045, 0.16, 0xf5f2ea, s * 0.16, 0.52, 0.62);
+    tusk.rotation.x = -0.9;
+    g.add(tusk);
+    const ear = cone(0.07, 0.16, 0x6f5340, s * 0.18, 0.92, 0.36);
+    ear.rotation.z = -s * 0.5;
+    g.add(ear);
+  }
+
+  // Bare-chested rider with mohawk.
+  const RIDER = 0x9c6644; // darker skin
+  g.add(cyl(0.2, 0.24, 0.36, RIDER, 0, 1.06, -0.12)); // torso
+  g.add(cyl(0.26, 0.26, 0.08, 0x4e342e, 0, 0.9, -0.12)); // belt
+  const head = sphere(0.26, RIDER, 0, 1.5, -0.12);
+  addEyes(head, 0.26);
+  g.add(head);
+  const mohawk = box(0.08, 0.26, 0.4, 0x2d1b0e, 0, 1.76, -0.12);
+  g.add(mohawk);
+  g.add(box(0.34, 0.05, 0.05, 0x2d1b0e, 0, 1.42, 0.08)); // beard band
+  for (const s of [-1, 1]) {
+    g.add(sphere(0.05, 0xf2c14e, s * 0.26, 1.5, -0.1)); // gold earring
+  }
+
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.26, 1.18, -0.12);
+  offArm.add(box(0.1, 0.26, 0.1, RIDER, 0, -0.13, 0));
+  g.add(offArm);
+
+  // Massive war hammer.
+  const arm = new THREE.Group();
+  arm.position.set(0.28, 1.2, -0.08);
+  arm.add(box(0.1, 0.24, 0.1, RIDER, 0, -0.12, 0));
+  arm.add(cyl(0.035, 0.035, 0.7, 0x5d4037, 0, 0.06, 0.1)); // haft
+  arm.add(box(0.22, 0.22, 0.34, 0x78909c, 0, 0.42, 0.1)); // hammer head
+  arm.add(cyl(0.12, 0.12, 0.36, 0x546e7a, 0, 0.42, 0.1)); // head band
+  g.add(arm);
+  return { group: g, arm, armRest: -0.4, swingAmp: 1.8, height: 1.95, legs, offArm };
+}
+
 function buildPekka(): TroopRig {
   const g = new THREE.Group();
   const legs = [
@@ -673,6 +733,7 @@ const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   skeletons: buildSkeleton,
   wizard: buildWizard,
   witch: buildWitch,
+  "hog-rider": buildHogRider,
   "baby-dragon": buildBabyDragon,
   gargoyles: buildGargoyle,
   valkyrie: buildValkyrie,

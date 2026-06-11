@@ -96,7 +96,7 @@ function retarget(state: BattleState, e: Entity): Entity | null {
  * same half; via the nearest bridge when the river is in the way.
  */
 export function moveGoal(e: Entity, target: Entity): { x: number; y: number } {
-  if (e.flying) return target; // straight over the river
+  if (e.flying || e.jumpsRiver) return target; // straight over the river
   const crossesRiver =
     (e.y - RIVER_Y) * (target.y - RIVER_Y) < 0 ||
     Math.abs(e.y - RIVER_Y) < RIVER_HALF_WIDTH;

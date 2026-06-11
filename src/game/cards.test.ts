@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CARDS, DECK, getCard } from "./cards";
 
 describe("cards", () => {
-  it("defines the 16-card deck", () => {
+  it("defines the 17-card deck", () => {
     expect(DECK).toEqual([
       "knight",
       "archers",
@@ -15,6 +15,7 @@ describe("cards", () => {
       "skeletons",
       "wizard",
       "witch",
+      "hog-rider",
       "prince",
       "pekka",
       "cannon",
@@ -22,6 +23,16 @@ describe("cards", () => {
       "arrows",
     ]);
     for (const id of DECK) expect(CARDS[id]).toBeDefined();
+  });
+
+  it("the hog rider is a fast building-seeker that jumps the river", () => {
+    const hog = getCard("hog-rider");
+    expect(hog.cost).toBe(4);
+    if (hog.kind !== "troop") throw new Error("hog rider should be a troop");
+    expect(hog.unit.speed).toBe("fast");
+    expect(hog.unit.targetsBuildingsOnly).toBe(true);
+    expect(hog.unit.jumpsRiver).toBe(true);
+    expect(hog.unit.flying).toBe(false);
   });
 
   it("the witch periodically summons skeletons", () => {

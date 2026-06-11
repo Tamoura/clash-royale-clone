@@ -460,6 +460,39 @@ function drawPrince(ctx: Ctx, _anim: Anim): void {
   eyes(ctx, -4.2);
 }
 
+function drawHogRider(ctx: Ctx, _anim: Anim): void {
+  // war hammer raised behind the rider
+  ctx.save();
+  ctx.translate(6, -6);
+  ctx.rotate(0.5);
+  box(ctx, -0.7, -5, 1.4, 7, 0.7, "#5d4037"); // haft
+  box(ctx, -2.6, -7.6, 5.2, 3.2, 1, "#78909c"); // hammer head
+  ctx.restore();
+
+  // hog mount
+  outlined(ctx, "#8a6a52", () => {
+    ctx.beginPath();
+    ctx.ellipse(0, 3.5, 6.5, 4, 0, 0, Math.PI * 2);
+  });
+  circle(ctx, 5.4, 3, 1.8, "#c99b84"); // snout
+  circle(ctx, 5.8, 2.7, 0.4, "#1f2430"); // nostril
+  circle(ctx, 3.6, 1.4, 0.55, "#1f2430"); // hog eye
+  outlined(ctx, "#f5f2ea", () => {
+    // tusk
+    ctx.beginPath();
+    ctx.moveTo(4.6, 4.4);
+    ctx.lineTo(6.4, 5.8);
+    ctx.lineTo(5.4, 3.8);
+    ctx.closePath();
+  });
+
+  // rider torso + head with mohawk
+  box(ctx, -2.6, -4.5, 5.2, 5, 2, "#9c6644");
+  circle(ctx, 0, -7.5, 3.6, "#9c6644");
+  box(ctx, -0.7, -12.4, 1.4, 3, 0.7, "#2d1b0e"); // mohawk
+  eyes(ctx, -7.8);
+}
+
 function drawCannon(ctx: Ctx, _anim: Anim): void {
   // wheels
   circle(ctx, -4, 5.5, 2.6, "#4e342e");
@@ -520,6 +553,7 @@ const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = 
   skeletons: drawSkeleton,
   wizard: drawWizard,
   witch: drawWitch,
+  "hog-rider": drawHogRider,
   "baby-dragon": drawBabyDragon,
   gargoyles: drawGargoyle,
   valkyrie: drawValkyrie,

@@ -46,6 +46,8 @@ export interface Entity {
   targetsAir: boolean;
   /** Flying entities path straight and are immune to ground-only attackers. */
   flying: boolean;
+  /** Ground unit that leaps the river instead of detouring to a bridge. */
+  jumpsRiver: boolean;
   /** Area damage around the struck target; 0 = single target. */
   splashRadius: number;
   /** Tiles of approach needed to charge; 0 = no charge mechanic. */
@@ -167,6 +169,7 @@ function makeTower(state: BattleState, side: Side, kind: TowerKind, x: number, y
     targetsBuildingsOnly: false,
     targetsAir: true,
     flying: false,
+    jumpsRiver: false,
     splashRadius: 0,
     chargeDistance: 0,
     chargeProgress: 0,
@@ -265,6 +268,7 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       targetsBuildingsOnly: card.unit.targetsBuildingsOnly,
       targetsAir: card.unit.targetsAir,
       flying: card.unit.flying,
+      jumpsRiver: card.unit.jumpsRiver,
       splashRadius: card.unit.splashRadius,
       chargeDistance: card.unit.chargeDistance,
       chargeProgress: 0,
@@ -302,6 +306,7 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
     targetsBuildingsOnly: false,
     targetsAir: u.targetsAir,
     flying: false,
+    jumpsRiver: false,
     splashRadius: u.splashRadius,
     chargeDistance: 0,
     chargeProgress: 0,

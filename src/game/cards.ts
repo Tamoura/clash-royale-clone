@@ -9,6 +9,7 @@ export type CardId =
   | "arrows"
   | "wizard"
   | "witch"
+  | "hog-rider"
   | "baby-dragon"
   | "gargoyles"
   | "valkyrie"
@@ -40,6 +41,8 @@ export interface UnitStats {
   targetsAir: boolean;
   /** Does this unit fly (straight paths, only hit by air-targeters)? */
   flying: boolean;
+  /** Ground unit that leaps the river instead of detouring to a bridge. */
+  jumpsRiver: boolean;
   /** Area damage around the struck target; 0 = single target. */
   splashRadius: number;
   /** Tiles of uninterrupted approach to charge (0 = no charge). */
@@ -99,6 +102,7 @@ function unit(stats: UnitOverrides): UnitStats {
     targetsBuildingsOnly: false,
     targetsAir: false,
     flying: false,
+    jumpsRiver: false,
     splashRadius: 0,
     chargeDistance: 0,
     spawnUnitId: null,
@@ -237,6 +241,24 @@ export const CARDS: Record<CardId, Card> = {
       spawnInterval: 7,
     }),
   },
+  "hog-rider": {
+    id: "hog-rider",
+    name: "Hog Rider",
+    kind: "troop",
+    cost: 4,
+    count: 1,
+    unit: unit({
+      maxHp: 1500,
+      damage: 260,
+      hitSpeed: 1.6,
+      attackRange: MELEE,
+      sightRange: 7.5,
+      speed: "fast",
+      targetsBuildingsOnly: true,
+      jumpsRiver: true,
+      radius: 0.6,
+    }),
+  },
   "baby-dragon": {
     id: "baby-dragon",
     name: "Baby Dragon",
@@ -364,6 +386,7 @@ export const DECK: CardId[] = [
   "skeletons",
   "wizard",
   "witch",
+  "hog-rider",
   "prince",
   "pekka",
   "cannon",

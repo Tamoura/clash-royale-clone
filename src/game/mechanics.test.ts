@@ -144,6 +144,30 @@ describe("spawners", () => {
   });
 });
 
+describe("river jump", () => {
+  it("the hog rider heads straight across the river, no bridge detour", () => {
+    const b = createBattle();
+    const [hog] = spawnUnits(b, "player", "hog-rider", 9, 18);
+    const [knight] = spawnUnits(b, "player", "knight", 9, 18);
+    const tower = b.entities.find(
+      (e) => e.side === "enemy" && e.kind === "princess-tower",
+    )!;
+    expect(moveGoal(hog, tower).x).toBe(tower.x); // straight line
+    expect(BRIDGE_XS).toContain(moveGoal(knight, tower).x); // bridge detour
+  });
+
+  it("the hog rider still fights as a ground unit and ignores troops", () => {
+    const b = createBattle();
+    const [hog] = spawnUnits(b, "player", "hog-rider", 9, 20);
+    spawnUnits(b, "enemy", "knight", 9, 19);
+    tick(b, TICK);
+    const target = b.entities.find((e) => e.id === hog.targetId);
+    expect(target).toBeDefined();
+    expect(target!.kind).not.toBe("troop"); // building-seeker
+    expect(hog.flying).toBe(false); // ground attackers can hit him
+  });
+});
+
 describe("deploy delay", () => {
   it("troops stand frozen for the first second", () => {
     const b = createBattle();
