@@ -29,26 +29,63 @@
         gap: 12px;
         padding: 8px 14px;
         color: #e5e7eb;
-        background: #141a26;
+        background: linear-gradient(180deg, #1d2a47 0%, #14203a 100%);
+        border-bottom: 3px solid #2e4470;
       }
       #topbar .clock {
         font-weight: bold;
-        font-size: 20px;
+        font-size: 22px;
         flex: 1;
         text-align: center;
+        color: #ffe082;
+        text-shadow:
+          -1px -1px 0 #14213a, 1px -1px 0 #14213a,
+          -1px 1px 0 #14213a, 1px 1px 0 #14213a,
+          0 2px 3px rgba(0, 0, 0, 0.6);
+        letter-spacing: 0.04em;
       }
       #topbar .clock.overtime {
         color: #f87171;
       }
       #topbar .crowns {
+        display: flex;
+        align-items: center;
+        gap: 8px;
         font-size: 16px;
         font-weight: bold;
+        padding: 4px 12px;
+        border-radius: 9px;
+        box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.18), 0 2px 4px rgba(0, 0, 0, 0.4);
       }
-      #topbar .crowns.player span {
-        color: #3b82f6;
+      #topbar .crowns.player {
+        background: linear-gradient(180deg, #3b6fd4, #244a9c);
       }
-      #topbar .crowns.enemy span {
-        color: #ef4444;
+      #topbar .crowns.enemy {
+        background: linear-gradient(180deg, #d44a3b, #9c2a24);
+      }
+      #topbar .crowns span {
+        color: #fff;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+      }
+      #topbar .level {
+        display: inline-block;
+        background: radial-gradient(circle at 35% 30%, #60a5fa, #1e40af 75%);
+        border: 2px solid #bfdbfe;
+        border-radius: 50%;
+        width: 22px;
+        height: 22px;
+        line-height: 19px;
+        text-align: center;
+        font-size: 12px;
+        color: #fff;
+      }
+      #topbar .crowns.enemy .level {
+        background: radial-gradient(circle at 35% 30%, #f87171, #991b1b 75%);
+        border-color: #fecaca;
+      }
+      #topbar .pname {
+        font-size: 14px;
+        letter-spacing: 0.02em;
       }
       #topbar .mute {
         background: #273449;

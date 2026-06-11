@@ -54,13 +54,16 @@ export class Hud {
     overlay: HTMLElement,
     private readonly cb: HudCallbacks,
   ) {
+    // CR-style name banners with level badges around the gold clock.
     const left = el("div", "crowns player", topbar);
-    left.innerHTML = "👑 <span>0</span>";
-    this.playerCrowns = left.querySelector("span")!;
+    left.innerHTML =
+      '<span class="level">9</span><span class="pname">You</span> 👑 <span>0</span>';
+    this.playerCrowns = left.querySelector("span:last-child")!;
     this.clock = el("div", "clock", topbar);
     const right = el("div", "crowns enemy", topbar);
-    right.innerHTML = "<span>0</span> 👑";
-    this.enemyCrowns = right.querySelector("span")!;
+    right.innerHTML =
+      '<span>0</span> 👑 <span class="pname">Rival Bot</span><span class="level">9</span>';
+    this.enemyCrowns = right.querySelector("span:first-child")!;
     this.muteBtn = el("button", "mute", topbar);
     this.muteBtn.textContent = "🔊";
     this.muteBtn.addEventListener("click", () => {
