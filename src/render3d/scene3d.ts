@@ -10,6 +10,7 @@ import { getCard, type CardId } from "../game/cards";
 import { isRaged, moveGoal } from "../game/sim";
 import { projectileStyle } from "./projectiles";
 import { damageLabel } from "./popups";
+import { deathStyle } from "./deathfx";
 import {
   animateTroop,
   buildTowerKing,
@@ -1057,6 +1058,76 @@ export class Battle3D {
     this.shake = Math.min(1, this.shake + amount);
   }
 
+  /** Bone shards scattering from a fallen skeleton. */
+  private boneScatter(ax: number, ay: number, color: number): void {
+    const w = toWorld(ax, ay);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + i;
+      const bone = new THREE.Mesh(
+        new THREE.BoxGeometry(0.06, 0.22, 0.06),
+        new THREE.MeshBasicMaterial({ color, transparent: true }),
+      );
+      const vx = Math.cos(a) * (1.2 + (i % 3) * 0.5);
+      const vz = Math.sin(a) * (1.2 + (i % 3) * 0.5);
+      this.addEffect(bone, 0.55, (frac) => {
+        const t = 1 - frac;
+        bone.position.set(
+          w.x + vx * t,
+          0.4 + 2.2 * t - 4.4 * t * t, // tossed up, falls back down
+          w.z + vz * t,
+        );
+        bone.rotation.set(t * 9 + i, t * 7, t * 5);
+        (bone.material as THREE.MeshBasicMaterial).opacity = Math.min(1, frac * 3);
+      });
+    }
+  }
+
+  /** Electric burst for a broken war machine. */
+  private sparkBurst(ax: number, ay: number, color: number): void {
+    const w = toWorld(ax, ay);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + i * 0.7;
+      const spark = new THREE.Mesh(
+        new THREE.BoxGeometry(0.05, 0.05, 0.3),
+        new THREE.MeshBasicMaterial({ color, transparent: true }),
+      );
+      const r = 1.1 + (i % 3) * 0.4;
+      spark.position.set(w.x, 0.7, w.z);
+      spark.lookAt(w.x + Math.cos(a) * r, 0.7 + (i % 2) * 0.8, w.z + Math.sin(a) * r);
+      this.addEffect(spark, 0.4, (frac) => {
+        const t = 1 - frac;
+        spark.position.set(
+          w.x + Math.cos(a) * r * t,
+          0.7 + (i % 2) * 0.8 * t,
+          w.z + Math.sin(a) * r * t,
+        );
+        (spark.material as THREE.MeshBasicMaterial).opacity = frac;
+      });
+    }
+    this.blast(ax, ay, 0.9, color, 0);
+  }
+
+  /** The balloon envelope spirals down, shrinking as it vents. */
+  private deflate(ax: number, ay: number, color: number): void {
+    const w = toWorld(ax, ay);
+    const envelope = new THREE.Mesh(
+      new THREE.SphereGeometry(0.5, 10, 8),
+      new THREE.MeshBasicMaterial({ color, transparent: true }),
+    );
+    envelope.scale.y = 1.15;
+    this.addEffect(envelope, 0.9, (frac) => {
+      const t = 1 - frac;
+      envelope.position.set(
+        w.x + Math.sin(t * Math.PI * 4) * 0.9 * t,
+        1.7 * (1 - t * t),
+        w.z + Math.cos(t * Math.PI * 4) * 0.9 * t,
+      );
+      envelope.scale.setScalar(Math.max(0.08, 1 - t * 0.9));
+      envelope.scale.y *= 1.15;
+      (envelope.material as THREE.MeshBasicMaterial).opacity = Math.min(1, frac * 2);
+    });
+  }
+
   /** Floating combat text that rises and fades. */
   private damagePopup(
     x: number,
@@ -1172,8 +1243,13 @@ export class Battle3D {
         if (ev.ranged) this.projectile(ev);
         break;
       case "death":
-        if (ev.kind === "troop") this.puff(ev.x, ev.y, 0xcccccc, 0.5);
-        else {
+        if (ev.kind === "troop") {
+          const style = deathStyle(ev.cardId);
+          if (style.kind === "bones") this.boneScatter(ev.x, ev.y, style.color);
+          else if (style.kind === "sparks") this.sparkBurst(ev.x, ev.y, style.color);
+          else if (style.kind === "deflate") this.deflate(ev.x, ev.y, style.color);
+          else this.puff(ev.x, ev.y, style.color, 0.5);
+        } else {
           this.puff(ev.x, ev.y, 0x8b7c69, 1.6);
           if (ev.kind !== "building") {
             this.crownPop(ev.x, ev.y);
