@@ -606,6 +606,15 @@ export class Battle3D {
   }
 
   private decorate(): void {
+    // Distant ground so the arena never floats in a void.
+    const far = new THREE.Mesh(
+      new THREE.PlaneGeometry(140, 140),
+      new THREE.MeshToonMaterial({ color: 0x2f5a35 }),
+    );
+    far.rotation.x = -Math.PI / 2;
+    far.position.y = -0.45;
+    this.scene.add(far);
+
     // Outer apron of darker grass framing the arena.
     const apron = new THREE.Mesh(
       new THREE.BoxGeometry(ARENA_WIDTH + 10, 0.36, ARENA_HEIGHT + 10),
@@ -614,6 +623,99 @@ export class Battle3D {
     apron.position.y = -0.24;
     apron.receiveShadow = true;
     this.scene.add(apron);
+
+    // Rustic fence ringing the apron.
+    const fenceHw = ARENA_WIDTH / 2 + 4.6;
+    const fenceHd = ARENA_HEIGHT / 2 + 4.6;
+    const addFenceRun = (
+      from: [number, number],
+      to: [number, number],
+      posts: number,
+    ): void => {
+      for (let i = 0; i <= posts; i++) {
+        const t = i / posts;
+        const post = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.09, 0.11, 0.7, 6),
+          toon(0x6e4a28),
+        );
+        post.position.set(
+          from[0] + (to[0] - from[0]) * t,
+          0.1,
+          from[1] + (to[1] - from[1]) * t,
+        );
+        post.castShadow = true;
+        this.scene.add(post);
+      }
+      const len = Math.hypot(to[0] - from[0], to[1] - from[1]);
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 0.08), toon(0x7d5a36));
+      rail.position.set((from[0] + to[0]) / 2, 0.3, (from[1] + to[1]) / 2);
+      rail.rotation.y = -Math.atan2(to[1] - from[1], to[0] - from[0]);
+      this.scene.add(rail);
+    };
+    addFenceRun([-fenceHw, -fenceHd], [fenceHw, -fenceHd], 10);
+    addFenceRun([-fenceHw, fenceHd], [fenceHw, fenceHd], 10);
+    addFenceRun([-fenceHw, -fenceHd], [-fenceHw, fenceHd], 16);
+    addFenceRun([fenceHw, -fenceHd], [fenceHw, fenceHd], 16);
+
+    // Striped spectator tents in the corners, team-colored.
+    const tent = (x: number, z: number, color: number): void => {
+      const g = new THREE.Group();
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(1.3, 1.3, 8), toon(color));
+      roof.position.y = 1.15;
+      roof.castShadow = true;
+      g.add(roof);
+      const wall = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.0, 1.15, 0.9, 8),
+        toon(0xe8e3d8),
+      );
+      wall.position.y = 0.45;
+      wall.castShadow = true;
+      g.add(wall);
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.025, 0.025, 0.6, 6),
+        toon(0x5a4632),
+      );
+      pole.position.y = 1.95;
+      g.add(pole);
+      const flag = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.5, 0.3),
+        new THREE.MeshToonMaterial({ color, side: THREE.DoubleSide }),
+      );
+      flag.position.set(0.26, 2.05, 0);
+      g.add(flag);
+      g.position.set(x, 0, z);
+      this.scene.add(g);
+    };
+    const tHw = ARENA_WIDTH / 2 + 3.1;
+    const tHd = ARENA_HEIGHT / 2 + 3.0;
+    tent(-tHw, tHd, 0x3b6fd4);
+    tent(tHw, tHd, 0x3b6fd4);
+    tent(-tHw, -tHd, 0xd44a3b);
+    tent(tHw, -tHd, 0xd44a3b);
+
+    // Torches flanking each bridge approach.
+    for (const bx of BRIDGE_XS) {
+      const w = toWorld(bx, RIVER_Y);
+      for (const sz of [-1, 1]) {
+        const pole = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.06, 0.08, 1.1, 6),
+          toon(0x5a4632),
+        );
+        pole.position.set(w.x + 1.45, 0.55, sz * 2.2);
+        pole.castShadow = true;
+        this.scene.add(pole);
+        const flame = new THREE.Mesh(
+          new THREE.SphereGeometry(0.14, 8, 6),
+          new THREE.MeshStandardMaterial({
+            color: 0xffa726,
+            emissive: 0xff8c1a,
+            emissiveIntensity: 1.8,
+          }),
+        );
+        flame.position.set(w.x + 1.45, 1.2, sz * 2.2);
+        this.scene.add(flame);
+      }
+    }
 
     const tree = (x: number, z: number, s: number): void => {
       const g = new THREE.Group();
