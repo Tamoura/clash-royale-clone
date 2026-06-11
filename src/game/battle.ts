@@ -161,10 +161,27 @@ const SPAWN_OFFSETS: Record<number, Array<[number, number]>> = {
   ],
 };
 
-function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number, y: number): void {
+/**
+ * Spawn the units of a troop card directly, bypassing hand/elixir/zone
+ * checks. Used by deployCard and by tests.
+ */
+export function spawnUnits(
+  state: BattleState,
+  side: Side,
+  cardId: CardId,
+  x: number,
+  y: number,
+): Entity[] {
+  const card = getCard(cardId);
+  if (card.kind !== "troop") throw new Error(`${cardId} is not a troop card`);
+  return spawnTroops(state, side, card, x, y);
+}
+
+function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number, y: number): Entity[] {
   const offsets = SPAWN_OFFSETS[card.count] ?? [[0, 0]];
+  const spawned: Entity[] = [];
   for (const [dx, dy] of offsets) {
-    state.entities.push({
+    spawned.push({
       id: state.nextEntityId++,
       side,
       kind: "troop",
@@ -185,6 +202,8 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       active: true,
     });
   }
+  state.entities.push(...spawned);
+  return spawned;
 }
 
 export function applySpell(
