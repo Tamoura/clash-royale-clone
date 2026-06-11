@@ -72,3 +72,21 @@ describe("3D troop rigs", () => {
     expect(meshCount).toBeGreaterThan(5);
   });
 });
+
+describe("tower defenders", () => {
+  it("the tower princess is a small archer with a bow arm", async () => {
+    const { buildTowerPrincess } = await import("./characters3d");
+    const rig = buildTowerPrincess();
+    expect(rig.group.children.length).toBeGreaterThan(2);
+    expect(rig.arm).not.toBeNull();
+    expect(rig.height).toBeGreaterThan(0.5);
+  });
+
+  it("the tower king bears a crown and a sword arm", async () => {
+    const { buildTowerKing } = await import("./characters3d");
+    const rig = buildTowerKing();
+    expect(rig.group.children.length).toBeGreaterThan(3);
+    expect(rig.arm).not.toBeNull();
+    expect(rig.height).toBeGreaterThan(0.5);
+  });
+});

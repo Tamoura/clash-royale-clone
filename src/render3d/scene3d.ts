@@ -8,7 +8,14 @@ import {
 } from "../game/battle";
 import { getCard, type CardId } from "../game/cards";
 import { isRaged, moveGoal } from "../game/sim";
-import { animateTroop, buildTroop, toon, type TroopRig } from "./characters3d";
+import {
+  animateTroop,
+  buildTowerKing,
+  buildTowerPrincess,
+  buildTroop,
+  toon,
+  type TroopRig,
+} from "./characters3d";
 
 /** Arena tiles → world units: x centered, arena y becomes world z. */
 function toWorld(ax: number, ay: number): { x: number; z: number } {
@@ -27,7 +34,6 @@ interface EntityView {
   rig: TroopRig | null;
   hpFill: THREE.Mesh;
   hpGroup: THREE.Group;
-  crown?: THREE.Group;
   zzz?: THREE.Sprite;
   /** Cannon barrel, aimed at the current target. */
   barrel?: THREE.Group;
@@ -43,6 +49,10 @@ interface EntityView {
   stunStars?: THREE.Sprite;
   /** Whether the rage tint is currently applied to flash materials. */
   raged?: boolean;
+  /** Character perched on a tower (princess archer / the king). */
+  defender?: TroopRig;
+  /** Mount group carrying the defender (owns yaw/slump). */
+  defenderMount?: THREE.Group;
 }
 
 interface DyingView {
@@ -271,42 +281,39 @@ function buildTowerMesh(e: Entity): EntityView {
   door.position.set(0, 0.35, (e.side === "player" ? -1 : 1) * radius * 0.97);
   root.add(door);
 
-  // Team flag.
+  // Team flag, planted off-center so the tower crew has the roof.
   const pole = new THREE.Mesh(
     new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6),
     toon(0x5a4632),
   );
-  pole.position.set(0, height + 0.5, 0);
+  pole.position.set(-radius * 0.6, height + 0.5, 0);
   root.add(pole);
   const flag = new THREE.Mesh(
     new THREE.PlaneGeometry(0.55, 0.32),
     new THREE.MeshToonMaterial({ color: SIDE_COLOR[e.side], side: THREE.DoubleSide }),
   );
-  flag.position.set(0.3, height + 0.72, 0);
+  flag.position.set(-radius * 0.6 + 0.3, height + 0.72, 0);
   root.add(flag);
 
   const view: Partial<EntityView> & { root: THREE.Group } = { root, rig: null };
 
+  // Tower crew: a princess archer, or the king on his keep. The rig
+  // sits inside a mount group because animateTroop owns the rig's
+  // own transform (hop/breath/lean).
+  const defender = king ? buildTowerKing() : buildTowerPrincess();
+  defender.group.scale.setScalar(king ? 0.85 : 0.8);
+  if (defender.arm) defender.arm.rotation.x = defender.armRest;
+  const mount = new THREE.Group();
+  mount.position.y = height + 0.18;
+  mount.add(defender.group);
+  root.add(mount);
+  view.defender = defender;
+  view.defenderMount = mount;
+
   if (king) {
-    const crown = new THREE.Group();
-    const band = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.42, 0.5, 0.26, 10),
-      toon(0xfbbf24),
-    );
-    band.castShadow = true;
-    crown.add(band);
-    for (let i = 0; i < 5; i++) {
-      const a = (i / 5) * Math.PI * 2;
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.22, 6), toon(0xfbbf24));
-      spike.position.set(Math.cos(a) * 0.38, 0.22, Math.sin(a) * 0.38);
-      crown.add(spike);
-    }
-    crown.position.y = height + 0.32;
-    root.add(crown);
     const zzz = makeZzzSprite();
-    zzz.position.y = height + 1.1;
+    zzz.position.y = height + 2.0;
     root.add(zzz);
-    view.crown = crown;
     view.zzz = zzz;
   }
 
@@ -1219,12 +1226,33 @@ export class Battle3D {
         }
       }
 
+      // Tower crew: aim at the target, swing on attack, and let the
+      // sleeping king slump over his battlements.
+      if (view.defender && view.defenderMount) {
+        const target = state.entities.find((o) => o.id === e.targetId);
+        const swing =
+          e.cooldown > e.hitSpeed - 0.3 ? (e.cooldown - (e.hitSpeed - 0.3)) / 0.3 : 0;
+        animateTroop(view.defender, {
+          moving: false,
+          swing,
+          time: state.time,
+          phase: e.id * 1.7,
+        });
+        if (target) {
+          const tw = toWorld(target.x, target.y);
+          view.defenderMount.rotation.y = Math.atan2(tw.x - w.x, tw.z - w.z);
+        } else {
+          view.defenderMount.rotation.y = e.side === "player" ? Math.PI : 0;
+        }
+        const asleep = e.kind === "king-tower" && !e.active;
+        view.defenderMount.rotation.x = asleep ? 0.45 : 0;
+      }
+
       const barWidth =
         e.kind === "troop" ? 0.9 : e.kind === "building" ? 1.4 : e.kind === "king-tower" ? 2.2 : 1.8;
       setHpFill(view, e.hp / e.maxHp, barWidth);
       if (e.kind === "troop" && e.hp < e.maxHp) view.hpGroup.visible = true;
       if (view.hpText) updateHpText(view.hpText, e.hp);
-      if (view.crown) view.crown.visible = e.active;
       if (view.zzz) view.zzz.visible = !e.active;
 
       if (view.rig) {

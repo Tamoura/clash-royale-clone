@@ -764,6 +764,82 @@ function buildPekka(): TroopRig {
   return { group: g, arm, armRest: -0.5, swingAmp: 1.8, height: 2.25, legs, offArm };
 }
 
+/** Princess archer perched on top of each crown tower. */
+export function buildTowerPrincess(): TroopRig {
+  const g = new THREE.Group();
+  g.add(cyl(0.2, 0.34, 0.5, 0xe91e63, 0, 0.3, 0)); // gown
+  g.add(cyl(0.28, 0.28, 0.06, 0xf2c14e, 0, 0.16, 0)); // gold hem
+  const head = sphere(0.24, SKIN, 0, 0.78, 0);
+  addEyes(head, 0.24);
+  g.add(head);
+  const hair = sphere(0.25, 0xf6a13b, 0, 0.86, -0.03);
+  hair.scale.set(1, 0.66, 1);
+  g.add(hair);
+  const braid = cyl(0.06, 0.04, 0.45, 0xf6a13b, 0.2, 0.6, -0.12);
+  braid.rotation.z = 0.3;
+  g.add(braid);
+  g.add(cyl(0.1, 0.12, 0.1, 0xf2c14e, 0, 1.02, 0)); // tiara
+  g.add(sphere(0.04, 0x4fd8ff, 0, 1.08, 0.08)); // tiara gem
+
+  const offArm = new THREE.Group();
+  offArm.position.set(0.24, 0.5, 0);
+  offArm.add(box(0.09, 0.22, 0.09, SKIN, 0, -0.11, 0));
+  g.add(offArm);
+
+  // Bow arm (same thrust-on-release rig as the field archer).
+  const arm = new THREE.Group();
+  arm.position.set(-0.24, 0.54, 0.05);
+  arm.add(box(0.09, 0.22, 0.09, SKIN, 0, -0.11, 0));
+  const bow = new THREE.Mesh(
+    new THREE.TorusGeometry(0.28, 0.03, 8, 16, Math.PI),
+    toon(0x8d6e63),
+  );
+  bow.castShadow = true;
+  bow.position.set(0, -0.2, 0.14);
+  bow.rotation.set(0, -Math.PI / 2, 0);
+  arm.add(bow);
+  arm.add(box(0.012, 0.54, 0.012, 0xe8e3d8, 0, -0.2, 0.14)); // string
+  g.add(arm);
+  return { group: g, arm, armRest: -1.0, swingAmp: 0.7, height: 1.1, offArm };
+}
+
+/** The king himself, enthroned on the king tower. */
+export function buildTowerKing(): TroopRig {
+  const g = new THREE.Group();
+  g.add(cyl(0.3, 0.44, 0.62, 0x4365c8, 0, 0.36, 0)); // royal robe
+  g.add(cyl(0.4, 0.42, 0.08, 0xf2c14e, 0, 0.14, 0)); // gold trim
+  const sash = box(0.16, 0.5, 0.05, 0xb71c1c, 0.1, 0.42, 0.32);
+  sash.rotation.z = -0.3;
+  g.add(sash);
+  const head = sphere(0.3, SKIN, 0, 0.98, 0);
+  addEyes(head, 0.3);
+  g.add(head);
+  const beard = sphere(0.26, 0xe8e3d8, 0, 0.82, 0.13);
+  beard.scale.set(1, 0.75, 0.7);
+  g.add(beard);
+  // Big golden crown.
+  g.add(cyl(0.26, 0.3, 0.18, 0xf2c14e, 0, 1.28, 0));
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    g.add(cone(0.05, 0.14, 0xf2c14e, Math.cos(a) * 0.24, 1.42, Math.sin(a) * 0.24));
+  }
+  g.add(sphere(0.05, 0xe53935, 0, 1.32, 0.27)); // crown jewel
+
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.4, 0.62, 0);
+  offArm.add(box(0.12, 0.26, 0.12, 0x4365c8, 0, -0.13, 0));
+  g.add(offArm);
+
+  // Sword arm raised in command.
+  const arm = new THREE.Group();
+  arm.position.set(0.4, 0.66, 0);
+  arm.add(box(0.12, 0.26, 0.12, 0x4365c8, 0, -0.13, 0));
+  arm.add(box(0.2, 0.05, 0.08, 0x8d6e63, 0, -0.28, 0)); // guard
+  arm.add(box(0.05, 0.5, 0.1, 0xdde4ec, 0, -0.02, 0)); // blade
+  g.add(arm);
+  return { group: g, arm, armRest: -0.4, swingAmp: 1.2, height: 1.55, offArm };
+}
+
 const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   knight: buildKnight,
   archers: buildArcher,
