@@ -545,11 +545,15 @@ export class Battle3D {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // CR daylight grade: filmic tone mapping with a touch of extra
+    // exposure keeps the greens punchy without blowing highlights.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.18;
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x1b2433);
-    this.scene.fog = new THREE.Fog(0x1b2433, 45, 75);
+    this.scene.background = new THREE.Color(0x76aede);
+    this.scene.fog = new THREE.Fog(0x76aede, 45, 75);
 
     this.camera = new THREE.PerspectiveCamera(48, 1, 0.1, 120);
     this.camera.position.set(0, 24, 27);

@@ -31,4 +31,4 @@ feature/gfx-cel-outlines):
 9. cr-arena-dressing: stands/trees/fences around the field
 10. cr-grading: camera + tone-mapping/saturation final pass
 
-Status: starting round 1.
+Status: all 10 rounds shipped (PRs #28-#37).
