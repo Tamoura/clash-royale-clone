@@ -23,9 +23,12 @@ describe("hand", () => {
     expect(after.queue).toHaveLength(4);
   });
 
-  it("cycles: after playing 4 cards the first one is available again", () => {
+  it("cycles: the first card returns to hand on the fifth play", () => {
     let h = createHand(DECK);
     for (const id of DECK.slice(0, 4)) h = playCard(h, id);
+    // 8-card cycle: after 4 plays the hand is the back half of the deck.
+    expect(h.cards).toEqual(DECK.slice(4));
+    h = playCard(h, DECK[4]);
     expect(h.cards).toContain(DECK[0]);
   });
 
