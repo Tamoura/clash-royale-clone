@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BRIDGE_XS, RIVER_Y } from "./arena";
 import { createBattle, deployCard, spawnUnits, type BattleState } from "./battle";
 import { createHand } from "./hand";
-import { moveGoal, tick } from "./sim";
+import { isRaged, moveGoal, tick } from "./sim";
 
 const TICK = 1 / 20;
 
@@ -257,6 +257,18 @@ describe("rage", () => {
       Math.hypot(free.x - 9, free.y - 12),
       5,
     );
+  });
+
+  it("reports raged status for the renderer", () => {
+    const b = createBattle();
+    const [mine] = spawnUnits(b, "player", "knight", 9, 20);
+    const [foe] = spawnUnits(b, "enemy", "knight", 9, 20.5);
+    giveHand(b, "player", ["rage"]);
+    deployCard(b, "player", "rage", 9, 20);
+    expect(isRaged(b, mine)).toBe(true);
+    expect(isRaged(b, foe)).toBe(false);
+    run(b, 7); // zone expired
+    expect(isRaged(b, mine)).toBe(false);
   });
 
   it("the boost dies with the zone", () => {

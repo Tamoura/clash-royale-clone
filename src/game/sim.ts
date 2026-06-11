@@ -153,13 +153,15 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
 /** Speed/attack-rate multiplier for troops inside a friendly rage zone. */
 export const RAGE_BOOST = 1.35;
 
+/** Is this entity currently inside a friendly rage zone? */
+export function isRaged(state: BattleState, e: Entity): boolean {
+  return state.buffZones.some(
+    (z) => z.side === e.side && distance(e, z) <= z.radius + e.radius,
+  );
+}
+
 function rageBoost(state: BattleState, e: Entity): number {
-  for (const z of state.buffZones) {
-    if (z.side === e.side && distance(e, z) <= z.radius + e.radius) {
-      return RAGE_BOOST;
-    }
-  }
-  return 1;
+  return isRaged(state, e) ? RAGE_BOOST : 1;
 }
 
 /** Spawner troops (e.g. the Witch) summon a wave every spawnInterval. */

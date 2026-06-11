@@ -7,7 +7,7 @@ import {
   type Entity,
 } from "../game/battle";
 import { getCard, type CardId } from "../game/cards";
-import { moveGoal } from "../game/sim";
+import { isRaged, moveGoal } from "../game/sim";
 import { animateTroop, buildTroop, toon, type TroopRig } from "./characters3d";
 
 /** Arena tiles → world units: x centered, arena y becomes world z. */
@@ -39,6 +39,10 @@ interface EntityView {
   flashT: number;
   spawnT: number;
   isTroop: boolean;
+  /** Spinning stars shown while the entity is stunned (lazy). */
+  stunStars?: THREE.Sprite;
+  /** Whether the rage tint is currently applied to flash materials. */
+  raged?: boolean;
 }
 
 interface DyingView {
@@ -155,6 +159,38 @@ function nameSpriteMaterial(cardId: CardId, side: Side): THREE.SpriteMaterial {
   });
   nameMaterials.set(key, mat);
   return mat;
+}
+
+/** Shared "seeing stars" texture for stunned units. */
+let stunTexture: THREE.CanvasTexture | null = null;
+
+function makeStunSprite(): THREE.Sprite {
+  if (!stunTexture) {
+    const c = document.createElement("canvas");
+    c.width = 128;
+    c.height = 48;
+    const ctx = c.getContext("2d")!;
+    ctx.font = "bold 30px 'Trebuchet MS', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffe14d";
+    ctx.strokeStyle = "rgba(10,14,22,0.9)";
+    ctx.lineWidth = 5;
+    ctx.lineJoin = "round";
+    for (const [x, y] of [
+      [24, 32],
+      [64, 24],
+      [104, 34],
+    ] as const) {
+      ctx.strokeText("★", x, y + 8);
+      ctx.fillText("★", x, y + 8);
+    }
+    stunTexture = new THREE.CanvasTexture(c);
+  }
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: stunTexture, transparent: true, depthWrite: false }),
+  );
+  sprite.scale.set(1.3, 0.5, 1);
+  return sprite;
 }
 
 function makeZzzSprite(): THREE.Sprite {
@@ -1143,15 +1179,36 @@ export class Battle3D {
         view.root.scale.setScalar(1);
       }
 
-      // Damage flash.
+      // Damage flash, with a steady hot-pink glow while raged.
       if (e.hp < view.lastHp - 0.5) view.flashT = FLASH_TIME;
       view.lastHp = e.hp;
+      const raged = e.kind === "troop" && isRaged(state, e);
       if (view.flashT > 0) {
         view.flashT = Math.max(0, view.flashT - dt);
         const k = view.flashT / FLASH_TIME;
         for (const f of view.flashMats) f.mat.emissive.setRGB(k, k, k);
-      } else if (view.flashMats.length > 0 && view.flashT === 0) {
+        view.raged = false; // re-applied below once the flash ends
+      } else if (raged) {
+        const pulse = 0.32 + Math.sin(state.time * 9) * 0.1;
+        for (const f of view.flashMats) f.mat.emissive.setRGB(pulse, 0.05, 0.18);
+        view.raged = true;
+      } else if (view.flashMats.length > 0 && (view.flashT === 0 || view.raged)) {
         for (const f of view.flashMats) f.mat.emissive.setHex(f.orig);
+        view.raged = false;
+      }
+
+      // Seeing stars while stunned.
+      if (e.stunTimer > 0 && e.kind === "troop") {
+        if (!view.stunStars) {
+          view.stunStars = makeStunSprite();
+          const lift = view.rig ? (view.rig.hover ?? 0) + view.rig.height : 1.4;
+          view.stunStars.position.y = lift + 0.35;
+          view.root.add(view.stunStars);
+        }
+        view.stunStars.visible = true;
+        view.stunStars.material.rotation = state.time * 4;
+      } else if (view.stunStars) {
+        view.stunStars.visible = false;
       }
 
       if (view.barrel) {
