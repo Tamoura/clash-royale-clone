@@ -537,6 +537,7 @@ export class Battle3D {
   private waterTex: THREE.CanvasTexture | null = null;
   private waterTime = 0;
   private readonly zonePlane: THREE.Mesh;
+  private readonly enemyZonePlane: THREE.Mesh;
   private readonly container: HTMLElement;
 
   constructor(container: HTMLElement) {
@@ -574,6 +575,17 @@ export class Battle3D {
     this.zonePlane.position.set(0, 0.025, ARENA_HEIGHT / 4 + 0.5);
     this.zonePlane.visible = false;
     this.scene.add(this.zonePlane);
+
+    // CR-style "can't deploy there": the enemy half goes dark while
+    // a troop card is being placed.
+    this.enemyZonePlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(ARENA_WIDTH, ARENA_HEIGHT / 2 + 1),
+      new THREE.MeshBasicMaterial({ color: 0x1a0b10, transparent: true, opacity: 0.38 }),
+    );
+    this.enemyZonePlane.rotation.x = -Math.PI / 2;
+    this.enemyZonePlane.position.set(0, 0.026, -ARENA_HEIGHT / 4 + 0.5);
+    this.enemyZonePlane.visible = false;
+    this.scene.add(this.enemyZonePlane);
 
     this.resize();
     window.addEventListener("resize", () => this.resize());
@@ -885,6 +897,7 @@ export class Battle3D {
 
   setZoneVisible(visible: boolean): void {
     this.zonePlane.visible = visible;
+    this.enemyZonePlane.visible = visible;
   }
 
   private addEffect(
