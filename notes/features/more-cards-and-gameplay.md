@@ -43,13 +43,13 @@ Both sides cycle the full 14-card deck (4-card hand unchanged).
 
 ## Status
 
-- [ ] Air units
-- [ ] Splash
-- [ ] Charge
-- [ ] Buildings + decay
-- [ ] Deploy delay
-- [ ] 14-card deck definitions
-- [ ] Attack event target coords + projectiles
-- [ ] 3D rigs + card art
-- [ ] Bot handles buildings
-- [ ] Docs, verify, PR
+- [x] Air units
+- [x] Splash
+- [x] Charge
+- [x] Buildings + decay
+- [x] Deploy delay
+- [x] 14-card deck definitions
+- [x] Attack event target coords + projectiles
+- [x] 3D rigs + card art
+- [x] Bot handles buildings
+- [x] Docs, verify, PR (+ tower HP numbers, user request mid-feature)

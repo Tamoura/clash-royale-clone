@@ -1,27 +1,38 @@
 # Clash Royale Clone
 
-A browser-based clone of the Clash Royale core battle loop, built with
-TypeScript + HTML5 Canvas. You play against an AI bot in a 3-minute,
-two-lane tower-defense battle. All art is original placeholder rendering
-(shapes/colors) — no Supercell assets are used.
+A browser-based 3D clone of the Clash Royale core battle loop, built
+with TypeScript + Three.js. You play against an AI bot in a 3-minute,
+two-lane tower-defense battle, with fully synthesized sound. All art
+and audio are original (low-poly primitives + Web Audio synthesis) —
+no Supercell assets are used.
 
-## Gameplay (v1 scope)
+## Gameplay
 
 - One arena: two lanes, a river, two bridges.
-- Each side has 2 princess (crown) towers and 1 king tower.
+- Each side has 2 princess (crown) towers and 1 king tower (the king
+  sleeps until damaged or a princess tower falls). Towers show a live
+  numeric HP readout.
 - Elixir regenerates over time (max 10, double-elixir in the last 60s).
-- 8-card deck, 4-card rotating hand: Knight, Archers, Giant, Musketeer,
-  Mini P.E.K.K.A, Skeletons, Fireball, Arrows.
+- 14-card deck, 4-card rotating hand: Knight, Archers, Giant,
+  Musketeer, Mini P.E.K.K.A, Skeletons, Wizard, Baby Dragon,
+  Gargoyles, Valkyrie, Prince, Cannon, Fireball, Arrows.
+- CR-style mechanics: flying units (straight paths, only
+  air-targeters can hit them), splash damage, the Prince's charge
+  (2x damage after a run-up), deployable buildings that decay and
+  bait building-seekers, a 1s deploy freeze, and spells dealing
+  reduced damage to crown towers.
 - Destroy the enemy king tower for an instant win, otherwise most crowns
   when the clock runs out (with sudden-death overtime on a tie).
 - Opponent is a simple elixir-aware AI bot.
 
 ## Stack
 
-- TypeScript, Vite (dev server on port **3101**), Vitest for tests.
+- TypeScript, Vite (dev server on port **3101**), Vitest for tests,
+  Three.js for rendering, Web Audio for synthesized SFX/music.
 - Game simulation is pure, deterministic, and fully unit-tested
-  (`src/game/`); the canvas renderer and input layer (`src/render/`,
-  `src/main.ts`) are a thin shell over it.
+  (`src/game/`); the 3D renderer, DOM HUD, and audio (`src/render3d/`,
+  `src/audio/`, `src/main.ts`) are a thin shell driven by the sim's
+  event stream.
 
 ## Development
 

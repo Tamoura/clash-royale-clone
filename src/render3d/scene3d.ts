@@ -30,6 +30,46 @@ interface EntityView {
   zzz?: THREE.Sprite;
   /** Cannon barrel, aimed at the current target. */
   barrel?: THREE.Group;
+  /** Live numeric HP readout (towers). */
+  hpText?: HpText;
+}
+
+interface HpText {
+  ctx: CanvasRenderingContext2D;
+  tex: THREE.CanvasTexture;
+  last: number;
+}
+
+function makeHpText(y: number): { sprite: THREE.Sprite; text: HpText } {
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 48;
+  const ctx = c.getContext("2d")!;
+  const tex = new THREE.CanvasTexture(c);
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }),
+  );
+  sprite.scale.set(1.5, 0.56, 1);
+  sprite.position.y = y;
+  return { sprite, text: { ctx, tex, last: -1 } };
+}
+
+function updateHpText(t: HpText, hp: number): void {
+  const value = Math.max(0, Math.ceil(hp));
+  if (value === t.last) return;
+  t.last = value;
+  const ctx = t.ctx;
+  ctx.clearRect(0, 0, 128, 48);
+  ctx.font = "bold 30px 'Trebuchet MS', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 7;
+  ctx.strokeStyle = "rgba(10,14,22,0.9)";
+  ctx.strokeText(String(value), 64, 26);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(String(value), 64, 26);
+  t.tex.needsUpdate = true;
 }
 
 interface EffectView {
@@ -205,10 +245,16 @@ function buildTowerMesh(e: Entity): EntityView {
   }
 
   const barWidth = king ? 2.2 : 1.8;
-  const bar = makeHpBar(barWidth, SIDE_COLOR[e.side], height + (king ? 1.5 : 1.2));
+  const barY = height + (king ? 1.5 : 1.2);
+  const bar = makeHpBar(barWidth, SIDE_COLOR[e.side], barY);
   root.add(bar.group);
   view.hpGroup = bar.group;
   view.hpFill = bar.fill;
+
+  // Live hit-point readout above the bar.
+  const hpText = makeHpText(barY + 0.45);
+  root.add(hpText.sprite);
+  view.hpText = hpText.text;
   return view as EntityView;
 }
 
@@ -602,6 +648,7 @@ export class Battle3D {
         e.kind === "troop" ? 0.9 : e.kind === "building" ? 1.4 : e.kind === "king-tower" ? 2.2 : 1.8;
       setHpFill(view, e.hp / e.maxHp, barWidth);
       if (e.kind === "troop" && e.hp < e.maxHp) view.hpGroup.visible = true;
+      if (view.hpText) updateHpText(view.hpText, e.hp);
       if (view.crown) view.crown.visible = e.active;
       if (view.zzz) view.zzz.visible = !e.active;
 
