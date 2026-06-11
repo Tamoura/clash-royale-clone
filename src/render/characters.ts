@@ -493,6 +493,39 @@ function drawHogRider(ctx: Ctx, _anim: Anim): void {
   eyes(ctx, -7.8);
 }
 
+function drawBalloon(ctx: Ctx, _anim: Anim): void {
+  // striped envelope
+  outlined(ctx, "#c62828", () => {
+    ctx.beginPath();
+    ctx.ellipse(0, -4, 6.5, 7.5, 0, 0, Math.PI * 2);
+  });
+  ctx.fillStyle = "#f2c14e";
+  ctx.beginPath();
+  ctx.ellipse(0, -4, 6.5, 7.5, 0, 0, Math.PI * 2);
+  ctx.save();
+  ctx.clip();
+  ctx.fillRect(-7, -6.2, 14, 1.8);
+  ctx.fillRect(-7, -2.2, 14, 1.8);
+  ctx.restore();
+  // ropes
+  ctx.strokeStyle = "#d7ccc8";
+  ctx.lineWidth = 0.7;
+  ctx.beginPath();
+  ctx.moveTo(-4, 2.2);
+  ctx.lineTo(-2, 6);
+  ctx.moveTo(4, 2.2);
+  ctx.lineTo(2, 6);
+  ctx.stroke();
+  // basket with skeleton pilot
+  box(ctx, -2.6, 6, 5.2, 3, 1.2, "#8d6e63");
+  circle(ctx, 0, 5.2, 1.6, "#f5f2ea");
+  circle(ctx, -0.5, 5, 0.35, "#1f2430");
+  circle(ctx, 0.5, 5, 0.35, "#1f2430");
+  // bomb under the basket
+  circle(ctx, 4.6, 8.2, 1.8, "#263238");
+  circle(ctx, 4.9, 6.6, 0.5, "#ffa000");
+}
+
 function drawCannon(ctx: Ctx, _anim: Anim): void {
   // wheels
   circle(ctx, -4, 5.5, 2.6, "#4e342e");
@@ -554,6 +587,7 @@ const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = 
   wizard: drawWizard,
   witch: drawWitch,
   "hog-rider": drawHogRider,
+  balloon: drawBalloon,
   "baby-dragon": drawBabyDragon,
   gargoyles: drawGargoyle,
   valkyrie: drawValkyrie,

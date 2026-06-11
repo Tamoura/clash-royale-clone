@@ -423,6 +423,46 @@ function buildWitch(): TroopRig {
   return { group: g, arm, armRest: -0.9, swingAmp: 1.1, height: 1.8, offArm };
 }
 
+function buildBalloon(): TroopRig {
+  const g = new THREE.Group();
+  // Striped envelope.
+  const envelope = sphere(0.55, 0xc62828, 0, 1.5, 0);
+  envelope.scale.set(1, 1.15, 1);
+  g.add(envelope);
+  for (const a of [-0.6, 0, 0.6]) {
+    const stripe = cyl(0.46, 0.46, 0.14, 0xf2c14e, 0, 1.5 + a * 0.45, 0);
+    stripe.scale.x = 1.2;
+    g.add(stripe);
+  }
+  g.add(cone(0.16, 0.22, 0x8e1f1f, 0, 0.78, 0)); // throat
+  // Wicker basket on ropes.
+  const basket = cyl(0.26, 0.2, 0.3, 0x8d6e63, 0, 0.42, 0);
+  g.add(basket);
+  g.add(cyl(0.27, 0.27, 0.05, 0x6d4c41, 0, 0.58, 0)); // rim
+  for (const s of [-1, 1]) {
+    const rope = cyl(0.015, 0.015, 0.45, 0xd7ccc8, s * 0.22, 0.78, 0);
+    rope.rotation.z = -s * 0.35;
+    g.add(rope);
+  }
+  // Skeleton pilot peeking out.
+  const skull = sphere(0.14, 0xf5f2ea, 0, 0.68, 0.12);
+  skull.add(sphere(0.035, 0x1f2430, -0.05, 0.01, 0.115));
+  skull.add(sphere(0.035, 0x1f2430, 0.05, 0.01, 0.115));
+  g.add(skull);
+
+  // Bomb-dropping arm: bony arm holding a fizzing bomb under the basket.
+  const arm = new THREE.Group();
+  arm.position.set(0.24, 0.5, 0.1);
+  arm.add(box(0.06, 0.2, 0.06, 0xf5f2ea, 0, -0.1, 0));
+  const bomb = sphere(0.16, 0x263238, 0, -0.3, 0.04);
+  arm.add(bomb);
+  const fuse = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), glow(0xffa000, 2));
+  fuse.position.set(0, -0.12, 0.04);
+  arm.add(fuse);
+  g.add(arm);
+  return { group: g, arm, armRest: -0.3, swingAmp: 1.4, height: 2.2, hover: 1.7 };
+}
+
 function buildBabyDragon(): TroopRig {
   const g = new THREE.Group();
   const body = sphere(0.46, 0x4caf50, 0, 0.5, 0);
@@ -734,6 +774,7 @@ const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   wizard: buildWizard,
   witch: buildWitch,
   "hog-rider": buildHogRider,
+  balloon: buildBalloon,
   "baby-dragon": buildBabyDragon,
   gargoyles: buildGargoyle,
   valkyrie: buildValkyrie,

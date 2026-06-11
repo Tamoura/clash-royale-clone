@@ -178,9 +178,25 @@ function actEntity(state: BattleState, e: Entity, dt: number): void {
   }
 }
 
+/** Death-bomb units (e.g. the Balloon) blast nearby enemies as they die. */
+function explodeOnDeath(state: BattleState, e: Entity): void {
+  if (e.deathDamage <= 0) return;
+  for (const o of livingEnemiesOf(state, e)) {
+    if (distance(o, e) <= e.deathRadius + o.radius) o.hp -= e.deathDamage;
+  }
+  state.effects.push({
+    cardId: e.cardId ?? "fireball",
+    x: e.x,
+    y: e.y,
+    radius: e.deathRadius,
+    ttl: 0.6,
+  });
+}
+
 function processDeaths(state: BattleState): void {
   for (const e of state.entities) {
     if (e.hp > 0) continue;
+    explodeOnDeath(state, e);
     state.events.push({
       type: "death",
       kind: e.kind,

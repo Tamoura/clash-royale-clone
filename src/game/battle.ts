@@ -58,6 +58,10 @@ export interface Entity {
   deployTimer: number;
   /** HP lost per second (deployable buildings decay; 0 otherwise). */
   decayPerSec: number;
+  /** Damage dealt to nearby enemies on death (0 = none). */
+  deathDamage: number;
+  /** Radius of the death blast in tiles. */
+  deathRadius: number;
   /** Card whose units this entity periodically summons (null = none). */
   spawnUnitId: CardId | null;
   /** Seconds between summons. */
@@ -175,6 +179,8 @@ function makeTower(state: BattleState, side: Side, kind: TowerKind, x: number, y
     chargeProgress: 0,
     deployTimer: 0,
     decayPerSec: 0,
+    deathDamage: 0,
+    deathRadius: 0,
     spawnUnitId: null,
     spawnInterval: 0,
     spawnTimer: 0,
@@ -275,6 +281,8 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       deployTimer: DEPLOY_DELAY,
       radius: card.unit.radius,
       decayPerSec: 0,
+      deathDamage: card.unit.deathDamage,
+      deathRadius: card.unit.deathRadius,
       spawnUnitId: card.unit.spawnUnitId,
       spawnInterval: card.unit.spawnInterval,
       spawnTimer: FIRST_SPAWN_DELAY,
@@ -312,6 +320,8 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
     chargeProgress: 0,
     deployTimer: DEPLOY_DELAY,
     decayPerSec: u.maxHp / card.lifetime,
+    deathDamage: u.deathDamage,
+    deathRadius: u.deathRadius,
     spawnUnitId: u.spawnUnitId,
     spawnInterval: u.spawnInterval,
     spawnTimer: FIRST_SPAWN_DELAY,

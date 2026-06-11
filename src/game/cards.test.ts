@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CARDS, DECK, getCard } from "./cards";
 
 describe("cards", () => {
-  it("defines the 17-card deck", () => {
+  it("defines the 18-card deck", () => {
     expect(DECK).toEqual([
       "knight",
       "archers",
@@ -16,6 +16,7 @@ describe("cards", () => {
       "wizard",
       "witch",
       "hog-rider",
+      "balloon",
       "prince",
       "pekka",
       "cannon",
@@ -23,6 +24,16 @@ describe("cards", () => {
       "arrows",
     ]);
     for (const id of DECK) expect(CARDS[id]).toBeDefined();
+  });
+
+  it("the balloon is a flying building-seeker with a death bomb", () => {
+    const balloon = getCard("balloon");
+    expect(balloon.cost).toBe(5);
+    if (balloon.kind !== "troop") throw new Error("balloon should be a troop");
+    expect(balloon.unit.flying).toBe(true);
+    expect(balloon.unit.targetsBuildingsOnly).toBe(true);
+    expect(balloon.unit.deathDamage).toBeGreaterThan(0);
+    expect(balloon.unit.deathRadius).toBeGreaterThan(0);
   });
 
   it("the hog rider is a fast building-seeker that jumps the river", () => {

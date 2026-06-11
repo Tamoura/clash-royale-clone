@@ -168,6 +168,37 @@ describe("river jump", () => {
   });
 });
 
+describe("death bomb", () => {
+  // Mid-river spots: out of range of every tower, so only the bomb
+  // (or its absence) can change anyone's HP during the test tick.
+  it("a dying balloon damages nearby enemies", () => {
+    const b = createBattle();
+    const [balloon] = spawnUnits(b, "player", "balloon", 9, 16);
+    const [knight] = spawnUnits(b, "enemy", "knight", 9, 16.5);
+    balloon.hp = 0;
+    tick(b, TICK);
+    expect(knight.hp).toBeLessThan(knight.maxHp);
+  });
+
+  it("the bomb spares the balloon's own side", () => {
+    const b = createBattle();
+    const [balloon] = spawnUnits(b, "player", "balloon", 9, 16);
+    const [friend] = spawnUnits(b, "player", "knight", 9, 16.5);
+    balloon.hp = 0;
+    tick(b, TICK);
+    expect(friend.hp).toBe(friend.maxHp);
+  });
+
+  it("ordinary troops explode into nothing", () => {
+    const b = createBattle();
+    const [mine] = spawnUnits(b, "player", "knight", 9, 16);
+    const [foe] = spawnUnits(b, "enemy", "knight", 9, 16.5);
+    mine.hp = 0;
+    tick(b, TICK);
+    expect(foe.hp).toBe(foe.maxHp);
+  });
+});
+
 describe("deploy delay", () => {
   it("troops stand frozen for the first second", () => {
     const b = createBattle();

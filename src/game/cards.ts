@@ -10,6 +10,7 @@ export type CardId =
   | "wizard"
   | "witch"
   | "hog-rider"
+  | "balloon"
   | "baby-dragon"
   | "gargoyles"
   | "valkyrie"
@@ -47,6 +48,10 @@ export interface UnitStats {
   splashRadius: number;
   /** Tiles of uninterrupted approach to charge (0 = no charge). */
   chargeDistance: number;
+  /** Damage dealt to nearby enemies when this unit dies (0 = none). */
+  deathDamage: number;
+  /** Radius of the death blast in tiles. */
+  deathRadius: number;
   /** Card whose units this troop periodically summons (null = none). */
   spawnUnitId: CardId | null;
   /** Seconds between summons (0 = not a spawner). */
@@ -105,6 +110,8 @@ function unit(stats: UnitOverrides): UnitStats {
     jumpsRiver: false,
     splashRadius: 0,
     chargeDistance: 0,
+    deathDamage: 0,
+    deathRadius: 0,
     spawnUnitId: null,
     spawnInterval: 0,
     radius: 0.5,
@@ -259,6 +266,26 @@ export const CARDS: Record<CardId, Card> = {
       radius: 0.6,
     }),
   },
+  balloon: {
+    id: "balloon",
+    name: "Balloon",
+    kind: "troop",
+    cost: 5,
+    count: 1,
+    unit: unit({
+      maxHp: 1500,
+      damage: 600,
+      hitSpeed: 3,
+      attackRange: MELEE,
+      sightRange: 7.5,
+      speed: "medium",
+      targetsBuildingsOnly: true,
+      flying: true,
+      deathDamage: 300,
+      deathRadius: 1.5,
+      radius: 0.7,
+    }),
+  },
   "baby-dragon": {
     id: "baby-dragon",
     name: "Baby Dragon",
@@ -387,6 +414,7 @@ export const DECK: CardId[] = [
   "wizard",
   "witch",
   "hog-rider",
+  "balloon",
   "prince",
   "pekka",
   "cannon",
