@@ -32,10 +32,19 @@ Branch: `feature/core-battle-loop`
 ## Status
 
 - [x] Scaffold (Vite/TS/Vitest, port 3100)
-- [ ] Elixir + cards + hand cycling
-- [ ] Arena geometry + deployment
-- [ ] Battle sim (movement/targeting/combat/spells/towers)
-- [ ] Match flow + win conditions
-- [ ] AI bot
-- [ ] Renderer + input + game loop
-- [ ] Browser verification, push, PR
+- [x] Elixir + cards + hand cycling
+- [x] Arena geometry + deployment
+- [x] Battle sim (movement/targeting/combat/spells/towers)
+- [x] Match flow + win conditions
+- [x] AI bot
+- [x] Renderer + input + game loop
+- [x] Browser verification (pixel-probed render + synthetic
+      click-to-deploy; CDP screenshots time out on occluded MCP
+      windows — verify visually at localhost:3100), push, PR
+
+## Learnings
+
+- 57 tests across 9 files; sim is fully deterministic (fixed dt,
+  seeded bot RNG), which made every behavior unit-testable.
+- Background Chrome tabs throttle requestAnimationFrame to ~1fps;
+  the fixed-timestep accumulator caps catch-up at 0.25s/frame.
