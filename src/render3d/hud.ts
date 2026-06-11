@@ -67,10 +67,11 @@ export class Hud {
       this.muteBtn.textContent = this.cb.onToggleSound() ? "🔇" : "🔊";
     });
 
+    // CR layout: the elixir droplet counter leads the bar.
     const elixirRow = el("div", "elixir-row", bottom);
+    this.elixirNum = el("div", "elixir-num", elixirRow);
     const bar = el("div", "elixir-bar", elixirRow);
     this.elixirFill = el("div", "elixir-fill", bar);
-    this.elixirNum = el("div", "elixir-num", elixirRow);
 
     const handRow = el("div", "hand-row", bottom);
     const nextWrap = el("div", "next-card", handRow);
