@@ -7,10 +7,10 @@ describe("cards", () => {
       "knight",
       "archers",
       "giant",
+      "fireball",
       "musketeer",
       "mini-pekka",
       "skeletons",
-      "fireball",
       "arrows",
     ]);
     for (const id of DECK) expect(CARDS[id]).toBeDefined();

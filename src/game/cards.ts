@@ -176,14 +176,15 @@ export const CARDS: Record<CardId, Card> = {
   },
 };
 
+/** Deck order doubles as the starting draw: the first 4 are the opening hand. */
 export const DECK: CardId[] = [
   "knight",
   "archers",
   "giant",
+  "fireball",
   "musketeer",
   "mini-pekka",
   "skeletons",
-  "fireball",
   "arrows",
 ];
 
