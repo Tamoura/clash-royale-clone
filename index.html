@@ -71,7 +71,9 @@
         cursor: crosshair;
       }
       #hud {
-        background: #141a26;
+        background: linear-gradient(180deg, #1d2a47 0%, #14203a 100%);
+        border-top: 3px solid #2e4470;
+        box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.06);
         padding: 8px 14px 12px;
       }
       .elixir-row {
@@ -116,8 +118,9 @@
       .next-art canvas {
         width: 40px;
         height: 40px;
-        background: #1f2937;
-        border-radius: 6px;
+        background: linear-gradient(180deg, #31435f, #1f2c44);
+        border: 2px solid #3c557e;
+        border-radius: 8px;
       }
       .next-label {
         color: #9ca3af;
@@ -125,45 +128,67 @@
       }
       button.card {
         position: relative;
-        width: 86px;
-        border: 2px solid transparent;
-        border-radius: 10px;
-        background: #273449;
+        width: 92px;
+        border: 3px solid #c98a2b;
+        border-radius: 12px;
+        background: linear-gradient(180deg, #4a6fa5 0%, #2c4a78 55%, #233c63 100%);
+        box-shadow:
+          inset 0 2px 0 rgba(255, 255, 255, 0.25),
+          0 3px 6px rgba(0, 0, 0, 0.45);
         color: #fff;
         cursor: pointer;
-        padding: 6px 4px 14px;
+        padding: 8px 4px 16px;
         transition: transform 0.08s ease;
       }
       button.card:hover {
-        transform: translateY(-3px);
+        transform: translateY(-4px);
       }
       button.card.selected {
-        background: #3b5bdb;
-        border-color: #93c5fd;
+        border-color: #ffe082;
+        box-shadow:
+          inset 0 2px 0 rgba(255, 255, 255, 0.25),
+          0 0 14px rgba(255, 224, 130, 0.8);
+        transform: translateY(-4px);
       }
       button.card.locked {
-        opacity: 0.45;
+        filter: grayscale(0.7) brightness(0.6);
       }
       button.card canvas {
-        width: 56px;
-        height: 56px;
+        width: 58px;
+        height: 58px;
+        filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.4));
       }
       .card-name {
         font-size: 11px;
         font-weight: bold;
+        text-shadow:
+          -1px -1px 0 #14213a, 1px -1px 0 #14213a,
+          -1px 1px 0 #14213a, 1px 1px 0 #14213a;
       }
       .card-cost {
         position: absolute;
-        left: 50%;
-        bottom: -10px;
-        transform: translateX(-50%);
-        background: #c026d3;
+        left: -7px;
+        top: -4px;
+        background: radial-gradient(circle at 35% 30%, #e879f9, #a21caf 70%);
+        border: 2px solid #f5d0fe;
         border-radius: 50%;
-        width: 20px;
-        height: 20px;
-        line-height: 20px;
-        font-size: 12px;
+        width: 24px;
+        height: 24px;
+        line-height: 22px;
+        font-size: 13px;
         font-weight: bold;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+      }
+      .card-cost::before {
+        /* droplet tip */
+        content: "";
+        position: absolute;
+        top: -7px;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 5px solid transparent;
+        border-bottom: 8px solid #c026d3;
       }
       #banner {
         position: absolute;
