@@ -259,43 +259,104 @@ function easeOutBack(t: number): number {
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 }
 
+/** Shared stone-brick texture for tower walls. */
+let brickTexture: THREE.CanvasTexture | null = null;
+
+function brickTex(): THREE.CanvasTexture {
+  if (!brickTexture) {
+    const c = document.createElement("canvas");
+    c.width = c.height = 64;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#c2b49a";
+    ctx.fillRect(0, 0, 64, 64);
+    ctx.strokeStyle = "rgba(90,75,55,0.5)";
+    ctx.lineWidth = 1.6;
+    for (let row = 0; row < 6; row++) {
+      const y = row * 11;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(64, y);
+      ctx.stroke();
+      const off = row % 2 ? 0 : 8;
+      for (let xCol = off; xCol < 64; xCol += 16) {
+        ctx.beginPath();
+        ctx.moveTo(xCol, y);
+        ctx.lineTo(xCol, y + 11);
+        ctx.stroke();
+      }
+    }
+    brickTexture = new THREE.CanvasTexture(c);
+    brickTexture.colorSpace = THREE.SRGBColorSpace;
+  }
+  return brickTexture;
+}
+
 function buildTowerMesh(e: Entity): EntityView {
   const root = new THREE.Group();
   const king = e.kind === "king-tower";
   const radius = king ? 1.15 : 0.85;
   const height = king ? 2.0 : 1.55;
-  const stone = king ? 0xa89884 : 0xb8a98f;
 
+  // Square stone keep with brick walls on a wider plinth.
+  const plinth = new THREE.Mesh(
+    new THREE.BoxGeometry(radius * 2.3, 0.3, radius * 2.3),
+    toon(0x9c8d74),
+  );
+  plinth.position.y = 0.15;
+  plinth.castShadow = true;
+  plinth.receiveShadow = true;
+  root.add(plinth);
+
+  const wallMat = new THREE.MeshToonMaterial({ map: brickTex() });
   const body = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius * 0.92, radius, height, 12),
-    toon(stone),
+    new THREE.BoxGeometry(radius * 2, height, radius * 2),
+    wallMat,
   );
   body.position.y = height / 2;
   body.castShadow = true;
   body.receiveShadow = true;
   root.add(body);
 
-  // Crenellations.
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2;
-    const m = new THREE.Mesh(
-      new THREE.BoxGeometry(0.28, 0.24, 0.18),
-      toon(king ? 0x8b7c69 : 0x9c8d74),
-    );
-    m.position.set(
-      Math.cos(a) * radius * 0.85,
-      height + 0.1,
-      Math.sin(a) * radius * 0.85,
-    );
-    m.lookAt(0, height + 0.1, 0);
-    m.castShadow = true;
-    root.add(m);
+  // Gold trim band under the battlements (CR's royal touch).
+  const trim = new THREE.Mesh(
+    new THREE.BoxGeometry(radius * 2.15, 0.14, radius * 2.15),
+    toon(0xf2c14e),
+  );
+  trim.position.y = height - 0.16;
+  trim.castShadow = true;
+  root.add(trim);
+
+  // Merlons along the four roof edges.
+  const merlon = toon(0x9c8d74);
+  for (const side of [-1, 1]) {
+    for (let i = -1; i <= 1; i++) {
+      const a = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.26, 0.18), merlon);
+      a.position.set(i * radius * 0.7, height + 0.1, side * radius * 0.92);
+      a.castShadow = true;
+      root.add(a);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.26, 0.3), merlon);
+      b.position.set(side * radius * 0.92, height + 0.1, i * radius * 0.7);
+      b.castShadow = true;
+      root.add(b);
+    }
   }
 
-  // Door facing the enemy.
+  // Door + team banner facing the enemy.
+  const facing = e.side === "player" ? -1 : 1;
   const door = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.1), toon(0x4a3826));
-  door.position.set(0, 0.35, (e.side === "player" ? -1 : 1) * radius * 0.97);
+  door.position.set(0, 0.35, facing * radius * 1.01);
   root.add(door);
+  const banner = new THREE.Mesh(
+    new THREE.BoxGeometry(0.44, 0.7, 0.06),
+    toon(SIDE_COLOR[e.side]),
+  );
+  banner.position.set(0, height - 0.62, facing * radius * 1.03);
+  root.add(banner);
+  const bannerTip = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.24, 4), toon(SIDE_COLOR[e.side]));
+  bannerTip.rotation.x = Math.PI;
+  bannerTip.rotation.y = Math.PI / 4;
+  bannerTip.position.set(0, height - 1.05, facing * radius * 1.03);
+  root.add(bannerTip);
 
   // Team flag, planted off-center so the tower crew has the roof.
   const pole = new THREE.Mesh(
