@@ -6,6 +6,7 @@ import {
   type BattleState,
   type Entity,
 } from "../game/battle";
+import { getCard, type CardId } from "../game/cards";
 import { moveGoal } from "../game/sim";
 import { animateTroop, buildTroop, type TroopRig } from "./characters3d";
 
@@ -60,6 +61,41 @@ function setHpFill(view: EntityView, frac: number, width: number): void {
   const f = Math.max(0, Math.min(1, frac));
   view.hpFill.scale.x = Math.max(0.001, f);
   view.hpFill.position.x = (-(1 - f) * width) / 2;
+}
+
+/** One shared sprite material per card+side; labels never change. */
+const nameMaterials = new Map<string, THREE.SpriteMaterial>();
+
+function nameSpriteMaterial(cardId: CardId, side: Side): THREE.SpriteMaterial {
+  const key = `${cardId}:${side}`;
+  const cached = nameMaterials.get(key);
+  if (cached) return cached;
+  const name = getCard(cardId).name;
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 64;
+  const ctx = c.getContext("2d")!;
+  let size = 34;
+  ctx.font = `bold ${size}px 'Trebuchet MS', sans-serif`;
+  while (ctx.measureText(name).width > 236 && size > 16) {
+    size -= 2;
+    ctx.font = `bold ${size}px 'Trebuchet MS', sans-serif`;
+  }
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = "rgba(10,14,22,0.9)";
+  ctx.strokeText(name, 128, 34);
+  ctx.fillStyle = side === "player" ? "#aecdff" : "#ffb9b3";
+  ctx.fillText(name, 128, 34);
+  const mat = new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(c),
+    transparent: true,
+    depthWrite: false,
+  });
+  nameMaterials.set(key, mat);
+  return mat;
 }
 
 function makeZzzSprite(): THREE.Sprite {
@@ -198,6 +234,12 @@ function buildTroopMesh(e: Entity): EntityView {
   const bar = makeHpBar(0.9, SIDE_COLOR[e.side], rig.height * scale + 0.25);
   bar.group.visible = false; // shown once damaged
   root.add(bar.group);
+
+  // Name floating above the character (above the HP bar).
+  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
+  label.scale.set(1.7, 0.42, 1);
+  label.position.y = rig.height * scale + 0.62;
+  root.add(label);
   return { root, rig, hpGroup: bar.group, hpFill: bar.fill };
 }
 
