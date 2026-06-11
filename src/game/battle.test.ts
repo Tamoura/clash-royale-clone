@@ -72,6 +72,17 @@ describe("deployment", () => {
     expect(before - tower.hp).toBeCloseTo(570 * 0.4);
   });
 
+  it("spells never hit the caster's own towers", () => {
+    const b = createBattle();
+    const ownKing = b.entities.find(
+      (e) => e.side === "enemy" && e.kind === "king-tower",
+    )!;
+    b.enemy.elixir = { amount: 10 };
+    b.enemy.hand = { ...b.enemy.hand, cards: ["fireball", "knight", "archers", "giant"] };
+    expect(deployCard(b, "enemy", "fireball", ownKing.x, ownKing.y)).toBe(true);
+    expect(ownKing.hp).toBe(ownKing.maxHp);
+  });
+
   it("spells do not hit your own units", () => {
     const b = createBattle();
     b.player.elixir = { amount: 10 };

@@ -8,7 +8,7 @@ import {
 } from "../game/battle";
 import { getCard, type CardId } from "../game/cards";
 import { moveGoal } from "../game/sim";
-import { animateTroop, buildTroop, type TroopRig } from "./characters3d";
+import { animateTroop, buildTroop, toon, type TroopRig } from "./characters3d";
 
 /** Arena tiles → world units: x centered, arena y becomes world z. */
 function toWorld(ax: number, ay: number): { x: number; z: number } {
@@ -17,9 +17,10 @@ function toWorld(ax: number, ay: number): { x: number; z: number } {
 
 const SIDE_COLOR: Record<Side, number> = { player: 0x3b82f6, enemy: 0xef4444 };
 
-function lambert(color: number): THREE.MeshLambertMaterial {
-  return new THREE.MeshLambertMaterial({ color });
-}
+const TROOP_DEATH_TIME = 0.5;
+const TOWER_DEATH_TIME = 0.8;
+const SPAWN_POP_TIME = 0.35;
+const FLASH_TIME = 0.12;
 
 interface EntityView {
   root: THREE.Group;
@@ -32,12 +33,35 @@ interface EntityView {
   barrel?: THREE.Group;
   /** Live numeric HP readout (towers). */
   hpText?: HpText;
+  /** Materials with an emissive channel, for damage flashes. */
+  flashMats: { mat: THREE.Material & { emissive: THREE.Color }; orig: number }[];
+  lastHp: number;
+  flashT: number;
+  spawnT: number;
+  isTroop: boolean;
+}
+
+interface DyingView {
+  view: EntityView;
+  t: number;
+  duration: number;
+  /** Corpses topple to a side; buildings sink. */
+  topple: number;
+  fadeMats: (THREE.Material & { opacity: number })[];
 }
 
 interface HpText {
   ctx: CanvasRenderingContext2D;
   tex: THREE.CanvasTexture;
   last: number;
+}
+
+interface EffectView {
+  obj: THREE.Object3D;
+  ttl: number;
+  ttl0: number;
+  delay: number;
+  update: (frac: number) => void;
 }
 
 function makeHpText(y: number): { sprite: THREE.Sprite; text: HpText } {
@@ -70,13 +94,6 @@ function updateHpText(t: HpText, hp: number): void {
   ctx.fillStyle = "#ffffff";
   ctx.fillText(String(value), 64, 26);
   t.tex.needsUpdate = true;
-}
-
-interface EffectView {
-  obj: THREE.Object3D;
-  ttl: number;
-  ttl0: number;
-  update: (frac: number) => void;
 }
 
 function makeHpBar(width: number, color: number, y: number): {
@@ -157,6 +174,29 @@ function makeZzzSprite(): THREE.Sprite {
   return sprite;
 }
 
+/** Materials with an emissive channel under this object, for flashes. */
+function collectFlashMats(root: THREE.Object3D): EntityView["flashMats"] {
+  const out: EntityView["flashMats"] = [];
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mat = mesh.material as THREE.Material & { emissive?: THREE.Color };
+    if (mat.emissive) {
+      out.push({
+        mat: mat as THREE.Material & { emissive: THREE.Color },
+        orig: mat.emissive.getHex(),
+      });
+    }
+  });
+  return out;
+}
+
+function easeOutBack(t: number): number {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+
 function buildTowerMesh(e: Entity): EntityView {
   const root = new THREE.Group();
   const king = e.kind === "king-tower";
@@ -166,7 +206,7 @@ function buildTowerMesh(e: Entity): EntityView {
 
   const body = new THREE.Mesh(
     new THREE.CylinderGeometry(radius * 0.92, radius, height, 12),
-    lambert(stone),
+    toon(stone),
   );
   body.position.y = height / 2;
   body.castShadow = true;
@@ -178,7 +218,7 @@ function buildTowerMesh(e: Entity): EntityView {
     const a = (i / 6) * Math.PI * 2;
     const m = new THREE.Mesh(
       new THREE.BoxGeometry(0.28, 0.24, 0.18),
-      lambert(king ? 0x8b7c69 : 0x9c8d74),
+      toon(king ? 0x8b7c69 : 0x9c8d74),
     );
     m.position.set(
       Math.cos(a) * radius * 0.85,
@@ -191,26 +231,20 @@ function buildTowerMesh(e: Entity): EntityView {
   }
 
   // Door facing the enemy.
-  const door = new THREE.Mesh(
-    new THREE.BoxGeometry(0.5, 0.7, 0.1),
-    lambert(0x4a3826),
-  );
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.1), toon(0x4a3826));
   door.position.set(0, 0.35, (e.side === "player" ? -1 : 1) * radius * 0.97);
   root.add(door);
 
   // Team flag.
   const pole = new THREE.Mesh(
     new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6),
-    lambert(0x5a4632),
+    toon(0x5a4632),
   );
   pole.position.set(0, height + 0.5, 0);
   root.add(pole);
   const flag = new THREE.Mesh(
     new THREE.PlaneGeometry(0.55, 0.32),
-    new THREE.MeshLambertMaterial({
-      color: SIDE_COLOR[e.side],
-      side: THREE.DoubleSide,
-    }),
+    new THREE.MeshToonMaterial({ color: SIDE_COLOR[e.side], side: THREE.DoubleSide }),
   );
   flag.position.set(0.3, height + 0.72, 0);
   root.add(flag);
@@ -218,20 +252,16 @@ function buildTowerMesh(e: Entity): EntityView {
   const view: Partial<EntityView> & { root: THREE.Group } = { root, rig: null };
 
   if (king) {
-    // Gold crown, hidden while the king sleeps.
     const crown = new THREE.Group();
     const band = new THREE.Mesh(
       new THREE.CylinderGeometry(0.42, 0.5, 0.26, 10),
-      lambert(0xfbbf24),
+      toon(0xfbbf24),
     );
     band.castShadow = true;
     crown.add(band);
     for (let i = 0; i < 5; i++) {
       const a = (i / 5) * Math.PI * 2;
-      const spike = new THREE.Mesh(
-        new THREE.ConeGeometry(0.08, 0.22, 6),
-        lambert(0xfbbf24),
-      );
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.22, 6), toon(0xfbbf24));
       spike.position.set(Math.cos(a) * 0.38, 0.22, Math.sin(a) * 0.38);
       crown.add(spike);
     }
@@ -251,11 +281,62 @@ function buildTowerMesh(e: Entity): EntityView {
   view.hpGroup = bar.group;
   view.hpFill = bar.fill;
 
-  // Live hit-point readout above the bar.
   const hpText = makeHpText(barY + 0.45);
   root.add(hpText.sprite);
   view.hpText = hpText.text;
+
+  view.flashMats = collectFlashMats(root);
+  view.lastHp = e.hp;
+  view.flashT = 0;
+  view.spawnT = SPAWN_POP_TIME; // towers don't pop in
+  view.isTroop = false;
   return view as EntityView;
+}
+
+function buildBuildingMesh(e: Entity): EntityView {
+  const root = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.78, 0.25, 10), toon(0x8d6e63));
+  base.position.y = 0.12;
+  base.castShadow = true;
+  base.receiveShadow = true;
+  root.add(base);
+  for (const side of [-1, 1]) {
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.1, 12), toon(0x4e342e));
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(side * 0.62, 0.22, 0);
+    wheel.castShadow = true;
+    root.add(wheel);
+  }
+  const barrel = new THREE.Group();
+  barrel.position.y = 0.5;
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.9, 12), toon(0x37474f));
+  tube.rotation.x = Math.PI / 2 - 0.18;
+  tube.position.z = 0.25;
+  tube.castShadow = true;
+  barrel.add(tube);
+  const breech = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), toon(0x263238));
+  breech.castShadow = true;
+  barrel.add(breech);
+  root.add(barrel);
+
+  const bar = makeHpBar(1.4, SIDE_COLOR[e.side], 1.15);
+  root.add(bar.group);
+  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
+  label.scale.set(1.7, 0.42, 1);
+  label.position.y = 1.5;
+  root.add(label);
+  return {
+    root,
+    rig: null,
+    hpGroup: bar.group,
+    hpFill: bar.fill,
+    barrel,
+    flashMats: collectFlashMats(root),
+    lastHp: e.hp,
+    flashT: 0,
+    spawnT: 0,
+    isTroop: false,
+  };
 }
 
 function buildTroopMesh(e: Entity): EntityView {
@@ -279,67 +360,26 @@ function buildTroopMesh(e: Entity): EntityView {
   ring.position.y = 0.02;
   root.add(ring);
 
-  // Flyers carry their bar/label up at hover height.
   const lift = (rig.hover ?? 0) + rig.height * scale;
   const bar = makeHpBar(0.9, SIDE_COLOR[e.side], lift + 0.25);
   bar.group.visible = false; // shown once damaged
   root.add(bar.group);
 
-  // Name floating above the character (above the HP bar).
   const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
   label.scale.set(1.7, 0.42, 1);
   label.position.y = lift + 0.62;
   root.add(label);
-  return { root, rig, hpGroup: bar.group, hpFill: bar.fill };
-}
-
-function buildBuildingMesh(e: Entity): EntityView {
-  const root = new THREE.Group();
-  // Wooden platform.
-  const base = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.7, 0.78, 0.25, 10),
-    lambert(0x8d6e63),
-  );
-  base.position.y = 0.12;
-  base.castShadow = true;
-  base.receiveShadow = true;
-  root.add(base);
-  for (const side of [-1, 1]) {
-    const wheel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.22, 0.22, 0.1, 12),
-      lambert(0x4e342e),
-    );
-    wheel.rotation.z = Math.PI / 2;
-    wheel.position.set(side * 0.62, 0.22, 0);
-    wheel.castShadow = true;
-    root.add(wheel);
-  }
-  // Barrel on a pivot so it can aim.
-  const barrel = new THREE.Group();
-  barrel.position.y = 0.5;
-  const tube = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.16, 0.2, 0.9, 12),
-    lambert(0x37474f),
-  );
-  tube.rotation.x = Math.PI / 2 - 0.18; // slight upward tilt
-  tube.position.z = 0.25;
-  tube.castShadow = true;
-  barrel.add(tube);
-  const breech = new THREE.Mesh(
-    new THREE.SphereGeometry(0.24, 10, 8),
-    lambert(0x263238),
-  );
-  breech.castShadow = true;
-  barrel.add(breech);
-  root.add(barrel);
-
-  const bar = makeHpBar(1.4, SIDE_COLOR[e.side], 1.15);
-  root.add(bar.group);
-  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
-  label.scale.set(1.7, 0.42, 1);
-  label.position.y = 1.5;
-  root.add(label);
-  return { root, rig: null, hpGroup: bar.group, hpFill: bar.fill, barrel };
+  return {
+    root,
+    rig,
+    hpGroup: bar.group,
+    hpFill: bar.fill,
+    flashMats: collectFlashMats(root),
+    lastHp: e.hp,
+    flashT: 0,
+    spawnT: 0,
+    isTroop: true,
+  };
 }
 
 export class Battle3D {
@@ -350,6 +390,7 @@ export class Battle3D {
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly views = new Map<number, EntityView>();
   private effects: EffectView[] = [];
+  private dying: DyingView[] = [];
   private readonly hoverDisc: THREE.Mesh;
   private readonly zonePlane: THREE.Mesh;
   private readonly container: HTMLElement;
@@ -374,11 +415,7 @@ export class Battle3D {
 
     this.hoverDisc = new THREE.Mesh(
       new THREE.CircleGeometry(0.6, 32),
-      new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.35,
-      }),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }),
     );
     this.hoverDisc.rotation.x = -Math.PI / 2;
     this.hoverDisc.position.y = 0.03;
@@ -387,11 +424,7 @@ export class Battle3D {
 
     this.zonePlane = new THREE.Mesh(
       new THREE.PlaneGeometry(ARENA_WIDTH, ARENA_HEIGHT / 2 - 1),
-      new THREE.MeshBasicMaterial({
-        color: 0x3b82f6,
-        transparent: true,
-        opacity: 0.13,
-      }),
+      new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.13 }),
     );
     this.zonePlane.rotation.x = -Math.PI / 2;
     this.zonePlane.position.set(0, 0.025, ARENA_HEIGHT / 4 + 0.5);
@@ -403,8 +436,8 @@ export class Battle3D {
   }
 
   private buildLights(): void {
-    this.scene.add(new THREE.HemisphereLight(0xdfeaff, 0x3a5f3c, 0.85));
-    const sun = new THREE.DirectionalLight(0xfff2d8, 1.6);
+    this.scene.add(new THREE.HemisphereLight(0xdfeaff, 0x3a5f3c, 0.9));
+    const sun = new THREE.DirectionalLight(0xfff2d8, 1.7);
     sun.position.set(10, 22, 8);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -421,7 +454,7 @@ export class Battle3D {
     const mkHalf = (color: number, zCenter: number): THREE.Mesh => {
       const m = new THREE.Mesh(
         new THREE.BoxGeometry(ARENA_WIDTH + 0.6, 0.4, halfD),
-        lambert(color),
+        toon(color),
       );
       m.position.set(0, -0.2, zCenter);
       m.receiveShadow = true;
@@ -429,15 +462,10 @@ export class Battle3D {
     };
     this.scene.add(mkHalf(0x4c9e4f, -halfD / 2), mkHalf(0x55a858, halfD / 2));
 
-    // Lane stripes for a bit of texture.
     for (const bx of BRIDGE_XS) {
       const stripe = new THREE.Mesh(
         new THREE.PlaneGeometry(1.6, ARENA_HEIGHT),
-        new THREE.MeshLambertMaterial({
-          color: 0xffffff,
-          transparent: true,
-          opacity: 0.05,
-        }),
+        new THREE.MeshToonMaterial({ color: 0xffffff, transparent: true, opacity: 0.05 }),
       );
       stripe.rotation.x = -Math.PI / 2;
       const w = toWorld(bx, ARENA_HEIGHT / 2);
@@ -446,30 +474,22 @@ export class Battle3D {
       this.scene.add(stripe);
     }
 
-    // River channel.
     const river = new THREE.Mesh(
       new THREE.BoxGeometry(ARENA_WIDTH + 0.6, 0.22, 2.2),
-      new THREE.MeshLambertMaterial({ color: 0x3b82c4 }),
+      toon(0x3b82c4),
     );
     river.position.set(0, -0.04, 0);
     this.scene.add(river);
 
-    // Bridges.
     for (const bx of BRIDGE_XS) {
       const w = toWorld(bx, RIVER_Y);
-      const deck = new THREE.Mesh(
-        new THREE.BoxGeometry(2.0, 0.18, 2.6),
-        lambert(0x9a6b3f),
-      );
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.18, 2.6), toon(0x9a6b3f));
       deck.position.set(w.x, 0.1, 0);
       deck.castShadow = true;
       deck.receiveShadow = true;
       this.scene.add(deck);
       for (const side of [-1, 1]) {
-        const rail = new THREE.Mesh(
-          new THREE.BoxGeometry(0.12, 0.3, 2.6),
-          lambert(0x6e4a28),
-        );
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.3, 2.6), toon(0x6e4a28));
         rail.position.set(w.x + side * 0.95, 0.3, 0);
         rail.castShadow = true;
         this.scene.add(rail);
@@ -524,22 +544,50 @@ export class Battle3D {
     obj: THREE.Object3D,
     ttl: number,
     update: (frac: number) => void,
+    delay = 0,
   ): void {
+    if (delay > 0) obj.visible = false;
     this.scene.add(obj);
-    this.effects.push({ obj, ttl, ttl0: ttl, update });
+    this.effects.push({ obj, ttl, ttl0: ttl, delay, update });
   }
 
-  private blast(ax: number, ay: number, radius: number, color: number): void {
+  private blast(ax: number, ay: number, radius: number, color: number, delay = 0): void {
     const w = toWorld(ax, ay);
     const ball = new THREE.Mesh(
       new THREE.SphereGeometry(1, 16, 12),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55 }),
     );
     ball.position.set(w.x, 0.4, w.z);
-    this.addEffect(ball, 0.5, (frac) => {
-      ball.scale.setScalar(0.3 + (1 - frac) * radius);
-      (ball.material as THREE.MeshBasicMaterial).opacity = 0.55 * frac;
-    });
+    this.addEffect(
+      ball,
+      0.5,
+      (frac) => {
+        ball.scale.setScalar(0.3 + (1 - frac) * radius);
+        (ball.material as THREE.MeshBasicMaterial).opacity = 0.55 * frac;
+      },
+      delay,
+    );
+    // Expanding ground ring for readability.
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.85, 1, 32),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide,
+      }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(w.x, 0.04, w.z);
+    this.addEffect(
+      ring,
+      0.45,
+      (frac) => {
+        ring.scale.setScalar(0.3 + (1 - frac) * radius * 1.15);
+        (ring.material as THREE.MeshBasicMaterial).opacity = 0.7 * frac;
+      },
+      delay,
+    );
   }
 
   private puff(ax: number, ay: number, color: number, size = 0.5): void {
@@ -563,45 +611,137 @@ export class Battle3D {
     });
   }
 
-  /** A small projectile streaking from attacker to target. */
+  /** A small arrow-shaped missile oriented along its flight path. */
+  private makeArrow(color: number, length = 0.5): THREE.Group {
+    const g = new THREE.Group();
+    const shaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.02, 0.02, length, 6),
+      new THREE.MeshBasicMaterial({ color }),
+    );
+    shaft.rotation.x = Math.PI / 2;
+    g.add(shaft);
+    const tip = new THREE.Mesh(
+      new THREE.ConeGeometry(0.05, 0.12, 6),
+      new THREE.MeshBasicMaterial({ color: 0x9aa3ad }),
+    );
+    tip.rotation.x = Math.PI / 2;
+    tip.position.z = length / 2;
+    g.add(tip);
+    return g;
+  }
+
+  /** A projectile streaking from attacker to target. */
   private projectile(ev: Extract<BattleEvent, { type: "attack" }>): void {
     const from = toWorld(ev.x, ev.y);
     const to = toWorld(ev.targetX, ev.targetY);
-    const style: { color: number; size: number; glow?: boolean } =
-      ev.cardId === "wizard"
-        ? { color: 0xff8c1a, size: 0.16, glow: true }
-        : ev.cardId === "baby-dragon"
-          ? { color: 0x8bc34a, size: 0.15, glow: true }
-          : ev.cardId === "cannon"
-            ? { color: 0x263238, size: 0.14 }
-            : ev.kind !== "troop"
-              ? { color: 0xffe082, size: 0.1 }
-              : { color: 0xd7ccc8, size: 0.07 };
-    const mat = style.glow
-      ? new THREE.MeshStandardMaterial({
-          color: style.color,
-          emissive: style.color,
-          emissiveIntensity: 1.5,
-        })
-      : new THREE.MeshBasicMaterial({ color: style.color });
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(style.size, 8, 6), mat);
     const y0 = ev.kind === "troop" ? 0.9 : 1.6;
-    ball.position.set(from.x, y0, from.z);
-    this.addEffect(ball, 0.16, (frac) => {
+    const y1 = 0.7;
+
+    const isArrow = ev.cardId === "archers" || ev.kind !== "troop";
+    let obj: THREE.Object3D;
+    let arc = 0.4;
+    if (isArrow) {
+      obj = this.makeArrow(ev.kind !== "troop" ? 0xffe082 : 0xd7ccc8);
+      arc = 0.8;
+    } else {
+      const style =
+        ev.cardId === "wizard"
+          ? { color: 0xff8c1a, size: 0.16, glow: true }
+          : ev.cardId === "baby-dragon"
+            ? { color: 0x8bc34a, size: 0.15, glow: true }
+            : ev.cardId === "cannon"
+              ? { color: 0x263238, size: 0.15 }
+              : { color: 0x37474f, size: 0.08 }; // musket ball
+      const mat = style.glow
+        ? new THREE.MeshStandardMaterial({
+            color: style.color,
+            emissive: style.color,
+            emissiveIntensity: 1.5,
+          })
+        : new THREE.MeshBasicMaterial({ color: style.color });
+      obj = new THREE.Mesh(new THREE.SphereGeometry(style.size, 8, 6), mat);
+      arc = ev.cardId === "cannon" ? 0.8 : 0.25;
+    }
+
+    obj.position.set(from.x, y0, from.z);
+    obj.lookAt(to.x, y1, to.z);
+    const duration = isArrow ? 0.22 : 0.16;
+    this.addEffect(obj, duration, (frac) => {
       const t = 1 - frac;
-      ball.position.set(
+      obj.position.set(
         from.x + (to.x - from.x) * t,
-        y0 + (0.7 - y0) * t,
+        y0 + (y1 - y0) * t + Math.sin(t * Math.PI) * arc,
         from.z + (to.z - from.z) * t,
       );
     });
+  }
+
+  /** Fireball: a flaming meteor crashes down, then explodes. */
+  private fireballStrike(ax: number, ay: number): void {
+    const w = toWorld(ax, ay);
+    const start = { x: w.x + 1.5, y: 8, z: w.z - 4 };
+    const meteor = new THREE.Group();
+    const core = new THREE.Mesh(
+      new THREE.SphereGeometry(0.4, 12, 10),
+      new THREE.MeshStandardMaterial({
+        color: 0xffb300,
+        emissive: 0xff6a00,
+        emissiveIntensity: 2,
+      }),
+    );
+    meteor.add(core);
+    const tail = new THREE.Mesh(
+      new THREE.ConeGeometry(0.3, 1.4, 10),
+      new THREE.MeshBasicMaterial({ color: 0xff8c1a, transparent: true, opacity: 0.7 }),
+    );
+    tail.position.set(0.25, 0.8, -0.7);
+    tail.rotation.x = -0.5;
+    meteor.add(tail);
+    const FALL = 0.32;
+    this.addEffect(meteor, FALL, (frac) => {
+      const t = 1 - frac;
+      meteor.position.set(
+        start.x + (w.x - start.x) * t,
+        start.y + (0.3 - start.y) * t,
+        start.z + (w.z - start.z) * t,
+      );
+    });
+    this.blast(ax, ay, 2.5, 0xff7814, FALL);
+  }
+
+  /** Arrows: a volley rains down across the radius, then a ring pop. */
+  private arrowVolley(ax: number, ay: number, radius: number): void {
+    for (let i = 0; i < 10; i++) {
+      const angle = (i / 10) * Math.PI * 2 + (i % 3) * 0.4;
+      const r = radius * (0.25 + 0.7 * ((i * 37) % 10) * 0.1);
+      const ox = Math.cos(angle) * r;
+      const oz = Math.sin(angle) * r;
+      const w = toWorld(ax, ay);
+      const arrow = this.makeArrow(0xd7ccc8, 0.45);
+      const x = w.x + ox;
+      const z = w.z + oz;
+      const y0 = 6 + (i % 4) * 0.5;
+      arrow.position.set(x + 0.6, y0, z - 1.2);
+      arrow.lookAt(x, 0.05, z);
+      this.addEffect(
+        arrow,
+        0.3,
+        (frac) => {
+          const t = 1 - frac;
+          arrow.position.set(x + 0.6 * (1 - t), y0 * (1 - t) + 0.05 * t, z - 1.2 * (1 - t));
+        },
+        i * 0.035,
+      );
+    }
+    this.blast(ax, ay, radius, 0xdce6ff, 0.32);
   }
 
   /** Visual reactions to gameplay events. */
   onEvent(ev: BattleEvent): void {
     switch (ev.type) {
       case "spell":
-        this.blast(ev.x, ev.y, ev.cardId === "fireball" ? 2.5 : 4, ev.cardId === "fireball" ? 0xff7814 : 0xdce6ff);
+        if (ev.cardId === "fireball") this.fireballStrike(ev.x, ev.y);
+        else this.arrowVolley(ev.x, ev.y, 4);
         break;
       case "attack":
         if (ev.ranged) this.projectile(ev);
@@ -615,8 +755,34 @@ export class Battle3D {
     }
   }
 
+  /** Start the topple/sink-and-fade animation for a removed entity. */
+  private beginDeath(view: EntityView): void {
+    const fadeMats: DyingView["fadeMats"] = [];
+    view.root.traverse((o) => {
+      const sprite = o as THREE.Sprite;
+      if (sprite.isSprite) {
+        // Label materials are shared between units — hide, don't fade.
+        sprite.visible = false;
+        return;
+      }
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh) {
+        const mat = mesh.material as THREE.Material & { opacity: number };
+        mat.transparent = true;
+        fadeMats.push(mat);
+      }
+    });
+    this.dying.push({
+      view,
+      t: 0,
+      duration: view.isTroop ? TROOP_DEATH_TIME : TOWER_DEATH_TIME,
+      topple: view.isTroop ? (view.root.position.x > 0 ? 1.35 : -1.35) : 0.12,
+      fadeMats,
+    });
+  }
+
   /** Create/update/remove meshes to mirror the battle state. */
-  sync(state: BattleState): void {
+  sync(state: BattleState, dt: number): void {
     const seen = new Set<number>();
     for (const e of state.entities) {
       seen.add(e.id);
@@ -635,7 +801,26 @@ export class Battle3D {
       view.root.position.x = w.x;
       view.root.position.z = w.z;
 
-      // Aim the cannon barrel at its target.
+      // Spawn pop-in.
+      if (view.spawnT < SPAWN_POP_TIME) {
+        view.spawnT += dt;
+        const k = easeOutBack(Math.min(1, view.spawnT / SPAWN_POP_TIME));
+        view.root.scale.setScalar(Math.max(0.05, k));
+      } else if (view.root.scale.x !== 1) {
+        view.root.scale.setScalar(1);
+      }
+
+      // Damage flash.
+      if (e.hp < view.lastHp - 0.5) view.flashT = FLASH_TIME;
+      view.lastHp = e.hp;
+      if (view.flashT > 0) {
+        view.flashT = Math.max(0, view.flashT - dt);
+        const k = view.flashT / FLASH_TIME;
+        for (const f of view.flashMats) f.mat.emissive.setRGB(k, k, k);
+      } else if (view.flashMats.length > 0 && view.flashT === 0) {
+        for (const f of view.flashMats) f.mat.emissive.setHex(f.orig);
+      }
+
       if (view.barrel) {
         const target = state.entities.find((o) => o.id === e.targetId);
         if (target) {
@@ -660,34 +845,47 @@ export class Battle3D {
         const swing =
           e.cooldown > e.hitSpeed - 0.3 ? (e.cooldown - (e.hitSpeed - 0.3)) / 0.3 : 0;
         animateTroop(view.rig, {
-          moving: !inRange,
+          moving: !inRange && e.deployTimer <= 0,
           swing,
           time: state.time,
           phase: e.id * 1.7,
         });
-        // Face the attack target, or the spot being walked toward
-        // (which may be a bridge waypoint, not the target itself).
+        // Face the attack target, or the spot being walked toward —
+        // turning smoothly rather than snapping.
+        let targetYaw: number | null = null;
         if (target) {
           const goal = inRange ? target : moveGoal(e, target);
           const gw = toWorld(goal.x, goal.y);
           if (Math.hypot(gw.x - w.x, gw.z - w.z) > 1e-3) {
-            view.root.rotation.y = Math.atan2(gw.x - w.x, gw.z - w.z);
+            targetYaw = Math.atan2(gw.x - w.x, gw.z - w.z);
           }
         } else {
-          view.root.rotation.y = e.side === "player" ? Math.PI : 0;
+          targetYaw = e.side === "player" ? Math.PI : 0;
+        }
+        if (targetYaw !== null) {
+          const cur = view.root.rotation.y;
+          let delta = targetYaw - cur;
+          while (delta > Math.PI) delta -= Math.PI * 2;
+          while (delta < -Math.PI) delta += Math.PI * 2;
+          view.root.rotation.y = cur + delta * Math.min(1, dt * 10);
         }
       }
     }
     for (const [id, view] of this.views) {
       if (!seen.has(id)) {
-        this.scene.remove(view.root);
         this.views.delete(id);
+        this.beginDeath(view);
       }
     }
   }
 
   render(dt: number): void {
     this.effects = this.effects.filter((f) => {
+      if (f.delay > 0) {
+        f.delay -= dt;
+        if (f.delay > 0) return true;
+        f.obj.visible = true;
+      }
       f.ttl -= dt;
       if (f.ttl <= 0) {
         this.scene.remove(f.obj);
@@ -696,6 +894,21 @@ export class Battle3D {
       f.update(f.ttl / f.ttl0);
       return true;
     });
+
+    this.dying = this.dying.filter((d) => {
+      d.t += dt;
+      const f = Math.min(1, d.t / d.duration);
+      if (f >= 1) {
+        this.scene.remove(d.view.root);
+        return false;
+      }
+      const ease = f * f;
+      d.view.root.rotation.z = d.topple * ease;
+      d.view.root.position.y = d.view.isTroop ? -0.3 * ease : -1.6 * ease;
+      for (const mat of d.fadeMats) mat.opacity = 1 - f;
+      return true;
+    });
+
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -705,5 +918,7 @@ export class Battle3D {
     this.views.clear();
     for (const f of this.effects) this.scene.remove(f.obj);
     this.effects = [];
+    for (const d of this.dying) this.scene.remove(d.view.root);
+    this.dying = [];
   }
 }

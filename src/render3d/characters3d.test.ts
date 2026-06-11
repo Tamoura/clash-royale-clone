@@ -23,6 +23,23 @@ describe("3D troop rigs", () => {
     }
   });
 
+  it("ground troops have jointed legs that swing while walking", () => {
+    const rig = buildTroop("knight");
+    expect(rig.legs?.length).toBe(2);
+    animateTroop(rig, { moving: true, swing: 0, time: 0.15, phase: 0 });
+    const [left, right] = rig.legs!;
+    expect(left.rotation.x).not.toBe(0);
+    // Legs swing in opposite directions.
+    expect(Math.sign(left.rotation.x)).toBe(-Math.sign(right.rotation.x));
+    animateTroop(rig, { moving: false, swing: 0, time: 0.15, phase: 0 });
+    expect(left.rotation.x).toBe(0);
+  });
+
+  it("the prince's pony has four galloping legs", () => {
+    const rig = buildTroop("prince");
+    expect(rig.legs?.length).toBe(4);
+  });
+
   it("rejects spell cards", () => {
     expect(() => buildTroop("fireball")).toThrow();
   });

@@ -100,7 +100,7 @@ function frame(now: number): void {
     audio.onEvent(ev);
     scene.onEvent(ev);
   }
-  scene.sync(battle);
+  scene.sync(battle, dt);
   scene.render(dt);
   hud.update(battle);
   requestAnimationFrame(frame);
