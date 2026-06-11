@@ -1,81 +1,75 @@
+import { SoundEngine } from "./audio/sound";
 import { createBattle, deployCard, type BattleState } from "./game/battle";
 import { createBot, tickBot, type BotState } from "./game/bot";
+import { getCard, type CardId } from "./game/cards";
 import { tick } from "./game/sim";
-import {
-  CANVAS_H,
-  CANVAS_W,
-  canvasToArena,
-  cardRects,
-  inArenaPixels,
-  pointInRect,
-} from "./render/layout";
-import { render, type UiState } from "./render/renderer";
+import { Hud } from "./render3d/hud";
+import { Battle3D } from "./render3d/scene3d";
 
-const canvas = document.getElementById("game") as HTMLCanvasElement;
-canvas.width = CANVAS_W;
-canvas.height = CANVAS_H;
-// Fit tall screens without scrolling.
-canvas.style.height = "min(96vh, " + CANVAS_H + "px)";
-canvas.style.width = "auto";
-const ctx = canvas.getContext("2d")!;
+const stage = document.getElementById("stage")!;
+const topbar = document.getElementById("topbar")!;
+const hudRoot = document.getElementById("hud")!;
+const overlay = document.getElementById("overlay")!;
 
 let battle: BattleState = createBattle();
 let bot: BotState = createBot(Date.now() & 0xffff);
-const ui: UiState = { selectedCard: null, hover: null };
+let selectedCard: CardId | null = null;
+
+const scene = new Battle3D(stage);
+const audio = new SoundEngine();
+
+function selectCard(id: CardId | null): void {
+  selectedCard = id;
+  hud.setSelected(id);
+  scene.setZoneVisible(id !== null && getCard(id).kind === "troop");
+}
 
 function restart(): void {
   battle = createBattle();
   bot = createBot(Date.now() & 0xffff);
-  ui.selectedCard = null;
-  ui.hover = null;
+  selectCard(null);
+  scene.reset();
+  audio.restartMusic();
 }
 
-function canvasPoint(ev: MouseEvent): { x: number; y: number } {
-  const rect = canvas.getBoundingClientRect();
-  return {
-    x: ((ev.clientX - rect.left) / rect.width) * CANVAS_W,
-    y: ((ev.clientY - rect.top) / rect.height) * CANVAS_H,
-  };
-}
+const hud = new Hud(topbar, hudRoot, overlay, {
+  onSelectCard: selectCard,
+  onRestart: restart,
+  onToggleSound: () => {
+    audio.setMuted(!audio.muted);
+    return audio.muted;
+  },
+});
 
-canvas.addEventListener("click", (ev) => {
-  const p = canvasPoint(ev);
-  if (battle.result) {
-    restart();
+// Audio can only start from a user gesture.
+window.addEventListener("pointerdown", () => audio.resume(), { once: false });
+
+scene.renderer.domElement.addEventListener("click", (ev) => {
+  if (battle.result || !selectedCard) return;
+  const pos = scene.pick(ev.clientX, ev.clientY);
+  if (pos && deployCard(battle, "player", selectedCard, pos.x, pos.y)) {
+    selectCard(null);
+    scene.setHover(null, 0, false);
+  }
+});
+
+scene.renderer.domElement.addEventListener("pointermove", (ev) => {
+  if (!selectedCard) {
+    scene.setHover(null, 0, false);
     return;
   }
-  // Card selection.
-  const rects = cardRects();
-  for (let i = 0; i < rects.length; i++) {
-    if (pointInRect(p.x, p.y, rects[i])) {
-      const id = battle.player.hand.cards[i];
-      ui.selectedCard = ui.selectedCard === id ? null : id;
-      return;
-    }
-  }
-  // Deployment.
-  if (ui.selectedCard && inArenaPixels(p.y)) {
-    const a = canvasToArena(p.x, p.y);
-    if (deployCard(battle, "player", ui.selectedCard, a.x, a.y)) {
-      ui.selectedCard = null;
-    }
-  }
+  const card = getCard(selectedCard);
+  scene.setHover(
+    scene.pick(ev.clientX, ev.clientY),
+    card.kind === "spell" ? card.radius : 0.6,
+    card.kind === "spell",
+  );
 });
 
-canvas.addEventListener("mousemove", (ev) => {
-  const p = canvasPoint(ev);
-  ui.hover = inArenaPixels(p.y) ? canvasToArena(p.x, p.y) : null;
-});
-
-canvas.addEventListener("mouseleave", () => {
-  ui.hover = null;
-});
-
-// Number keys select cards, Escape deselects.
 window.addEventListener("keydown", (ev) => {
   const n = Number(ev.key);
-  if (n >= 1 && n <= 4) ui.selectedCard = battle.player.hand.cards[n - 1];
-  if (ev.key === "Escape") ui.selectedCard = null;
+  if (n >= 1 && n <= 4) selectCard(battle.player.hand.cards[n - 1]);
+  if (ev.key === "Escape") selectCard(null);
 });
 
 const SIM_DT = 1 / 30;
@@ -83,14 +77,21 @@ let last = performance.now();
 let acc = 0;
 
 function frame(now: number): void {
-  acc += Math.min(0.25, (now - last) / 1000);
+  const dt = Math.min(0.25, (now - last) / 1000);
+  acc += dt;
   last = now;
   while (acc >= SIM_DT) {
     tick(battle, SIM_DT);
     tickBot(battle, bot, SIM_DT);
     acc -= SIM_DT;
   }
-  render(ctx, battle, ui);
+  for (const ev of battle.events.splice(0)) {
+    audio.onEvent(ev);
+    scene.onEvent(ev);
+  }
+  scene.sync(battle);
+  scene.render(dt);
+  hud.update(battle);
   requestAnimationFrame(frame);
 }
 
