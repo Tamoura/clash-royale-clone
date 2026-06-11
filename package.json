@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --port 3100 --strictPort",
+    "dev": "vite --port 3101 --strictPort",
     "build": "tsc && vite build",
-    "preview": "vite preview --port 3100 --strictPort",
+    "preview": "vite preview --port 3101 --strictPort",
     "test": "vitest run",
     "test:watch": "vitest"
   },

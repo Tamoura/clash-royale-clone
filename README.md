@@ -18,7 +18,7 @@ two-lane tower-defense battle. All art is original placeholder rendering
 
 ## Stack
 
-- TypeScript, Vite (dev server on port **3100**), Vitest for tests.
+- TypeScript, Vite (dev server on port **3101**), Vitest for tests.
 - Game simulation is pure, deterministic, and fully unit-tested
   (`src/game/`); the canvas renderer and input layer (`src/render/`,
   `src/main.ts`) are a thin shell over it.
@@ -27,7 +27,7 @@ two-lane tower-defense battle. All art is original placeholder rendering
 
 ```sh
 npm install
-npm run dev      # http://localhost:3100
+npm run dev      # http://localhost:3101
 npm test         # run the simulation test suite
 npm run build    # typecheck + production build
 ```
