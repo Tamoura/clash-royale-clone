@@ -882,11 +882,36 @@ const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   pekka: buildPekka,
 };
 
+/**
+ * Add inverted-hull silhouette outlines to a rig's larger meshes.
+ * One black material per rig so death-fade can't bleed across units.
+ */
+export function outlineRig(group: THREE.Group): void {
+  const mat = new THREE.MeshBasicMaterial({ color: 0x141925, side: THREE.BackSide });
+  const targets: THREE.Mesh[] = [];
+  group.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh || mesh.name === "outline") return;
+    mesh.geometry.computeBoundingSphere();
+    const r = mesh.geometry.boundingSphere?.radius ?? 0;
+    const s = Math.max(mesh.scale.x, mesh.scale.y, mesh.scale.z);
+    if (r * s < 0.14) return; // tiny details read better unlined
+    targets.push(mesh);
+  });
+  for (const mesh of targets) {
+    const hull = new THREE.Mesh(mesh.geometry, mat);
+    hull.name = "outline";
+    hull.scale.setScalar(1.06);
+    mesh.add(hull);
+  }
+}
+
 export function buildTroop(cardId: CardId): TroopRig {
   const builder = BUILDERS[cardId];
   if (!builder) throw new Error(`No 3D builder for ${cardId}`);
   const rig = builder();
   if (rig.arm) rig.arm.rotation.x = rig.armRest;
+  outlineRig(rig.group);
   return rig;
 }
 

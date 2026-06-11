@@ -118,3 +118,27 @@ describe("idle personality", () => {
     expect(buildTroop("baby-dragon").extras).toBeDefined();
   });
 });
+
+describe("cel outlines", () => {
+  it("every troop rig carries inverted-hull outline meshes", () => {
+    for (const id of ["knight", "witch", "pekka"] as const) {
+      let outlines = 0;
+      buildTroop(id).group.traverse((o) => {
+        if (o.name === "outline") outlines++;
+      });
+      expect(outlines).toBeGreaterThan(3);
+    }
+  });
+
+  it("outlines are skipped for tiny detail meshes", () => {
+    const rig = buildTroop("skeletons");
+    let total = 0;
+    let outlines = 0;
+    rig.group.traverse((o) => {
+      if ((o as { isMesh?: boolean }).isMesh) total++;
+      if (o.name === "outline") outlines++;
+    });
+    expect(outlines).toBeGreaterThan(0);
+    expect(outlines).toBeLessThan(total - outlines); // not 1:1
+  });
+});

@@ -18,6 +18,7 @@ import {
   buildTowerKing,
   buildTowerPrincess,
   buildTroop,
+  outlineRig,
   toon,
   type TroopRig,
 } from "./characters3d";
@@ -316,6 +317,7 @@ function buildTowerMesh(e: Entity): EntityView {
   // sits inside a mount group because animateTroop owns the rig's
   // own transform (hop/breath/lean).
   const defender = king ? buildTowerKing() : buildTowerPrincess();
+  outlineRig(defender.group);
   defender.group.scale.setScalar(king ? 0.85 : 0.8);
   if (defender.arm) defender.arm.rotation.x = defender.armRest;
   const mount = new THREE.Group();
