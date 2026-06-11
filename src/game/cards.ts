@@ -6,7 +6,13 @@ export type CardId =
   | "mini-pekka"
   | "skeletons"
   | "fireball"
-  | "arrows";
+  | "arrows"
+  | "wizard"
+  | "baby-dragon"
+  | "gargoyles"
+  | "valkyrie"
+  | "prince"
+  | "cannon";
 
 export type Speed = "slow" | "medium" | "fast";
 
@@ -28,6 +34,14 @@ export interface UnitStats {
   sightRange: number;
   speed: Speed;
   targetsBuildingsOnly: boolean;
+  /** Can this unit hit flying targets? */
+  targetsAir: boolean;
+  /** Does this unit fly (straight paths, only hit by air-targeters)? */
+  flying: boolean;
+  /** Area damage around the struck target; 0 = single target. */
+  splashRadius: number;
+  /** Tiles of uninterrupted approach to charge (0 = no charge). */
+  chargeDistance: number;
   /** Visual + collision radius in tiles. */
   radius: number;
 }
@@ -42,6 +56,16 @@ export interface TroopCard {
   unit: UnitStats;
 }
 
+export interface BuildingCard {
+  id: CardId;
+  name: string;
+  kind: "building";
+  cost: number;
+  /** Seconds before the building expires on its own. */
+  lifetime: number;
+  unit: UnitStats;
+}
+
 export interface SpellCard {
   id: CardId;
   name: string;
@@ -51,9 +75,30 @@ export interface SpellCard {
   radius: number;
 }
 
-export type Card = TroopCard | SpellCard;
+export type Card = TroopCard | BuildingCard | SpellCard;
 
 const MELEE = 0.8;
+
+interface UnitOverrides extends Partial<UnitStats> {
+  maxHp: number;
+  damage: number;
+  hitSpeed: number;
+  attackRange: number;
+  speed: Speed;
+}
+
+function unit(stats: UnitOverrides): UnitStats {
+  return {
+    sightRange: 5.5,
+    targetsBuildingsOnly: false,
+    targetsAir: false,
+    flying: false,
+    splashRadius: 0,
+    chargeDistance: 0,
+    radius: 0.5,
+    ...stats,
+  };
+}
 
 export const CARDS: Record<CardId, Card> = {
   knight: {
@@ -62,16 +107,13 @@ export const CARDS: Record<CardId, Card> = {
     kind: "troop",
     cost: 3,
     count: 1,
-    unit: {
+    unit: unit({
       maxHp: 1400,
       damage: 160,
       hitSpeed: 1.2,
       attackRange: MELEE,
-      sightRange: 5.5,
       speed: "medium",
-      targetsBuildingsOnly: false,
-      radius: 0.5,
-    },
+    }),
   },
   archers: {
     id: "archers",
@@ -79,16 +121,15 @@ export const CARDS: Record<CardId, Card> = {
     kind: "troop",
     cost: 3,
     count: 2,
-    unit: {
+    unit: unit({
       maxHp: 250,
       damage: 90,
       hitSpeed: 1.2,
       attackRange: 5,
-      sightRange: 5.5,
       speed: "medium",
-      targetsBuildingsOnly: false,
+      targetsAir: true,
       radius: 0.4,
-    },
+    }),
   },
   giant: {
     id: "giant",
@@ -96,7 +137,7 @@ export const CARDS: Record<CardId, Card> = {
     kind: "troop",
     cost: 5,
     count: 1,
-    unit: {
+    unit: unit({
       maxHp: 3300,
       damage: 210,
       hitSpeed: 1.5,
@@ -105,7 +146,7 @@ export const CARDS: Record<CardId, Card> = {
       speed: "slow",
       targetsBuildingsOnly: true,
       radius: 0.75,
-    },
+    }),
   },
   musketeer: {
     id: "musketeer",
@@ -113,16 +154,15 @@ export const CARDS: Record<CardId, Card> = {
     kind: "troop",
     cost: 4,
     count: 1,
-    unit: {
+    unit: unit({
       maxHp: 600,
       damage: 180,
       hitSpeed: 1.1,
       attackRange: 6,
       sightRange: 6,
       speed: "medium",
-      targetsBuildingsOnly: false,
-      radius: 0.5,
-    },
+      targetsAir: true,
+    }),
   },
   "mini-pekka": {
     id: "mini-pekka",
@@ -130,16 +170,13 @@ export const CARDS: Record<CardId, Card> = {
     kind: "troop",
     cost: 4,
     count: 1,
-    unit: {
+    unit: unit({
       maxHp: 1100,
       damage: 600,
       hitSpeed: 1.8,
       attackRange: MELEE,
-      sightRange: 5.5,
       speed: "fast",
-      targetsBuildingsOnly: false,
-      radius: 0.5,
-    },
+    }),
   },
   skeletons: {
     id: "skeletons",
@@ -147,16 +184,112 @@ export const CARDS: Record<CardId, Card> = {
     kind: "troop",
     cost: 1,
     count: 3,
-    unit: {
+    unit: unit({
       maxHp: 80,
       damage: 80,
       hitSpeed: 1.0,
       attackRange: MELEE,
-      sightRange: 5.5,
       speed: "fast",
-      targetsBuildingsOnly: false,
       radius: 0.3,
-    },
+    }),
+  },
+  wizard: {
+    id: "wizard",
+    name: "Wizard",
+    kind: "troop",
+    cost: 5,
+    count: 1,
+    unit: unit({
+      maxHp: 600,
+      damage: 230,
+      hitSpeed: 1.4,
+      attackRange: 5.5,
+      sightRange: 6,
+      speed: "medium",
+      targetsAir: true,
+      splashRadius: 1.2,
+    }),
+  },
+  "baby-dragon": {
+    id: "baby-dragon",
+    name: "Baby Dragon",
+    kind: "troop",
+    cost: 4,
+    count: 1,
+    unit: unit({
+      maxHp: 1050,
+      damage: 130,
+      hitSpeed: 1.5,
+      attackRange: 3.5,
+      speed: "fast",
+      targetsAir: true,
+      flying: true,
+      splashRadius: 1.0,
+      radius: 0.6,
+    }),
+  },
+  gargoyles: {
+    id: "gargoyles",
+    name: "Gargoyles",
+    kind: "troop",
+    cost: 3,
+    count: 3,
+    unit: unit({
+      maxHp: 190,
+      damage: 85,
+      hitSpeed: 1.0,
+      attackRange: MELEE,
+      speed: "fast",
+      targetsAir: true,
+      flying: true,
+      radius: 0.35,
+    }),
+  },
+  valkyrie: {
+    id: "valkyrie",
+    name: "Valkyrie",
+    kind: "troop",
+    cost: 4,
+    count: 1,
+    unit: unit({
+      maxHp: 1500,
+      damage: 220,
+      hitSpeed: 1.5,
+      attackRange: MELEE,
+      speed: "medium",
+      splashRadius: 1.2,
+    }),
+  },
+  prince: {
+    id: "prince",
+    name: "Prince",
+    kind: "troop",
+    cost: 5,
+    count: 1,
+    unit: unit({
+      maxHp: 1500,
+      damage: 325,
+      hitSpeed: 1.4,
+      attackRange: MELEE,
+      speed: "medium",
+      chargeDistance: 2.5,
+      radius: 0.6,
+    }),
+  },
+  cannon: {
+    id: "cannon",
+    name: "Cannon",
+    kind: "building",
+    cost: 3,
+    lifetime: 30,
+    unit: unit({
+      maxHp: 800,
+      damage: 130,
+      hitSpeed: 0.9,
+      attackRange: 5.5,
+      speed: "slow", // unused: buildings don't move
+      radius: 0.6,
+    }),
   },
   fireball: {
     id: "fireball",
@@ -184,7 +317,13 @@ export const DECK: CardId[] = [
   "fireball",
   "musketeer",
   "mini-pekka",
+  "baby-dragon",
+  "valkyrie",
   "skeletons",
+  "wizard",
+  "prince",
+  "cannon",
+  "gargoyles",
   "arrows",
 ];
 

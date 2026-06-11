@@ -270,6 +270,182 @@ function drawSkeleton(ctx: Ctx, anim: Anim): void {
   box(ctx, -1.6, -2.4, 3.2, 1.6, 0.6, "#dcd6c8"); // jaw
 }
 
+function drawWizard(ctx: Ctx, _anim: Anim): void {
+  // fire orb
+  ctx.save();
+  ctx.translate(-6.5, 0);
+  const g = ctx.createRadialGradient(0, 0, 0.5, 0, 0, 3);
+  g.addColorStop(0, "#ffe082");
+  g.addColorStop(1, "#ff6a00");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(0, 0, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  box(ctx, -4.5, -1, 9, 9, 3, "#7c3aed"); // robe
+  box(ctx, -4.5, 2.4, 9, 1.6, 0.8, "#f2c14e"); // sash
+  circle(ctx, 0, -5, 5, SKIN); // head
+  box(ctx, -2.4, -2.4, 4.8, 3, 1.4, "#e8e3d8"); // beard
+  outlined(ctx, "#5b21b6", () => {
+    // hat
+    ctx.beginPath();
+    ctx.moveTo(-7, -7.5);
+    ctx.lineTo(7, -7.5);
+    ctx.lineTo(1.5, -8.8);
+    ctx.lineTo(0.5, -14);
+    ctx.lineTo(-3.5, -8.8);
+    ctx.closePath();
+  });
+  eyes(ctx, -5);
+}
+
+function drawBabyDragon(ctx: Ctx, _anim: Anim): void {
+  // wings
+  for (const s of [-1, 1]) {
+    outlined(ctx, "#81c784", () => {
+      ctx.beginPath();
+      ctx.moveTo(s * 4, -3);
+      ctx.quadraticCurveTo(s * 11, -8, s * 9, 1);
+      ctx.closePath();
+    });
+  }
+  circle(ctx, 0, 0, 6.5, "#4caf50"); // body/head
+  box(ctx, -2.6, 1.5, 5.2, 3, 1.4, "#66bb6a"); // snout
+  ctx.strokeStyle = "#2e7d32";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(-2, 3.4);
+  ctx.lineTo(2, 3.4);
+  ctx.stroke();
+  outlined(ctx, "#a5d6a7", () => {
+    ctx.beginPath();
+    ctx.moveTo(-2.5, -6);
+    ctx.lineTo(-3.6, -9);
+    ctx.lineTo(-0.9, -6.6);
+    ctx.closePath();
+  });
+  outlined(ctx, "#a5d6a7", () => {
+    ctx.beginPath();
+    ctx.moveTo(2.5, -6);
+    ctx.lineTo(3.6, -9);
+    ctx.lineTo(0.9, -6.6);
+    ctx.closePath();
+  });
+  eyes(ctx, -1.5, 2.4, 1);
+}
+
+function drawGargoyle(ctx: Ctx, _anim: Anim): void {
+  for (const s of [-1, 1]) {
+    outlined(ctx, "#4b5563", () => {
+      ctx.beginPath();
+      ctx.moveTo(s * 3, -2);
+      ctx.quadraticCurveTo(s * 10, -7, s * 8, 2);
+      ctx.closePath();
+    });
+  }
+  box(ctx, -3.2, -1, 6.4, 7, 2.5, "#6b7280"); // body
+  circle(ctx, 0, -4.5, 4.4, "#7b8494"); // head
+  outlined(ctx, "#4b5563", () => {
+    ctx.beginPath();
+    ctx.moveTo(-2, -8);
+    ctx.lineTo(-3.2, -11);
+    ctx.lineTo(-0.6, -8.6);
+    ctx.closePath();
+  });
+  outlined(ctx, "#4b5563", () => {
+    ctx.beginPath();
+    ctx.moveTo(2, -8);
+    ctx.lineTo(3.2, -11);
+    ctx.lineTo(0.6, -8.6);
+    ctx.closePath();
+  });
+  // glowing eyes
+  ctx.fillStyle = "#ffd54f";
+  ctx.beginPath();
+  ctx.arc(-1.7, -5, 1, 0, Math.PI * 2);
+  ctx.arc(1.7, -5, 1, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawValkyrie(ctx: Ctx, _anim: Anim): void {
+  // axe at the side
+  ctx.save();
+  ctx.translate(6.5, -1);
+  box(ctx, -0.7, -6, 1.4, 11, 0.7, "#6d4c41"); // haft
+  outlined(ctx, "#b7c2cc", () => {
+    ctx.beginPath();
+    ctx.arc(0, -5.5, 3.4, Math.PI * 0.6, Math.PI * 1.4);
+    ctx.closePath();
+  });
+  outlined(ctx, "#b7c2cc", () => {
+    ctx.beginPath();
+    ctx.arc(0, -5.5, 3.4, Math.PI * 1.6, Math.PI * 0.4);
+    ctx.closePath();
+  });
+  ctx.restore();
+
+  box(ctx, -4.5, -1, 9, 8, 3, "#b71c1c"); // dress
+  circle(ctx, 0, -5, 5, SKIN); // head
+  outlined(ctx, "#e07b39", () => {
+    // hair
+    ctx.beginPath();
+    ctx.arc(0, -6, 5.3, Math.PI * 0.95, Math.PI * 0.05);
+    ctx.closePath();
+  });
+  box(ctx, -6.4, -6, 2, 7, 1, "#e07b39"); // braid
+  eyes(ctx, -4);
+}
+
+function drawPrince(ctx: Ctx, _anim: Anim): void {
+  // lance
+  ctx.save();
+  ctx.translate(5, 2);
+  ctx.rotate(-0.8);
+  box(ctx, -0.8, -10, 1.6, 12, 0.8, "#d7ccc8");
+  outlined(ctx, "#b7c2cc", () => {
+    ctx.beginPath();
+    ctx.moveTo(-1.4, -10);
+    ctx.lineTo(0, -13.5);
+    ctx.lineTo(1.4, -10);
+    ctx.closePath();
+  });
+  ctx.restore();
+
+  box(ctx, -4.5, -0.5, 9, 8, 3, "#fafafa"); // tabard
+  box(ctx, -4.5, 1.6, 9, 1.6, 0.8, "#f2c14e"); // gold trim
+  circle(ctx, 0, -5, 5, SKIN); // head
+  outlined(ctx, "#f2c14e", () => {
+    // gold helmet
+    ctx.beginPath();
+    ctx.arc(0, -6, 5.4, Math.PI, 0);
+    ctx.closePath();
+  });
+  ctx.strokeStyle = "#e53935"; // plume
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.arc(3.4, -11, 3.2, Math.PI * 0.55, Math.PI * 1.05);
+  ctx.stroke();
+  eyes(ctx, -4.2);
+}
+
+function drawCannon(ctx: Ctx, _anim: Anim): void {
+  // wheels
+  circle(ctx, -4, 5.5, 2.6, "#4e342e");
+  circle(ctx, 4, 5.5, 2.6, "#4e342e");
+  circle(ctx, -4, 5.5, 1, "#8d6e63");
+  circle(ctx, 4, 5.5, 1, "#8d6e63");
+  box(ctx, -6, 2.5, 12, 2.4, 1.2, "#8d6e63"); // carriage
+  // barrel angled up-right
+  ctx.save();
+  ctx.translate(0, 1);
+  ctx.rotate(-0.5);
+  box(ctx, -2.5, -8.5, 5, 9, 2, "#37474f");
+  box(ctx, -3, -9.5, 6, 1.8, 0.9, "#263238"); // muzzle rim
+  ctx.restore();
+  circle(ctx, 0, 2, 2.6, "#263238"); // breech
+}
+
 const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = {
   knight: drawKnight,
   archers: drawArcher,
@@ -277,6 +453,12 @@ const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = 
   musketeer: drawMusketeer,
   "mini-pekka": drawMiniPekka,
   skeletons: drawSkeleton,
+  wizard: drawWizard,
+  "baby-dragon": drawBabyDragon,
+  gargoyles: drawGargoyle,
+  valkyrie: drawValkyrie,
+  prince: drawPrince,
+  cannon: drawCannon,
 };
 
 /**

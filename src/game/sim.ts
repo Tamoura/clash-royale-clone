@@ -52,12 +52,17 @@ function findById(state: BattleState, id: number | null): Entity | null {
   return e && e.hp > 0 ? e : null;
 }
 
+/** Ground-only attackers cannot touch flyers. */
+function canHit(e: Entity, o: Entity): boolean {
+  return !o.flying || e.targetsAir;
+}
+
 function acquireTarget(state: BattleState, e: Entity): Entity | null {
   const enemies = livingEnemiesOf(state, e);
   if (isBuilding(e)) {
-    // Towers only shoot troops, and only within range.
+    // Towers/buildings only shoot troops, and only within range.
     const inRange = enemies.filter(
-      (o) => o.kind === "troop" && gap(e, o) <= e.attackRange,
+      (o) => o.kind === "troop" && canHit(e, o) && gap(e, o) <= e.attackRange,
     );
     return nearest(e, inRange);
   }
@@ -65,7 +70,7 @@ function acquireTarget(state: BattleState, e: Entity): Entity | null {
     return nearest(e, enemies.filter(isBuilding));
   }
   const troopsInSight = enemies.filter(
-    (o) => o.kind === "troop" && gap(e, o) <= e.sightRange,
+    (o) => o.kind === "troop" && canHit(e, o) && gap(e, o) <= e.sightRange,
   );
   return nearest(e, troopsInSight) ?? nearest(e, enemies.filter(isBuilding));
 }
@@ -90,6 +95,7 @@ function retarget(state: BattleState, e: Entity): Entity | null {
  * same half; via the nearest bridge when the river is in the way.
  */
 export function moveGoal(e: Entity, target: Entity): { x: number; y: number } {
+  if (e.flying) return target; // straight over the river
   const crossesRiver =
     (e.y - RIVER_Y) * (target.y - RIVER_Y) < 0 ||
     Math.abs(e.y - RIVER_Y) < RIVER_HALF_WIDTH;
@@ -105,12 +111,37 @@ export function moveGoal(e: Entity, target: Entity): { x: number; y: number } {
   return { x: bx, y: RIVER_Y - towardEnemy * (RIVER_HALF_WIDTH + 0.4) };
 }
 
-function moveToward(e: Entity, goal: { x: number; y: number }, dt: number): void {
+function moveToward(e: Entity, goal: { x: number; y: number }, dt: number): number {
   const d = distance(e, goal);
-  if (d < 1e-6) return;
+  if (d < 1e-6) return 0;
   const step = Math.min(e.speed * dt, d);
   e.x += ((goal.x - e.x) / d) * step;
   e.y += ((goal.y - e.y) / d) * step;
+  return step;
+}
+
+function dealDamage(state: BattleState, e: Entity, target: Entity): void {
+  const charged = e.chargeDistance > 0 && e.chargeProgress >= e.chargeDistance;
+  const damage = e.damage * (charged ? 2 : 1);
+  target.hp -= damage;
+  if (e.splashRadius > 0) {
+    for (const o of livingEnemiesOf(state, e)) {
+      if (o === target || !canHit(e, o)) continue;
+      if (distance(o, target) <= e.splashRadius + o.radius) o.hp -= damage;
+    }
+  }
+  e.chargeProgress = 0;
+  e.cooldown = e.hitSpeed;
+  state.events.push({
+    type: "attack",
+    kind: e.kind,
+    cardId: e.cardId,
+    ranged: e.attackRange > 1,
+    x: e.x,
+    y: e.y,
+    targetX: target.x,
+    targetY: target.y,
+  });
 }
 
 function actEntity(state: BattleState, e: Entity, dt: number): void {
@@ -119,23 +150,19 @@ function actEntity(state: BattleState, e: Entity, dt: number): void {
 
   const target = retarget(state, e);
   e.targetId = target?.id ?? null;
+
+  // Freshly deployed units pick targets (and face them) but act later.
+  if (e.deployTimer > 0) {
+    e.deployTimer -= dt;
+    return;
+  }
   if (!target) return;
 
   if (gap(e, target) <= e.attackRange) {
-    if (e.cooldown === 0) {
-      target.hp -= e.damage;
-      e.cooldown = e.hitSpeed;
-      state.events.push({
-        type: "attack",
-        kind: e.kind,
-        cardId: e.cardId,
-        ranged: e.attackRange > 1,
-        x: e.x,
-        y: e.y,
-      });
-    }
+    if (e.cooldown === 0) dealDamage(state, e, target);
   } else if (e.kind === "troop") {
-    moveToward(e, moveGoal(e, target), dt);
+    const step = moveToward(e, moveGoal(e, target), dt);
+    if (e.chargeDistance > 0) e.chargeProgress += step;
   }
 }
 
@@ -188,6 +215,11 @@ export function tick(state: BattleState, dt: number): void {
 
   for (const effect of state.effects) effect.ttl -= dt;
   state.effects = state.effects.filter((f) => f.ttl > 0);
+
+  // Deployed buildings decay over their lifetime.
+  for (const e of state.entities) {
+    if (e.kind === "building") e.hp -= e.decayPerSec * dt;
+  }
 
   wakeDamagedKings(state);
   for (const e of [...state.entities]) {

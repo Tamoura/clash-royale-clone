@@ -9,13 +9,17 @@ import {
   DECK,
   SPEED_TILES_PER_SEC,
   getCard,
+  type BuildingCard,
   type CardId,
   type TroopCard,
 } from "./cards";
 import { createElixir, trySpend, type ElixirState } from "./elixir";
 import { createHand, playCard, type HandState } from "./hand";
 
-export type EntityKind = "troop" | "princess-tower" | "king-tower";
+export type EntityKind = "troop" | "building" | "princess-tower" | "king-tower";
+
+/** Seconds a freshly deployed troop or building stands frozen. */
+export const DEPLOY_DELAY = 1;
 
 export interface Entity {
   id: number;
@@ -35,6 +39,20 @@ export interface Entity {
   /** Tiles per second; 0 for towers. */
   speed: number;
   targetsBuildingsOnly: boolean;
+  /** Can this entity hit flying targets? */
+  targetsAir: boolean;
+  /** Flying entities path straight and are immune to ground-only attackers. */
+  flying: boolean;
+  /** Area damage around the struck target; 0 = single target. */
+  splashRadius: number;
+  /** Tiles of approach needed to charge; 0 = no charge mechanic. */
+  chargeDistance: number;
+  /** Distance walked toward the current target since the last hit. */
+  chargeProgress: number;
+  /** Seconds of post-deployment freeze remaining. */
+  deployTimer: number;
+  /** HP lost per second (deployable buildings decay; 0 otherwise). */
+  decayPerSec: number;
   radius: number;
   /** Seconds until the next attack is ready. */
   cooldown: number;
@@ -78,6 +96,8 @@ export type BattleEvent =
       ranged: boolean;
       x: number;
       y: number;
+      targetX: number;
+      targetY: number;
     }
   | {
       type: "death";
@@ -136,6 +156,13 @@ function makeTower(state: BattleState, side: Side, kind: TowerKind, x: number, y
     sightRange: s.range,
     speed: 0,
     targetsBuildingsOnly: false,
+    targetsAir: true,
+    flying: false,
+    splashRadius: 0,
+    chargeDistance: 0,
+    chargeProgress: 0,
+    deployTimer: 0,
+    decayPerSec: 0,
     radius: s.radius,
     cooldown: 0,
     targetId: null,
@@ -224,7 +251,14 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       sightRange: card.unit.sightRange,
       speed: SPEED_TILES_PER_SEC[card.unit.speed],
       targetsBuildingsOnly: card.unit.targetsBuildingsOnly,
+      targetsAir: card.unit.targetsAir,
+      flying: card.unit.flying,
+      splashRadius: card.unit.splashRadius,
+      chargeDistance: card.unit.chargeDistance,
+      chargeProgress: 0,
+      deployTimer: DEPLOY_DELAY,
       radius: card.unit.radius,
+      decayPerSec: 0,
       cooldown: 0,
       targetId: null,
       active: true,
@@ -232,6 +266,37 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
   }
   state.entities.push(...spawned);
   return spawned;
+}
+
+function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: number, y: number): void {
+  const u = card.unit;
+  state.entities.push({
+    id: state.nextEntityId++,
+    side,
+    kind: "building",
+    cardId: card.id,
+    x,
+    y,
+    hp: u.maxHp,
+    maxHp: u.maxHp,
+    damage: u.damage,
+    hitSpeed: u.hitSpeed,
+    attackRange: u.attackRange,
+    sightRange: u.attackRange,
+    speed: 0,
+    targetsBuildingsOnly: false,
+    targetsAir: u.targetsAir,
+    flying: false,
+    splashRadius: u.splashRadius,
+    chargeDistance: 0,
+    chargeProgress: 0,
+    deployTimer: DEPLOY_DELAY,
+    decayPerSec: u.maxHp / card.lifetime,
+    radius: u.radius,
+    cooldown: 0,
+    targetId: null,
+    active: true,
+  });
 }
 
 export function applySpell(
@@ -246,8 +311,9 @@ export function applySpell(
   for (const e of state.entities) {
     if (e.side === side || e.hp <= 0) continue;
     if (distance(e, { x, y }) > radius + e.radius) continue;
-    const factor = isBuilding(e) ? TOWER_SPELL_DAMAGE_FACTOR : 1;
-    e.hp -= damage * factor;
+    // Only crown towers resist spells; deployed buildings take full damage.
+    const isCrownTower = e.kind === "princess-tower" || e.kind === "king-tower";
+    e.hp -= damage * (isCrownTower ? TOWER_SPELL_DAMAGE_FACTOR : 1);
   }
   state.effects.push({ cardId, x, y, radius, ttl: 0.6 });
 }
@@ -279,6 +345,9 @@ export function deployCard(
   if (card.kind === "spell") {
     state.events.push({ type: "spell", side, cardId, x, y });
     applySpell(state, side, cardId, x, y, card.damage, card.radius);
+  } else if (card.kind === "building") {
+    state.events.push({ type: "deploy", side, cardId });
+    spawnBuilding(state, side, card, x, y);
   } else {
     state.events.push({ type: "deploy", side, cardId });
     spawnTroops(state, side, card, x, y);

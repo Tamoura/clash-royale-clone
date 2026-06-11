@@ -10,7 +10,16 @@ describe("3D troop rigs", () => {
       const rig = buildTroop(id as CardId);
       expect(rig.group.children.length).toBeGreaterThan(2);
       expect(rig.height).toBeGreaterThan(0.5);
-      expect(rig.arm).not.toBeNull();
+      // Every troop animates somehow: a weapon arm or flapping wings.
+      expect(rig.arm !== null || (rig.wings?.length ?? 0) > 0).toBe(true);
+    }
+  });
+
+  it("flying troops hover and have wings", () => {
+    for (const id of ["baby-dragon", "gargoyles"] as const) {
+      const rig = buildTroop(id);
+      expect(rig.hover).toBeGreaterThan(0);
+      expect(rig.wings?.length).toBe(2);
     }
   });
 

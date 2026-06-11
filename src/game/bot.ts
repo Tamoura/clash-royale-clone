@@ -37,7 +37,10 @@ function playerTroops(state: BattleState): Entity[] {
 function affordableTroops(state: BattleState): CardId[] {
   return state.enemy.hand.cards.filter((id) => {
     const card = getCard(id);
-    return card.kind === "troop" && card.cost <= state.enemy.elixir.amount;
+    return (
+      (card.kind === "troop" || card.kind === "building") &&
+      card.cost <= state.enemy.elixir.amount
+    );
   });
 }
 

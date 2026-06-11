@@ -28,6 +28,8 @@ interface EntityView {
   hpGroup: THREE.Group;
   crown?: THREE.Group;
   zzz?: THREE.Sprite;
+  /** Cannon barrel, aimed at the current target. */
+  barrel?: THREE.Group;
 }
 
 interface EffectView {
@@ -231,16 +233,67 @@ function buildTroopMesh(e: Entity): EntityView {
   ring.position.y = 0.02;
   root.add(ring);
 
-  const bar = makeHpBar(0.9, SIDE_COLOR[e.side], rig.height * scale + 0.25);
+  // Flyers carry their bar/label up at hover height.
+  const lift = (rig.hover ?? 0) + rig.height * scale;
+  const bar = makeHpBar(0.9, SIDE_COLOR[e.side], lift + 0.25);
   bar.group.visible = false; // shown once damaged
   root.add(bar.group);
 
   // Name floating above the character (above the HP bar).
   const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
   label.scale.set(1.7, 0.42, 1);
-  label.position.y = rig.height * scale + 0.62;
+  label.position.y = lift + 0.62;
   root.add(label);
   return { root, rig, hpGroup: bar.group, hpFill: bar.fill };
+}
+
+function buildBuildingMesh(e: Entity): EntityView {
+  const root = new THREE.Group();
+  // Wooden platform.
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.7, 0.78, 0.25, 10),
+    lambert(0x8d6e63),
+  );
+  base.position.y = 0.12;
+  base.castShadow = true;
+  base.receiveShadow = true;
+  root.add(base);
+  for (const side of [-1, 1]) {
+    const wheel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.22, 0.22, 0.1, 12),
+      lambert(0x4e342e),
+    );
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(side * 0.62, 0.22, 0);
+    wheel.castShadow = true;
+    root.add(wheel);
+  }
+  // Barrel on a pivot so it can aim.
+  const barrel = new THREE.Group();
+  barrel.position.y = 0.5;
+  const tube = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.16, 0.2, 0.9, 12),
+    lambert(0x37474f),
+  );
+  tube.rotation.x = Math.PI / 2 - 0.18; // slight upward tilt
+  tube.position.z = 0.25;
+  tube.castShadow = true;
+  barrel.add(tube);
+  const breech = new THREE.Mesh(
+    new THREE.SphereGeometry(0.24, 10, 8),
+    lambert(0x263238),
+  );
+  breech.castShadow = true;
+  barrel.add(breech);
+  root.add(barrel);
+
+  const bar = makeHpBar(1.4, SIDE_COLOR[e.side], 1.15);
+  root.add(bar.group);
+  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
+  label.scale.set(1.7, 0.42, 1);
+  label.position.y = 1.5;
+  root.add(label);
+  return { root, rig: null, hpGroup: bar.group, hpFill: bar.fill, barrel };
 }
 
 export class Battle3D {
@@ -464,11 +517,48 @@ export class Battle3D {
     });
   }
 
+  /** A small projectile streaking from attacker to target. */
+  private projectile(ev: Extract<BattleEvent, { type: "attack" }>): void {
+    const from = toWorld(ev.x, ev.y);
+    const to = toWorld(ev.targetX, ev.targetY);
+    const style: { color: number; size: number; glow?: boolean } =
+      ev.cardId === "wizard"
+        ? { color: 0xff8c1a, size: 0.16, glow: true }
+        : ev.cardId === "baby-dragon"
+          ? { color: 0x8bc34a, size: 0.15, glow: true }
+          : ev.cardId === "cannon"
+            ? { color: 0x263238, size: 0.14 }
+            : ev.kind !== "troop"
+              ? { color: 0xffe082, size: 0.1 }
+              : { color: 0xd7ccc8, size: 0.07 };
+    const mat = style.glow
+      ? new THREE.MeshStandardMaterial({
+          color: style.color,
+          emissive: style.color,
+          emissiveIntensity: 1.5,
+        })
+      : new THREE.MeshBasicMaterial({ color: style.color });
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(style.size, 8, 6), mat);
+    const y0 = ev.kind === "troop" ? 0.9 : 1.6;
+    ball.position.set(from.x, y0, from.z);
+    this.addEffect(ball, 0.16, (frac) => {
+      const t = 1 - frac;
+      ball.position.set(
+        from.x + (to.x - from.x) * t,
+        y0 + (0.7 - y0) * t,
+        from.z + (to.z - from.z) * t,
+      );
+    });
+  }
+
   /** Visual reactions to gameplay events. */
   onEvent(ev: BattleEvent): void {
     switch (ev.type) {
       case "spell":
         this.blast(ev.x, ev.y, ev.cardId === "fireball" ? 2.5 : 4, ev.cardId === "fireball" ? 0xff7814 : 0xdce6ff);
+        break;
+      case "attack":
+        if (ev.ranged) this.projectile(ev);
         break;
       case "death":
         if (ev.kind === "troop") this.puff(ev.x, ev.y, 0xcccccc, 0.5);
@@ -486,7 +576,12 @@ export class Battle3D {
       seen.add(e.id);
       let view = this.views.get(e.id);
       if (!view) {
-        view = e.kind === "troop" ? buildTroopMesh(e) : buildTowerMesh(e);
+        view =
+          e.kind === "troop"
+            ? buildTroopMesh(e)
+            : e.kind === "building"
+              ? buildBuildingMesh(e)
+              : buildTowerMesh(e);
         this.views.set(e.id, view);
         this.scene.add(view.root);
       }
@@ -494,7 +589,17 @@ export class Battle3D {
       view.root.position.x = w.x;
       view.root.position.z = w.z;
 
-      const barWidth = e.kind === "troop" ? 0.9 : e.kind === "king-tower" ? 2.2 : 1.8;
+      // Aim the cannon barrel at its target.
+      if (view.barrel) {
+        const target = state.entities.find((o) => o.id === e.targetId);
+        if (target) {
+          const tw = toWorld(target.x, target.y);
+          view.barrel.rotation.y = Math.atan2(tw.x - w.x, tw.z - w.z);
+        }
+      }
+
+      const barWidth =
+        e.kind === "troop" ? 0.9 : e.kind === "building" ? 1.4 : e.kind === "king-tower" ? 2.2 : 1.8;
       setHpFill(view, e.hp / e.maxHp, barWidth);
       if (e.kind === "troop" && e.hp < e.maxHp) view.hpGroup.visible = true;
       if (view.crown) view.crown.visible = e.active;
