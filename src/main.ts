@@ -15,7 +15,16 @@ let battle: BattleState = createBattle();
 let bot: BotState = createBot(Date.now() & 0xffff);
 let selectedCard: CardId | null = null;
 
-const scene = new Battle3D(stage);
+let scene: Battle3D;
+try {
+  scene = new Battle3D(stage);
+} catch {
+  stage.innerHTML =
+    '<div style="color:#e5e7eb;text-align:center;padding-top:40vh;font-size:18px">' +
+    "This game needs WebGL (3D graphics), which your browser/tab refused to provide.<br/>" +
+    "Try a regular visible browser window with hardware acceleration enabled.</div>";
+  throw new Error("WebGL unavailable");
+}
 const audio = new SoundEngine();
 
 function selectCard(id: CardId | null): void {
