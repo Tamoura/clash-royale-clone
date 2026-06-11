@@ -125,6 +125,14 @@ function actEntity(state: BattleState, e: Entity, dt: number): void {
     if (e.cooldown === 0) {
       target.hp -= e.damage;
       e.cooldown = e.hitSpeed;
+      state.events.push({
+        type: "attack",
+        kind: e.kind,
+        cardId: e.cardId,
+        ranged: e.attackRange > 1,
+        x: e.x,
+        y: e.y,
+      });
     }
   } else if (e.kind === "troop") {
     moveToward(e, moveGoal(e, target), dt);
@@ -134,13 +142,23 @@ function actEntity(state: BattleState, e: Entity, dt: number): void {
 function processDeaths(state: BattleState): void {
   for (const e of state.entities) {
     if (e.hp > 0) continue;
+    state.events.push({
+      type: "death",
+      kind: e.kind,
+      cardId: e.cardId,
+      side: e.side,
+      x: e.x,
+      y: e.y,
+    });
     if (e.kind === "princess-tower") {
-      const winnerSide = e.side === "player" ? state.enemy : state.player;
-      winnerSide.crowns += 1;
+      const winner = e.side === "player" ? "enemy" : "player";
+      sideState(state, winner).crowns += 1;
+      state.events.push({ type: "crown", winner });
       wakeKing(state, e.side);
     } else if (e.kind === "king-tower") {
       const winner = e.side === "player" ? "enemy" : "player";
       sideState(state, winner).crowns = 3;
+      state.events.push({ type: "crown", winner });
       finish(state, winner);
     }
   }
@@ -186,6 +204,7 @@ function finish(state: BattleState, winner: BattleResult["winner"]): void {
     playerCrowns: state.player.crowns,
     enemyCrowns: state.enemy.crowns,
   };
+  state.events.push({ type: "finish", winner });
 }
 
 function checkClock(state: BattleState): void {

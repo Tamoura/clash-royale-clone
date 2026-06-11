@@ -64,6 +64,32 @@ export interface BattleResult {
   enemyCrowns: number;
 }
 
+/**
+ * Gameplay moments recorded during deploys and ticks. The render/audio
+ * layer drains this list each frame to trigger sounds and effects.
+ */
+export type BattleEvent =
+  | { type: "deploy"; side: Side; cardId: CardId }
+  | { type: "spell"; side: Side; cardId: CardId; x: number; y: number }
+  | {
+      type: "attack";
+      kind: EntityKind;
+      cardId: CardId | null;
+      ranged: boolean;
+      x: number;
+      y: number;
+    }
+  | {
+      type: "death";
+      kind: EntityKind;
+      cardId: CardId | null;
+      side: Side;
+      x: number;
+      y: number;
+    }
+  | { type: "crown"; winner: Side }
+  | { type: "finish"; winner: Side | "draw" };
+
 export interface BattleState {
   entities: Entity[];
   player: SideState;
@@ -73,6 +99,7 @@ export interface BattleState {
   overtime: boolean;
   result: BattleResult | null;
   effects: SpellEffect[];
+  events: BattleEvent[];
   nextEntityId: number;
 }
 
@@ -125,6 +152,7 @@ export function createBattle(): BattleState {
     overtime: false,
     result: null,
     effects: [],
+    events: [],
     nextEntityId: 1,
   };
   for (const side of ["player", "enemy"] as const) {
@@ -249,8 +277,10 @@ export function deployCard(
   me.elixir = spent;
   me.hand = playCard(me.hand, cardId);
   if (card.kind === "spell") {
+    state.events.push({ type: "spell", side, cardId, x, y });
     applySpell(state, side, cardId, x, y, card.damage, card.radius);
   } else {
+    state.events.push({ type: "deploy", side, cardId });
     spawnTroops(state, side, card, x, y);
   }
   return true;
