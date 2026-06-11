@@ -8,6 +8,7 @@ import {
   distance,
   isBuilding,
   sideState,
+  type BattleResult,
   type BattleState,
   type Entity,
 } from "./battle";
@@ -139,13 +140,8 @@ function processDeaths(state: BattleState): void {
       wakeKing(state, e.side);
     } else if (e.kind === "king-tower") {
       const winner = e.side === "player" ? "enemy" : "player";
-      const winnerSide = sideState(state, winner);
-      winnerSide.crowns = 3;
-      state.result = {
-        winner,
-        playerCrowns: state.player.crowns,
-        enemyCrowns: state.enemy.crowns,
-      };
+      sideState(state, winner).crowns = 3;
+      finish(state, winner);
     }
   }
   state.entities = state.entities.filter((e) => e.hp > 0);
@@ -181,4 +177,30 @@ export function tick(state: BattleState, dt: number): void {
   }
   wakeDamagedKings(state);
   processDeaths(state);
+  checkClock(state);
+}
+
+function finish(state: BattleState, winner: BattleResult["winner"]): void {
+  state.result = {
+    winner,
+    playerCrowns: state.player.crowns,
+    enemyCrowns: state.enemy.crowns,
+  };
+}
+
+function checkClock(state: BattleState): void {
+  if (state.result) return;
+  const crownDiff = state.player.crowns - state.enemy.crowns;
+  if (!state.overtime) {
+    if (state.time < BATTLE_DURATION) return;
+    if (crownDiff !== 0) finish(state, crownDiff > 0 ? "player" : "enemy");
+    else state.overtime = true;
+    return;
+  }
+  // Sudden death: the tie broke the moment anyone took a crown.
+  if (crownDiff !== 0) {
+    finish(state, crownDiff > 0 ? "player" : "enemy");
+  } else if (state.time >= BATTLE_DURATION + OVERTIME_DURATION) {
+    finish(state, "draw");
+  }
 }
