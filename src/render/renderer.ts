@@ -4,10 +4,11 @@ import {
   RIVER_Y,
   type Side,
 } from "../game/arena";
-import type { BattleState, Entity } from "../game/battle";
+import { distance, type BattleState, type Entity } from "../game/battle";
 import { ELIXIR_MAX } from "../game/elixir";
 import { getCard, type CardId } from "../game/cards";
 import { BATTLE_DURATION, OVERTIME_DURATION, isDoubleElixir } from "../game/sim";
+import { drawCardArt, drawTroopCharacter, type Anim } from "./characters";
 import {
   ARENA_PX_H,
   ARENA_PX_W,
@@ -26,17 +27,6 @@ export interface UiState {
   /** Arena-space hover position while a card is selected. */
   hover: { x: number; y: number } | null;
 }
-
-const CARD_EMOJI: Record<CardId, string> = {
-  knight: "⚔️",
-  archers: "🏹",
-  giant: "👹",
-  musketeer: "🔫",
-  "mini-pekka": "🤖",
-  skeletons: "💀",
-  fireball: "🔥",
-  arrows: "🎯",
-};
 
 const SIDE_COLOR: Record<Side, string> = {
   player: "#3b82f6",
@@ -136,39 +126,155 @@ function drawHpBar(
   ctx.fillRect(cx - w / 2, cy, w * Math.max(0, frac), 5);
 }
 
+function drawCrown(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  w: number,
+): void {
+  const h = w * 0.7;
+  ctx.beginPath();
+  ctx.moveTo(cx - w / 2, cy + h / 2);
+  ctx.lineTo(cx - w / 2, cy - h * 0.2);
+  ctx.lineTo(cx - w / 4, cy + h * 0.05);
+  ctx.lineTo(cx, cy - h / 2);
+  ctx.lineTo(cx + w / 4, cy + h * 0.05);
+  ctx.lineTo(cx + w / 2, cy - h * 0.2);
+  ctx.lineTo(cx + w / 2, cy + h / 2);
+  ctx.closePath();
+  ctx.fillStyle = "#fbbf24";
+  ctx.fill();
+  ctx.strokeStyle = "#b45309";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
 function drawTower(ctx: CanvasRenderingContext2D, e: Entity): void {
   const p = arenaToCanvas(e.x, e.y);
   const r = e.radius * TILE;
-  ctx.fillStyle = SIDE_DARK[e.side];
-  roundRect(ctx, p.x - r, p.y - r, 2 * r, 2 * r, 6);
+  const king = e.kind === "king-tower";
+  const stone = king ? "#a89884" : "#b8a98f";
+  const stoneDark = king ? "#8b7c69" : "#9c8d74";
+
+  // Drop shadow.
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y + r * 0.95, r * 1.05, r * 0.35, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
   ctx.fill();
+
+  // Stone body.
+  ctx.fillStyle = stone;
+  roundRect(ctx, p.x - r, p.y - r * 0.75, 2 * r, 1.75 * r, 4);
+  ctx.fill();
+  ctx.strokeStyle = stoneDark;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Stone seams.
+  ctx.strokeStyle = "rgba(90,75,55,0.35)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 1; i <= 2; i++) {
+    const y = p.y - r * 0.75 + (i * 1.75 * r) / 3;
+    ctx.moveTo(p.x - r, y);
+    ctx.lineTo(p.x + r, y);
+  }
+  ctx.moveTo(p.x - r * 0.33, p.y - r * 0.75);
+  ctx.lineTo(p.x - r * 0.33, p.y - r * 0.75 + (1.75 * r) / 3);
+  ctx.moveTo(p.x + r * 0.33, p.y - r * 0.17);
+  ctx.lineTo(p.x + r * 0.33, p.y + r * 0.42);
+  ctx.stroke();
+
+  // Crenellated top.
+  const topY = p.y - r;
+  ctx.fillStyle = stoneDark;
+  roundRect(ctx, p.x - r * 1.08, topY, 2.16 * r, r * 0.32, 2);
+  ctx.fill();
+  ctx.fillStyle = stone;
+  const merlonW = (2.16 * r) / 5;
+  for (let i = 0; i < 3; i++) {
+    ctx.fillRect(
+      p.x - r * 1.08 + (2 * i + 0.35) * merlonW,
+      topY - r * 0.22,
+      merlonW * 1.3,
+      r * 0.24,
+    );
+  }
+
+  // Door at the base.
+  const doorY = p.y + r * 0.4;
+  ctx.fillStyle = "#4a3826";
+  ctx.beginPath();
+  ctx.arc(p.x, doorY + r * 0.28, r * 0.28, Math.PI, 0);
+  ctx.lineTo(p.x + r * 0.28, doorY + r * 0.6);
+  ctx.lineTo(p.x - r * 0.28, doorY + r * 0.6);
+  ctx.closePath();
+  ctx.fill();
+
+  // Team banner.
   ctx.fillStyle = SIDE_COLOR[e.side];
-  roundRect(ctx, p.x - r + 4, p.y - r + 4, 2 * r - 8, 2 * r - 8, 4);
+  ctx.strokeStyle = SIDE_DARK[e.side];
+  ctx.lineWidth = 1;
+  const fx = p.x - r * 0.95;
+  ctx.beginPath();
+  ctx.moveTo(fx, topY - r * 0.55);
+  ctx.lineTo(fx + r * 0.5, topY - r * 0.38);
+  ctx.lineTo(fx, topY - r * 0.2);
+  ctx.closePath();
   ctx.fill();
-  ctx.font = `${Math.round(r)}px serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const icon = e.kind === "king-tower" ? (e.active ? "👑" : "😴") : "🏰";
-  ctx.fillText(icon, p.x, p.y + 1);
-  drawHpBar(ctx, p.x, p.y - r - 10, 2 * r, e.hp / e.maxHp, "#22c55e");
+  ctx.stroke();
+  ctx.strokeStyle = "#5a4632";
+  ctx.beginPath();
+  ctx.moveTo(fx, topY - r * 0.55);
+  ctx.lineTo(fx, topY);
+  ctx.stroke();
+
+  // King status: crown when awake, Zzz while asleep.
+  if (king) {
+    if (e.active) {
+      drawCrown(ctx, p.x, p.y - r * 0.45, r * 0.85);
+    } else {
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.font = `bold ${Math.round(r * 0.5)}px 'Trebuchet MS', sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("z z", p.x, p.y - r * 0.4);
+    }
+  }
+
+  drawHpBar(ctx, p.x, topY - r * 0.22 - 10, 2 * r, e.hp / e.maxHp, SIDE_COLOR[e.side]);
 }
 
-function drawTroop(ctx: CanvasRenderingContext2D, e: Entity): void {
+/** Swing lasts this long after each hit. */
+const SWING_TIME = 0.3;
+
+function troopAnim(state: BattleState, e: Entity): Anim {
+  const target = state.entities.find((o) => o.id === e.targetId);
+  const inRange =
+    !!target &&
+    distance(e, target) - e.radius - target.radius <= e.attackRange + 0.05;
+  const swing =
+    e.cooldown > e.hitSpeed - SWING_TIME
+      ? (e.cooldown - (e.hitSpeed - SWING_TIME)) / SWING_TIME
+      : 0;
+  return {
+    bob: inRange ? 0 : Math.abs(Math.sin(state.time * 9 + e.id * 1.7)) * 1.6,
+    swing,
+    flip: e.side === "enemy",
+  };
+}
+
+function drawTroop(
+  ctx: CanvasRenderingContext2D,
+  state: BattleState,
+  e: Entity,
+): void {
   const p = arenaToCanvas(e.x, e.y);
-  const r = Math.max(8, e.radius * TILE);
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-  ctx.fillStyle = SIDE_COLOR[e.side];
-  ctx.fill();
-  ctx.strokeStyle = SIDE_DARK[e.side];
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.font = `${Math.round(r * 1.1)}px serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(e.cardId ? CARD_EMOJI[e.cardId] : "?", p.x, p.y + 1);
+  const r = Math.max(9, e.radius * TILE);
+  if (!e.cardId) return;
+  drawTroopCharacter(ctx, e.cardId, p.x, p.y, r, SIDE_COLOR[e.side], troopAnim(state, e));
   if (e.hp < e.maxHp) {
-    drawHpBar(ctx, p.x, p.y - r - 9, 2 * r, e.hp / e.maxHp, "#22c55e");
+    drawHpBar(ctx, p.x, p.y - r * 1.6 - 6, 2 * r, e.hp / e.maxHp, SIDE_COLOR[e.side]);
   }
 }
 
@@ -210,13 +316,15 @@ function drawTopBar(ctx: CanvasRenderingContext2D, state: BattleState): void {
     ctx.fillStyle = "#d8b4fe";
     ctx.fillText("2x elixir", CANVAS_W / 2, TOP_BAR - 10);
   }
-  ctx.font = "16px 'Trebuchet MS', sans-serif";
+  drawCrown(ctx, 22, TOP_BAR / 2, 18);
+  ctx.font = "bold 16px 'Trebuchet MS', sans-serif";
   ctx.fillStyle = SIDE_COLOR.player;
   ctx.textAlign = "left";
-  ctx.fillText(`👑 ${state.player.crowns}`, 12, TOP_BAR / 2);
+  ctx.fillText(String(state.player.crowns), 38, TOP_BAR / 2);
+  drawCrown(ctx, CANVAS_W - 22, TOP_BAR / 2, 18);
   ctx.fillStyle = SIDE_COLOR.enemy;
   ctx.textAlign = "right";
-  ctx.fillText(`${state.enemy.crowns} 👑`, CANVAS_W - 12, TOP_BAR / 2);
+  ctx.fillText(String(state.enemy.crowns), CANVAS_W - 38, TOP_BAR / 2);
 }
 
 function drawHud(
@@ -258,8 +366,7 @@ function drawHud(
   ctx.fillStyle = "#1f2937";
   roundRect(ctx, next.x, next.y, next.w, next.h, 6);
   ctx.fill();
-  ctx.font = "20px serif";
-  ctx.fillText(CARD_EMOJI[nextId], next.x + next.w / 2, next.y + next.h / 2);
+  drawCardArt(ctx, nextId, next.x + next.w / 2, next.y + next.h / 2 - 2, 18);
   ctx.font = "9px 'Trebuchet MS', sans-serif";
   ctx.fillStyle = "#9ca3af";
   ctx.fillText("next", next.x + next.w / 2, next.y + next.h - 7);
@@ -279,10 +386,9 @@ function drawHud(
       ctx.stroke();
     }
     ctx.globalAlpha = affordable ? 1 : 0.4;
-    ctx.font = "34px serif";
-    ctx.fillStyle = "#fff";
-    ctx.fillText(CARD_EMOJI[id], r.x + r.w / 2, r.y + 38);
+    drawCardArt(ctx, id, r.x + r.w / 2, r.y + 38, 30);
     ctx.font = "bold 11px 'Trebuchet MS', sans-serif";
+    ctx.fillStyle = "#fff";
     ctx.fillText(card.name, r.x + r.w / 2, r.y + r.h - 26);
     ctx.globalAlpha = 1;
     // Elixir cost badge.
@@ -309,9 +415,11 @@ function drawResult(ctx: CanvasRenderingContext2D, state: BattleState): void {
   ctx.fillStyle =
     winner === "player" ? "#facc15" : winner === "enemy" ? "#f87171" : "#e5e7eb";
   ctx.fillText(title, CANVAS_W / 2, CANVAS_H / 2 - 50);
+  drawCrown(ctx, CANVAS_W / 2 - 80, CANVAS_H / 2 + 4, 26);
+  drawCrown(ctx, CANVAS_W / 2 + 80, CANVAS_H / 2 + 4, 26);
   ctx.font = "26px 'Trebuchet MS', sans-serif";
   ctx.fillStyle = "#e5e7eb";
-  ctx.fillText(`👑 ${playerCrowns}  —  ${enemyCrowns} 👑`, CANVAS_W / 2, CANVAS_H / 2 + 4);
+  ctx.fillText(`${playerCrowns}  —  ${enemyCrowns}`, CANVAS_W / 2, CANVAS_H / 2 + 4);
   ctx.font = "18px 'Trebuchet MS', sans-serif";
   ctx.fillStyle = "#93c5fd";
   ctx.fillText("Click anywhere to play again", CANVAS_W / 2, CANVAS_H / 2 + 52);
@@ -326,9 +434,12 @@ export function render(
   drawArena(ctx);
   drawDeployZone(ctx, ui);
   const buildings = state.entities.filter((e) => e.kind !== "troop");
-  const troops = state.entities.filter((e) => e.kind === "troop");
+  // Draw back-to-front so southern troops overlap northern ones.
+  const troops = state.entities
+    .filter((e) => e.kind === "troop")
+    .sort((a, b) => a.y - b.y);
   for (const t of buildings) drawTower(ctx, t);
-  for (const t of troops) drawTroop(ctx, t);
+  for (const t of troops) drawTroop(ctx, state, t);
   drawEffects(ctx, state);
   drawTopBar(ctx, state);
   drawHud(ctx, state, ui);
