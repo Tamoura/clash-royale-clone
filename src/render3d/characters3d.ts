@@ -874,21 +874,29 @@ export function buildTroop(cardId: CardId): TroopRig {
  */
 export function animateTroop(
   rig: TroopRig,
-  opts: { moving: boolean; swing: number; time: number; phase: number },
+  opts: {
+    moving: boolean;
+    swing: number;
+    time: number;
+    phase: number;
+    /** Fully charged (e.g. the Prince): couch the weapon, lean in. */
+    charging?: boolean;
+  },
 ): void {
   const t = opts.time;
   const walk = Math.sin(t * 10 + opts.phase);
   const baseScale = rig.group.scale.x;
+  const lean = opts.charging ? 0.16 : 0;
 
   if (rig.hover) {
     rig.group.position.y = rig.hover + Math.sin(t * 3 + opts.phase) * 0.1;
-    rig.group.rotation.x = (opts.moving ? 0.14 : 0) + opts.swing * 0.25;
+    rig.group.rotation.x = (opts.moving ? 0.14 : 0) + opts.swing * 0.25 + lean;
   } else if (opts.moving) {
     const hop = Math.abs(walk);
     rig.group.position.y = hop * 0.07;
     // Squash on landing, stretch at the top of the hop.
     rig.group.scale.y = baseScale * (0.96 + hop * 0.07);
-    rig.group.rotation.x = 0.07 + opts.swing * 0.22;
+    rig.group.rotation.x = 0.07 + opts.swing * 0.22 + lean;
   } else {
     // Idle: gentle breathing.
     rig.group.position.y = 0;
@@ -912,6 +920,9 @@ export function animateTroop(
   }
   if (rig.arm) {
     rig.arm.rotation.x =
-      rig.armRest - rig.swingAmp * opts.swing + (opts.moving ? walk * 0.18 : 0);
+      rig.armRest -
+      rig.swingAmp * opts.swing +
+      (opts.moving ? walk * 0.18 : 0) -
+      (opts.charging ? 0.55 : 0); // weapon couched for the charge
   }
 }

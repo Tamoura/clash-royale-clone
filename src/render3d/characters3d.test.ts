@@ -90,3 +90,15 @@ describe("tower defenders", () => {
     expect(rig.height).toBeGreaterThan(0.5);
   });
 });
+
+describe("charge telegraph", () => {
+  it("a charging prince couches his lance and leans in", () => {
+    const rig = buildTroop("prince");
+    animateTroop(rig, { moving: true, swing: 0, time: 0.2, phase: 0, charging: true });
+    const couched = rig.arm!.rotation.x;
+    const lean = rig.group.rotation.x;
+    animateTroop(rig, { moving: true, swing: 0, time: 0.2, phase: 0 });
+    expect(couched).toBeLessThan(rig.arm!.rotation.x);
+    expect(lean).toBeGreaterThan(rig.group.rotation.x);
+  });
+});

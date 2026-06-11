@@ -47,8 +47,8 @@ interface EntityView {
   isTroop: boolean;
   /** Spinning stars shown while the entity is stunned (lazy). */
   stunStars?: THREE.Sprite;
-  /** Whether the rage tint is currently applied to flash materials. */
-  raged?: boolean;
+  /** Whether any emissive glow (flash/rage/charge) is applied. */
+  glowing?: boolean;
   /** Character perched on a tower (princess archer / the king). */
   defender?: TroopRig;
   /** Mount group carrying the defender (owns yaw/slump). */
@@ -1186,22 +1186,27 @@ export class Battle3D {
         view.root.scale.setScalar(1);
       }
 
-      // Damage flash, with a steady hot-pink glow while raged.
+      // Emissive glow chain: damage flash > rage pink > charge gold.
       if (e.hp < view.lastHp - 0.5) view.flashT = FLASH_TIME;
       view.lastHp = e.hp;
       const raged = e.kind === "troop" && isRaged(state, e);
+      const charging = e.chargeDistance > 0 && e.chargeProgress >= e.chargeDistance;
       if (view.flashT > 0) {
         view.flashT = Math.max(0, view.flashT - dt);
         const k = view.flashT / FLASH_TIME;
         for (const f of view.flashMats) f.mat.emissive.setRGB(k, k, k);
-        view.raged = false; // re-applied below once the flash ends
+        view.glowing = true;
       } else if (raged) {
         const pulse = 0.32 + Math.sin(state.time * 9) * 0.1;
         for (const f of view.flashMats) f.mat.emissive.setRGB(pulse, 0.05, 0.18);
-        view.raged = true;
-      } else if (view.flashMats.length > 0 && (view.flashT === 0 || view.raged)) {
+        view.glowing = true;
+      } else if (charging) {
+        const k = 0.25 + Math.sin(state.time * 14) * 0.12;
+        for (const f of view.flashMats) f.mat.emissive.setRGB(k, k * 0.75, 0);
+        view.glowing = true;
+      } else if (view.glowing) {
         for (const f of view.flashMats) f.mat.emissive.setHex(f.orig);
-        view.raged = false;
+        view.glowing = false;
       }
 
       // Seeing stars while stunned.
@@ -1267,6 +1272,7 @@ export class Battle3D {
           swing,
           time: state.time,
           phase: e.id * 1.7,
+          charging,
         });
         // Face the attack target, or the spot being walked toward —
         // turning smoothly rather than snapping.
