@@ -78,9 +78,16 @@ export class Hud {
     el("div", "next-label", nextWrap).textContent = "next";
     for (let i = 0; i < 4; i++) {
       const btn = el("button", "card", handRow);
-      btn.addEventListener("click", () => {
+      // Select on pointerdown so a press can roll straight into a
+      // drag onto the field (release deploys there).
+      btn.addEventListener("pointerdown", (ev) => {
         const id = btn.dataset.card as CardId | undefined;
         if (!id) return;
+        // Touch implicitly captures the pointer; release it so the
+        // field receives the pointerup that completes a drag-deploy.
+        if (btn.hasPointerCapture(ev.pointerId)) {
+          btn.releasePointerCapture(ev.pointerId);
+        }
         this.cb.onSelectCard(this.selected === id ? null : id);
       });
       this.cardBtns.push(btn);

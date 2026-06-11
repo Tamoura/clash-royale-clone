@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { RIVER_Y } from "./arena";
-import { createBattle, deployCard } from "./battle";
+import { checkDeploy, createBattle, deployCard } from "./battle";
 
 describe("battle setup", () => {
   it("starts with 6 towers, full hands, and 5 elixir each", () => {
@@ -95,5 +95,39 @@ describe("deployment", () => {
   it("rejects troop deployment on the river itself", () => {
     const b = createBattle();
     expect(deployCard(b, "player", "knight", 9, RIVER_Y)).toBe(false);
+  });
+});
+
+describe("checkDeploy", () => {
+  it("approves a normal troop deploy", () => {
+    const b = createBattle();
+    expect(checkDeploy(b, "player", "knight", 9, 24)).toBe("ok");
+  });
+
+  it("flags the enemy half for troops but not for spells", () => {
+    const b = createBattle();
+    expect(checkDeploy(b, "player", "knight", 9, 8)).toBe("bad-spot");
+    expect(checkDeploy(b, "player", "fireball", 9, 8)).toBe("ok");
+  });
+
+  it("flags missing elixir", () => {
+    const b = createBattle();
+    b.player.elixir = { amount: 1 };
+    expect(checkDeploy(b, "player", "knight", 9, 24)).toBe("no-elixir");
+  });
+
+  it("flags cards not in hand and finished battles", () => {
+    const b = createBattle();
+    expect(checkDeploy(b, "player", "pekka", 9, 24)).toBe("not-in-hand");
+    b.result = { winner: "player", playerCrowns: 3, enemyCrowns: 0 };
+    expect(checkDeploy(b, "player", "knight", 9, 24)).toBe("finished");
+  });
+
+  it("agrees with deployCard", () => {
+    const b = createBattle();
+    expect(checkDeploy(b, "player", "knight", 9, 8)).not.toBe("ok");
+    expect(deployCard(b, "player", "knight", 9, 8)).toBe(false);
+    expect(checkDeploy(b, "player", "knight", 9, 24)).toBe("ok");
+    expect(deployCard(b, "player", "knight", 9, 24)).toBe(true);
   });
 });

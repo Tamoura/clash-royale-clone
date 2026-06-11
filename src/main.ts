@@ -1,5 +1,5 @@
 import { SoundEngine } from "./audio/sound";
-import { createBattle, deployCard, type BattleState } from "./game/battle";
+import { checkDeploy, createBattle, deployCard, type BattleState } from "./game/battle";
 import { createBot, tickBot, type BotState } from "./game/bot";
 import { getCard, type CardId } from "./game/cards";
 import { tick } from "./game/sim";
@@ -132,26 +132,48 @@ function botEmote(emoji: string): void {
   audio.emotePop();
 }
 
-scene.renderer.domElement.addEventListener("click", (ev) => {
-  if (battle.result || !selectedCard) return;
-  const pos = scene.pick(ev.clientX, ev.clientY);
-  if (pos && deployCard(battle, "player", selectedCard, pos.x, pos.y)) {
-    selectCard(null);
-    scene.setHover(null, 0, false);
-  }
-});
+function clearPreview(): void {
+  scene.setHover(null, 0, false);
+  scene.setGhost(null, null);
+}
 
-scene.renderer.domElement.addEventListener("pointermove", (ev) => {
+function showPreview(clientX: number, clientY: number): void {
   if (!selectedCard) {
-    scene.setHover(null, 0, false);
+    clearPreview();
     return;
   }
   const card = getCard(selectedCard);
+  const pos = scene.pick(clientX, clientY);
+  const valid =
+    pos !== null &&
+    checkDeploy(battle, "player", selectedCard, pos.x, pos.y) === "ok";
   scene.setHover(
-    scene.pick(ev.clientX, ev.clientY),
+    pos,
     card.kind === "spell" ? card.radius : 0.6,
     card.kind === "spell",
+    valid,
   );
+  scene.setGhost(card.kind === "spell" ? null : selectedCard, pos);
+}
+
+function tryDeployAt(clientX: number, clientY: number): void {
+  if (battle.result || !selectedCard) return;
+  const pos = scene.pick(clientX, clientY);
+  if (pos && deployCard(battle, "player", selectedCard, pos.x, pos.y)) {
+    selectCard(null);
+    clearPreview();
+  }
+}
+
+// Click-to-place and drag-from-hand both end in a pointerup on the field.
+scene.renderer.domElement.addEventListener("pointerup", (ev) => {
+  tryDeployAt(ev.clientX, ev.clientY);
+});
+
+// Show the ghost wherever the pointer goes while a card is selected
+// (window-level so a drag started on a hand card previews immediately).
+window.addEventListener("pointermove", (ev) => {
+  showPreview(ev.clientX, ev.clientY);
 });
 
 window.addEventListener("keydown", (ev) => {

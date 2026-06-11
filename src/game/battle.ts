@@ -389,6 +389,28 @@ export function applySpell(
   state.effects.push({ cardId, x, y, radius, ttl: 0.6 });
 }
 
+/** Why a deploy would be rejected (or "ok" if it would succeed). */
+export type DeployCheck = "ok" | "finished" | "not-in-hand" | "bad-spot" | "no-elixir";
+
+/** Dry-run of deployCard, used for UI validity feedback. */
+export function checkDeploy(
+  state: BattleState,
+  side: Side,
+  cardId: CardId,
+  x: number,
+  y: number,
+): DeployCheck {
+  if (state.result) return "finished";
+  const me = sideState(state, side);
+  if (!me.hand.cards.includes(cardId)) return "not-in-hand";
+  const card = getCard(cardId);
+  const validSpot =
+    card.kind === "spell" ? inArena(x, y) : canDeployTroopAt(side, x, y);
+  if (!validSpot) return "bad-spot";
+  if (!trySpend(me.elixir, card.cost)) return "no-elixir";
+  return "ok";
+}
+
 /**
  * Attempt to play a card for `side` at (x, y).
  * Returns false (with no state change) if the card is not in hand,
@@ -401,17 +423,10 @@ export function deployCard(
   x: number,
   y: number,
 ): boolean {
-  if (state.result) return false;
+  if (checkDeploy(state, side, cardId, x, y) !== "ok") return false;
   const me = sideState(state, side);
-  if (!me.hand.cards.includes(cardId)) return false;
   const card = getCard(cardId);
-  const validSpot =
-    card.kind === "spell" ? inArena(x, y) : canDeployTroopAt(side, x, y);
-  if (!validSpot) return false;
-  const spent = trySpend(me.elixir, card.cost);
-  if (!spent) return false;
-
-  me.elixir = spent;
+  me.elixir = trySpend(me.elixir, card.cost)!;
   me.stats.elixirSpent += card.cost;
   me.hand = playCard(me.hand, cardId);
   if (card.kind === "spell") {

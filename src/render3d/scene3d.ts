@@ -392,6 +392,7 @@ export class Battle3D {
   private effects: EffectView[] = [];
   private dying: DyingView[] = [];
   private readonly hoverDisc: THREE.Mesh;
+  private ghost: { id: CardId; rig: TroopRig } | null = null;
   private readonly zonePlane: THREE.Mesh;
   private readonly container: HTMLElement;
 
@@ -590,7 +591,12 @@ export class Battle3D {
     return { x: ax, y: ay };
   }
 
-  setHover(pos: { x: number; y: number } | null, radiusTiles: number, spell: boolean): void {
+  setHover(
+    pos: { x: number; y: number } | null,
+    radiusTiles: number,
+    spell: boolean,
+    valid = true,
+  ): void {
     if (!pos) {
       this.hoverDisc.visible = false;
       return;
@@ -600,8 +606,40 @@ export class Battle3D {
     this.hoverDisc.position.set(w.x, 0.03, w.z);
     this.hoverDisc.scale.setScalar(radiusTiles / 0.6);
     (this.hoverDisc.material as THREE.MeshBasicMaterial).color.set(
-      spell ? 0xff8c1a : 0xffffff,
+      !valid ? 0xef4444 : spell ? 0xff8c1a : 0x4ade80,
     );
+  }
+
+  /**
+   * Translucent preview of the selected troop under the cursor.
+   * Pass null to clear; the rig is rebuilt only when the card changes.
+   */
+  setGhost(cardId: CardId | null, pos: { x: number; y: number } | null): void {
+    if (!cardId || !pos) {
+      if (this.ghost) this.ghost.rig.group.visible = false;
+      return;
+    }
+    if (this.ghost?.id !== cardId) {
+      if (this.ghost) this.scene.remove(this.ghost.rig.group);
+      const rig = buildTroop(cardId);
+      rig.group.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh) {
+          const mat = (mesh.material as THREE.Material).clone() as THREE.Material & {
+            opacity: number;
+          };
+          mat.transparent = true;
+          mat.opacity = 0.45;
+          mesh.material = mat;
+          mesh.castShadow = false;
+        }
+      });
+      this.scene.add(rig.group);
+      this.ghost = { id: cardId, rig };
+    }
+    const w = toWorld(pos.x, pos.y);
+    this.ghost.rig.group.visible = true;
+    this.ghost.rig.group.position.set(w.x, this.ghost.rig.hover ?? 0, w.z);
   }
 
   setZoneVisible(visible: boolean): void {
@@ -1130,5 +1168,9 @@ export class Battle3D {
     this.effects = [];
     for (const d of this.dying) this.scene.remove(d.view.root);
     this.dying = [];
+    if (this.ghost) {
+      this.scene.remove(this.ghost.rig.group);
+      this.ghost = null;
+    }
   }
 }
