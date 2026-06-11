@@ -21,6 +21,9 @@ export type EntityKind = "troop" | "building" | "princess-tower" | "king-tower";
 /** Seconds a freshly deployed troop or building stands frozen. */
 export const DEPLOY_DELAY = 1;
 
+/** Spawners summon their first wave quickly, then every spawnInterval. */
+export const FIRST_SPAWN_DELAY = 1;
+
 export interface Entity {
   id: number;
   side: Side;
@@ -53,6 +56,12 @@ export interface Entity {
   deployTimer: number;
   /** HP lost per second (deployable buildings decay; 0 otherwise). */
   decayPerSec: number;
+  /** Card whose units this entity periodically summons (null = none). */
+  spawnUnitId: CardId | null;
+  /** Seconds between summons. */
+  spawnInterval: number;
+  /** Seconds until the next summon (unused when spawnUnitId is null). */
+  spawnTimer: number;
   radius: number;
   /** Seconds until the next attack is ready. */
   cooldown: number;
@@ -163,6 +172,9 @@ function makeTower(state: BattleState, side: Side, kind: TowerKind, x: number, y
     chargeProgress: 0,
     deployTimer: 0,
     decayPerSec: 0,
+    spawnUnitId: null,
+    spawnInterval: 0,
+    spawnTimer: 0,
     radius: s.radius,
     cooldown: 0,
     targetId: null,
@@ -259,6 +271,9 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       deployTimer: DEPLOY_DELAY,
       radius: card.unit.radius,
       decayPerSec: 0,
+      spawnUnitId: card.unit.spawnUnitId,
+      spawnInterval: card.unit.spawnInterval,
+      spawnTimer: FIRST_SPAWN_DELAY,
       cooldown: 0,
       targetId: null,
       active: true,
@@ -292,6 +307,9 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
     chargeProgress: 0,
     deployTimer: DEPLOY_DELAY,
     decayPerSec: u.maxHp / card.lifetime,
+    spawnUnitId: u.spawnUnitId,
+    spawnInterval: u.spawnInterval,
+    spawnTimer: FIRST_SPAWN_DELAY,
     radius: u.radius,
     cooldown: 0,
     targetId: null,

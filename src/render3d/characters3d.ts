@@ -381,6 +381,48 @@ function buildWizard(): TroopRig {
   return { group: g, arm, armRest: -0.9, swingAmp: 1.1, height: 1.75, offArm };
 }
 
+function buildWitch(): TroopRig {
+  const g = new THREE.Group();
+  g.add(cyl(0.26, 0.46, 0.7, 0x4a148c, 0, 0.4, 0)); // dark robe
+  g.add(cyl(0.37, 0.4, 0.08, 0x7b1fa2, 0, 0.5, 0)); // sash
+  g.add(sphere(0.07, 0x76ff03, 0, 0.62, 0.3)); // glowing brooch
+  const head = sphere(0.29, 0xcfd4f1, 0, 1.04, 0); // pale skin
+  addEyes(head, 0.29);
+  g.add(head);
+  const hair = sphere(0.3, 0x4e2a84, 0, 1.1, -0.06);
+  hair.scale.set(1, 0.7, 1.05);
+  g.add(hair);
+  g.add(cyl(0.42, 0.42, 0.05, 0x311b92, 0, 1.26, 0)); // hat brim
+  const hatTop = cone(0.24, 0.6, 0x311b92, -0.05, 1.58, 0);
+  hatTop.rotation.z = 0.16; // crooked witch hat
+  g.add(hatTop);
+  g.add(sphere(0.05, 0x76ff03, 0, 1.27, 0.34)); // hat gem
+  // A little skull familiar floating by her shoulder.
+  const skull = sphere(0.09, 0xf5f2ea, -0.4, 1.1, 0.1);
+  skull.add(sphere(0.025, 0x1f2430, -0.03, 0.01, 0.075));
+  skull.add(sphere(0.025, 0x1f2430, 0.03, 0.01, 0.075));
+  g.add(skull);
+
+  // Staff hand.
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.34, 0.78, 0);
+  offArm.add(box(0.11, 0.26, 0.11, 0x4a148c, 0, -0.13, 0));
+  const staff = cyl(0.03, 0.03, 0.9, 0x3e2723, 0, -0.28, 0.08);
+  offArm.add(staff);
+  offArm.add(sphere(0.1, 0x76ff03, 0, 0.2, 0.08)); // necro orb
+  g.add(offArm);
+
+  // Casting hand wreathed in green soul-fire.
+  const arm = new THREE.Group();
+  arm.position.set(0.34, 0.8, 0);
+  arm.add(box(0.11, 0.26, 0.11, 0x4a148c, 0, -0.13, 0));
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), glow(0x76ff03, 1.8));
+  orb.position.set(0, -0.34, 0.1);
+  arm.add(orb);
+  g.add(arm);
+  return { group: g, arm, armRest: -0.9, swingAmp: 1.1, height: 1.8, offArm };
+}
+
 function buildBabyDragon(): TroopRig {
   const g = new THREE.Group();
   const body = sphere(0.46, 0x4caf50, 0, 0.5, 0);
@@ -630,6 +672,7 @@ const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   "mini-pekka": buildMiniPekka,
   skeletons: buildSkeleton,
   wizard: buildWizard,
+  witch: buildWitch,
   "baby-dragon": buildBabyDragon,
   gargoyles: buildGargoyle,
   valkyrie: buildValkyrie,

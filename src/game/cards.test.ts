@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CARDS, DECK, getCard } from "./cards";
 
 describe("cards", () => {
-  it("defines the 15-card deck", () => {
+  it("defines the 16-card deck", () => {
     expect(DECK).toEqual([
       "knight",
       "archers",
@@ -14,6 +14,7 @@ describe("cards", () => {
       "valkyrie",
       "skeletons",
       "wizard",
+      "witch",
       "prince",
       "pekka",
       "cannon",
@@ -21,6 +22,14 @@ describe("cards", () => {
       "arrows",
     ]);
     for (const id of DECK) expect(CARDS[id]).toBeDefined();
+  });
+
+  it("the witch periodically summons skeletons", () => {
+    const witch = getCard("witch");
+    if (witch.kind !== "troop") throw new Error("witch should be a troop");
+    expect(witch.unit.spawnUnitId).toBe("skeletons");
+    expect(witch.unit.spawnInterval).toBeGreaterThan(0);
+    expect(witch.unit.targetsAir).toBe(true);
   });
 
   it("the P.E.K.K.A is a 7-elixir single-target ground tank", () => {

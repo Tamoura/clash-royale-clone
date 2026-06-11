@@ -8,6 +8,7 @@ export type CardId =
   | "fireball"
   | "arrows"
   | "wizard"
+  | "witch"
   | "baby-dragon"
   | "gargoyles"
   | "valkyrie"
@@ -43,6 +44,10 @@ export interface UnitStats {
   splashRadius: number;
   /** Tiles of uninterrupted approach to charge (0 = no charge). */
   chargeDistance: number;
+  /** Card whose units this troop periodically summons (null = none). */
+  spawnUnitId: CardId | null;
+  /** Seconds between summons (0 = not a spawner). */
+  spawnInterval: number;
   /** Visual + collision radius in tiles. */
   radius: number;
 }
@@ -96,6 +101,8 @@ function unit(stats: UnitOverrides): UnitStats {
     flying: false,
     splashRadius: 0,
     chargeDistance: 0,
+    spawnUnitId: null,
+    spawnInterval: 0,
     radius: 0.5,
     ...stats,
   };
@@ -209,6 +216,25 @@ export const CARDS: Record<CardId, Card> = {
       speed: "medium",
       targetsAir: true,
       splashRadius: 1.2,
+    }),
+  },
+  witch: {
+    id: "witch",
+    name: "Witch",
+    kind: "troop",
+    cost: 5,
+    count: 1,
+    unit: unit({
+      maxHp: 700,
+      damage: 130,
+      hitSpeed: 1.1,
+      attackRange: 5,
+      sightRange: 5.5,
+      speed: "medium",
+      targetsAir: true,
+      splashRadius: 1.0,
+      spawnUnitId: "skeletons",
+      spawnInterval: 7,
     }),
   },
   "baby-dragon": {
@@ -337,6 +363,7 @@ export const DECK: CardId[] = [
   "valkyrie",
   "skeletons",
   "wizard",
+  "witch",
   "prince",
   "pekka",
   "cannon",

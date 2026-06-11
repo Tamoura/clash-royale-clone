@@ -125,6 +125,25 @@ describe("buildings", () => {
   });
 });
 
+describe("spawners", () => {
+  it("a witch summons skeletons on her side over time", () => {
+    const b = createBattle();
+    spawnUnits(b, "player", "witch", 9, 24);
+    expect(b.entities.filter((e) => e.cardId === "skeletons")).toHaveLength(0);
+    run(b, 10);
+    const skeletons = b.entities.filter((e) => e.cardId === "skeletons");
+    expect(skeletons.length).toBeGreaterThanOrEqual(3);
+    for (const s of skeletons) expect(s.side).toBe("player");
+  });
+
+  it("non-spawner troops never summon anything", () => {
+    const b = createBattle();
+    spawnUnits(b, "player", "knight", 9, 24);
+    run(b, 10);
+    expect(b.entities.filter((e) => e.cardId === "skeletons")).toHaveLength(0);
+  });
+});
+
 describe("deploy delay", () => {
   it("troops stand frozen for the first second", () => {
     const b = createBattle();

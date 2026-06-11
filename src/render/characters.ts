@@ -300,6 +300,37 @@ function drawWizard(ctx: Ctx, _anim: Anim): void {
   eyes(ctx, -5);
 }
 
+function drawWitch(ctx: Ctx, _anim: Anim): void {
+  // green soul-fire orb
+  ctx.save();
+  ctx.translate(-6.5, 0);
+  const g = ctx.createRadialGradient(0, 0, 0.5, 0, 0, 3);
+  g.addColorStop(0, "#ccff90");
+  g.addColorStop(1, "#64dd17");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(0, 0, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  box(ctx, -4.5, -1, 9, 9, 3, "#4a148c"); // dark robe
+  box(ctx, -4.5, 2.4, 9, 1.6, 0.8, "#7b1fa2"); // sash
+  circle(ctx, 0, -5, 5, "#cfd4f1"); // pale head
+  box(ctx, -5, -3.4, 10, 2.2, 1, "#4e2a84"); // hair
+  outlined(ctx, "#311b92", () => {
+    // crooked witch hat
+    ctx.beginPath();
+    ctx.moveTo(-7, -7.5);
+    ctx.lineTo(7, -7.5);
+    ctx.lineTo(2, -8.8);
+    ctx.lineTo(4, -14.5);
+    ctx.lineTo(-3, -8.8);
+    ctx.closePath();
+  });
+  circle(ctx, 5.5, 1.5, 1.7, "#f5f2ea"); // skull familiar
+  eyes(ctx, -5);
+}
+
 function drawBabyDragon(ctx: Ctx, _anim: Anim): void {
   // wings
   for (const s of [-1, 1]) {
@@ -488,6 +519,7 @@ const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = 
   "mini-pekka": drawMiniPekka,
   skeletons: drawSkeleton,
   wizard: drawWizard,
+  witch: drawWitch,
   "baby-dragon": drawBabyDragon,
   gargoyles: drawGargoyle,
   valkyrie: drawValkyrie,

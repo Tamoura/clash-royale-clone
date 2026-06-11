@@ -8,6 +8,7 @@ import {
   distance,
   isBuilding,
   sideState,
+  spawnUnits,
   type BattleResult,
   type BattleState,
   type Entity,
@@ -144,6 +145,16 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
   });
 }
 
+/** Spawner troops (e.g. the Witch) summon a wave every spawnInterval. */
+function tickSpawner(state: BattleState, e: Entity, dt: number): void {
+  if (!e.spawnUnitId) return;
+  e.spawnTimer -= dt;
+  if (e.spawnTimer > 0) return;
+  const toward = e.side === "player" ? -1 : 1;
+  spawnUnits(state, e.side, e.spawnUnitId, e.x, e.y + toward * (e.radius + 0.5));
+  e.spawnTimer += e.spawnInterval;
+}
+
 function actEntity(state: BattleState, e: Entity, dt: number): void {
   e.cooldown = Math.max(0, e.cooldown - dt);
   if (!e.active) return;
@@ -156,6 +167,7 @@ function actEntity(state: BattleState, e: Entity, dt: number): void {
     e.deployTimer -= dt;
     return;
   }
+  tickSpawner(state, e, dt);
   if (!target) return;
 
   if (gap(e, target) <= e.attackRange) {
