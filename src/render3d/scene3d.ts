@@ -8,6 +8,7 @@ import {
 } from "../game/battle";
 import { getCard, type CardId } from "../game/cards";
 import { isRaged, moveGoal } from "../game/sim";
+import { projectileStyle } from "./projectiles";
 import {
   animateTroop,
   buildTowerKing,
@@ -790,22 +791,12 @@ export class Battle3D {
     const to = toWorld(ev.targetX, ev.targetY);
     const y0 = ev.kind === "troop" ? 0.9 : 1.6;
     const y1 = 0.7;
+    const style = projectileStyle(ev.cardId, ev.kind);
 
-    const isArrow = ev.cardId === "archers" || ev.kind !== "troop";
     let obj: THREE.Object3D;
-    let arc = 0.4;
-    if (isArrow) {
-      obj = this.makeArrow(ev.kind !== "troop" ? 0xffe082 : 0xd7ccc8);
-      arc = 0.8;
+    if (style.form === "arrow") {
+      obj = this.makeArrow(style.color);
     } else {
-      const style =
-        ev.cardId === "wizard"
-          ? { color: 0xff8c1a, size: 0.16, glow: true }
-          : ev.cardId === "baby-dragon"
-            ? { color: 0x8bc34a, size: 0.15, glow: true }
-            : ev.cardId === "cannon"
-              ? { color: 0x263238, size: 0.15 }
-              : { color: 0x37474f, size: 0.08 }; // musket ball
       const mat = style.glow
         ? new THREE.MeshStandardMaterial({
             color: style.color,
@@ -813,18 +804,43 @@ export class Battle3D {
             emissiveIntensity: 1.5,
           })
         : new THREE.MeshBasicMaterial({ color: style.color });
-      obj = new THREE.Mesh(new THREE.SphereGeometry(style.size, 8, 6), mat);
-      arc = ev.cardId === "cannon" ? 0.8 : 0.25;
+      const orb = new THREE.Mesh(new THREE.SphereGeometry(style.size, 8, 6), mat);
+      if (style.glow) {
+        // Light streak trailing behind the orb.
+        const trail = new THREE.Mesh(
+          new THREE.SphereGeometry(style.size * 0.8, 8, 6),
+          new THREE.MeshBasicMaterial({
+            color: style.color,
+            transparent: true,
+            opacity: 0.4,
+          }),
+        );
+        trail.scale.z = 3.2;
+        trail.position.z = -style.size * 2.2;
+        orb.add(trail);
+      }
+      obj = orb;
+    }
+
+    if (style.muzzleFlash) {
+      const flash = new THREE.Mesh(
+        new THREE.SphereGeometry(0.14, 8, 6),
+        new THREE.MeshBasicMaterial({ color: 0xfff3c4, transparent: true }),
+      );
+      flash.position.set(from.x, y0, from.z);
+      this.addEffect(flash, 0.08, (frac) => {
+        flash.scale.setScalar(1 + (1 - frac) * 1.6);
+        (flash.material as THREE.MeshBasicMaterial).opacity = frac;
+      });
     }
 
     obj.position.set(from.x, y0, from.z);
     obj.lookAt(to.x, y1, to.z);
-    const duration = isArrow ? 0.22 : 0.16;
-    this.addEffect(obj, duration, (frac) => {
+    this.addEffect(obj, style.duration, (frac) => {
       const t = 1 - frac;
       obj.position.set(
         from.x + (to.x - from.x) * t,
-        y0 + (y1 - y0) * t + Math.sin(t * Math.PI) * arc,
+        y0 + (y1 - y0) * t + Math.sin(t * Math.PI) * style.arc,
         from.z + (to.z - from.z) * t,
       );
     });
