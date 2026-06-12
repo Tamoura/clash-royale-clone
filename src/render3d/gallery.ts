@@ -24,7 +24,7 @@ export function startGallery(container: HTMLElement, subject: string): void {
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x27355c);
+  scene.background = new THREE.Color(0x46588f);
 
   let rig: TroopRig;
   let title: string;
@@ -56,21 +56,25 @@ export function startGallery(container: HTMLElement, subject: string): void {
   scene.add(pedestal);
   const floor = new THREE.Mesh(
     new THREE.CircleGeometry(7, 32),
-    new THREE.MeshToonMaterial({ color: 0x1d2845 }),
+    new THREE.MeshToonMaterial({ color: 0x33426e }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = -0.3;
   floor.receiveShadow = true;
   scene.add(floor);
 
-  scene.add(new THREE.HemisphereLight(0xdfeaff, 0x3a3f5c, 1.0));
-  const key = new THREE.DirectionalLight(0xfff2d8, 1.9);
+  scene.add(new THREE.HemisphereLight(0xdfeaff, 0x4a5070, 1.25));
+  const key = new THREE.DirectionalLight(0xfff2d8, 2.1);
   key.position.set(4, 6, 5);
   key.castShadow = true;
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0x8fb6ff, 1.0);
+  const rim = new THREE.DirectionalLight(0x8fb6ff, 1.3);
   rim.position.set(-5, 4, -4);
   scene.add(rim);
+  // Camera-side fill so dark armor (P.E.K.K.A & co) keeps its shape.
+  const fill = new THREE.DirectionalLight(0xcfd8ff, 0.7);
+  fill.position.set(0, 2, 8);
+  scene.add(fill);
 
   // Frame the character by its height.
   const h = (rig.hover ?? 0) + rig.height;
