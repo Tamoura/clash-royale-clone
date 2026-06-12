@@ -770,6 +770,35 @@ function drawRageArt(ctx: Ctx): void {
   ctx.stroke();
 }
 
+function drawFreezeArt(ctx: Ctx): void {
+  // icy glow
+  const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 9);
+  g.addColorStop(0, "rgba(178,235,255,0.95)");
+  g.addColorStop(1, "rgba(79,216,255,0)");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(0, 0, 9, 0, Math.PI * 2);
+  ctx.fill();
+  // six-arm snowflake
+  ctx.strokeStyle = "#e3f6ff";
+  ctx.lineWidth = 1.6;
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const dx = Math.cos(a);
+    const dy = Math.sin(a);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(dx * 8, dy * 8);
+    // side barbs
+    ctx.moveTo(dx * 5, dy * 5);
+    ctx.lineTo(dx * 5 + Math.cos(a + 2.3) * 2.2, dy * 5 + Math.sin(a + 2.3) * 2.2);
+    ctx.moveTo(dx * 5, dy * 5);
+    ctx.lineTo(dx * 5 + Math.cos(a - 2.3) * 2.2, dy * 5 + Math.sin(a - 2.3) * 2.2);
+    ctx.stroke();
+  }
+  circle(ctx, 0, 0, 1.3, "#ffffff");
+}
+
 /** Static portrait used for HUD card slots and the next-card preview. */
 export function drawCardArt(
   ctx: Ctx,
@@ -786,6 +815,7 @@ export function drawCardArt(
   else if (cardId === "arrows") drawArrowsArt(ctx);
   else if (cardId === "zap") drawZapArt(ctx);
   else if (cardId === "rage") drawRageArt(ctx);
+  else if (cardId === "freeze") drawFreezeArt(ctx);
   else TROOP_PAINTERS[cardId]?.(ctx, STILL);
   ctx.restore();
 }

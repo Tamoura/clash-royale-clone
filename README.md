@@ -15,10 +15,10 @@ no Supercell assets are used.
   HP readout and collapse into rubble with a camera shake when they
   fall.
 - Elixir regenerates over time (max 10, double-elixir in the last 60s).
-- 21-card deck, 4-card rotating hand: Knight, Archers, Giant,
+- 22-card deck, 4-card rotating hand: Knight, Archers, Giant,
   Musketeer, Mini P.E.K.K.A, Skeletons, Wizard, Witch, Hog Rider,
   Balloon, Baby Dragon, Gargoyles, Valkyrie, Prince, P.E.K.K.A,
-  Cannon, Tombstone, Fireball, Arrows, Zap, Rage.
+  Cannon, Tombstone, Fireball, Arrows, Zap, Rage, Freeze.
 - CR-style mechanics: flying units (straight paths, only
   air-targeters can hit them), splash damage, the Prince's charge
   (2x damage after a run-up), deployable buildings that decay and

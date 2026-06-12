@@ -9,6 +9,7 @@ export type CardId =
   | "arrows"
   | "zap"
   | "rage"
+  | "freeze"
   | "wizard"
   | "witch"
   | "hog-rider"
@@ -446,6 +447,16 @@ export const CARDS: Record<CardId, Card> = {
     stunSeconds: 0,
     rageSeconds: 6,
   },
+  freeze: {
+    id: "freeze",
+    name: "Freeze",
+    kind: "spell",
+    cost: 4,
+    damage: 0,
+    radius: 3,
+    stunSeconds: 4,
+    rageSeconds: 0,
+  },
 };
 
 /** Deck order doubles as the starting draw: the first 4 are the opening hand. */
@@ -471,6 +482,7 @@ export const DECK: CardId[] = [
   "arrows",
   "zap",
   "rage",
+  "freeze",
 ];
 
 export function getCard(id: CardId): Card {

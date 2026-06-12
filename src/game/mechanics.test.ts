@@ -224,6 +224,20 @@ describe("stun", () => {
     expect(knight.y).not.toBe(yBefore); // free again
   });
 
+  it("freeze roots enemies for several seconds without hurting them", () => {
+    const b = createBattle();
+    const [knight] = spawnUnits(b, "enemy", "knight", 9, 16);
+    run(b, 1.5);
+    const yBefore = knight.y;
+    giveHand(b, "player", ["freeze"]);
+    expect(deployCard(b, "player", "freeze", 9, knight.y)).toBe(true);
+    expect(knight.hp).toBe(knight.maxHp); // no damage
+    run(b, 3);
+    expect(knight.y).toBe(yBefore); // still frozen at 3s
+    run(b, 2);
+    expect(knight.y).not.toBe(yBefore); // thawed
+  });
+
   it("zap does not stun the caster's own troops", () => {
     const b = createBattle();
     const [mine] = spawnUnits(b, "player", "knight", 9, 16);

@@ -1500,6 +1500,43 @@ export class Battle3D {
     });
   }
 
+  /** Freeze: an icy flash, then a lingering frost ring while frozen. */
+  private freezeBlast(ax: number, ay: number, radius: number, seconds: number): void {
+    const w = toWorld(ax, ay);
+    this.blast(ax, ay, radius, 0xb2ebff, 0);
+    const frost = new THREE.Mesh(
+      new THREE.CircleGeometry(radius, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0xcfeeff,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide,
+      }),
+    );
+    frost.rotation.x = -Math.PI / 2;
+    frost.position.set(w.x, 0.04, w.z);
+    this.addEffect(frost, seconds, (frac) => {
+      (frost.material as THREE.MeshBasicMaterial).opacity = 0.3 * Math.min(1, frac * 3);
+    });
+    // Ice shards poking out of the ground.
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + i;
+      const r = radius * (0.3 + ((i * 13) % 5) * 0.13);
+      const shard = new THREE.Mesh(
+        new THREE.ConeGeometry(0.12, 0.5 + (i % 3) * 0.2, 5),
+        new THREE.MeshToonMaterial({ color: 0xb2ebff, transparent: true }),
+      );
+      shard.position.set(w.x + Math.cos(a) * r, 0, w.z + Math.sin(a) * r);
+      shard.rotation.z = ((i % 3) - 1) * 0.2;
+      this.addEffect(shard, seconds, (frac) => {
+        const grow = Math.min(1, (1 - frac) * seconds * 3);
+        shard.scale.setScalar(Math.max(0.05, grow));
+        shard.position.y = 0.25 * grow;
+        (shard.material as THREE.MeshToonMaterial).opacity = Math.min(1, frac * 3);
+      });
+    }
+  }
+
   /** Arrows: a volley rains down across the radius, then a ring pop. */
   private arrowVolley(ax: number, ay: number, radius: number): void {
     for (let i = 0; i < 10; i++) {
@@ -1808,6 +1845,7 @@ export class Battle3D {
         if (ev.cardId === "fireball") this.fireballStrike(ev.x, ev.y);
         else if (ev.cardId === "zap") this.zapStrike(ev.x, ev.y, 2);
         else if (ev.cardId === "rage") this.rageZone(ev.x, ev.y, 2.5, 6);
+        else if (ev.cardId === "freeze") this.freezeBlast(ev.x, ev.y, 3, 4);
         else this.arrowVolley(ev.x, ev.y, 4);
         break;
       case "attack":

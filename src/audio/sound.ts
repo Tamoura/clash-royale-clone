@@ -163,6 +163,19 @@ export class SoundEngine {
     this.tone(90, 0.5, { type: "square", slideTo: 260, vol: 0.12, delay: 0.04 });
   }
 
+  private freeze(): void {
+    // Glassy descending shimmer.
+    for (let i = 0; i < 4; i++) {
+      this.tone(1800 - i * 320, 0.3, {
+        type: "sine",
+        slideTo: 900 - i * 150,
+        vol: 0.1,
+        delay: i * 0.06,
+      });
+    }
+    this.noise(0.35, { vol: 0.08, filterFreq: 7000 });
+  }
+
   private arrows(): void {
     for (let i = 0; i < 3; i++) {
       this.noise(0.1, { vol: 0.12, filterFreq: 5000, delay: i * 0.07 });
@@ -303,6 +316,7 @@ export class SoundEngine {
         if (ev.cardId === "fireball") this.fireball();
         else if (ev.cardId === "zap") this.zap();
         else if (ev.cardId === "rage") this.rage();
+        else if (ev.cardId === "freeze") this.freeze();
         else this.arrows();
         break;
       case "attack":
