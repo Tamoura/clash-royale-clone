@@ -297,12 +297,26 @@ function buildTowerMesh(e: Entity): EntityView {
   const radius = king ? 1.15 : 0.85;
   const height = king ? 2.0 : 1.55;
 
-  // Square stone keep with brick walls on a wider plinth.
+  // Two-step stone platform under the keep, gold-trimmed like CR.
+  const platform = new THREE.Mesh(
+    new THREE.BoxGeometry(radius * 2.9, 0.18, radius * 2.9),
+    toon(0xcfc4ab),
+  );
+  platform.position.y = 0.09;
+  platform.castShadow = true;
+  platform.receiveShadow = true;
+  root.add(platform);
+  const platTrim = new THREE.Mesh(
+    new THREE.BoxGeometry(radius * 2.95, 0.06, radius * 2.95),
+    toon(0xd9a93f),
+  );
+  platTrim.position.y = 0.2;
+  root.add(platTrim);
   const plinth = new THREE.Mesh(
     new THREE.BoxGeometry(radius * 2.3, 0.3, radius * 2.3),
     toon(0x9c8d74),
   );
-  plinth.position.y = 0.15;
+  plinth.position.y = 0.32;
   plinth.castShadow = true;
   plinth.receiveShadow = true;
   root.add(plinth);
@@ -344,8 +358,22 @@ function buildTowerMesh(e: Entity): EntityView {
   // Door + team banner facing the enemy.
   const facing = e.side === "player" ? -1 : 1;
   const door = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.1), toon(0x4a3826));
-  door.position.set(0, 0.35, facing * radius * 1.01);
+  door.position.set(0, 0.62, facing * radius * 1.01);
   root.add(door);
+
+  // The king's platform bears a golden crown emblem out front.
+  if (king) {
+    const emblem = new THREE.Group();
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.07), toon(0xd9a93f));
+    emblem.add(band);
+    for (const dx of [-0.17, 0, 0.17]) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.18, 4), toon(0xd9a93f));
+      spike.position.set(dx, 0.16, 0);
+      emblem.add(spike);
+    }
+    emblem.position.set(0, 0.34, facing * radius * 1.47);
+    root.add(emblem);
+  }
   const banner = new THREE.Mesh(
     new THREE.BoxGeometry(0.44, 0.7, 0.06),
     toon(SIDE_COLOR[e.side]),
