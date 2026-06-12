@@ -15,6 +15,19 @@ import { Hud } from "./render3d/hud";
 import { Battle3D } from "./render3d/scene3d";
 
 const stage = document.getElementById("stage")!;
+
+// Character portrait studio: ?gallery=<cardId|tower-princess|tower-king>
+const gallerySubject = new URLSearchParams(location.search).get("gallery");
+if (gallerySubject) {
+  for (const id of ["topbar", "hud", "overlay", "banner", "emotes", "deckpicker"]) {
+    const node = document.getElementById(id);
+    if (node) node.style.display = "none";
+  }
+  void import("./render3d/gallery").then(({ startGallery }) =>
+    startGallery(stage, gallerySubject),
+  );
+  throw new Error("gallery mode"); // stop the battle bootstrap
+}
 const topbar = document.getElementById("topbar")!;
 const hudRoot = document.getElementById("hud")!;
 const overlay = document.getElementById("overlay")!;
