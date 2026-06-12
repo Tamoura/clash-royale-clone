@@ -123,3 +123,27 @@ describe("bot", () => {
     expect(positions()).toEqual(positions());
   });
 });
+
+describe("difficulty", () => {
+  it("a slower thinker waits longer between plays", () => {
+    const b = createBattle();
+    b.enemy.elixir = { amount: 10 };
+    const lazy = createBot(42, { thinkInterval: 3, pushAt: 8 });
+    tickBot(b, lazy, 1.5); // under its interval: no move yet
+    expect(troopsOf(b, "enemy")).toHaveLength(0);
+    tickBot(b, lazy, 2); // crosses 3s total
+    expect(troopsOf(b, "enemy").length).toBeGreaterThan(0);
+  });
+
+  it("an aggressive bot pushes on less elixir", () => {
+    const b = createBattle();
+    b.enemy.elixir = { amount: 6 };
+    const aggro = createBot(42, { thinkInterval: 1, pushAt: 5 });
+    botThink(b, aggro);
+    expect(troopsOf(b, "enemy").length).toBeGreaterThan(0);
+    const c = createBattle();
+    c.enemy.elixir = { amount: 6 };
+    botThink(c, createBot(42)); // default waits for 8
+    expect(troopsOf(c, "enemy")).toHaveLength(0);
+  });
+});

@@ -6,7 +6,7 @@ import {
   isValidDeck,
   type BattleState,
 } from "./game/battle";
-import { createBot, tickBot, type BotState } from "./game/bot";
+import { createBot, tickBot, type BotProfile, type BotState } from "./game/bot";
 import { DECK, DEFAULT_DECK, getCard, type CardId } from "./game/cards";
 import { drawCardArt } from "./render/characters";
 import { CARD_COLOR } from "./render/cardcolors";
@@ -47,8 +47,24 @@ function botDeck(): CardId[] {
   return pool.slice(0, 8);
 }
 
+// ---- Bot difficulty ------------------------------------------------------
+
+const DIFF_KEY = "cr-clone-difficulty";
+const DIFFICULTIES: Record<string, BotProfile> = {
+  easy: { thinkInterval: 1.8, pushAt: 9 },
+  normal: { thinkInterval: 1.0, pushAt: 8 },
+  hard: { thinkInterval: 0.55, pushAt: 6 },
+};
+
+function loadDifficulty(): string {
+  const saved = localStorage.getItem(DIFF_KEY) ?? "normal";
+  return saved in DIFFICULTIES ? saved : "normal";
+}
+
+let difficulty = loadDifficulty();
+
 let battle: BattleState = createBattle(playerDeck, botDeck());
-let bot: BotState = createBot(Date.now() & 0xffff);
+let bot: BotState = createBot(Date.now() & 0xffff, DIFFICULTIES[difficulty]);
 let selectedCard: CardId | null = null;
 
 let scene: Battle3D;
@@ -73,7 +89,7 @@ function selectCard(id: CardId | null): void {
 
 function restart(): void {
   battle = createBattle(playerDeck, botDeck());
-  bot = createBot(Date.now() & 0xffff);
+  bot = createBot(Date.now() & 0xffff, DIFFICULTIES[difficulty]);
   selectCard(null);
   scene.reset();
   audio.setIntensity(0);
@@ -96,6 +112,25 @@ function buildDeckPicker(): void {
   const grid = document.createElement("div");
   grid.className = "picker-grid";
   pickerRoot.appendChild(grid);
+  // Opponent difficulty selector.
+  const diffRow = document.createElement("div");
+  diffRow.className = "diff-row";
+  for (const level of Object.keys(DIFFICULTIES)) {
+    const btn = document.createElement("button");
+    btn.className = "diff-btn";
+    btn.textContent = level;
+    btn.classList.toggle("chosen", level === difficulty);
+    btn.addEventListener("click", () => {
+      difficulty = level;
+      localStorage.setItem(DIFF_KEY, level);
+      diffRow
+        .querySelectorAll("button")
+        .forEach((b) => b.classList.toggle("chosen", b === btn));
+    });
+    diffRow.appendChild(btn);
+  }
+  pickerRoot.appendChild(diffRow);
+
   const startBtn = document.createElement("button");
   startBtn.className = "battle-btn";
   startBtn.textContent = "Battle!";

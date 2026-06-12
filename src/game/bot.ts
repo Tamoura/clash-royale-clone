@@ -7,7 +7,15 @@ export const THINK_INTERVAL = 1.0;
 /** Elixir level at which the bot starts a push of its own. */
 export const PUSH_ELIXIR = 8;
 
-export interface BotState {
+/** Tuning knobs that make the bot easier or harder. */
+export interface BotProfile {
+  /** Seconds between decisions. */
+  thinkInterval: number;
+  /** Elixir level at which the bot starts a push. */
+  pushAt: number;
+}
+
+export interface BotState extends BotProfile {
   rng: () => number;
   sinceThink: number;
 }
@@ -24,8 +32,16 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-export function createBot(seed: number): BotState {
-  return { rng: mulberry32(seed), sinceThink: 0 };
+export function createBot(
+  seed: number,
+  profile: Partial<BotProfile> = {},
+): BotState {
+  return {
+    rng: mulberry32(seed),
+    sinceThink: 0,
+    thinkInterval: profile.thinkInterval ?? THINK_INTERVAL,
+    pushAt: profile.pushAt ?? PUSH_ELIXIR,
+  };
 }
 
 function playerTroops(state: BattleState): Entity[] {
@@ -127,7 +143,7 @@ function tryDefend(state: BattleState, bot: BotState): boolean {
 }
 
 function tryPush(state: BattleState, bot: BotState): boolean {
-  if (state.enemy.elixir.amount < PUSH_ELIXIR) return false;
+  if (state.enemy.elixir.amount < bot.pushAt) return false;
   const cards = affordableTroops(state);
   if (cards.length === 0) return false;
   const card = cards[Math.floor(bot.rng() * cards.length)];
@@ -147,7 +163,7 @@ export function botThink(state: BattleState, bot: BotState): void {
 /** Throttled entry point: call every tick, thinks once per interval. */
 export function tickBot(state: BattleState, bot: BotState, dt: number): void {
   bot.sinceThink += dt;
-  if (bot.sinceThink < THINK_INTERVAL) return;
+  if (bot.sinceThink < bot.thinkInterval) return;
   bot.sinceThink = 0;
   botThink(state, bot);
 }
