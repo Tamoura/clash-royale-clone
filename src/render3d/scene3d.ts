@@ -15,6 +15,7 @@ import { DUST_INTERVAL, blobShadowScale } from "./ground";
 import { spawnStyle } from "./spawnfx";
 import {
   animateTroop,
+  articulate,
   buildTowerKing,
   buildTowerPrincess,
   buildTroop,
@@ -515,6 +516,7 @@ function buildTowerMesh(e: Entity): EntityView {
   // sits inside a mount group because animateTroop owns the rig's
   // own transform (hop/breath/lean).
   const defender = king ? buildTowerKing() : buildTowerPrincess();
+  articulate(defender);
   outlineRig(defender.group);
   defender.group.scale.setScalar(king ? 0.85 : 0.8);
   if (defender.arm) defender.arm.rotation.x = defender.armRest;

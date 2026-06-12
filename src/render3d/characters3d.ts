@@ -1069,11 +1069,77 @@ export function outlineRig(group: THREE.Group): void {
   }
 }
 
+/** First mesh child of a limb group that isn't an added joint. */
+function limbMesh(group: THREE.Group): THREE.Mesh | null {
+  for (const c of group.children) {
+    const mesh = c as THREE.Mesh;
+    if (mesh.isMesh && !mesh.name.startsWith("joint") && mesh.name !== "foot") {
+      return mesh;
+    }
+  }
+  return null;
+}
+
+/** Sphere joint sharing the limb's material (uniform flash/fade). */
+function jointBall(limb: THREE.Mesh, r: number, name: string): THREE.Mesh {
+  const geo = cachedGeo(`s:${r}`, () => new THREE.SphereGeometry(r, 20, 16));
+  const ball = new THREE.Mesh(geo, limb.material);
+  ball.name = name;
+  ball.castShadow = true;
+  return ball;
+}
+
+/**
+ * Ball-jointed vinyl articulation: every arm gets a shoulder ball at
+ * its pivot and a gloved fist at its end; every leg gets a hip joint
+ * and a chunky foot. Derived from each limb's own bounding box, so
+ * all 17 rigs upgrade without per-character edits.
+ */
+export function articulate(rig: TroopRig): void {
+  for (const armGroup of [rig.arm, rig.offArm]) {
+    if (!armGroup) continue;
+    const limb = limbMesh(armGroup);
+    if (!limb) continue;
+    limb.geometry.computeBoundingBox();
+    const bb = limb.geometry.boundingBox!;
+    const width = (bb.max.x - bb.min.x) * limb.scale.x;
+    const shoulder = jointBall(limb, round2(width * 0.62), "joint-shoulder");
+    shoulder.position.set(limb.position.x, 0, limb.position.z);
+    armGroup.add(shoulder);
+    const fist = jointBall(limb, round2(width * 0.58), "joint-fist");
+    fist.position.set(
+      limb.position.x,
+      limb.position.y + bb.min.y * limb.scale.y,
+      limb.position.z,
+    );
+    armGroup.add(fist);
+  }
+  for (const leg of rig.legs ?? []) {
+    const limb = limbMesh(leg);
+    if (!limb) continue;
+    limb.geometry.computeBoundingBox();
+    const bb = limb.geometry.boundingBox!;
+    const width = (bb.max.x - bb.min.x) * limb.scale.x;
+    const hip = jointBall(limb, round2(width * 0.62), "joint-hip");
+    leg.add(hip);
+    const foot = jointBall(limb, round2(width * 0.72), "foot");
+    foot.scale.set(1, 0.55, 1.45); // chunky shoe, toes forward
+    foot.position.set(0, limb.position.y + bb.min.y * limb.scale.y, width * 0.12);
+    leg.add(foot);
+  }
+}
+
+/** Stable cache keys for derived joint radii. */
+function round2(v: number): number {
+  return Math.round(v * 100) / 100;
+}
+
 export function buildTroop(cardId: CardId): TroopRig {
   const builder = BUILDERS[cardId];
   if (!builder) throw new Error(`No 3D builder for ${cardId}`);
   const rig = builder();
   if (rig.arm) rig.arm.rotation.x = rig.armRest;
+  articulate(rig);
   outlineRig(rig.group);
   return rig;
 }

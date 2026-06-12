@@ -200,3 +200,32 @@ describe("geometry cache (three-best-practices)", () => {
     expect(sharedCount).toBeGreaterThan(5);
   });
 });
+
+describe("ball-jointed limbs", () => {
+  it("weapon arms gain a shoulder ball and a fist", () => {
+    for (const id of ["knight", "wizard", "hog-rider"] as const) {
+      const rig = buildTroop(id);
+      const names = rig.arm!.children.map((c) => c.name);
+      expect(names).toContain("joint-shoulder");
+      expect(names).toContain("joint-fist");
+    }
+  });
+
+  it("legs gain hip joints and chunky feet", () => {
+    const rig = buildTroop("knight");
+    for (const leg of rig.legs!) {
+      const names = leg.children.map((c) => c.name);
+      expect(names).toContain("joint-hip");
+      expect(names).toContain("foot");
+    }
+  });
+
+  it("joints reuse the limb's own material so flashes stay uniform", () => {
+    const rig = buildTroop("knight");
+    const sleeve = rig.arm!.children.find(
+      (c) => (c as THREE.Mesh).isMesh && !c.name.startsWith("joint"),
+    ) as THREE.Mesh;
+    const fist = rig.arm!.children.find((c) => c.name === "joint-fist") as THREE.Mesh;
+    expect(fist.material).toBe(sleeve.material);
+  });
+});
