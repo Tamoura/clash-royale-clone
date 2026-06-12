@@ -186,8 +186,14 @@ export class Hud {
       this.handKey = handKey;
       state.player.hand.cards.forEach((id, i) => {
         const btn = this.cardBtns[i];
+        const isNewDraw = btn.dataset.card !== undefined && btn.dataset.card !== id;
         btn.dataset.card = id;
         btn.dataset.rarity = getCard(id).rarity;
+        if (isNewDraw) {
+          btn.classList.remove("dealt");
+          void btn.offsetWidth; // restart the pop animation
+          btn.classList.add("dealt");
+        }
         btn.innerHTML = "";
         btn.appendChild(cardCanvas(id));
         const name = document.createElement("div");
