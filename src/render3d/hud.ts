@@ -1,7 +1,7 @@
 import type { BattleState } from "../game/battle";
 import { getCard, type CardId } from "../game/cards";
 import { ELIXIR_MAX } from "../game/elixir";
-import { BATTLE_DURATION, OVERTIME_DURATION } from "../game/sim";
+import { BATTLE_DURATION, OVERTIME_DURATION, isDoubleElixir } from "../game/sim";
 import { drawCardArt } from "../render/characters";
 
 export interface HudCallbacks {
@@ -38,6 +38,7 @@ export class Hud {
   private readonly muteBtn: HTMLButtonElement;
   private readonly elixirFill: HTMLElement;
   private readonly elixirNum: HTMLElement;
+  private elixirBar!: HTMLElement;
   private readonly nextArt: HTMLElement;
   private readonly cardBtns: HTMLButtonElement[] = [];
   private readonly overlay: HTMLElement;
@@ -73,8 +74,10 @@ export class Hud {
     // CR layout: the elixir droplet counter leads the bar.
     const elixirRow = el("div", "elixir-row", bottom);
     this.elixirNum = el("div", "elixir-num", elixirRow);
-    const bar = el("div", "elixir-bar", elixirRow);
-    this.elixirFill = el("div", "elixir-fill", bar);
+    this.elixirBar = el("div", "elixir-bar", elixirRow);
+    this.elixirFill = el("div", "elixir-fill", this.elixirBar);
+    const x2 = el("div", "x2-tag", this.elixirBar);
+    x2.textContent = "x2";
 
     const handRow = el("div", "hand-row", bottom);
     const nextWrap = el("div", "next-card", handRow);
@@ -123,10 +126,11 @@ export class Hud {
     this.playerCrowns.textContent = String(state.player.crowns);
     this.enemyCrowns.textContent = String(state.enemy.crowns);
 
-    // Elixir.
+    // Elixir (the bar runs hot during double elixir).
     const amount = state.player.elixir.amount;
     this.elixirFill.style.width = `${(amount / ELIXIR_MAX) * 100}%`;
     this.elixirNum.textContent = String(Math.floor(amount));
+    this.elixirBar.classList.toggle("x2", isDoubleElixir(state) && !state.result);
 
     // Hand (rebuild card art only when the hand changes).
     const handKey = state.player.hand.cards.join(",");
