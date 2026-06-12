@@ -30,6 +30,15 @@ function toWorld(ax: number, ay: number): { x: number; z: number } {
 
 const SIDE_COLOR: Record<Side, number> = { player: 0x3b82f6, enemy: 0xef4444 };
 
+/**
+ * CR-style steep camera (~66° elevation): the field reads almost
+ * flat/2D while the characters stay visibly 3D. Chosen by grid
+ * search so the whole arena + stands fit the frustum at fov 48.
+ */
+const CAM_HOME = new THREE.Vector3(0, 36, 17);
+/** HP bars and similar boards tilt to face that camera square-on. */
+const BAR_TILT = -Math.atan2(CAM_HOME.y, CAM_HOME.z - 1.0);
+
 const TROOP_DEATH_TIME = 0.5;
 const TOWER_DEATH_TIME = 0.8;
 const SPAWN_POP_TIME = 0.35;
@@ -170,7 +179,7 @@ function makeHpBar(width: number, color: number, y: number): {
   fill.add(gloss);
   group.add(bg, fill);
   group.position.y = y;
-  group.rotation.x = -0.65; // face the tilted camera
+  group.rotation.x = BAR_TILT; // face the steep camera
   return { group, fill };
 }
 
@@ -646,8 +655,8 @@ export class Battle3D {
     this.scene.fog = new THREE.Fog(0x76aede, 45, 75);
 
     this.camera = new THREE.PerspectiveCamera(48, 1, 0.1, 120);
-    this.camera.position.set(0, 24, 27);
-    this.camera.lookAt(0, 0, 1.5);
+    this.camera.position.copy(CAM_HOME);
+    this.camera.lookAt(0, 0, 1.0);
 
     this.buildLights();
     this.buildArena();
@@ -1972,11 +1981,11 @@ export class Battle3D {
       const s = this.shake * 0.35;
       this.camera.position.set(
         Math.sin(this.shakeTime * 53) * s,
-        24 + Math.sin(this.shakeTime * 61) * s * 0.6,
-        27 + Math.cos(this.shakeTime * 47) * s,
+        CAM_HOME.y + Math.sin(this.shakeTime * 61) * s * 0.6,
+        CAM_HOME.z + Math.cos(this.shakeTime * 47) * s,
       );
       this.shake = Math.max(0, this.shake - dt * 1.8);
-      if (this.shake === 0) this.camera.position.set(0, 24, 27);
+      if (this.shake === 0) this.camera.position.copy(CAM_HOME);
     }
 
     this.effects = this.effects.filter((f) => {
@@ -2026,6 +2035,6 @@ export class Battle3D {
     for (const pile of this.rubble) this.scene.remove(pile);
     this.rubble = [];
     this.shake = 0;
-    this.camera.position.set(0, 24, 27);
+    this.camera.position.copy(CAM_HOME);
   }
 }
