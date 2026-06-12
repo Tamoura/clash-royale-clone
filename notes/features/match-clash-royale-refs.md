@@ -32,3 +32,18 @@ feature/gfx-cel-outlines):
 10. cr-grading: camera + tone-mapping/saturation final pass
 
 Status: all 10 rounds shipped (PRs #28-#37).
+
+## 2026-06-12 self-collected reference + rounds 11-14
+
+New ref: https://images.launchbox-app.com/2af744d3-d77c-47cc-9ca5-304a96992982.jpg
+(616x810 in-battle shot, saved as /tmp/cr-ref-3.jpg). Drove:
+11. cr-lane-paths (PR #38) — golden dirt lanes bridge-to-towers
+12. cr-tower-platforms (PR #39) — stepped gold-trim platforms,
+    king crown emblem
+13. cr-spectator-stands (PR #40) — red/blue roofed galleries
+14. cr-timer-box (PR #41) — gold-framed TIME LEFT clock
+
+Remaining ideas from this ref for future rounds: tower HP bars as
+colored pills with level badge, hand cards showing next-card art
+larger, golden bridge planks (CR's are yellow-gold), crowd figures
+in the stands.
