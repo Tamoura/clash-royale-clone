@@ -303,6 +303,13 @@ window.addEventListener("pointermove", (ev) => {
   showPreview(ev.clientX, ev.clientY);
 });
 
+// Right-click anywhere on the field cancels the selected card.
+scene.renderer.domElement.addEventListener("contextmenu", (ev) => {
+  ev.preventDefault();
+  selectCard(null);
+  clearPreview();
+});
+
 window.addEventListener("keydown", (ev) => {
   const n = Number(ev.key);
   if (n >= 1 && n <= 4) selectCard(battle.player.hand.cards[n - 1]);

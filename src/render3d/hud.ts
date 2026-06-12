@@ -198,6 +198,10 @@ export class Hud {
         cost.className = "card-cost";
         cost.textContent = String(getCard(id).cost);
         btn.appendChild(cost);
+        const key = document.createElement("div");
+        key.className = "key-chip";
+        key.textContent = String(i + 1); // keyboard shortcut hint
+        btn.appendChild(key);
       });
     }
     state.player.hand.cards.forEach((id, i) => {
