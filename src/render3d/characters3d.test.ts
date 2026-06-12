@@ -142,3 +142,31 @@ describe("cel outlines", () => {
     expect(outlines).toBeLessThan(total - outlines); // not 1:1
   });
 });
+
+describe("expressive faces", () => {
+  it("humanoid rigs have sclera eyes, brows, and a mouth", () => {
+    for (const id of ["knight", "witch", "valkyrie"] as const) {
+      const counts = { eye: 0, pupil: 0, brow: 0, mouth: 0 };
+      buildTroop(id).group.traverse((o) => {
+        if (o.name in counts) counts[o.name as keyof typeof counts]++;
+      });
+      expect(counts.eye).toBeGreaterThanOrEqual(2);
+      expect(counts.pupil).toBeGreaterThanOrEqual(2);
+      expect(counts.brow).toBeGreaterThanOrEqual(2);
+      expect(counts.mouth).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("moods angle the brows differently", () => {
+    const browAngles = (id: "witch" | "giant"): number[] => {
+      const angles: number[] = [];
+      buildTroop(id).group.traverse((o) => {
+        if (o.name === "brow") angles.push(Math.abs(o.rotation.z));
+      });
+      return angles;
+    };
+    const wicked = browAngles("witch");
+    const calm = browAngles("giant");
+    expect(Math.max(...wicked)).toBeGreaterThan(Math.max(...calm));
+  });
+});

@@ -86,11 +86,54 @@ function cone(r: number, h: number, color: number, x = 0, y = 0, z = 0): THREE.M
   return shadowed(new THREE.Mesh(new THREE.ConeGeometry(r, h, 12), toon(color)), x, y, z);
 }
 
-/** Two dark bead eyes on a sphere head. */
-function addEyes(head: Ctx3, r: number, spread = 0.38, up = 0.1): void {
+/** How a face reads: drives brow angle and mouth shape. */
+export type Mood = "brave" | "angry" | "cute" | "wicked" | "calm";
+
+/** Brow tilt (radians, inward) per mood. */
+const BROW_TILT: Record<Mood, number> = {
+  brave: 0.3,
+  angry: 0.55,
+  wicked: 0.7,
+  calm: 0.08,
+  cute: -0.18, // raised, innocent
+};
+
+/**
+ * Expressive face: white-sclera eyes with pupils, mood-angled brows,
+ * and a simple mouth (smile for cute, line otherwise).
+ */
+function addEyes(head: Ctx3, r: number, spread = 0.38, up = 0.1, mood: Mood = "brave"): void {
   for (const s of [-1, 1]) {
-    const eye = sphere(r * 0.14, 0x1f2430, s * r * spread, r * up, r * 0.85);
+    // Dark rim so white sclera reads even on pale heads.
+    const rim = sphere(r * 0.2, 0x2b2333, s * r * spread, r * up, r * 0.78);
+    rim.name = "eyerim";
+    head.add(rim);
+    const eye = sphere(r * 0.17, 0xffffff, s * r * spread, r * up, r * 0.82);
+    eye.name = "eye";
     head.add(eye);
+    const pupil = sphere(r * 0.09, 0x1f2430, s * r * spread, r * up, r * 0.95);
+    pupil.name = "pupil";
+    head.add(pupil);
+    const brow = box(r * 0.3, r * 0.07, r * 0.07, 0x2b2118, s * r * spread, r * (up + 0.27), r * 0.86);
+    brow.name = "brow";
+    brow.rotation.z = -s * BROW_TILT[mood];
+    head.add(brow);
+  }
+  if (mood === "cute") {
+    const smile = new THREE.Mesh(
+      new THREE.TorusGeometry(r * 0.16, r * 0.035, 6, 10, Math.PI),
+      toon(0x1f2430),
+    );
+    smile.name = "mouth";
+    smile.position.set(0, r * (up - 0.32), r * 0.88);
+    smile.rotation.z = Math.PI;
+    head.add(smile);
+  } else {
+    const w = mood === "calm" ? 0.26 : 0.2;
+    const mouth = box(r * w, r * 0.06, r * 0.05, 0x1f2430, 0, r * (up - 0.34), r * 0.92);
+    mouth.name = "mouth";
+    if (mood === "angry" || mood === "wicked") mouth.rotation.z = 0.12;
+    head.add(mouth);
   }
 }
 
@@ -137,7 +180,7 @@ function buildKnight(): TroopRig {
   g.add(sphere(0.16, 0x94a1ae, -0.34, 0.68, 0)); // pauldron
   g.add(sphere(0.16, 0x94a1ae, 0.34, 0.68, 0)); // pauldron
   const head = sphere(0.32, SKIN, 0, 1.04, 0);
-  addEyes(head, 0.32);
+  addEyes(head, 0.32, 0.38, 0.1, "brave");
   head.add(box(0.26, 0.06, 0.05, 0x6b4423, 0, -0.1, 0.29)); // mustache
   g.add(head);
   g.add(cyl(0.34, 0.36, 0.18, 0x94a1ae, 0, 1.22, 0)); // helmet band
@@ -173,7 +216,7 @@ function buildArcher(): TroopRig {
   g.add(cyl(0.24, 0.3, 0.4, 0x2e7d32, 0, 0.46, 0)); // tunic
   g.add(cyl(0.31, 0.31, 0.07, 0x6d4c41, 0, 0.3, 0)); // belt
   const head = sphere(0.28, SKIN, 0, 0.94, 0);
-  addEyes(head, 0.28);
+  addEyes(head, 0.28, 0.38, 0.1, "cute");
   g.add(head);
   const hair = sphere(0.29, 0xec5fa3, 0, 1.02, -0.02);
   hair.scale.set(1, 0.62, 1);
@@ -232,7 +275,7 @@ function buildGiant(): TroopRig {
   g.add(cyl(0.63, 0.63, 0.12, 0x7a5230, 0, 0.55, 0)); // belt
   g.add(sphere(0.09, 0xf2c14e, 0, 0.55, 0.6)); // buckle
   const head = sphere(0.42, SKIN, 0, 1.72, 0);
-  addEyes(head, 0.42, 0.34, 0.18);
+  addEyes(head, 0.42, 0.34, 0.18, "calm");
   g.add(head);
   const beard = sphere(0.4, 0x8a5a35, 0, 1.56, 0.14);
   beard.scale.set(1, 0.62, 0.85);
@@ -262,7 +305,7 @@ function buildMusketeer(): TroopRig {
   g.add(cyl(0.34, 0.36, 0.08, 0x283593, 0, 0.36, 0)); // sash
   g.add(sphere(0.07, 0xf2c14e, 0, 0.52, 0.31)); // button
   const head = sphere(0.29, SKIN, 0, 1.0, 0);
-  addEyes(head, 0.29);
+  addEyes(head, 0.29, 0.38, 0.1, "brave");
   g.add(head);
   g.add(cyl(0.42, 0.42, 0.06, 0x263238, 0, 1.18, 0)); // brim
   g.add(cyl(0.2, 0.24, 0.22, 0x263238, 0, 1.3, 0)); // crown
@@ -352,7 +395,7 @@ function buildWizard(): TroopRig {
   g.add(cyl(0.28, 0.48, 0.72, 0x7c3aed, 0, 0.4, 0)); // robe
   g.add(cyl(0.39, 0.42, 0.08, 0xf2c14e, 0, 0.5, 0)); // sash
   const head = sphere(0.3, SKIN, 0, 1.06, 0);
-  addEyes(head, 0.3);
+  addEyes(head, 0.3, 0.38, 0.1, "calm");
   g.add(head);
   const beard = sphere(0.26, 0xe8e3d8, 0, 0.9, 0.12);
   beard.scale.set(1, 0.8, 0.75);
@@ -394,7 +437,7 @@ function buildWitch(): TroopRig {
   g.add(cyl(0.37, 0.4, 0.08, 0x7b1fa2, 0, 0.5, 0)); // sash
   g.add(sphere(0.07, 0x76ff03, 0, 0.62, 0.3)); // glowing brooch
   const head = sphere(0.29, 0xcfd4f1, 0, 1.04, 0); // pale skin
-  addEyes(head, 0.29);
+  addEyes(head, 0.29, 0.38, 0.1, "wicked");
   g.add(head);
   const hair = sphere(0.3, 0x4e2a84, 0, 1.1, -0.06);
   hair.scale.set(1, 0.7, 1.05);
@@ -590,7 +633,7 @@ function buildValkyrie(): TroopRig {
   g.add(cyl(0.3, 0.44, 0.5, 0xb71c1c, 0, 0.5, 0)); // dress
   g.add(cyl(0.38, 0.4, 0.09, 0x6d4c41, 0, 0.34, 0)); // belt
   const head = sphere(0.3, SKIN, 0, 1.04, 0);
-  addEyes(head, 0.3);
+  addEyes(head, 0.3, 0.38, 0.1, "angry");
   g.add(head);
   const hair = sphere(0.31, 0xe07b39, 0, 1.12, -0.03);
   hair.scale.set(1, 0.66, 1);
@@ -654,7 +697,7 @@ function buildPrince(): TroopRig {
   g.add(cyl(0.2, 0.26, 0.4, 0xfafafa, 0, 1.28, -0.1)); // tabard
   g.add(cyl(0.27, 0.27, 0.07, 0xf2c14e, 0, 1.12, -0.1)); // gold trim
   const head = sphere(0.26, SKIN, 0, 1.66, -0.1);
-  addEyes(head, 0.26);
+  addEyes(head, 0.26, 0.38, 0.1, "brave");
   g.add(head);
   g.add(cyl(0.28, 0.3, 0.16, 0xf2c14e, 0, 1.84, -0.1)); // helmet band
   const helmDome = sphere(0.28, 0xf2c14e, 0, 1.9, -0.1);
@@ -722,7 +765,7 @@ function buildHogRider(): TroopRig {
   g.add(cyl(0.2, 0.24, 0.36, RIDER, 0, 1.06, -0.12)); // torso
   g.add(cyl(0.26, 0.26, 0.08, 0x4e342e, 0, 0.9, -0.12)); // belt
   const head = sphere(0.26, RIDER, 0, 1.5, -0.12);
-  addEyes(head, 0.26);
+  addEyes(head, 0.26, 0.38, 0.1, "angry");
   g.add(head);
   const mohawk = box(0.08, 0.26, 0.4, 0x2d1b0e, 0, 1.76, -0.12);
   g.add(mohawk);
@@ -794,7 +837,7 @@ export function buildTowerPrincess(): TroopRig {
   g.add(cyl(0.2, 0.34, 0.5, 0xe91e63, 0, 0.3, 0)); // gown
   g.add(cyl(0.28, 0.28, 0.06, 0xf2c14e, 0, 0.16, 0)); // gold hem
   const head = sphere(0.24, SKIN, 0, 0.78, 0);
-  addEyes(head, 0.24);
+  addEyes(head, 0.24, 0.38, 0.1, "cute");
   g.add(head);
   const hair = sphere(0.25, 0xf6a13b, 0, 0.86, -0.03);
   hair.scale.set(1, 0.66, 1);
@@ -836,7 +879,7 @@ export function buildTowerKing(): TroopRig {
   sash.rotation.z = -0.3;
   g.add(sash);
   const head = sphere(0.3, SKIN, 0, 0.98, 0);
-  addEyes(head, 0.3);
+  addEyes(head, 0.3, 0.38, 0.1, "calm");
   g.add(head);
   const beard = sphere(0.26, 0xe8e3d8, 0, 0.82, 0.13);
   beard.scale.set(1, 0.75, 0.7);
