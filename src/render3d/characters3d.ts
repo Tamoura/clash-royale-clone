@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import type { CardId } from "../game/cards";
 
 /**
@@ -60,11 +61,18 @@ function box(
   y = 0,
   z = 0,
 ): THREE.Mesh {
-  return shadowed(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), toon(color)), x, y, z);
+  // Vinyl-toy finish: every "box" is softly rounded, never hard-edged.
+  const bevel = Math.min(w, h, d) * 0.28;
+  return shadowed(
+    new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, bevel), toon(color)),
+    x,
+    y,
+    z,
+  );
 }
 
 function sphere(r: number, color: number, x = 0, y = 0, z = 0): THREE.Mesh {
-  return shadowed(new THREE.Mesh(new THREE.SphereGeometry(r, 14, 12), toon(color)), x, y, z);
+  return shadowed(new THREE.Mesh(new THREE.SphereGeometry(r, 20, 16), toon(color)), x, y, z);
 }
 
 function cyl(
@@ -77,7 +85,7 @@ function cyl(
   z = 0,
 ): THREE.Mesh {
   return shadowed(
-    new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, 14), toon(color)),
+    new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, 20), toon(color)),
     x,
     y,
     z,
@@ -85,7 +93,7 @@ function cyl(
 }
 
 function cone(r: number, h: number, color: number, x = 0, y = 0, z = 0): THREE.Mesh {
-  return shadowed(new THREE.Mesh(new THREE.ConeGeometry(r, h, 12), toon(color)), x, y, z);
+  return shadowed(new THREE.Mesh(new THREE.ConeGeometry(r, h, 16), toon(color)), x, y, z);
 }
 
 /** How a face reads: drives brow angle and mouth shape. */
