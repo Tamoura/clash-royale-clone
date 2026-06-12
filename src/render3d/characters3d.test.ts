@@ -229,3 +229,35 @@ describe("ball-jointed limbs", () => {
     expect(fist.material).toBe(sleeve.material);
   });
 });
+
+describe("animation principles", () => {
+  it("signed swing: wind-up raises the arm behind rest, strike sweeps past it", () => {
+    const rig = buildTroop("knight");
+    const at = (swing: number): number => {
+      animateTroop(rig, { moving: false, swing, time: 0, phase: 0 });
+      return rig.arm!.rotation.x;
+    };
+    const windup = at(-0.6);
+    const rest = at(0);
+    const strike = at(1);
+    expect(windup).toBeGreaterThan(rest); // anticipation: arm cocked back
+    expect(strike).toBeLessThan(rest); // strike: arm swept forward
+  });
+
+  it("the body squashes on a heavy strike", () => {
+    const rig = buildTroop("knight");
+    animateTroop(rig, { moving: false, swing: 0, time: 0.1, phase: 0 });
+    const restScale = rig.group.scale.y;
+    animateTroop(rig, { moving: false, swing: 1, time: 0.1, phase: 0 });
+    expect(rig.group.scale.y).toBeLessThan(restScale);
+  });
+
+  it("the off-arm lags the legs for overlapping action", () => {
+    const rig = buildTroop("knight");
+    // At a walk-cycle zero crossing the legs are neutral but the
+    // lagging off-arm must not be.
+    animateTroop(rig, { moving: true, swing: 0, time: Math.PI / 10, phase: 0 });
+    expect(Math.abs(rig.legs![0].rotation.x)).toBeLessThan(0.02);
+    expect(Math.abs(rig.offArm!.rotation.x)).toBeGreaterThan(0.05);
+  });
+});

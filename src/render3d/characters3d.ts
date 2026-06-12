@@ -1176,10 +1176,12 @@ export function animateTroop(
     rig.group.scale.y = baseScale * (0.96 + hop * 0.07);
     rig.group.rotation.x = 0.07 + opts.swing * 0.22 + lean;
   } else {
-    // Idle: gentle breathing.
+    // Idle: gentle breathing, squashing under a heavy strike.
     rig.group.position.y = 0;
-    rig.group.scale.y = baseScale * (1 + Math.sin(t * 2.2 + opts.phase) * 0.012);
-    rig.group.rotation.x = opts.swing * 0.22;
+    const squash = opts.swing > 0 ? opts.swing * 0.05 : 0;
+    rig.group.scale.y =
+      baseScale * (1 + Math.sin(t * 2.2 + opts.phase) * 0.012 - squash);
+    rig.group.rotation.x = opts.swing * 0.22 + lean;
   }
 
   if (rig.legs) {
@@ -1189,7 +1191,9 @@ export function animateTroop(
     }
   }
   if (rig.offArm) {
-    rig.offArm.rotation.x = opts.moving ? -walk * 0.45 : 0;
+    // Overlapping action: the free arm trails the leg cycle slightly.
+    const lagged = Math.sin(t * 10 + opts.phase - 0.55);
+    rig.offArm.rotation.x = opts.moving ? -lagged * 0.45 : 0;
   }
   if (rig.wings) {
     for (const wing of rig.wings) {

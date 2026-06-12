@@ -40,6 +40,26 @@ const CAM_HOME = new THREE.Vector3(0, 36, 17);
 /** HP bars and similar boards tilt to face that camera square-on. */
 const BAR_TILT = -Math.atan2(CAM_HOME.y, CAM_HOME.z - 1.0);
 
+/**
+ * Signed attack swing (animation principles): the arm cocks back as
+ * the next blow approaches (negative = anticipation), sweeps forward
+ * at the hit (1 -> 0), and dips past rest in a follow-through before
+ * settling.
+ */
+function attackSwing(e: Entity, engaged: boolean): number {
+  if (e.hitSpeed <= 0) return 0;
+  if (e.cooldown > e.hitSpeed - 0.3) {
+    const p = (e.cooldown - (e.hitSpeed - 0.3)) / 0.3; // 1 at hit -> 0
+    if (p > 0.25) return (p - 0.25) / 0.75;
+    return -Math.sin((p / 0.25) * Math.PI) * 0.14; // follow-through dip
+  }
+  if (engaged && e.cooldown < 0.22 && e.cooldown > 0) {
+    const w = 1 - e.cooldown / 0.22;
+    return -0.5 * w * w; // ease-in wind-up
+  }
+  return 0;
+}
+
 /** Render-loop scratch vectors (render-avoid-allocations). */
 const PREV_POS = new THREE.Vector3();
 const LOOK_AT = new THREE.Vector3();
@@ -2131,8 +2151,7 @@ export class Battle3D {
       // sleeping king slump over his battlements.
       if (view.defender && view.defenderMount) {
         const target = state.entities.find((o) => o.id === e.targetId);
-        const swing =
-          e.cooldown > e.hitSpeed - 0.3 ? (e.cooldown - (e.hitSpeed - 0.3)) / 0.3 : 0;
+        const swing = attackSwing(e, target !== undefined);
         animateTroop(view.defender, {
           moving: false,
           swing,
@@ -2161,8 +2180,7 @@ export class Battle3D {
         const inRange =
           !!target &&
           distance(e, target) - e.radius - target.radius <= e.attackRange + 0.05;
-        const swing =
-          e.cooldown > e.hitSpeed - 0.3 ? (e.cooldown - (e.hitSpeed - 0.3)) / 0.3 : 0;
+        const swing = attackSwing(e, inRange);
         const moving = !inRange && e.deployTimer <= 0;
         animateTroop(view.rig, {
           moving,
