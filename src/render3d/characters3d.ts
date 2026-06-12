@@ -183,7 +183,7 @@ function buildKnight(): TroopRig {
   g.add(sphere(0.16, 0x94a1ae, 0.34, 0.68, 0)); // pauldron
   const head = sphere(0.32, SKIN, 0, 1.04, 0);
   addEyes(head, 0.32, 0.38, 0.1, "brave");
-  head.add(box(0.26, 0.06, 0.05, 0x6b4423, 0, -0.1, 0.29)); // mustache
+  head.add(box(0.26, 0.06, 0.05, 0xd9b34a, 0, -0.1, 0.29)); // blond mustache (CR)
   g.add(head);
   g.add(cyl(0.34, 0.36, 0.18, 0x94a1ae, 0, 1.22, 0)); // helmet band
   const dome = sphere(0.33, 0x94a1ae, 0, 1.28, 0);
@@ -309,11 +309,20 @@ function buildMusketeer(): TroopRig {
   const head = sphere(0.29, SKIN, 0, 1.0, 0);
   addEyes(head, 0.29, 0.38, 0.1, "brave");
   g.add(head);
-  g.add(cyl(0.42, 0.42, 0.06, 0x263238, 0, 1.18, 0)); // brim
-  g.add(cyl(0.2, 0.24, 0.22, 0x263238, 0, 1.3, 0)); // crown
-  const feather = cone(0.07, 0.34, 0xe53935, 0.22, 1.38, 0);
-  feather.rotation.z = -0.7;
-  g.add(feather);
+  // CR look: purple coiffed curls under a steel helmet with a
+  // team-colored feather, plus a metal shoulder pad.
+  for (const s of [-1, 1]) {
+    g.add(sphere(0.12, 0x8347c2, s * 0.2, 1.06, -0.14)); // curls
+    g.add(sphere(0.09, 0x8347c2, s * 0.26, 0.92, -0.06)); // side curls
+  }
+  const helm = sphere(0.31, 0x9aa3ad, 0, 1.18, 0);
+  helm.scale.y = 0.72;
+  g.add(helm);
+  g.add(cyl(0.315, 0.325, 0.08, 0x78909c, 0, 1.1, 0)); // helmet rim
+  const feather = cone(0.07, 0.34, 0x3b82f6, 0.2, 1.46, 0);
+  feather.rotation.z = -0.6;
+  g.add(feather); // team-colored feather
+  g.add(sphere(0.14, 0x9aa3ad, 0.34, 0.74, 0)); // shoulder pad
 
   const offArm = new THREE.Group();
   offArm.position.set(-0.34, 0.72, 0);
@@ -459,22 +468,30 @@ function buildWitch(): TroopRig {
   const head = sphere(0.29, 0xcfd4f1, 0, 1.04, 0); // pale skin
   addEyes(head, 0.29, 0.38, 0.1, "wicked");
   g.add(head);
-  const hair = sphere(0.3, 0x6a3bbf, 0, 1.1, -0.06);
+  const hair = sphere(0.3, 0xe8e3d8, 0, 1.1, -0.06);
   hair.scale.set(1, 0.7, 1.05);
   g.add(hair);
   // Long violet strands spilling from under the hat.
   for (const s of [-1, 1]) {
-    const strand = cyl(0.07, 0.04, 0.55, 0x6a3bbf, s * 0.26, 0.82, -0.08);
+    const strand = cyl(0.07, 0.04, 0.55, 0xe8e3d8, s * 0.26, 0.82, -0.08);
     strand.rotation.z = s * 0.18;
     g.add(strand);
   }
-  // Near-black witch hat with a purple band and gold buckle.
-  g.add(cyl(0.42, 0.42, 0.05, 0x1f0f33, 0, 1.26, 0)); // hat brim
-  const hatTop = cone(0.24, 0.6, 0x1f0f33, -0.05, 1.58, 0);
-  hatTop.rotation.z = 0.16; // crooked witch hat
-  g.add(hatTop);
-  g.add(cyl(0.245, 0.265, 0.1, 0x7b1fa2, 0, 1.33, 0)); // hat band
-  g.add(box(0.09, 0.09, 0.04, 0xf2c14e, 0, 1.33, 0.25)); // buckle
+  // CR look: violet hood draped over white hair, golden shoulder skulls.
+  const hood = sphere(0.36, 0x4a148c, 0, 1.16, -0.04);
+  hood.scale.set(1, 0.95, 1.02);
+  g.add(hood);
+  const hoodPeak = cone(0.16, 0.3, 0x4a148c, 0, 1.5, -0.12);
+  hoodPeak.rotation.x = -0.35; // drapes backward
+  g.add(hoodPeak);
+  for (const s of [-1, 1]) {
+    const whiteHair = cyl(0.06, 0.045, 0.4, 0xe8e3d8, s * 0.24, 0.86, 0.12);
+    whiteHair.rotation.z = s * 0.14;
+    g.add(whiteHair);
+    const goldSkull = sphere(0.08, 0xd9a93f, s * 0.34, 0.74, 0.05);
+    g.add(goldSkull); // golden shoulder skulls
+  }
+  g.add(box(0.1, 0.1, 0.05, 0xd9a93f, 0, 0.5, 0.42)); // golden skull belt
   // A little skull familiar circling low behind her shoulders.
   const skull = sphere(0.09, 0xf5f2ea, -0.55, 0.82, -0.2);
   skull.add(sphere(0.025, 0x1f2430, -0.03, 0.01, 0.075));
@@ -490,16 +507,25 @@ function buildWitch(): TroopRig {
     skull.rotation.y = -a + Math.PI / 2; // always faces outward
   };
 
-  // Broom hand.
+  // Staff hand: CR's ram-skull staff with golden horns.
   const offArm = new THREE.Group();
   offArm.position.set(-0.34, 0.78, 0);
   offArm.add(box(0.11, 0.26, 0.11, 0x4a148c, 0, -0.13, 0));
-  const broomstick = cyl(0.03, 0.03, 0.95, 0x6d4226, 0, -0.28, 0.08);
-  offArm.add(broomstick);
-  const bristles = cone(0.11, 0.3, 0xc9a356, 0, -0.82, 0.08);
-  bristles.rotation.x = Math.PI; // straw head pointing down
-  offArm.add(bristles);
-  offArm.add(cyl(0.055, 0.055, 0.06, 0x6d4226, 0, -0.68, 0.08)); // binding
+  offArm.add(cyl(0.03, 0.03, 0.95, 0x3e2723, 0, -0.1, 0.08)); // shaft
+  const ramSkull = sphere(0.11, 0xf5f2ea, 0, 0.42, 0.08);
+  ramSkull.scale.set(0.9, 1.1, 0.8);
+  offArm.add(ramSkull);
+  for (const s of [-1, 1]) {
+    const horn = new THREE.Mesh(
+      new THREE.TorusGeometry(0.09, 0.028, 6, 10, Math.PI * 1.2),
+      toon(0xd9a93f),
+    );
+    horn.position.set(s * 0.13, 0.46, 0.08);
+    horn.rotation.y = s * 0.4;
+    horn.rotation.z = s * 1.9;
+    horn.castShadow = true;
+    offArm.add(horn); // golden ram horns
+  }
   g.add(offArm);
 
   // Casting hand wreathed in green soul-fire.
@@ -609,34 +635,34 @@ function buildBabyDragon(): TroopRig {
 
 function buildGargoyle(): TroopRig {
   const g = new THREE.Group();
-  const body = sphere(0.22, 0x6b7280, 0, 0.36, 0);
+  const body = sphere(0.22, 0x5d6f96, 0, 0.36, 0);
   body.scale.set(1, 1.2, 0.9);
   g.add(body);
-  const head = sphere(0.2, 0x7b8494, 0, 0.72, 0.04);
+  const head = sphere(0.2, 0x6c7fa8, 0, 0.72, 0.04);
   g.add(head);
   // Glowing eyes + fangs.
   for (const s of [-1, 1]) {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), glow(0xffd54f, 2));
     eye.position.set(s * 0.08, 0.76, 0.2);
     g.add(eye);
-    const ear = cone(0.06, 0.18, 0x4b5563, s * 0.14, 0.92, -0.02);
+    const ear = cone(0.06, 0.18, 0x44537a, s * 0.14, 0.92, -0.02);
     ear.rotation.z = -s * 0.4;
     g.add(ear);
     g.add(box(0.025, 0.06, 0.02, 0xffffff, s * 0.04, 0.6, 0.18)); // fang
   }
   const legs = [
-    makeLeg(0x4b5563, -0.08, 0.16, 0.06),
-    makeLeg(0x4b5563, 0.08, 0.16, 0.06),
+    makeLeg(0x44537a, -0.08, 0.16, 0.06),
+    makeLeg(0x44537a, 0.08, 0.16, 0.06),
   ];
   g.add(...legs);
 
   const offArm = new THREE.Group();
   offArm.position.set(-0.2, 0.46, 0);
-  offArm.add(box(0.07, 0.2, 0.07, 0x6b7280, 0, -0.1, 0));
+  offArm.add(box(0.07, 0.2, 0.07, 0x5d6f96, 0, -0.1, 0));
   g.add(offArm);
   const arm = new THREE.Group();
   arm.position.set(0.2, 0.46, 0);
-  arm.add(box(0.07, 0.2, 0.07, 0x6b7280, 0, -0.1, 0));
+  arm.add(box(0.07, 0.2, 0.07, 0x5d6f96, 0, -0.1, 0));
   arm.add(cone(0.04, 0.1, 0xb7c2cc, 0, -0.22, 0.03)); // claw
   g.add(arm);
 
@@ -644,7 +670,7 @@ function buildGargoyle(): TroopRig {
   for (const s of [-1, 1]) {
     const wing = new THREE.Group();
     wing.position.set(s * 0.18, 0.62, -0.12);
-    wing.add(box(0.46, 0.035, 0.3, 0x4b5563, s * 0.25, 0, 0));
+    wing.add(box(0.46, 0.035, 0.3, 0x44537a, s * 0.25, 0, 0));
     wing.rotation.z = s * 0.45;
     g.add(wing);
     wings.push({ obj: wing, base: s * 0.45, amp: s * 0.8 });
@@ -741,19 +767,23 @@ function buildPrince(): TroopRig {
   g.add(cyl(0.27, 0.27, 0.07, 0xf2c14e, 0, 1.12, -0.1)); // gold trim
   const head = sphere(0.26, SKIN, 0, 1.66, -0.1);
   addEyes(head, 0.26, 0.38, 0.1, "brave");
+  // CR prince: brown goatee under the visored golden helm.
+  const goatee = sphere(0.09, 0x5b3a21, 0, -0.18, 0.2);
+  goatee.scale.set(0.9, 0.8, 0.6);
+  head.add(goatee);
   g.add(head);
-  // Full golden helm with cheek guards and a red crest mohawk.
+  // Golden helm with a raised visor and a team-colored feather.
   g.add(cyl(0.28, 0.3, 0.2, 0xf2c14e, 0, 1.84, -0.1)); // helmet band
   const helmDome = sphere(0.29, 0xf2c14e, 0, 1.92, -0.1);
   helmDome.scale.y = 0.72;
   g.add(helmDome);
+  g.add(box(0.4, 0.07, 0.06, 0xd9a93f, 0, 1.96, 0.12)); // raised visor
   for (const s of [-1, 1]) {
     g.add(box(0.06, 0.18, 0.16, 0xf2c14e, s * 0.26, 1.7, -0.04)); // cheek guard
   }
-  for (let i = 0; i < 4; i++) {
-    const tuft = box(0.07, 0.16 + (i === 1 || i === 2 ? 0.06 : 0), 0.1, 0xe53935, 0, 2.1, -0.28 + i * 0.13);
-    g.add(tuft); // crest mohawk, front to back
-  }
+  const plume = cone(0.08, 0.4, 0x3b82f6, 0, 2.22, -0.16);
+  plume.rotation.x = 0.25;
+  g.add(plume); // team-colored feather
   const offArm = new THREE.Group();
   offArm.position.set(-0.3, 1.34, -0.1);
   offArm.add(box(0.1, 0.26, 0.1, 0xfafafa, 0, -0.13, 0));
