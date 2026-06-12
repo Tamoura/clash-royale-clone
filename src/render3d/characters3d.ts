@@ -441,32 +441,47 @@ function buildWitch(): TroopRig {
   const head = sphere(0.29, 0xcfd4f1, 0, 1.04, 0); // pale skin
   addEyes(head, 0.29, 0.38, 0.1, "wicked");
   g.add(head);
-  const hair = sphere(0.3, 0x4e2a84, 0, 1.1, -0.06);
+  const hair = sphere(0.3, 0x6a3bbf, 0, 1.1, -0.06);
   hair.scale.set(1, 0.7, 1.05);
   g.add(hair);
-  g.add(cyl(0.42, 0.42, 0.05, 0x311b92, 0, 1.26, 0)); // hat brim
-  const hatTop = cone(0.24, 0.6, 0x311b92, -0.05, 1.58, 0);
+  // Long violet strands spilling from under the hat.
+  for (const s of [-1, 1]) {
+    const strand = cyl(0.07, 0.04, 0.55, 0x6a3bbf, s * 0.26, 0.82, -0.08);
+    strand.rotation.z = s * 0.18;
+    g.add(strand);
+  }
+  // Near-black witch hat with a purple band and gold buckle.
+  g.add(cyl(0.42, 0.42, 0.05, 0x1f0f33, 0, 1.26, 0)); // hat brim
+  const hatTop = cone(0.24, 0.6, 0x1f0f33, -0.05, 1.58, 0);
   hatTop.rotation.z = 0.16; // crooked witch hat
   g.add(hatTop);
-  g.add(sphere(0.05, 0x76ff03, 0, 1.27, 0.34)); // hat gem
-  // A little skull familiar floating by her shoulder.
-  const skull = sphere(0.09, 0xf5f2ea, -0.4, 1.1, 0.1);
+  g.add(cyl(0.245, 0.265, 0.1, 0x7b1fa2, 0, 1.33, 0)); // hat band
+  g.add(box(0.09, 0.09, 0.04, 0xf2c14e, 0, 1.33, 0.25)); // buckle
+  // A little skull familiar circling low behind her shoulders.
+  const skull = sphere(0.09, 0xf5f2ea, -0.55, 0.82, -0.2);
   skull.add(sphere(0.025, 0x1f2430, -0.03, 0.01, 0.075));
   skull.add(sphere(0.025, 0x1f2430, 0.03, 0.01, 0.075));
   g.add(skull);
   const orbitSkull = (t: number, phase: number) => {
     const a = t * 1.6 + phase;
-    skull.position.set(Math.cos(a) * 0.45, 1.1 + Math.sin(t * 3 + phase) * 0.07, Math.sin(a) * 0.45);
+    skull.position.set(
+      Math.cos(a) * 0.62,
+      0.82 + Math.sin(t * 3 + phase) * 0.07,
+      Math.sin(a) * 0.62 - 0.05,
+    );
     skull.rotation.y = -a + Math.PI / 2; // always faces outward
   };
 
-  // Staff hand.
+  // Broom hand.
   const offArm = new THREE.Group();
   offArm.position.set(-0.34, 0.78, 0);
   offArm.add(box(0.11, 0.26, 0.11, 0x4a148c, 0, -0.13, 0));
-  const staff = cyl(0.03, 0.03, 0.9, 0x3e2723, 0, -0.28, 0.08);
-  offArm.add(staff);
-  offArm.add(sphere(0.1, 0x76ff03, 0, 0.2, 0.08)); // necro orb
+  const broomstick = cyl(0.03, 0.03, 0.95, 0x6d4226, 0, -0.28, 0.08);
+  offArm.add(broomstick);
+  const bristles = cone(0.11, 0.3, 0xc9a356, 0, -0.82, 0.08);
+  bristles.rotation.x = Math.PI; // straw head pointing down
+  offArm.add(bristles);
+  offArm.add(cyl(0.055, 0.055, 0.06, 0x6d4226, 0, -0.68, 0.08)); // binding
   g.add(offArm);
 
   // Casting hand wreathed in green soul-fire.
@@ -680,16 +695,24 @@ function buildPrince(): TroopRig {
   const horse = sphere(0.42, 0x9c7b66, 0, 0.7, 0);
   horse.scale.set(0.75, 0.7, 1.5);
   g.add(horse);
-  const horseHead = sphere(0.24, HORSE, 0, 1.1, 0.68);
+  // Proper pony head: tall snout, big ears, broad mane.
+  const horseHead = sphere(0.24, HORSE, 0, 1.14, 0.62);
+  horseHead.scale.set(0.95, 1.1, 1.15);
   g.add(horseHead);
-  const muzzle = sphere(0.15, 0x7a5548, 0, 1.0, 0.9);
-  muzzle.scale.set(0.9, 0.7, 1);
+  const muzzle = sphere(0.13, 0x7a5548, 0, 1.02, 0.82);
+  muzzle.scale.set(0.85, 0.62, 0.7);
   g.add(muzzle);
-  g.add(sphere(0.04, 0x1f2430, -0.1, 1.18, 0.84)); // horse eye
-  g.add(sphere(0.04, 0x1f2430, 0.1, 1.18, 0.84)); // horse eye
-  g.add(cone(0.05, 0.12, HORSE, -0.1, 1.32, 0.6)); // ear
-  g.add(cone(0.05, 0.12, HORSE, 0.1, 1.32, 0.6)); // ear
-  g.add(box(0.07, 0.3, 0.4, 0x5d4037, 0, 1.22, 0.32)); // mane
+  g.add(sphere(0.025, 0x1f2430, -0.05, 1.04, 0.9)); // nostril
+  g.add(sphere(0.025, 0x1f2430, 0.05, 1.04, 0.9)); // nostril
+  for (const s of [-1, 1]) {
+    g.add(sphere(0.05, 0xffffff, s * 0.11, 1.24, 0.76)); // horse sclera
+    g.add(sphere(0.028, 0x1f2430, s * 0.11, 1.24, 0.8)); // horse pupil
+    const ear = cone(0.07, 0.2, HORSE, s * 0.13, 1.42, 0.52);
+    ear.rotation.z = -s * 0.25;
+    g.add(ear); // big alert ears
+  }
+  g.add(box(0.12, 0.34, 0.5, 0x5d4037, 0, 1.3, 0.28)); // broad mane
+  g.add(box(0.1, 0.16, 0.18, 0x5d4037, 0, 1.42, 0.5)); // forelock
   const tail = cone(0.08, 0.45, 0x5d4037, 0, 0.78, -0.7);
   tail.rotation.x = -Math.PI / 2.5;
   g.add(tail);
@@ -701,12 +724,18 @@ function buildPrince(): TroopRig {
   const head = sphere(0.26, SKIN, 0, 1.66, -0.1);
   addEyes(head, 0.26, 0.38, 0.1, "brave");
   g.add(head);
-  g.add(cyl(0.28, 0.3, 0.16, 0xf2c14e, 0, 1.84, -0.1)); // helmet band
-  const helmDome = sphere(0.28, 0xf2c14e, 0, 1.9, -0.1);
-  helmDome.scale.y = 0.6;
+  // Full golden helm with cheek guards and a red crest mohawk.
+  g.add(cyl(0.28, 0.3, 0.2, 0xf2c14e, 0, 1.84, -0.1)); // helmet band
+  const helmDome = sphere(0.29, 0xf2c14e, 0, 1.92, -0.1);
+  helmDome.scale.y = 0.72;
   g.add(helmDome);
-  const plume = cone(0.1, 0.36, 0xe53935, 0, 2.12, -0.1);
-  g.add(plume);
+  for (const s of [-1, 1]) {
+    g.add(box(0.06, 0.18, 0.16, 0xf2c14e, s * 0.26, 1.7, -0.04)); // cheek guard
+  }
+  for (let i = 0; i < 4; i++) {
+    const tuft = box(0.07, 0.16 + (i === 1 || i === 2 ? 0.06 : 0), 0.1, 0xe53935, 0, 2.1, -0.28 + i * 0.13);
+    g.add(tuft); // crest mohawk, front to back
+  }
   const offArm = new THREE.Group();
   offArm.position.set(-0.3, 1.34, -0.1);
   offArm.add(box(0.1, 0.26, 0.1, 0xfafafa, 0, -0.13, 0));
@@ -771,23 +800,32 @@ function buildHogRider(): TroopRig {
   g.add(head);
   const mohawk = box(0.08, 0.26, 0.4, 0x2d1b0e, 0, 1.76, -0.12);
   g.add(mohawk);
-  g.add(box(0.34, 0.05, 0.05, 0x2d1b0e, 0, 1.42, 0.08)); // beard band
+  // The iconic big dark beard.
+  const beard = sphere(0.2, 0x2d1b0e, 0, 1.36, 0.02);
+  beard.scale.set(1.05, 0.8, 0.75);
+  g.add(beard);
   for (const s of [-1, 1]) {
     g.add(sphere(0.05, 0xf2c14e, s * 0.26, 1.5, -0.1)); // gold earring
   }
+  // Leather bandolier across the bare chest.
+  const strap = box(0.09, 0.46, 0.05, 0x4e342e, 0, 1.06, 0.06);
+  strap.rotation.z = 0.7;
+  g.add(strap);
+  g.add(sphere(0.045, 0xf2c14e, 0.12, 1.14, 0.1)); // strap stud
 
   const offArm = new THREE.Group();
   offArm.position.set(-0.26, 1.18, -0.12);
   offArm.add(box(0.1, 0.26, 0.1, RIDER, 0, -0.13, 0));
   g.add(offArm);
 
-  // Massive war hammer.
+  // Massive war hammer (the whole point of the hog rider).
   const arm = new THREE.Group();
   arm.position.set(0.28, 1.2, -0.08);
   arm.add(box(0.1, 0.24, 0.1, RIDER, 0, -0.12, 0));
-  arm.add(cyl(0.035, 0.035, 0.7, 0x5d4037, 0, 0.06, 0.1)); // haft
-  arm.add(box(0.22, 0.22, 0.34, 0x78909c, 0, 0.42, 0.1)); // hammer head
-  arm.add(cyl(0.12, 0.12, 0.36, 0x546e7a, 0, 0.42, 0.1)); // head band
+  arm.add(cyl(0.04, 0.04, 0.8, 0x5d4037, 0, 0.1, 0.1)); // haft
+  arm.add(box(0.3, 0.3, 0.46, 0x78909c, 0, 0.52, 0.1)); // hammer head
+  arm.add(cyl(0.165, 0.165, 0.48, 0x546e7a, 0, 0.52, 0.1)); // head band
+  arm.add(box(0.32, 0.08, 0.48, 0x546e7a, 0, 0.66, 0.1)); // top plate
   g.add(arm);
   return { group: g, arm, armRest: -0.4, swingAmp: 1.8, height: 1.95, legs, offArm };
 }
@@ -805,13 +843,20 @@ function buildPekka(): TroopRig {
   chest.position.set(0, 0.74, 0.28);
   g.add(chest);
   g.add(box(0.86, 0.62, 0.7, 0x222f47, 0, 1.5, 0)); // massive helmet head
-  const eye = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.04), glow(0x8c7bff, 2.4));
+  // Wide burning eye-slit (unlit, so it stays hot pink).
+  const eye = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.16, 0.05), glow(0xff4fd8, 2.4));
   eye.position.set(0, 1.52, 0.36);
   g.add(eye);
   for (const s of [-1, 1]) {
-    const horn = cone(0.12, 0.55, 0xb7c2cc, s * 0.46, 1.98, 0);
-    horn.rotation.z = -s * 0.5;
+    // Swept butterfly-wing horns, P.E.K.K.A's signature silhouette.
+    const horn = cone(0.16, 0.8, 0xb7c2cc, s * 0.58, 1.92, 0);
+    horn.rotation.z = -s * 1.05;
+    horn.scale.z = 0.45; // bladed, not round
     g.add(horn);
+    const hornTip = cone(0.07, 0.34, 0xdde4ec, s * 0.94, 2.08, 0);
+    hornTip.rotation.z = -s * 1.25;
+    hornTip.scale.z = 0.45;
+    g.add(hornTip);
     g.add(sphere(0.13, 0xb7c2cc, s * 0.46, 0.98, 0)); // shoulder bolt
     g.add(cone(0.09, 0.24, 0xb7c2cc, s * 0.5, 1.18, 0)); // shoulder spike
   }
@@ -822,15 +867,16 @@ function buildPekka(): TroopRig {
   offArm.add(sphere(0.13, 0x39455c, 0, -0.5, 0)); // gauntlet
   g.add(offArm);
 
-  // Two-handed great sword.
+  // Two-handed great sword, carried high so the blade clears the helm.
   const arm = new THREE.Group();
-  arm.position.set(0.54, 0.96, 0);
+  arm.position.set(0.56, 1.1, 0);
   arm.add(box(0.2, 0.42, 0.2, 0x1a2333, 0, -0.22, 0));
-  arm.add(box(0.4, 0.08, 0.14, 0x39455c, 0, -0.46, 0)); // crossguard
-  arm.add(box(0.11, 1.05, 0.22, 0xdde4ec, 0, 0.12, 0)); // huge blade
-  arm.add(cone(0.11, 0.2, 0xdde4ec, 0, 0.74, 0)); // blade point
+  arm.add(box(0.44, 0.09, 0.16, 0x39455c, 0, -0.46, 0)); // crossguard
+  arm.add(box(0.13, 1.3, 0.26, 0xdde4ec, 0, 0.24, 0)); // huge blade
+  arm.add(box(0.05, 1.28, 0.04, 0x9aa8bd, 0, 0.24, 0.12)); // fuller line
+  arm.add(cone(0.13, 0.24, 0xdde4ec, 0, 1.0, 0)); // blade point
   g.add(arm);
-  return { group: g, arm, armRest: -0.5, swingAmp: 1.8, height: 2.25, legs, offArm };
+  return { group: g, arm, armRest: -0.62, swingAmp: 1.8, height: 2.4, legs, offArm };
 }
 
 /** Princess archer perched on top of each crown tower. */
