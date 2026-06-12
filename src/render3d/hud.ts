@@ -127,6 +127,17 @@ export class Hud {
     this.selected = id;
   }
 
+  /** Shake the elixir row (can't afford) or the hand (bad spot). */
+  flashError(kind: "elixir" | "spot"): void {
+    const target =
+      kind === "elixir"
+        ? this.elixirBar.parentElement!
+        : this.cardBtns[0].parentElement!;
+    target.classList.remove("error-shake");
+    void target.offsetWidth; // restart the animation
+    target.classList.add("error-shake");
+  }
+
   update(state: BattleState): void {
     // Clock.
     const total = state.overtime

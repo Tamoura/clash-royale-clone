@@ -275,9 +275,20 @@ function showPreview(clientX: number, clientY: number): void {
 function tryDeployAt(clientX: number, clientY: number): void {
   if (battle.result || !selectedCard) return;
   const pos = scene.pick(clientX, clientY);
-  if (pos && deployCard(battle, "player", selectedCard, pos.x, pos.y)) {
+  if (!pos) return;
+  const verdict = checkDeploy(battle, "player", selectedCard, pos.x, pos.y);
+  if (verdict === "ok" && deployCard(battle, "player", selectedCard, pos.x, pos.y)) {
     selectCard(null);
     clearPreview();
+    return;
+  }
+  // Tell the player why the play was refused.
+  if (verdict === "no-elixir") {
+    hud.flashError("elixir");
+    audio.error();
+  } else if (verdict === "bad-spot") {
+    hud.flashError("spot");
+    audio.error();
   }
 }
 

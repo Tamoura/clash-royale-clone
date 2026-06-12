@@ -231,6 +231,13 @@ export class SoundEngine {
     this.tone(659, 0.26, { type: "square", vol: 0.18, delay: 0.24 });
   }
 
+  /** Flat denial buzz for an invalid play. */
+  error(): void {
+    if (this.throttled("error", 200)) return;
+    this.tone(160, 0.12, { type: "square", slideTo: 110, vol: 0.14 });
+    this.tone(120, 0.14, { type: "sawtooth", slideTo: 90, vol: 0.1, delay: 0.02 });
+  }
+
   /** Bubbly pop for emotes. */
   emotePop(): void {
     this.tone(700, 0.1, { type: "sine", slideTo: 1200, vol: 0.18 });
