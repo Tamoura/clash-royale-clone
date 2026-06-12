@@ -138,7 +138,11 @@ function buildDeckPicker(): void {
 
   const chosen = new Set<CardId>(playerDeck);
   const sync = (): void => {
-    count.textContent = `${chosen.size} / 8 cards`;
+    const costs = [...chosen].map((id) => getCard(id).cost);
+    const avg = costs.length
+      ? (costs.reduce((s, c) => s + c, 0) / costs.length).toFixed(1)
+      : "0.0";
+    count.textContent = `${chosen.size} / 8 cards · average ${avg} elixir`;
     startBtn.disabled = chosen.size !== 8;
     grid.querySelectorAll<HTMLButtonElement>("button.pick").forEach((btn) => {
       btn.classList.toggle("chosen", chosen.has(btn.dataset.card as CardId));

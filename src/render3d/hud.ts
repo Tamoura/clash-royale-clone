@@ -1,7 +1,7 @@
 import type { BattleState } from "../game/battle";
 import { getCard, type CardId } from "../game/cards";
 import { ELIXIR_MAX } from "../game/elixir";
-import { BATTLE_DURATION, OVERTIME_DURATION, isDoubleElixir } from "../game/sim";
+import { BATTLE_DURATION, OVERTIME_DURATION, elixirMultiplier } from "../game/sim";
 import { drawCardArt } from "../render/characters";
 import { CARD_COLOR } from "../render/cardcolors";
 import { cardStatLines } from "../render/cardinfo";
@@ -54,6 +54,7 @@ export class Hud {
   private readonly elixirFill: HTMLElement;
   private readonly elixirNum: HTMLElement;
   private elixirBar!: HTMLElement;
+  private x2Tag!: HTMLElement;
   private readonly nextArt: HTMLElement;
   private readonly cardBtns: HTMLButtonElement[] = [];
   private readonly overlay: HTMLElement;
@@ -91,8 +92,8 @@ export class Hud {
     this.elixirNum = el("div", "elixir-num", elixirRow);
     this.elixirBar = el("div", "elixir-bar", elixirRow);
     this.elixirFill = el("div", "elixir-fill", this.elixirBar);
-    const x2 = el("div", "x2-tag", this.elixirBar);
-    x2.textContent = "x2";
+    this.x2Tag = el("div", "x2-tag", this.elixirBar);
+    this.x2Tag.textContent = "x2";
 
     const handRow = el("div", "hand-row", bottom);
     const nextWrap = el("div", "next-card", handRow);
@@ -178,7 +179,9 @@ export class Hud {
     const amount = state.player.elixir.amount;
     this.elixirFill.style.width = `${(amount / ELIXIR_MAX) * 100}%`;
     this.elixirNum.textContent = String(Math.floor(amount));
-    this.elixirBar.classList.toggle("x2", isDoubleElixir(state) && !state.result);
+    const mult = elixirMultiplier(state);
+    this.elixirBar.classList.toggle("x2", mult >= 2 && !state.result);
+    this.x2Tag.textContent = mult === 3 ? "x3" : "x2";
 
     // Hand (rebuild card art only when the hand changes).
     const handKey = state.player.hand.cards.join(",");
