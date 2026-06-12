@@ -11,7 +11,7 @@ export const CARD_COLOR: Record<CardId, string> = {
   musketeer: "#36459c",
   "mini-pekka": "#27364e",
   skeletons: "#8d8676",
-  wizard: "#7c3aed",
+  wizard: "#b3a06a",
   witch: "#4a1d6e",
   "hog-rider": "#7a4a23",
   balloon: "#a32424",

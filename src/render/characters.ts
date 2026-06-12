@@ -283,18 +283,16 @@ function drawWizard(ctx: Ctx, _anim: Anim): void {
   ctx.fill();
   ctx.restore();
 
-  box(ctx, -4.5, -1, 9, 9, 3, "#7c3aed"); // robe
-  box(ctx, -4.5, 2.4, 9, 1.6, 0.8, "#f2c14e"); // sash
+  box(ctx, -4.5, -1, 9, 9, 3, "#efe9d8"); // white robe
+  box(ctx, -4.5, 2.4, 9, 1.6, 0.8, "#f2c14e"); // gold sash
   circle(ctx, 0, -5, 5, SKIN); // head
   box(ctx, -2.4, -2.4, 4.8, 3, 1.4, "#e8e3d8"); // beard
-  outlined(ctx, "#5b21b6", () => {
-    // hat
+  outlined(ctx, "#e8c64a", () => {
+    // swept golden hair, no hat
     ctx.beginPath();
-    ctx.moveTo(-7, -7.5);
-    ctx.lineTo(7, -7.5);
-    ctx.lineTo(1.5, -8.8);
-    ctx.lineTo(0.5, -14);
-    ctx.lineTo(-3.5, -8.8);
+    ctx.arc(0, -6, 5.4, Math.PI * 0.95, Math.PI * 0.05);
+    ctx.quadraticCurveTo(6, -10.5, 1.5, -10.6);
+    ctx.quadraticCurveTo(-2, -11.5, -5.2, -7.8);
     ctx.closePath();
   });
   eyes(ctx, -5);

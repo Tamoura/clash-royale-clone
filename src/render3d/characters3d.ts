@@ -393,25 +393,39 @@ function buildSkeleton(): TroopRig {
 }
 
 function buildWizard(): TroopRig {
+  // White robe, no hat, golden hair — nothing like the witch now.
+  const ROBE = 0xefe9d8;
+  const HAIR = 0xe8c64a;
   const g = new THREE.Group();
-  g.add(cyl(0.28, 0.48, 0.72, 0x7c3aed, 0, 0.4, 0)); // robe
-  g.add(cyl(0.39, 0.42, 0.08, 0xf2c14e, 0, 0.5, 0)); // sash
+  g.add(cyl(0.28, 0.48, 0.72, ROBE, 0, 0.4, 0)); // white robe
+  g.add(cyl(0.39, 0.42, 0.08, 0xf2c14e, 0, 0.5, 0)); // gold sash
+  g.add(box(0.1, 0.5, 0.04, 0xd9a93f, 0, 0.42, 0.31)); // gold front trim
   const head = sphere(0.3, SKIN, 0, 1.06, 0);
   addEyes(head, 0.3, 0.38, 0.1, "calm");
   g.add(head);
   const beard = sphere(0.26, 0xe8e3d8, 0, 0.9, 0.12);
   beard.scale.set(1, 0.8, 0.75);
   g.add(beard);
-  g.add(cyl(0.44, 0.44, 0.06, 0x5b21b6, 0, 1.26, 0)); // hat brim
-  const hatTop = cone(0.26, 0.55, 0x5b21b6, 0.04, 1.55, 0);
-  hatTop.rotation.z = -0.12;
-  g.add(hatTop);
-  g.add(sphere(0.06, 0xf2c14e, 0.13, 1.78, 0)); // hat star
+  // Swept-back golden hair with a proud cowlick.
+  const hairCap = sphere(0.31, HAIR, 0, 1.16, -0.05);
+  hairCap.scale.set(1, 0.72, 1.02);
+  g.add(hairCap);
+  const backSweep = sphere(0.18, HAIR, 0, 1.04, -0.26);
+  backSweep.scale.set(1.1, 0.9, 0.7);
+  g.add(backSweep);
+  const cowlick = cone(0.09, 0.22, HAIR, 0.05, 1.42, 0.05);
+  cowlick.rotation.z = -0.35;
+  g.add(cowlick);
+  for (const s of [-1, 1]) {
+    const sideburn = cyl(0.06, 0.04, 0.22, HAIR, s * 0.27, 0.98, 0.02);
+    sideburn.rotation.z = s * 0.12;
+    g.add(sideburn);
+  }
 
   // Staff hand.
   const offArm = new THREE.Group();
   offArm.position.set(-0.36, 0.78, 0);
-  offArm.add(box(0.11, 0.26, 0.11, 0x7c3aed, 0, -0.13, 0));
+  offArm.add(box(0.11, 0.26, 0.11, ROBE, 0, -0.13, 0));
   const staff = cyl(0.03, 0.03, 0.95, 0x6d4c41, 0, -0.3, 0.08);
   offArm.add(staff);
   offArm.add(sphere(0.09, 0x4fd8ff, 0, 0.2, 0.08));
@@ -420,7 +434,7 @@ function buildWizard(): TroopRig {
   // Casting hand with fire orb.
   const arm = new THREE.Group();
   arm.position.set(0.36, 0.8, 0);
-  arm.add(box(0.11, 0.26, 0.11, 0x7c3aed, 0, -0.13, 0));
+  arm.add(box(0.11, 0.26, 0.11, ROBE, 0, -0.13, 0));
   const orb = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), glow(0xff7a00, 1.8));
   orb.position.set(0, -0.34, 0.1);
   arm.add(orb);
@@ -430,7 +444,7 @@ function buildWizard(): TroopRig {
     const s = 1 + Math.sin(t * 11 + phase) * 0.12 + Math.sin(t * 23 + phase * 2) * 0.05;
     orb.scale.setScalar(s);
   };
-  return { group: g, arm, armRest: -0.9, swingAmp: 1.1, height: 1.75, offArm, extras: flicker };
+  return { group: g, arm, armRest: -0.9, swingAmp: 1.1, height: 1.5, offArm, extras: flicker };
 }
 
 function buildWitch(): TroopRig {
