@@ -748,6 +748,12 @@ export class Battle3D {
   private rubble: THREE.Object3D[] = [];
   /** Sim projectile meshes by projectile id. */
   private projViews = new Map<number, THREE.Object3D>();
+  /** Spectator bodies/heads; they jump when a crown falls. */
+  private crowdParts: THREE.Mesh[] = [];
+  /** Seconds of crowd cheering left. */
+  private cheer = 0;
+  /** Seconds until the next ambient bird flyover. */
+  private birdTimer = 4;
   /** Scrolling river texture + accumulated flow time. */
   private waterTex: THREE.CanvasTexture | null = null;
   private waterTime = 0;
@@ -899,13 +905,17 @@ export class Battle3D {
           toon(CROWD_GARB[(i * 3 + Math.round(x)) % CROWD_GARB.length]),
         );
         body.position.set(innerX, 1.06, z);
+        body.userData.baseY = 1.06;
         g.add(body);
+        this.crowdParts.push(body);
         const head = new THREE.Mesh(
           new THREE.SphereGeometry(0.1, 8, 6),
           toon(CROWD_SKIN[(i + Math.abs(Math.round(zCenter))) % CROWD_SKIN.length]),
         );
         head.position.set(innerX, 1.28, z);
+        head.userData.baseY = 1.28;
         g.add(head);
+        this.crowdParts.push(head);
       }
 
       const roof = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, len + 0.4), toon(roofColor));
@@ -1932,6 +1942,7 @@ export class Battle3D {
           this.puff(ev.x, ev.y, 0x8b7c69, 1.6);
           if (ev.kind !== "building") {
             this.crownPop(ev.x, ev.y);
+            this.cheer = 1.8; // the stands go wild
             this.dropRubble(ev.x, ev.y, ev.kind === "king-tower");
             this.addShake(ev.kind === "king-tower" ? 0.9 : 0.55);
           }
@@ -2164,6 +2175,43 @@ export class Battle3D {
     if (this.waterTex) {
       this.waterTime += dt;
       this.waterTex.offset.x = this.waterTime * 0.04;
+    }
+
+    // Crowd cheering: spectators hop while the cheer lasts.
+    if (this.cheer > 0) {
+      this.cheer = Math.max(0, this.cheer - dt);
+      this.crowdParts.forEach((m, i) => {
+        const base = m.userData.baseY as number;
+        m.position.y =
+          this.cheer > 0
+            ? base + Math.abs(Math.sin(this.waterTime * 11 + i * 1.3)) * 0.16
+            : base;
+      });
+    }
+
+    // Ambient bird flyovers keep the sky alive.
+    this.birdTimer -= dt;
+    if (this.birdTimer <= 0) {
+      this.birdTimer = 9 + ((this.waterTime * 7) % 8);
+      const dir = this.waterTime % 2 < 1 ? 1 : -1;
+      const z = -12 + ((this.waterTime * 13) % 22);
+      const bird = new THREE.Group();
+      for (const s of [-1, 1]) {
+        const wing = new THREE.Mesh(
+          new THREE.BoxGeometry(0.5, 0.04, 0.16),
+          new THREE.MeshBasicMaterial({ color: 0xf4f6fa }),
+        );
+        wing.position.x = s * 0.26;
+        bird.add(wing);
+      }
+      const startX = -dir * 22;
+      this.addEffect(bird, 6, (frac) => {
+        const t = 1 - frac;
+        bird.position.set(startX + dir * t * 44, 7.5 + Math.sin(t * 9) * 0.4, z);
+        bird.children.forEach((w, wi) => {
+          w.rotation.z = (wi === 0 ? 1 : -1) * Math.sin(t * 40) * 0.7;
+        });
+      });
     }
 
     // Camera shake: fast decaying jitter around the fixed viewpoint.

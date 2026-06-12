@@ -1,5 +1,5 @@
 import type { BattleEvent } from "../game/battle";
-import { getCard } from "../game/cards";
+import { getCard, type CardId } from "../game/cards";
 
 /**
  * Music tempo per intensity level: 0 = normal time, 1 = double
@@ -116,6 +116,48 @@ export class SoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
     src.connect(filter).connect(gain).connect(this.master);
     src.start(t0);
+  }
+
+  /** Synth "voice" bark per character, layered over the deploy thump. */
+  private bark(cardId: CardId): void {
+    switch (cardId) {
+      case "hog-rider": // the famous war cry: a long falling yell
+        this.tone(640, 0.5, { type: "sawtooth", slideTo: 210, vol: 0.2 });
+        this.tone(320, 0.5, { type: "square", slideTo: 110, vol: 0.1, delay: 0.04 });
+        break;
+      case "witch": // three-note cackle
+        for (let i = 0; i < 3; i++) {
+          this.tone(820 - i * 150, 0.09, { type: "square", vol: 0.12, delay: i * 0.09 });
+        }
+        break;
+      case "knight":
+      case "giant": // low determined grunt (deeper for the giant)
+        this.tone(cardId === "giant" ? 105 : 150, 0.22, {
+          type: "sine",
+          slideTo: cardId === "giant" ? 60 : 95,
+          vol: 0.22,
+        });
+        break;
+      case "valkyrie": // rising battle cry
+        this.tone(360, 0.3, { type: "sawtooth", slideTo: 700, vol: 0.16 });
+        break;
+      case "prince": // pony whinny: fast trill
+        for (let i = 0; i < 4; i++) {
+          this.tone(1000 + (i % 2) * 350, 0.07, { type: "sine", vol: 0.1, delay: i * 0.06 });
+        }
+        break;
+      case "pekka":
+      case "mini-pekka": // metal clank + servo hum
+        this.noise(0.07, { vol: 0.2, filterFreq: 3500 });
+        this.tone(220, 0.3, { type: "sawtooth", slideTo: 330, vol: 0.1, delay: 0.05 });
+        break;
+      case "wizard": // confident "ha!" with a fire hiss
+        this.tone(300, 0.14, { type: "square", slideTo: 200, vol: 0.14 });
+        this.noise(0.18, { vol: 0.1, filterFreq: 2400, delay: 0.05 });
+        break;
+      default:
+        break;
+    }
   }
 
   private deploy(cost: number): void {
@@ -318,6 +360,7 @@ export class SoundEngine {
     switch (ev.type) {
       case "deploy":
         this.deploy(getCard(ev.cardId).cost);
+        this.bark(ev.cardId);
         break;
       case "spell":
         if (ev.cardId === "fireball") this.fireball();
