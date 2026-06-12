@@ -1040,13 +1040,18 @@ export class Battle3D {
     plankCanvas.width = 64;
     plankCanvas.height = 64;
     const pctx = plankCanvas.getContext("2d")!;
-    pctx.fillStyle = "#a8754a";
+    // CR's bridges are golden-yellow boardwalks, not brown.
+    pctx.fillStyle = "#e0b04f";
     pctx.fillRect(0, 0, 64, 64);
-    pctx.fillStyle = "#8d5f3a";
+    pctx.fillStyle = "#c2913a";
     for (let i = 0; i < 8; i++) pctx.fillRect(0, i * 8, 64, 1.6);
-    pctx.fillStyle = "rgba(60,38,20,0.45)";
+    pctx.fillStyle = "rgba(122,86,28,0.5)";
     for (let i = 0; i < 10; i++) {
       pctx.fillRect((i * 23) % 60, ((i * 17) % 7) * 8 + 3, 2.5, 1.5);
+    }
+    pctx.fillStyle = "rgba(255,235,170,0.4)";
+    for (let i = 0; i < 8; i++) {
+      pctx.fillRect((i * 29 + 7) % 60, ((i * 13) % 7) * 8 + 1, 3, 1);
     }
     const plankTex = new THREE.CanvasTexture(plankCanvas);
     plankTex.colorSpace = THREE.SRGBColorSpace;
@@ -1062,7 +1067,7 @@ export class Battle3D {
       deck.receiveShadow = true;
       this.scene.add(deck);
       for (const side of [-1, 1]) {
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.3, 2.6), toon(0x6e4a28));
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.3, 2.6), toon(0xb8893a));
         rail.position.set(w.x + side * 0.95, 0.3, 0);
         rail.castShadow = true;
         this.scene.add(rail);
