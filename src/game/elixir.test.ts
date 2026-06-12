@@ -8,19 +8,19 @@ describe("elixir", () => {
 
   it("regenerates 1 elixir per 2.8 seconds", () => {
     let e = createElixir();
-    e = tickElixir(e, 2.8, false);
+    e = tickElixir(e, 2.8, 1);
     expect(e.amount).toBeCloseTo(6);
   });
 
   it("caps at 10", () => {
     let e = createElixir();
-    e = tickElixir(e, 1000, false);
+    e = tickElixir(e, 1000, 1);
     expect(e.amount).toBe(10);
   });
 
   it("regenerates twice as fast in double-elixir time", () => {
     let e = createElixir();
-    e = tickElixir(e, 1.4, true);
+    e = tickElixir(e, 1.4, 2);
     expect(e.amount).toBeCloseTo(6);
   });
 

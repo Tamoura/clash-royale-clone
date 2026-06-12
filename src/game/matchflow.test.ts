@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createBattle, spawnUnits } from "./battle";
-import { BATTLE_DURATION, OVERTIME_DURATION, tick } from "./sim";
+import { BATTLE_DURATION, OVERTIME_DURATION, elixirMultiplier, tick } from "./sim";
 
 const TICK = 1 / 20;
 
@@ -102,5 +102,24 @@ describe("match flow", () => {
     const snapshot = JSON.stringify(b);
     tick(b, TICK);
     expect(JSON.stringify(b)).toBe(snapshot);
+  });
+});
+
+describe("CR overtime pacing", () => {
+  it("overtime lasts two minutes", () => {
+    expect(OVERTIME_DURATION).toBe(120);
+  });
+
+  it("elixir runs 1x, then 2x, then 3x in late overtime", () => {
+    const b = createBattle();
+    b.time = 60;
+    expect(elixirMultiplier(b)).toBe(1);
+    b.time = 130; // last minute of regular time
+    expect(elixirMultiplier(b)).toBe(2);
+    b.overtime = true;
+    b.time = BATTLE_DURATION + 30; // first overtime minute
+    expect(elixirMultiplier(b)).toBe(2);
+    b.time = BATTLE_DURATION + 70; // final overtime minute
+    expect(elixirMultiplier(b)).toBe(3);
   });
 });

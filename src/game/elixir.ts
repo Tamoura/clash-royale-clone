@@ -13,9 +13,9 @@ export function createElixir(): ElixirState {
 export function tickElixir(
   state: ElixirState,
   dt: number,
-  doubleElixir: boolean,
+  multiplier: number,
 ): ElixirState {
-  const rate = (doubleElixir ? 2 : 1) / SECONDS_PER_ELIXIR;
+  const rate = multiplier / SECONDS_PER_ELIXIR;
   return { amount: Math.min(ELIXIR_MAX, state.amount + dt * rate) };
 }
 

@@ -18,11 +18,23 @@ import { ELIXIR_MAX, tickElixir } from "./elixir";
 /** Regular time length; the final minute of it is double elixir. */
 export const BATTLE_DURATION = 180;
 export const DOUBLE_ELIXIR_AT = 120;
-/** Sudden-death overtime length after a tied regular time. */
-export const OVERTIME_DURATION = 60;
+/** Sudden-death overtime length (CR: 2 minutes, last one at 3x). */
+export const OVERTIME_DURATION = 120;
+
+/**
+ * CR's elixir curve: 1x for the first two minutes, 2x for the last
+ * regular minute and the first overtime minute, 3x after that.
+ */
+export function elixirMultiplier(state: BattleState): 1 | 2 | 3 {
+  if (state.overtime && state.time >= BATTLE_DURATION + OVERTIME_DURATION / 2) {
+    return 3;
+  }
+  if (state.overtime || state.time >= DOUBLE_ELIXIR_AT) return 2;
+  return 1;
+}
 
 export function isDoubleElixir(state: BattleState): boolean {
-  return state.overtime || state.time >= DOUBLE_ELIXIR_AT;
+  return elixirMultiplier(state) >= 2;
 }
 
 function livingEnemiesOf(state: BattleState, e: Entity): Entity[] {
@@ -285,9 +297,9 @@ export function tick(state: BattleState, dt: number): void {
   if (state.result) return;
   state.time += dt;
 
-  const double = isDoubleElixir(state);
-  state.player.elixir = tickElixir(state.player.elixir, dt, double);
-  state.enemy.elixir = tickElixir(state.enemy.elixir, dt, double);
+  const mult = elixirMultiplier(state);
+  state.player.elixir = tickElixir(state.player.elixir, dt, mult);
+  state.enemy.elixir = tickElixir(state.enemy.elixir, dt, mult);
 
   for (const effect of state.effects) effect.ttl -= dt;
   state.effects = state.effects.filter((f) => f.ttl > 0);
