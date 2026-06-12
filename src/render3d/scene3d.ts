@@ -689,6 +689,38 @@ export class Battle3D {
     addFenceRun([-fenceHw, -fenceHd], [-fenceHw, fenceHd], 16);
     addFenceRun([fenceHw, -fenceHd], [fenceHw, fenceHd], 16);
 
+    // Long spectator stands flanking the arena: stone galleries with
+    // pitched roofs — red on the enemy half, blue on the player half
+    // (CR arenas are walled in by these).
+    const stand = (x: number, zCenter: number, len: number, roofColor: number): void => {
+      const g = new THREE.Group();
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, len), toon(0xb3a890));
+      wall.position.y = 0.55;
+      wall.castShadow = true;
+      wall.receiveShadow = true;
+      g.add(wall);
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, len + 0.4), toon(roofColor));
+      roof.position.y = 1.35;
+      // Pitch the roof by squashing the top: cheap wedge illusion.
+      roof.scale.y = 0.9;
+      roof.castShadow = true;
+      g.add(roof);
+      const ridge = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.24, len + 0.5),
+        toon(0xd9a93f),
+      );
+      ridge.position.y = 1.66;
+      g.add(ridge);
+      g.position.set(x, 0, zCenter);
+      this.scene.add(g);
+    };
+    const standX = ARENA_WIDTH / 2 + 6.2;
+    const standLen = ARENA_HEIGHT / 2 - 2.5;
+    for (const sx of [-1, 1]) {
+      stand(sx * standX, -ARENA_HEIGHT / 4 - 1, standLen, 0xb02e22); // enemy side
+      stand(sx * standX, ARENA_HEIGHT / 4 + 1, standLen, 0x2c55b8); // player side
+    }
+
     // Striped spectator tents in the corners, team-colored.
     const tent = (x: number, z: number, color: number): void => {
       const g = new THREE.Group();
