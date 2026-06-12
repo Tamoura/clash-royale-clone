@@ -248,6 +248,57 @@ function explodeOnDeath(state: BattleState, e: Entity): void {
   });
 }
 
+/** Bodies can squeeze a little, like CR's soft crowds. */
+const COLLISION_SLACK = 0.9;
+
+/**
+ * Soft collision: overlapping bodies shove apart. Troops push each
+ * other (heavier shoves lighter), buildings and towers never move,
+ * and air/ground occupy separate planes. Two relaxation passes keep
+ * dense crowds stable without a physics engine.
+ */
+function resolveCollisions(state: BattleState): void {
+  const solids = state.entities.filter((e) => e.hp > 0);
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < solids.length; i++) {
+      for (let j = i + 1; j < solids.length; j++) {
+        const a = solids[i];
+        const b = solids[j];
+        if (a.flying !== b.flying) continue;
+        const minDist = (a.radius + b.radius) * COLLISION_SLACK;
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let d = Math.hypot(dx, dy);
+        if (d >= minDist) continue;
+        if (d < 1e-6) {
+          // Perfectly stacked: nudge apart deterministically.
+          dx = 0.01 * (((a.id + b.id) % 7) - 3 || 1);
+          dy = 0.01 * (((a.id * 3 + b.id) % 5) - 2 || 1);
+          d = Math.hypot(dx, dy);
+        }
+        const overlap = minDist - d;
+        const nx = dx / d;
+        const ny = dy / d;
+        const aMoves = a.kind === "troop";
+        const bMoves = b.kind === "troop";
+        if (aMoves && bMoves) {
+          const aShare = b.radius / (a.radius + b.radius); // big shoves small
+          a.x -= nx * overlap * aShare;
+          a.y -= ny * overlap * aShare;
+          b.x += nx * overlap * (1 - aShare);
+          b.y += ny * overlap * (1 - aShare);
+        } else if (aMoves) {
+          a.x -= nx * overlap;
+          a.y -= ny * overlap;
+        } else if (bMoves) {
+          b.x += nx * overlap;
+          b.y += ny * overlap;
+        }
+      }
+    }
+  }
+}
+
 function processDeaths(state: BattleState): void {
   for (const e of state.entities) {
     if (e.hp > 0) continue;
@@ -316,6 +367,7 @@ export function tick(state: BattleState, dt: number): void {
   for (const e of [...state.entities]) {
     if (e.hp > 0) actEntity(state, e, dt);
   }
+  resolveCollisions(state);
   wakeDamagedKings(state);
   processDeaths(state);
   checkClock(state);

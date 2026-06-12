@@ -352,3 +352,36 @@ describe("deploy delay", () => {
     expect(deployCard(b, "player", "cannon", 9, RIVER_Y)).toBe(false);
   });
 });
+
+describe("troop collision", () => {
+  it("ground troops shove apart instead of overlapping", () => {
+    const b = createBattle();
+    const [a] = spawnUnits(b, "player", "knight", 9, 20);
+    const [c] = spawnUnits(b, "player", "knight", 9.05, 20.05);
+    run(b, 1);
+    const dist = Math.hypot(a.x - c.x, a.y - c.y);
+    expect(dist).toBeGreaterThanOrEqual((a.radius + c.radius) * 0.85);
+  });
+
+  it("flyers pass freely over ground troops", () => {
+    const b = createBattle();
+    const [knight] = spawnUnits(b, "player", "knight", 4, 20);
+    const [dragon] = spawnUnits(b, "player", "baby-dragon", 4.05, 20.05);
+    run(b, 0.5); // deploy-frozen: only collision could move them
+    const dist = Math.hypot(knight.x - dragon.x, knight.y - dragon.y);
+    expect(dist).toBeLessThan(0.3); // still stacked: no ground-air push
+  });
+
+  it("buildings are immovable; the troop gives way", () => {
+    const b = createBattle();
+    giveHand(b, "player", ["cannon"]);
+    deployCard(b, "player", "cannon", 9, 20);
+    const cannon = b.entities.find((e) => e.cardId === "cannon")!;
+    const [knight] = spawnUnits(b, "player", "knight", 9.1, 20.1);
+    run(b, 0.5);
+    expect(cannon.x).toBe(9);
+    expect(cannon.y).toBe(20);
+    const dist = Math.hypot(knight.x - cannon.x, knight.y - cannon.y);
+    expect(dist).toBeGreaterThanOrEqual((knight.radius + cannon.radius) * 0.85);
+  });
+});
