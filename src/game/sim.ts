@@ -13,7 +13,7 @@ import {
   type BattleState,
   type Entity,
 } from "./battle";
-import { tickElixir } from "./elixir";
+import { ELIXIR_MAX, tickElixir } from "./elixir";
 
 /** Regular time length; the final minute of it is double elixir. */
 export const BATTLE_DURATION = 180;
@@ -174,6 +174,18 @@ function tickSpawner(state: BattleState, e: Entity, dt: number): void {
   e.spawnTimer += e.spawnInterval;
 }
 
+/** Elixir collectors pay their owner 1 elixir every elixirInterval. */
+function tickCollector(state: BattleState, e: Entity, dt: number): void {
+  if (e.elixirInterval <= 0) return;
+  e.elixirTimer -= dt;
+  if (e.elixirTimer > 0) return;
+  e.elixirTimer += e.elixirInterval;
+  const owner = sideState(state, e.side);
+  owner.elixir = { amount: Math.min(ELIXIR_MAX, owner.elixir.amount + 1) };
+  // Purple payout ring for the renderer.
+  state.effects.push({ cardId: e.cardId!, x: e.x, y: e.y, radius: 0.8, ttl: 0.5 });
+}
+
 function actEntity(state: BattleState, e: Entity, dt: number): void {
   // Raged units recover from attacks and cover ground faster.
   const boostedDt = dt * rageBoost(state, e);
@@ -195,6 +207,7 @@ function actEntity(state: BattleState, e: Entity, dt: number): void {
     return;
   }
   tickSpawner(state, e, dt);
+  tickCollector(state, e, dt);
   if (!target) return;
 
   if (gap(e, target) <= e.attackRange) {

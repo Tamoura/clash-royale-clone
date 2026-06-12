@@ -20,7 +20,8 @@ export type CardId =
   | "prince"
   | "pekka"
   | "cannon"
-  | "tombstone";
+  | "tombstone"
+  | "elixir-collector";
 
 export type Speed = "slow" | "medium" | "fast";
 
@@ -63,6 +64,8 @@ export interface UnitStats {
   spawnUnitId: CardId | null;
   /** Seconds between summons (0 = not a spawner). */
   spawnInterval: number;
+  /** Seconds per 1 elixir generated for the owner (0 = none). */
+  elixirInterval: number;
   /** Visual + collision radius in tiles. */
   radius: number;
 }
@@ -128,6 +131,7 @@ function unit(stats: UnitOverrides): UnitStats {
     deathRadius: 0,
     spawnUnitId: null,
     spawnInterval: 0,
+    elixirInterval: 0,
     radius: 0.5,
     ...stats,
   };
@@ -430,6 +434,23 @@ export const CARDS: Record<CardId, Card> = {
       radius: 0.6,
     }),
   },
+  "elixir-collector": {
+    id: "elixir-collector",
+    name: "Elixir Collector",
+    rarity: "rare",
+    kind: "building",
+    cost: 6,
+    lifetime: 70,
+    unit: unit({
+      maxHp: 900,
+      damage: 0, // pure economy, never attacks
+      hitSpeed: 1,
+      attackRange: 0,
+      speed: "slow", // unused: buildings don't move
+      elixirInterval: 8.5,
+      radius: 0.6,
+    }),
+  },
   fireball: {
     id: "fireball",
     name: "Fireball",
@@ -506,6 +527,7 @@ export const DECK: CardId[] = [
   "pekka",
   "cannon",
   "tombstone",
+  "elixir-collector",
   "gargoyles",
   "arrows",
   "zap",

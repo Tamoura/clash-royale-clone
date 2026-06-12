@@ -70,6 +70,10 @@ export interface Entity {
   spawnInterval: number;
   /** Seconds until the next summon (unused when spawnUnitId is null). */
   spawnTimer: number;
+  /** Seconds per 1 elixir generated for the owner (0 = none). */
+  elixirInterval: number;
+  /** Seconds until the next elixir payout. */
+  elixirTimer: number;
   radius: number;
   /** Seconds until the next attack is ready. */
   cooldown: number;
@@ -206,6 +210,8 @@ function makeTower(state: BattleState, side: Side, kind: TowerKind, x: number, y
     spawnUnitId: null,
     spawnInterval: 0,
     spawnTimer: 0,
+    elixirInterval: 0,
+    elixirTimer: 0,
     radius: s.radius,
     cooldown: 0,
     targetId: null,
@@ -320,6 +326,8 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       spawnUnitId: card.unit.spawnUnitId,
       spawnInterval: card.unit.spawnInterval,
       spawnTimer: FIRST_SPAWN_DELAY,
+      elixirInterval: 0,
+      elixirTimer: 0,
       cooldown: 0,
       targetId: null,
       active: true,
@@ -360,6 +368,8 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
     spawnUnitId: u.spawnUnitId,
     spawnInterval: u.spawnInterval,
     spawnTimer: FIRST_SPAWN_DELAY,
+    elixirInterval: u.elixirInterval,
+    elixirTimer: u.elixirInterval,
     radius: u.radius,
     cooldown: 0,
     targetId: null,

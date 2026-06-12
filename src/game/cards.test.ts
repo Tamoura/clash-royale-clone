@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CARDS, DECK, getCard } from "./cards";
 
 describe("cards", () => {
-  it("defines the 22-card deck", () => {
+  it("defines the 23-card deck", () => {
     expect(DECK).toEqual([
       "knight",
       "archers",
@@ -21,6 +21,7 @@ describe("cards", () => {
       "pekka",
       "cannon",
       "tombstone",
+      "elixir-collector",
       "gargoyles",
       "arrows",
       "zap",
@@ -55,6 +56,16 @@ describe("cards", () => {
     expect(zap.cost).toBe(2);
     expect(zap.damage).toBeGreaterThan(0);
     expect(zap.stunSeconds).toBeGreaterThan(0);
+  });
+
+  it("the elixir collector is a passive generator building", () => {
+    const pump = getCard("elixir-collector");
+    expect(pump.kind).toBe("building");
+    if (pump.kind !== "building") return;
+    expect(pump.cost).toBe(6);
+    expect(pump.rarity).toBe("rare");
+    expect(pump.unit.elixirInterval).toBeGreaterThan(0);
+    expect(pump.unit.damage).toBe(0);
   });
 
   it("the tombstone is a spawner building", () => {

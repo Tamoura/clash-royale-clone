@@ -609,6 +609,39 @@ function drawTombstone(ctx: Ctx, _anim: Anim): void {
   circle(ctx, 0, -8.6, 1, "#76ff03");
 }
 
+function drawCollector(ctx: Ctx, _anim: Anim): void {
+  // wooden vat
+  outlined(ctx, "#6d4c41", () => {
+    ctx.beginPath();
+    ctx.moveTo(-6, -3);
+    ctx.lineTo(-5, 7);
+    ctx.lineTo(5, 7);
+    ctx.lineTo(6, -3);
+    ctx.closePath();
+  });
+  // hoops
+  ctx.strokeStyle = "#4e342e";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-5.8, 0);
+  ctx.lineTo(5.8, 0);
+  ctx.moveTo(-5.4, 4);
+  ctx.lineTo(5.4, 4);
+  ctx.stroke();
+  // glowing elixir surface + rising drop
+  outlined(ctx, "#d946ef", () => {
+    ctx.beginPath();
+    ctx.ellipse(0, -3, 5.6, 1.8, 0, 0, Math.PI * 2);
+  });
+  const g = ctx.createRadialGradient(0, -8, 0.5, 0, -8, 3);
+  g.addColorStop(0, "#f5d0fe");
+  g.addColorStop(1, "#d946ef");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(0, -8, 2.4, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = {
   knight: drawKnight,
   archers: drawArcher,
@@ -627,6 +660,7 @@ const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = 
   pekka: drawPekka,
   cannon: drawCannon,
   tombstone: drawTombstone,
+  "elixir-collector": drawCollector,
 };
 
 /**

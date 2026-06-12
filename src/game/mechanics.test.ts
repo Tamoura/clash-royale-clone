@@ -305,6 +305,37 @@ describe("rage", () => {
   });
 });
 
+describe("elixir collector", () => {
+  it("generates bonus elixir for its owner over time", () => {
+    const withPump = createBattle();
+    giveHand(withPump, "player", ["elixir-collector"]);
+    expect(deployCard(withPump, "player", "elixir-collector", 9, 24)).toBe(true);
+    withPump.player.elixir = { amount: 0 };
+    const control = createBattle();
+    giveHand(control, "player", ["knight"]);
+    deployCard(control, "player", "knight", 9, 24);
+    control.player.elixir = { amount: 0 };
+    run(withPump, 10);
+    run(control, 10);
+    const bonus = withPump.player.elixir.amount - control.player.elixir.amount;
+    expect(bonus).toBeGreaterThanOrEqual(1);
+    expect(bonus).toBeLessThan(2.5);
+  });
+
+  it("never pays out to the opponent", () => {
+    const b = createBattle();
+    giveHand(b, "player", ["elixir-collector"]);
+    deployCard(b, "player", "elixir-collector", 9, 24);
+    b.enemy.elixir = { amount: 0 };
+    b.player.elixir = { amount: 0 };
+    run(b, 10);
+    const control = createBattle();
+    control.enemy.elixir = { amount: 0 };
+    run(control, 10);
+    expect(b.enemy.elixir.amount).toBeCloseTo(control.enemy.elixir.amount, 5);
+  });
+});
+
 describe("deploy delay", () => {
   it("troops stand frozen for the first second", () => {
     const b = createBattle();
