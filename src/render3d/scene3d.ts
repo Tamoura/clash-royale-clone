@@ -551,7 +551,7 @@ function buildTombstoneMesh(e: Entity): EntityView {
   const bar = makeHpBar(1.4, SIDE_COLOR[e.side], 1.6);
   root.add(bar.group);
   const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
-  label.scale.set(1.7, 0.42, 1);
+  label.scale.set(2.0, 0.5, 1);
   label.position.y = 1.95;
   root.add(label);
   return {
@@ -612,7 +612,7 @@ function buildCollectorMesh(e: Entity): EntityView {
   const bar = makeHpBar(1.4, SIDE_COLOR[e.side], 1.7);
   root.add(bar.group);
   const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
-  label.scale.set(1.7, 0.42, 1);
+  label.scale.set(2.0, 0.5, 1);
   label.position.y = 2.05;
   root.add(label);
   return {
@@ -659,7 +659,7 @@ function buildBuildingMesh(e: Entity): EntityView {
   const bar = makeHpBar(1.4, SIDE_COLOR[e.side], 1.15);
   root.add(bar.group);
   const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
-  label.scale.set(1.7, 0.42, 1);
+  label.scale.set(2.0, 0.5, 1);
   label.position.y = 1.5;
   root.add(label);
   return {
@@ -679,7 +679,9 @@ function buildBuildingMesh(e: Entity): EntityView {
 function buildTroopMesh(e: Entity): EntityView {
   const rig = buildTroop(e.cardId!);
   const root = new THREE.Group();
-  const scale = e.cardId === "giant" ? 1.0 : 0.95;
+  // CR proportions: troops read big against the field, with tanks
+  // visibly towering over swarm units.
+  const scale = (e.cardId === "giant" || e.cardId === "pekka" ? 1.35 : 1.25) * 0.95;
   rig.group.scale.setScalar(scale);
   root.add(rig.group);
 
@@ -715,7 +717,7 @@ function buildTroopMesh(e: Entity): EntityView {
   root.add(bar.group);
 
   const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
-  label.scale.set(1.7, 0.42, 1);
+  label.scale.set(2.0, 0.5, 1);
   label.position.y = lift + 0.62;
   root.add(label);
   return {
