@@ -770,8 +770,30 @@ export class Battle3D {
       wall.castShadow = true;
       wall.receiveShadow = true;
       g.add(wall);
+
+      // A crowd of spectators leaning over the field-side parapet.
+      const innerX = -Math.sign(x) * 0.92;
+      const CROWD_SKIN = [0xf6c9a0, 0x9c6644, 0xcfa07a] as const;
+      const CROWD_GARB = [0xe53935, 0x3b82f6, 0xf2c14e, 0x66bb6a, 0xab47bc] as const;
+      const seats = Math.floor(len / 1.1);
+      for (let i = 0; i < seats; i++) {
+        const z = -len / 2 + 0.7 + i * 1.1 + ((i * 7) % 3) * 0.12;
+        const body = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.1, 0.13, 0.26, 6),
+          toon(CROWD_GARB[(i * 3 + Math.round(x)) % CROWD_GARB.length]),
+        );
+        body.position.set(innerX, 1.06, z);
+        g.add(body);
+        const head = new THREE.Mesh(
+          new THREE.SphereGeometry(0.1, 8, 6),
+          toon(CROWD_SKIN[(i + Math.abs(Math.round(zCenter))) % CROWD_SKIN.length]),
+        );
+        head.position.set(innerX, 1.28, z);
+        g.add(head);
+      }
+
       const roof = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, len + 0.4), toon(roofColor));
-      roof.position.y = 1.35;
+      roof.position.y = 1.55;
       // Pitch the roof by squashing the top: cheap wedge illusion.
       roof.scale.y = 0.9;
       roof.castShadow = true;
@@ -780,7 +802,7 @@ export class Battle3D {
         new THREE.BoxGeometry(0.5, 0.24, len + 0.5),
         toon(0xd9a93f),
       );
-      ridge.position.y = 1.66;
+      ridge.position.y = 1.86;
       g.add(ridge);
       g.position.set(x, 0, zCenter);
       this.scene.add(g);
