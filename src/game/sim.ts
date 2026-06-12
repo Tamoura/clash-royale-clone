@@ -318,6 +318,23 @@ function checkClock(state: BattleState): void {
   if (crownDiff !== 0) {
     finish(state, crownDiff > 0 ? "player" : "enemy");
   } else if (state.time >= BATTLE_DURATION + OVERTIME_DURATION) {
-    finish(state, "draw");
+    finish(state, towerHpTiebreak(state));
   }
+}
+
+/**
+ * CR's last resort when overtime ends still tied on crowns: whoever's
+ * most-damaged tower is healthier wins; identical damage is a draw.
+ */
+function towerHpTiebreak(state: BattleState): BattleResult["winner"] {
+  const worst = (side: Entity["side"]): number =>
+    Math.min(
+      ...state.entities
+        .filter((e) => e.side === side && isBuilding(e) && e.cardId === null)
+        .map((e) => e.hp),
+    );
+  const p = worst("player");
+  const en = worst("enemy");
+  if (p === en) return "draw";
+  return p > en ? "player" : "enemy";
 }

@@ -48,6 +48,36 @@ describe("match flow", () => {
     expect(b.result?.winner).toBe("draw");
   });
 
+  it("overtime tie breaks to the side with the healthier worst tower", () => {
+    const b = createBattle();
+    b.overtime = true;
+    b.time = BATTLE_DURATION + OVERTIME_DURATION - TICK / 2;
+    const enemyTower = b.entities.find(
+      (e) => e.side === "enemy" && e.kind === "princess-tower",
+    )!;
+    enemyTower.hp -= 200; // enemy's worst tower is more damaged
+    tick(b, TICK);
+    expect(b.result?.winner).toBe("player");
+  });
+
+  it("the tiebreak looks at the worst tower, not the total", () => {
+    const b = createBattle();
+    b.overtime = true;
+    b.time = BATTLE_DURATION + OVERTIME_DURATION - TICK / 2;
+    // Player spreads 300 damage over two towers; enemy takes 400 on one.
+    const playerTowers = b.entities.filter(
+      (e) => e.side === "player" && e.kind === "princess-tower",
+    );
+    playerTowers[0].hp -= 150;
+    playerTowers[1].hp -= 150;
+    const enemyTower = b.entities.find(
+      (e) => e.side === "enemy" && e.kind === "princess-tower",
+    )!;
+    enemyTower.hp -= 400;
+    tick(b, TICK);
+    expect(b.result?.winner).toBe("player");
+  });
+
   it("destroying the king ends the battle instantly with 3 crowns", () => {
     const b = createBattle();
     const king = b.entities.find(
