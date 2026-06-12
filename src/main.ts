@@ -5,6 +5,7 @@ import {
   deployCard,
   isValidDeck,
   type BattleState,
+  type CardLevels,
 } from "./game/battle";
 import { createBot, tickBot, type BotProfile, type BotState } from "./game/bot";
 import { DECK, DEFAULT_DECK, getCard, type CardId } from "./game/cards";
@@ -76,7 +77,36 @@ function loadDifficulty(): string {
 
 let difficulty = loadDifficulty();
 
-let battle: BattleState = createBattle(playerDeck, botDeck());
+// ---- Trophies + card levels (persisted progression) --------------------
+
+const TROPHY_KEY = "cr-clone-trophies";
+const LEVELS_KEY = "cr-clone-levels";
+const MAX_LEVEL = 11;
+
+let trophies = parseInt(localStorage.getItem(TROPHY_KEY) ?? "0", 10) || 0;
+
+function loadLevels(): CardLevels {
+  try {
+    return JSON.parse(localStorage.getItem(LEVELS_KEY) ?? "{}") as CardLevels;
+  } catch {
+    return {};
+  }
+}
+
+let cardLevels: CardLevels = loadLevels();
+
+/** The bot levels up with your trophies, one level per 150. */
+function botLevels(): CardLevels {
+  const lvl = Math.min(MAX_LEVEL, 1 + Math.floor(trophies / 150));
+  const out: CardLevels = {};
+  for (const id of DECK) out[id] = lvl;
+  return out;
+}
+
+let battle: BattleState = createBattle(playerDeck, botDeck(), {
+  player: cardLevels,
+  enemy: botLevels(),
+});
 let bot: BotState = createBot(Date.now() & 0xffff, DIFFICULTIES[difficulty]);
 let selectedCard: CardId | null = null;
 
@@ -101,9 +131,13 @@ function selectCard(id: CardId | null): void {
 }
 
 function restart(): void {
-  battle = createBattle(playerDeck, botDeck());
+  battle = createBattle(playerDeck, botDeck(), {
+    player: cardLevels,
+    enemy: botLevels(),
+  });
   bot = createBot(Date.now() & 0xffff, DIFFICULTIES[difficulty]);
   selectCard(null);
+  hud.setReward(null);
   scene.reset();
   audio.setIntensity(0);
   audio.restartMusic();
@@ -225,6 +259,37 @@ deckBtn.title = "Edit deck";
 deckBtn.addEventListener("click", openDeckPicker);
 topbar.appendChild(deckBtn);
 openDeckPicker();
+
+// Trophy counter in the top bar.
+const trophyChip = document.createElement("div");
+trophyChip.className = "crowns player";
+trophyChip.innerHTML = `🏆 <span>${trophies}</span>`;
+topbar.appendChild(trophyChip);
+
+function applyMatchResult(winner: "player" | "enemy" | "draw"): void {
+  let reward: string;
+  if (winner === "player") {
+    trophies += 30;
+    reward = "+30 🏆";
+    // Victory levels up two random deck cards.
+    const upgradable = playerDeck.filter((id) => (cardLevels[id] ?? 1) < MAX_LEVEL);
+    for (let n = 0; n < 2 && upgradable.length > 0; n++) {
+      const i = Math.floor(Math.random() * upgradable.length);
+      const id = upgradable.splice(i, 1)[0];
+      cardLevels[id] = (cardLevels[id] ?? 1) + 1;
+      reward += ` · ${getCard(id).name} ↑ Lv.${cardLevels[id]}`;
+    }
+  } else if (winner === "enemy") {
+    trophies = Math.max(0, trophies - 20);
+    reward = "-20 🏆";
+  } else {
+    reward = "🏆 unchanged";
+  }
+  localStorage.setItem(TROPHY_KEY, String(trophies));
+  localStorage.setItem(LEVELS_KEY, JSON.stringify(cardLevels));
+  trophyChip.innerHTML = `🏆 <span>${trophies}</span>`;
+  hud.setReward(reward);
+}
 
 // ---- Banners & match phases -------------------------------------------
 
@@ -399,7 +464,10 @@ function frame(now: number): void {
     scene.onEvent(ev);
     // The bot has feelings about crowns.
     if (ev.type === "crown") botEmote(ev.winner === "enemy" ? "😂" : "😭");
-    if (ev.type === "finish") botEmote(ev.winner === "enemy" ? "🎉" : "😭");
+    if (ev.type === "finish") {
+      botEmote(ev.winner === "enemy" ? "🎉" : "😭");
+      applyMatchResult(ev.winner);
+    }
   }
   checkBanners();
   // Music tension follows the match: double elixir, then overtime.

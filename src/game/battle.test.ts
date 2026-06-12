@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { RIVER_Y } from "./arena";
-import { checkDeploy, createBattle, deployCard, isValidDeck } from "./battle";
+import { checkDeploy, createBattle, deployCard, isValidDeck, spawnUnits } from "./battle";
 
 describe("battle setup", () => {
   it("starts with 6 towers, full hands, and 5 elixir each", () => {
@@ -154,5 +154,32 @@ describe("decks of 8", () => {
     expect(isValidDeck(["knight", "archers", "giant", "fireball", "musketeer", "mini-pekka", "baby-dragon", "arrows"])).toBe(true);
     expect(isValidDeck(["knight", "knight", "giant", "fireball", "musketeer", "mini-pekka", "baby-dragon", "arrows"])).toBe(false);
     expect(isValidDeck(["knight", "archers", "giant"])).toBe(false);
+  });
+});
+
+describe("card levels", () => {
+  it("leveled troops spawn stronger (+10% per level)", () => {
+    const b = createBattle(undefined, undefined, {
+      player: { knight: 3 },
+    });
+    const [knight] = spawnUnits(b, "player", "knight", 9, 24);
+    expect(knight.maxHp).toBeCloseTo(1400 * 1.2);
+    expect(knight.damage).toBeCloseTo(160 * 1.2);
+    const [enemyKnight] = spawnUnits(b, "enemy", "knight", 9, 8);
+    expect(enemyKnight.maxHp).toBe(1400); // enemy unleveled
+  });
+
+  it("leveled spells hit harder", () => {
+    const b = createBattle(undefined, undefined, { player: { fireball: 2 } });
+    deployCard(b, "enemy", "knight", 9, 8);
+    const knight = b.entities.find((e) => e.cardId === "knight")!;
+    deployCard(b, "player", "fireball", 9, 8);
+    expect(knight.maxHp - knight.hp).toBeCloseTo(570 * 1.1);
+  });
+
+  it("level 1 is the unchanged default", () => {
+    const b = createBattle();
+    const [knight] = spawnUnits(b, "player", "knight", 9, 24);
+    expect(knight.maxHp).toBe(1400);
   });
 });

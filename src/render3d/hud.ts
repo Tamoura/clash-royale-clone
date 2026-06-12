@@ -151,6 +151,13 @@ export class Hud {
     this.selected = id;
   }
 
+  /** Trophy/level-up summary shown on the result overlay. */
+  private reward: string | null = null;
+
+  setReward(text: string | null): void {
+    this.reward = text;
+  }
+
   /** Shake the elixir row (can't afford) or the hand (bad spot). */
   flashError(kind: "elixir" | "spot"): void {
     const target =
@@ -211,6 +218,13 @@ export class Hud {
         key.className = "key-chip";
         key.textContent = String(i + 1); // keyboard shortcut hint
         btn.appendChild(key);
+        const lvl = state.player.levels[id] ?? 1;
+        if (lvl > 1) {
+          const chip = document.createElement("div");
+          chip.className = "lvl-chip";
+          chip.textContent = `Lv.${lvl}`;
+          btn.appendChild(chip);
+        }
       });
     }
     state.player.hand.cards.forEach((id, i) => {
@@ -238,7 +252,8 @@ export class Hud {
         `<div class="stat-row"><span>${Math.round(p.damageDealt)}</span>` +
         `<label>damage</label><span>${Math.round(e.damageDealt)}</span></div>` +
         `<div class="stat-row"><span>${p.elixirSpent}</span>` +
-        `<label>elixir spent</label><span>${e.elixirSpent}</span></div>`;
+        `<label>elixir spent</label><span>${e.elixirSpent}</span></div>` +
+        (this.reward ? `<div class="reward-line">${this.reward}</div>` : "");
       this.overlay.classList.add("show");
     } else {
       this.overlay.classList.remove("show");

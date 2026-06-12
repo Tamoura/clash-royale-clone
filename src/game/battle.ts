@@ -89,11 +89,15 @@ export interface SideStats {
   elixirSpent: number;
 }
 
+/** Card upgrade levels (absent = level 1). */
+export type CardLevels = Partial<Record<CardId, number>>;
+
 export interface SideState {
   elixir: ElixirState;
   hand: HandState;
   crowns: number;
   stats: SideStats;
+  levels: CardLevels;
 }
 
 export interface SpellEffect {
@@ -252,9 +256,15 @@ export function isValidDeck(cards: CardId[]): boolean {
   );
 }
 
+/** Stat multiplier for a side playing cardId: +10% per level. */
+export function levelMultiplier(levels: CardLevels, cardId: CardId): number {
+  return 1 + 0.1 * ((levels[cardId] ?? 1) - 1);
+}
+
 export function createBattle(
   playerDeck: CardId[] = DEFAULT_DECK,
   enemyDeck: CardId[] = DEFAULT_DECK,
+  levels: { player?: CardLevels; enemy?: CardLevels } = {},
 ): BattleState {
   const state: BattleState = {
     entities: [],
@@ -263,12 +273,14 @@ export function createBattle(
       hand: createHand(playerDeck),
       crowns: 0,
       stats: { damageDealt: 0, elixirSpent: 0 },
+      levels: levels.player ?? {},
     },
     enemy: {
       elixir: createElixir(),
       hand: createHand(enemyDeck),
       crowns: 0,
       stats: { damageDealt: 0, elixirSpent: 0 },
+      levels: levels.enemy ?? {},
     },
     time: 0,
     overtime: false,
@@ -330,6 +342,7 @@ export function spawnUnits(
 }
 
 function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number, y: number): Entity[] {
+  const mult = levelMultiplier(sideState(state, side).levels, card.id);
   const offsets = SPAWN_OFFSETS[card.count] ?? [[0, 0]];
   const spawned: Entity[] = [];
   for (const [dx, dy] of offsets) {
@@ -340,9 +353,9 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       cardId: card.id,
       x: x + dx,
       y: y + dy,
-      hp: card.unit.maxHp,
-      maxHp: card.unit.maxHp,
-      damage: card.unit.damage,
+      hp: card.unit.maxHp * mult,
+      maxHp: card.unit.maxHp * mult,
+      damage: card.unit.damage * mult,
       hitSpeed: card.unit.hitSpeed,
       attackRange: card.unit.attackRange,
       sightRange: card.unit.sightRange,
@@ -358,7 +371,7 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       stunTimer: 0,
       radius: card.unit.radius,
       decayPerSec: 0,
-      deathDamage: card.unit.deathDamage,
+      deathDamage: card.unit.deathDamage * mult,
       deathRadius: card.unit.deathRadius,
       spawnUnitId: card.unit.spawnUnitId,
       spawnInterval: card.unit.spawnInterval,
@@ -375,6 +388,7 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
 }
 
 function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: number, y: number): void {
+  const mult = levelMultiplier(sideState(state, side).levels, card.id);
   const u = card.unit;
   state.entities.push({
     id: state.nextEntityId++,
@@ -383,9 +397,9 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
     cardId: card.id,
     x,
     y,
-    hp: u.maxHp,
-    maxHp: u.maxHp,
-    damage: u.damage,
+    hp: u.maxHp * mult,
+    maxHp: u.maxHp * mult,
+    damage: u.damage * mult,
     hitSpeed: u.hitSpeed,
     attackRange: u.attackRange,
     sightRange: u.attackRange,
@@ -399,7 +413,7 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
     chargeProgress: 0,
     deployTimer: DEPLOY_DELAY,
     stunTimer: 0,
-    decayPerSec: u.maxHp / card.lifetime,
+    decayPerSec: (u.maxHp * mult) / card.lifetime,
     deathDamage: u.deathDamage,
     deathRadius: u.deathRadius,
     spawnUnitId: u.spawnUnitId,
@@ -496,7 +510,7 @@ export function deployCard(
         cardId,
         x,
         y,
-        card.damage,
+        card.damage * levelMultiplier(me.levels, card.id),
         card.radius,
         card.stunSeconds,
         card.knockback,
