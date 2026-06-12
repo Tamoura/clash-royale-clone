@@ -105,6 +105,28 @@ export interface SpellEffect {
   ttl: number;
 }
 
+/** A ranged shot in flight; damage lands on arrival. */
+export interface Projectile {
+  id: number;
+  side: Side;
+  /** Card of the shooter (null for towers). */
+  cardId: CardId | null;
+  /** Shooter kind, for projectile styling. */
+  sourceKind: EntityKind;
+  /** Launch point (for arc rendering). */
+  sx: number;
+  sy: number;
+  x: number;
+  y: number;
+  targetId: number;
+  /** Tiles per second. */
+  speed: number;
+  damage: number;
+  splashRadius: number;
+  /** Whether the splash may hit flyers. */
+  targetsAir: boolean;
+}
+
 /** A lingering area that boosts one side's troops (Rage). */
 export interface BuffZone {
   side: Side;
@@ -159,6 +181,7 @@ export interface BattleState {
   overtime: boolean;
   result: BattleResult | null;
   effects: SpellEffect[];
+  projectiles: Projectile[];
   buffZones: BuffZone[];
   events: BattleEvent[];
   nextEntityId: number;
@@ -251,6 +274,7 @@ export function createBattle(
     overtime: false,
     result: null,
     effects: [],
+    projectiles: [],
     buffZones: [],
     events: [],
     nextEntityId: 1,
@@ -399,6 +423,7 @@ export function applySpell(
   damage: number,
   radius: number,
   stunSeconds = 0,
+  knockback = 0,
 ): void {
   for (const e of state.entities) {
     if (e.side === side || e.hp <= 0) continue;
@@ -409,6 +434,12 @@ export function applySpell(
     e.hp -= dealt;
     sideState(state, side).stats.damageDealt += dealt;
     e.stunTimer = Math.max(e.stunTimer, stunSeconds);
+    // Surviving troops get shoved away from the blast center.
+    if (knockback > 0 && e.kind === "troop" && e.hp > 0) {
+      const d = Math.max(0.1, distance(e, { x, y }));
+      e.x += ((e.x - x) / d) * knockback;
+      e.y += ((e.y - y) / d) * knockback;
+    }
   }
   state.effects.push({ cardId, x, y, radius, ttl: 0.6 });
 }
@@ -459,7 +490,17 @@ export function deployCard(
       state.buffZones.push({ side, x, y, radius: card.radius, ttl: card.rageSeconds });
       state.effects.push({ cardId, x, y, radius: card.radius, ttl: card.rageSeconds });
     } else {
-      applySpell(state, side, cardId, x, y, card.damage, card.radius, card.stunSeconds);
+      applySpell(
+        state,
+        side,
+        cardId,
+        x,
+        y,
+        card.damage,
+        card.radius,
+        card.stunSeconds,
+        card.knockback,
+      );
     }
   } else if (card.kind === "building") {
     state.events.push({ type: "deploy", side, cardId });

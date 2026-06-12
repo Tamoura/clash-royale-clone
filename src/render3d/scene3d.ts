@@ -746,6 +746,8 @@ export class Battle3D {
   private shakeTime = 0;
   /** Rubble piles left by fallen towers; cleared on reset. */
   private rubble: THREE.Object3D[] = [];
+  /** Sim projectile meshes by projectile id. */
+  private projViews = new Map<number, THREE.Object3D>();
   /** Scrolling river texture + accumulated flow time. */
   private waterTex: THREE.CanvasTexture | null = null;
   private waterTime = 0;
@@ -1389,60 +1391,81 @@ export class Battle3D {
   }
 
   /** A projectile streaking from attacker to target. */
+  /** Muzzle flash at fire time; the shot itself is sim-driven now. */
   private projectile(ev: Extract<BattleEvent, { type: "attack" }>): void {
-    const from = toWorld(ev.x, ev.y);
-    const to = toWorld(ev.targetX, ev.targetY);
-    const y0 = ev.kind === "troop" ? 0.9 : 1.6;
-    const y1 = 0.7;
     const style = projectileStyle(ev.cardId, ev.kind);
-
-    let obj: THREE.Object3D;
-    if (style.form === "arrow") {
-      obj = this.makeArrow(style.color);
-    } else {
-      const mat = style.glow
-        ? unlitGlow(style.color)
-        : new THREE.MeshBasicMaterial({ color: style.color });
-      const orb = new THREE.Mesh(new THREE.SphereGeometry(style.size, 8, 6), mat);
-      if (style.glow) {
-        // Light streak trailing behind the orb.
-        const trail = new THREE.Mesh(
-          new THREE.SphereGeometry(style.size * 0.8, 8, 6),
-          new THREE.MeshBasicMaterial({
-            color: style.color,
-            transparent: true,
-            opacity: 0.4,
-          }),
-        );
-        trail.scale.z = 3.2;
-        trail.position.z = -style.size * 2.2;
-        orb.add(trail);
-      }
-      obj = orb;
-    }
-
-    if (style.muzzleFlash) {
-      const flash = new THREE.Mesh(
-        new THREE.SphereGeometry(0.14, 8, 6),
-        new THREE.MeshBasicMaterial({ color: 0xfff3c4, transparent: true }),
-      );
-      flash.position.set(from.x, y0, from.z);
-      this.addEffect(flash, 0.08, (frac) => {
-        flash.scale.setScalar(1 + (1 - frac) * 1.6);
-        (flash.material as THREE.MeshBasicMaterial).opacity = frac;
-      });
-    }
-
-    obj.position.set(from.x, y0, from.z);
-    obj.lookAt(to.x, y1, to.z);
-    this.addEffect(obj, style.duration, (frac) => {
-      const t = 1 - frac;
-      obj.position.set(
-        from.x + (to.x - from.x) * t,
-        y0 + (y1 - y0) * t + Math.sin(t * Math.PI) * style.arc,
-        from.z + (to.z - from.z) * t,
-      );
+    if (!style.muzzleFlash) return;
+    const from = toWorld(ev.x, ev.y);
+    const flash = new THREE.Mesh(
+      new THREE.SphereGeometry(0.14, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xfff3c4, transparent: true }),
+    );
+    flash.position.set(from.x, ev.kind === "troop" ? 0.9 : 1.6, from.z);
+    this.addEffect(flash, 0.08, (frac) => {
+      flash.scale.setScalar(1 + (1 - frac) * 1.6);
+      (flash.material as THREE.MeshBasicMaterial).opacity = frac;
     });
+  }
+
+  /** Mirror the sim's in-flight projectiles as meshes. */
+  private syncProjectiles(state: BattleState): void {
+    const seen = new Set<number>();
+    for (const p of state.projectiles) {
+      seen.add(p.id);
+      let view = this.projViews.get(p.id);
+      if (!view) {
+        const style = projectileStyle(p.cardId, p.sourceKind);
+        if (style.form === "arrow") {
+          view = this.makeArrow(style.color);
+        } else {
+          const mat = style.glow
+            ? unlitGlow(style.color)
+            : new THREE.MeshBasicMaterial({ color: style.color });
+          const orb = new THREE.Mesh(new THREE.SphereGeometry(style.size, 8, 6), mat);
+          if (style.glow) {
+            const trail = new THREE.Mesh(
+              new THREE.SphereGeometry(style.size * 0.8, 8, 6),
+              new THREE.MeshBasicMaterial({
+                color: style.color,
+                transparent: true,
+                opacity: 0.4,
+              }),
+            );
+            trail.scale.z = 3.2;
+            trail.position.z = -style.size * 2.2;
+            orb.add(trail);
+          }
+          view = orb;
+        }
+        this.scene.add(view);
+        this.projViews.set(p.id, view);
+      }
+      // Arc by flight progress: launch point -> current target leg.
+      const style = projectileStyle(p.cardId, p.sourceKind);
+      const target = state.entities.find((o) => o.id === p.targetId);
+      const traveled = Math.hypot(p.x - p.sx, p.y - p.sy);
+      const remaining = target ? Math.hypot(target.x - p.x, target.y - p.y) : 0;
+      const frac = traveled / Math.max(0.001, traveled + remaining);
+      const w = toWorld(p.x, p.y);
+      const y0 = p.sourceKind === "troop" ? 0.9 : 1.6;
+      const prevPos = view.position.clone();
+      view.position.set(
+        w.x,
+        y0 + (0.7 - y0) * frac + Math.sin(frac * Math.PI) * style.arc,
+        w.z,
+      );
+      if (prevPos.lengthSq() > 0) {
+        view.lookAt(
+          view.position.clone().add(view.position.clone().sub(prevPos)),
+        );
+      }
+    }
+    for (const [id, view] of this.projViews) {
+      if (!seen.has(id)) {
+        this.scene.remove(view);
+        this.projViews.delete(id);
+      }
+    }
   }
 
   /** Fireball: a flaming meteor crashes down, then explodes. */
@@ -1950,6 +1973,7 @@ export class Battle3D {
 
   /** Create/update/remove meshes to mirror the battle state. */
   sync(state: BattleState, dt: number): void {
+    this.syncProjectiles(state);
     const seen = new Set<number>();
     for (const e of state.entities) {
       seen.add(e.id);
@@ -2201,6 +2225,8 @@ export class Battle3D {
     }
     for (const pile of this.rubble) this.scene.remove(pile);
     this.rubble = [];
+    for (const view of this.projViews.values()) this.scene.remove(view);
+    this.projViews.clear();
     this.shake = 0;
     this.camera.position.copy(CAM_HOME);
   }

@@ -385,3 +385,59 @@ describe("troop collision", () => {
     expect(dist).toBeGreaterThanOrEqual((knight.radius + cannon.radius) * 0.85);
   });
 });
+
+describe("projectile travel", () => {
+  it("ranged damage lands when the shot arrives, not when fired", () => {
+    const b = createBattle();
+    spawnUnits(b, "player", "musketeer", 9, 22);
+    const [knight] = spawnUnits(b, "enemy", "knight", 9, 17);
+    run(b, 0.9); // still deploy-frozen: nothing fired yet
+    // Find the moment the first shot is fired:
+    let fired = false;
+    for (let i = 0; i < 60 && !fired; i++) {
+      tick(b, 1 / 20);
+      fired = b.projectiles.length > 0;
+    }
+    expect(fired).toBe(true);
+    expect(knight.hp).toBe(knight.maxHp); // shot still in the air
+    run(b, 1); // plenty of flight time
+    expect(knight.hp).toBeLessThan(knight.maxHp);
+  });
+
+  it("a shot fizzles if its target dies mid-flight", () => {
+    const b = createBattle();
+    spawnUnits(b, "player", "musketeer", 9, 22);
+    const [knight] = spawnUnits(b, "enemy", "knight", 9, 17);
+    let fired = false;
+    for (let i = 0; i < 120 && !fired; i++) {
+      tick(b, 1 / 20);
+      fired = b.projectiles.length > 0;
+    }
+    expect(fired).toBe(true);
+    knight.hp = 0; // dies while the ball is in the air
+    run(b, 1);
+    expect(b.projectiles).toHaveLength(0); // fizzled, no crash
+  });
+});
+
+describe("fireball knockback", () => {
+  it("shoves survivors away from the blast center", () => {
+    const b = createBattle();
+    const [knight] = spawnUnits(b, "enemy", "knight", 9, 16.5);
+    giveHand(b, "player", ["fireball"]);
+    deployCard(b, "player", "fireball", 9, 15.5); // blast south of him
+    expect(knight.y).toBeGreaterThan(16.5); // pushed north
+  });
+
+  it("never budges towers", () => {
+    const b = createBattle();
+    const tower = b.entities.find(
+      (e) => e.side === "enemy" && e.kind === "princess-tower",
+    )!;
+    const { x, y } = tower;
+    giveHand(b, "player", ["fireball"]);
+    deployCard(b, "player", "fireball", tower.x, tower.y + 1);
+    expect(tower.x).toBe(x);
+    expect(tower.y).toBe(y);
+  });
+});

@@ -104,6 +104,8 @@ export interface SpellCard {
   stunSeconds: number;
   /** Seconds the spell leaves a friendly speed-boost zone (0 = none). */
   rageSeconds: number;
+  /** Tiles survivors are shoved away from the blast center. */
+  knockback: number;
 }
 
 export type Card = TroopCard | BuildingCard | SpellCard;
@@ -461,6 +463,7 @@ export const CARDS: Record<CardId, Card> = {
     radius: 2.5,
     stunSeconds: 0,
     rageSeconds: 0,
+    knockback: 0.8,
   },
   arrows: {
     id: "arrows",
@@ -472,6 +475,7 @@ export const CARDS: Record<CardId, Card> = {
     radius: 4,
     stunSeconds: 0,
     rageSeconds: 0,
+    knockback: 0,
   },
   zap: {
     id: "zap",
@@ -483,6 +487,7 @@ export const CARDS: Record<CardId, Card> = {
     radius: 2,
     stunSeconds: 0.5,
     rageSeconds: 0,
+    knockback: 0,
   },
   rage: {
     id: "rage",
@@ -494,6 +499,7 @@ export const CARDS: Record<CardId, Card> = {
     radius: 2.5,
     stunSeconds: 0,
     rageSeconds: 6,
+    knockback: 0,
   },
   freeze: {
     id: "freeze",
@@ -505,6 +511,7 @@ export const CARDS: Record<CardId, Card> = {
     radius: 3,
     stunSeconds: 4,
     rageSeconds: 0,
+    knockback: 0,
   },
 };
 

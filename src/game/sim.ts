@@ -133,18 +133,41 @@ function moveToward(e: Entity, goal: { x: number; y: number }, dt: number): numb
   return step;
 }
 
+/** Tiles per second a ranged shot travels. */
+export const PROJECTILE_SPEED = 9;
+
 function dealDamage(state: BattleState, e: Entity, target: Entity): void {
   const charged = e.chargeDistance > 0 && e.chargeProgress >= e.chargeDistance;
   const damage = e.damage * (charged ? 2 : 1);
-  const myStats = sideState(state, e.side).stats;
-  target.hp -= damage;
-  myStats.damageDealt += damage;
-  if (e.splashRadius > 0) {
-    for (const o of livingEnemiesOf(state, e)) {
-      if (o === target || !canHit(e, o)) continue;
-      if (distance(o, target) <= e.splashRadius + o.radius) {
-        o.hp -= damage;
-        myStats.damageDealt += damage;
+  const ranged = e.attackRange > 1;
+  if (ranged) {
+    // The shot must fly there first; damage lands on arrival.
+    state.projectiles.push({
+      id: state.nextEntityId++,
+      side: e.side,
+      cardId: e.cardId,
+      sourceKind: e.kind,
+      sx: e.x,
+      sy: e.y,
+      x: e.x,
+      y: e.y,
+      targetId: target.id,
+      speed: PROJECTILE_SPEED,
+      damage,
+      splashRadius: e.splashRadius,
+      targetsAir: e.targetsAir,
+    });
+  } else {
+    const myStats = sideState(state, e.side).stats;
+    target.hp -= damage;
+    myStats.damageDealt += damage;
+    if (e.splashRadius > 0) {
+      for (const o of livingEnemiesOf(state, e)) {
+        if (o === target || !canHit(e, o)) continue;
+        if (distance(o, target) <= e.splashRadius + o.radius) {
+          o.hp -= damage;
+          myStats.damageDealt += damage;
+        }
       }
     }
   }
@@ -154,11 +177,43 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
     type: "attack",
     kind: e.kind,
     cardId: e.cardId,
-    ranged: e.attackRange > 1,
+    ranged,
     x: e.x,
     y: e.y,
     targetX: target.x,
     targetY: target.y,
+  });
+}
+
+/** Fly each shot toward its (moving) target; impact on arrival. */
+function tickProjectiles(state: BattleState, dt: number): void {
+  state.projectiles = state.projectiles.filter((p) => {
+    const target = state.entities.find((o) => o.id === p.targetId);
+    if (!target || target.hp <= 0) return false; // fizzle mid-air
+    const dx = target.x - p.x;
+    const dy = target.y - p.y;
+    const d = Math.hypot(dx, dy);
+    const step = p.speed * dt;
+    if (d <= step + target.radius * 0.5) {
+      // Impact: damage the target, splash around it.
+      const myStats = sideState(state, p.side).stats;
+      target.hp -= p.damage;
+      myStats.damageDealt += p.damage;
+      if (p.splashRadius > 0) {
+        for (const o of state.entities) {
+          if (o.side === p.side || o.hp <= 0 || o === target) continue;
+          if (o.flying && !p.targetsAir) continue;
+          if (distance(o, target) <= p.splashRadius + o.radius) {
+            o.hp -= p.damage;
+            myStats.damageDealt += p.damage;
+          }
+        }
+      }
+      return false;
+    }
+    p.x += (dx / d) * step;
+    p.y += (dy / d) * step;
+    return true;
   });
 }
 
@@ -367,6 +422,7 @@ export function tick(state: BattleState, dt: number): void {
   for (const e of [...state.entities]) {
     if (e.hp > 0) actEntity(state, e, dt);
   }
+  tickProjectiles(state, dt);
   resolveCollisions(state);
   wakeDamagedKings(state);
   processDeaths(state);
