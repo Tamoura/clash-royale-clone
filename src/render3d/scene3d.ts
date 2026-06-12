@@ -39,6 +39,10 @@ const CAM_HOME = new THREE.Vector3(0, 36, 17);
 /** HP bars and similar boards tilt to face that camera square-on. */
 const BAR_TILT = -Math.atan2(CAM_HOME.y, CAM_HOME.z - 1.0);
 
+/** Render-loop scratch vectors (render-avoid-allocations). */
+const PREV_POS = new THREE.Vector3();
+const LOOK_AT = new THREE.Vector3();
+
 const TROOP_DEATH_TIME = 0.5;
 const TOWER_DEATH_TIME = 0.8;
 const SPAWN_POP_TIME = 0.35;
@@ -152,6 +156,7 @@ function pillTex(): THREE.CanvasTexture {
     ctx.fill();
     ctx.stroke();
     pillTexture = new THREE.CanvasTexture(c);
+    pillTexture.userData.shared = true;
   }
   return pillTexture;
 }
@@ -248,6 +253,7 @@ function nameSpriteMaterial(cardId: CardId, side: Side): THREE.SpriteMaterial {
     transparent: true,
     depthWrite: false,
   });
+  mat.userData.shared = true; // cached across every unit label
   nameMaterials.set(key, mat);
   return mat;
 }
@@ -276,6 +282,7 @@ function makeStunSprite(): THREE.Sprite {
       ctx.fillText("★", x, y + 8);
     }
     stunTexture = new THREE.CanvasTexture(c);
+    stunTexture.userData.shared = true;
   }
   const sprite = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: stunTexture, transparent: true, depthWrite: false }),
@@ -322,6 +329,36 @@ function easeOutBack(t: number): number {
   const c1 = 1.70158;
   const c3 = c1 + 1;
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+
+/**
+ * Free GPU resources of a dynamic object (three-best-practices:
+ * memory-dispose-recursive). Resources flagged `userData.shared`
+ * (cached geometries, label materials, shared textures) and the
+ * sprite class's global plane geometry are spared.
+ */
+export function disposeDeep(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    const isSprite = (o as THREE.Sprite).isSprite === true;
+    if (!mesh.isMesh && !isSprite) return;
+    if (!isSprite) {
+      // Sprites share one global plane geometry — never dispose it.
+      const geo = mesh.geometry as THREE.BufferGeometry;
+      if (geo && !geo.userData.shared) geo.dispose();
+    }
+    const mats = Array.isArray(mesh.material)
+      ? mesh.material
+      : mesh.material
+        ? [mesh.material]
+        : [];
+    for (const m of mats) {
+      if (m.userData.shared) continue;
+      const map = (m as THREE.Material & { map?: THREE.Texture | null }).map;
+      if (map && !map.userData.shared) map.dispose();
+      m.dispose();
+    }
+  });
 }
 
 /** Unlit hot material: ignores lights and skips tone mapping. */
@@ -1283,7 +1320,10 @@ export class Battle3D {
       return;
     }
     if (this.ghost?.id !== cardId) {
-      if (this.ghost) this.scene.remove(this.ghost.rig.group);
+      if (this.ghost) {
+        this.scene.remove(this.ghost.rig.group);
+        disposeDeep(this.ghost.rig.group);
+      }
       const rig = buildTroop(cardId);
       rig.group.traverse((o) => {
         const mesh = o as THREE.Mesh;
@@ -1458,21 +1498,22 @@ export class Battle3D {
       const frac = traveled / Math.max(0.001, traveled + remaining);
       const w = toWorld(p.x, p.y);
       const y0 = p.sourceKind === "troop" ? 0.9 : 1.6;
-      const prevPos = view.position.clone();
+      // Scratch vectors: no allocation in the render loop.
+      PREV_POS.copy(view.position);
       view.position.set(
         w.x,
         y0 + (0.7 - y0) * frac + Math.sin(frac * Math.PI) * style.arc,
         w.z,
       );
-      if (prevPos.lengthSq() > 0) {
-        view.lookAt(
-          view.position.clone().add(view.position.clone().sub(prevPos)),
-        );
+      if (PREV_POS.lengthSq() > 0) {
+        LOOK_AT.copy(view.position).multiplyScalar(2).sub(PREV_POS);
+        view.lookAt(LOOK_AT);
       }
     }
     for (const [id, view] of this.projViews) {
       if (!seen.has(id)) {
         this.scene.remove(view);
+        disposeDeep(view);
         this.projViews.delete(id);
       }
     }
@@ -2236,6 +2277,7 @@ export class Battle3D {
       f.ttl -= dt;
       if (f.ttl <= 0) {
         this.scene.remove(f.obj);
+        disposeDeep(f.obj);
         return false;
       }
       f.update(f.ttl / f.ttl0);
@@ -2247,6 +2289,7 @@ export class Battle3D {
       const f = Math.min(1, d.t / d.duration);
       if (f >= 1) {
         this.scene.remove(d.view.root);
+        disposeDeep(d.view.root);
         return false;
       }
       const ease = f * f;
@@ -2261,19 +2304,35 @@ export class Battle3D {
 
   /** Remove every entity mesh (used on battle restart). */
   reset(): void {
-    for (const view of this.views.values()) this.scene.remove(view.root);
+    for (const view of this.views.values()) {
+      this.scene.remove(view.root);
+      disposeDeep(view.root);
+    }
     this.views.clear();
-    for (const f of this.effects) this.scene.remove(f.obj);
+    for (const f of this.effects) {
+      this.scene.remove(f.obj);
+      disposeDeep(f.obj);
+    }
     this.effects = [];
-    for (const d of this.dying) this.scene.remove(d.view.root);
+    for (const d of this.dying) {
+      this.scene.remove(d.view.root);
+      disposeDeep(d.view.root);
+    }
     this.dying = [];
     if (this.ghost) {
       this.scene.remove(this.ghost.rig.group);
+      disposeDeep(this.ghost.rig.group);
       this.ghost = null;
     }
-    for (const pile of this.rubble) this.scene.remove(pile);
+    for (const pile of this.rubble) {
+      this.scene.remove(pile);
+      disposeDeep(pile);
+    }
     this.rubble = [];
-    for (const view of this.projViews.values()) this.scene.remove(view);
+    for (const view of this.projViews.values()) {
+      this.scene.remove(view);
+      disposeDeep(view);
+    }
     this.projViews.clear();
     this.shake = 0;
     this.camera.position.copy(CAM_HOME);

@@ -52,6 +52,23 @@ function shadowed<T extends THREE.Mesh>(m: T, x: number, y: number, z: number): 
   return m;
 }
 
+/**
+ * Shared geometry cache (three-best-practices: memory-reuse-objects).
+ * Primitive dimensions repeat constantly across rigs; every identical
+ * primitive shares one BufferGeometry, marked so disposal skips it.
+ */
+const geoCache = new Map<string, THREE.BufferGeometry>();
+
+function cachedGeo(key: string, make: () => THREE.BufferGeometry): THREE.BufferGeometry {
+  let geo = geoCache.get(key);
+  if (!geo) {
+    geo = make();
+    geo.userData.shared = true;
+    geoCache.set(key, geo);
+  }
+  return geo;
+}
+
 function box(
   w: number,
   h: number,
@@ -62,17 +79,16 @@ function box(
   z = 0,
 ): THREE.Mesh {
   // Vinyl-toy finish: every "box" is softly rounded, never hard-edged.
-  const bevel = Math.min(w, h, d) * 0.28;
-  return shadowed(
-    new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, bevel), toon(color)),
-    x,
-    y,
-    z,
-  );
+  const geo = cachedGeo(`b:${w}:${h}:${d}`, () => {
+    const bevel = Math.min(w, h, d) * 0.28;
+    return new RoundedBoxGeometry(w, h, d, 2, bevel);
+  });
+  return shadowed(new THREE.Mesh(geo, toon(color)), x, y, z);
 }
 
 function sphere(r: number, color: number, x = 0, y = 0, z = 0): THREE.Mesh {
-  return shadowed(new THREE.Mesh(new THREE.SphereGeometry(r, 20, 16), toon(color)), x, y, z);
+  const geo = cachedGeo(`s:${r}`, () => new THREE.SphereGeometry(r, 20, 16));
+  return shadowed(new THREE.Mesh(geo, toon(color)), x, y, z);
 }
 
 function cyl(
@@ -84,16 +100,16 @@ function cyl(
   y = 0,
   z = 0,
 ): THREE.Mesh {
-  return shadowed(
-    new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, 20), toon(color)),
-    x,
-    y,
-    z,
+  const geo = cachedGeo(
+    `c:${rt}:${rb}:${h}`,
+    () => new THREE.CylinderGeometry(rt, rb, h, 20),
   );
+  return shadowed(new THREE.Mesh(geo, toon(color)), x, y, z);
 }
 
 function cone(r: number, h: number, color: number, x = 0, y = 0, z = 0): THREE.Mesh {
-  return shadowed(new THREE.Mesh(new THREE.ConeGeometry(r, h, 16), toon(color)), x, y, z);
+  const geo = cachedGeo(`k:${r}:${h}`, () => new THREE.ConeGeometry(r, h, 16));
+  return shadowed(new THREE.Mesh(geo, toon(color)), x, y, z);
 }
 
 /** How a face reads: drives brow angle and mouth shape. */

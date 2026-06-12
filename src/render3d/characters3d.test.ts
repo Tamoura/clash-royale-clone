@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import * as THREE from "three";
 import { getCard, DECK, type CardId } from "../game/cards";
 import { animateTroop, buildTroop } from "./characters3d";
 
@@ -168,5 +169,34 @@ describe("expressive faces", () => {
     const wicked = browAngles("witch");
     const calm = browAngles("giant");
     expect(Math.max(...wicked)).toBeGreaterThan(Math.max(...calm));
+  });
+});
+
+describe("geometry cache (three-best-practices)", () => {
+  it("identical primitives share one geometry instance across rigs", () => {
+    const geos = (id: "knight" | "skeletons"): THREE.BufferGeometry[] => {
+      const out: THREE.BufferGeometry[] = [];
+      buildTroop(id).group.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh) out.push(mesh.geometry as THREE.BufferGeometry);
+      });
+      return out;
+    };
+    const a = geos("knight");
+    const b = geos("knight");
+    expect(a.length).toBeGreaterThan(0);
+    // Two separate knights reuse the exact same geometry objects.
+    expect(a.every((g, i) => g === b[i])).toBe(true);
+  });
+
+  it("cached geometries are marked shared so disposal skips them", () => {
+    let sharedCount = 0;
+    buildTroop("giant").group.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh && (mesh.geometry as THREE.BufferGeometry).userData.shared) {
+        sharedCount++;
+      }
+    });
+    expect(sharedCount).toBeGreaterThan(5);
   });
 });
