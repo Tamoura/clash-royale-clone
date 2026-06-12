@@ -513,7 +513,62 @@ function buildTowerMesh(e: Entity): EntityView {
   return view as EntityView;
 }
 
+/** Gravestone for the Tombstone spawner: slab, mound, tiny skull. */
+function buildTombstoneMesh(e: Entity): EntityView {
+  const root = new THREE.Group();
+  const mound = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.72, 0.22, 10), toon(0x6b5b45));
+  mound.position.y = 0.11;
+  mound.castShadow = true;
+  mound.receiveShadow = true;
+  root.add(mound);
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.85, 0.2), toon(0x9aa3ad));
+  slab.position.set(0, 0.6, -0.12);
+  slab.castShadow = true;
+  root.add(slab);
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.2, 12, 1, false, 0, Math.PI), toon(0x9aa3ad));
+  cap.rotation.z = Math.PI / 2;
+  cap.rotation.y = Math.PI / 2;
+  cap.position.set(0, 1.02, -0.12);
+  cap.castShadow = true;
+  root.add(cap);
+  const cross = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.05), toon(0x78909c));
+  cross.position.set(0, 0.78, -0.01);
+  root.add(cross);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), toon(0xf5f2ea));
+  skull.position.set(0.32, 0.12, 0.32);
+  root.add(skull);
+  const glowOrb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.07, 8, 6),
+    new THREE.MeshStandardMaterial({
+      color: 0x76ff03,
+      emissive: 0x76ff03,
+      emissiveIntensity: 1.6,
+    }),
+  );
+  glowOrb.position.set(0, 1.02, 0.02);
+  root.add(glowOrb);
+
+  const bar = makeHpBar(1.4, SIDE_COLOR[e.side], 1.6);
+  root.add(bar.group);
+  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
+  label.scale.set(1.7, 0.42, 1);
+  label.position.y = 1.95;
+  root.add(label);
+  return {
+    root,
+    rig: null,
+    hpGroup: bar.group,
+    hpFill: bar.fill,
+    flashMats: collectFlashMats(root),
+    lastHp: e.hp,
+    flashT: 0,
+    spawnT: 0,
+    isTroop: false,
+  };
+}
+
 function buildBuildingMesh(e: Entity): EntityView {
+  if (e.cardId === "tombstone") return buildTombstoneMesh(e);
   const root = new THREE.Group();
   const base = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.78, 0.25, 10), toon(0x8d6e63));
   base.position.y = 0.12;

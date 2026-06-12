@@ -136,6 +136,16 @@ describe("spawners", () => {
     for (const s of skeletons) expect(s.side).toBe("player");
   });
 
+  it("a tombstone building drips skeletons until it crumbles", () => {
+    const b = createBattle();
+    giveHand(b, "player", ["tombstone"]);
+    expect(deployCard(b, "player", "tombstone", 9, 24)).toBe(true);
+    run(b, 10);
+    const skeletons = b.entities.filter((e) => e.cardId === "skeletons");
+    expect(skeletons.length).toBeGreaterThanOrEqual(3);
+    for (const s of skeletons) expect(s.side).toBe("player");
+  });
+
   it("non-spawner troops never summon anything", () => {
     const b = createBattle();
     spawnUnits(b, "player", "knight", 9, 24);

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CARDS, DECK, getCard } from "./cards";
 
 describe("cards", () => {
-  it("defines the 20-card deck", () => {
+  it("defines the 21-card deck", () => {
     expect(DECK).toEqual([
       "knight",
       "archers",
@@ -20,6 +20,7 @@ describe("cards", () => {
       "prince",
       "pekka",
       "cannon",
+      "tombstone",
       "gargoyles",
       "arrows",
       "zap",
@@ -44,6 +45,17 @@ describe("cards", () => {
     expect(zap.cost).toBe(2);
     expect(zap.damage).toBeGreaterThan(0);
     expect(zap.stunSeconds).toBeGreaterThan(0);
+  });
+
+  it("the tombstone is a spawner building", () => {
+    const tomb = getCard("tombstone");
+    expect(tomb.kind).toBe("building");
+    if (tomb.kind !== "building") return;
+    expect(tomb.cost).toBe(3);
+    expect(tomb.lifetime).toBeGreaterThan(0);
+    expect(tomb.unit.spawnUnitId).toBe("skeletons");
+    expect(tomb.unit.spawnInterval).toBeGreaterThan(0);
+    expect(tomb.unit.damage).toBe(0); // it just spawns, never attacks
   });
 
   it("the balloon is a flying building-seeker with a death bomb", () => {

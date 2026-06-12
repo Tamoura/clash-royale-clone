@@ -577,6 +577,38 @@ function drawPekka(ctx: Ctx, _anim: Anim): void {
   });
 }
 
+function drawTombstone(ctx: Ctx, _anim: Anim): void {
+  // earth mound
+  outlined(ctx, "#6b5b45", () => {
+    ctx.beginPath();
+    ctx.ellipse(0, 6, 7.5, 3, 0, 0, Math.PI * 2);
+  });
+  // headstone slab with rounded top
+  outlined(ctx, "#9aa3ad", () => {
+    ctx.beginPath();
+    ctx.moveTo(-4.5, 6);
+    ctx.lineTo(-4.5, -4);
+    ctx.arc(0, -4, 4.5, Math.PI, 0);
+    ctx.lineTo(4.5, 6);
+    ctx.closePath();
+  });
+  // inscription lines
+  ctx.strokeStyle = "#78909c";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(-2.5, -3);
+  ctx.lineTo(2.5, -3);
+  ctx.moveTo(-2, -0.5);
+  ctx.lineTo(2, -0.5);
+  ctx.stroke();
+  // tiny skull at the base
+  circle(ctx, 4.8, 5.2, 1.6, "#f5f2ea");
+  circle(ctx, 4.3, 5, 0.35, "#1f2430");
+  circle(ctx, 5.3, 5, 0.35, "#1f2430");
+  // necro glow
+  circle(ctx, 0, -8.6, 1, "#76ff03");
+}
+
 const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = {
   knight: drawKnight,
   archers: drawArcher,
@@ -594,6 +626,7 @@ const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = 
   prince: drawPrince,
   pekka: drawPekka,
   cannon: drawCannon,
+  tombstone: drawTombstone,
 };
 
 /**

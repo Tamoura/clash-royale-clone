@@ -18,7 +18,8 @@ export type CardId =
   | "valkyrie"
   | "prince"
   | "pekka"
-  | "cannon";
+  | "cannon"
+  | "tombstone";
 
 export type Speed = "slow" | "medium" | "fast";
 
@@ -388,6 +389,23 @@ export const CARDS: Record<CardId, Card> = {
       radius: 0.6,
     }),
   },
+  tombstone: {
+    id: "tombstone",
+    name: "Tombstone",
+    kind: "building",
+    cost: 3,
+    lifetime: 30,
+    unit: unit({
+      maxHp: 600,
+      damage: 0, // it just spawns, never attacks
+      hitSpeed: 1,
+      attackRange: 0,
+      speed: "slow", // unused: buildings don't move
+      spawnUnitId: "skeletons",
+      spawnInterval: 6,
+      radius: 0.6,
+    }),
+  },
   fireball: {
     id: "fireball",
     name: "Fireball",
@@ -448,6 +466,7 @@ export const DECK: CardId[] = [
   "prince",
   "pekka",
   "cannon",
+  "tombstone",
   "gargoyles",
   "arrows",
   "zap",
