@@ -393,20 +393,23 @@ function buildSkeleton(): TroopRig {
 }
 
 function buildWizard(): TroopRig {
-  // White robe, no hat, golden hair — nothing like the witch now.
-  const ROBE = 0xefe9d8;
-  const HAIR = 0xe8c64a;
+  // CR-accurate: blue cloak over a dark brown shirt, brown swept
+  // hair and goatee, no hat (wiki: team cloak, brown hair/goatee).
+  const ROBE = 0x3f6ad8;
+  const HAIR = 0x5b3a21;
   const g = new THREE.Group();
-  g.add(cyl(0.28, 0.48, 0.72, ROBE, 0, 0.4, 0)); // white robe
-  g.add(cyl(0.39, 0.42, 0.08, 0xf2c14e, 0, 0.5, 0)); // gold sash
-  g.add(box(0.1, 0.5, 0.04, 0xd9a93f, 0, 0.42, 0.31)); // gold front trim
+  g.add(cyl(0.28, 0.48, 0.72, ROBE, 0, 0.4, 0)); // blue cloak
+  g.add(cyl(0.27, 0.3, 0.16, 0x4a3526, 0, 0.68, 0)); // brown shirt collar
+  g.add(cyl(0.39, 0.42, 0.08, 0x5d4037, 0, 0.5, 0)); // leather belt
+  g.add(box(0.09, 0.09, 0.04, 0xf2c14e, 0, 0.5, 0.4)); // gold buckle
   const head = sphere(0.3, SKIN, 0, 1.06, 0);
   addEyes(head, 0.3, 0.38, 0.1, "calm");
   g.add(head);
-  const beard = sphere(0.26, 0xe8e3d8, 0, 0.9, 0.12);
-  beard.scale.set(1, 0.8, 0.75);
-  g.add(beard);
-  // Swept-back golden hair with a proud cowlick.
+  // Brown goatee, not a full beard.
+  const goatee = sphere(0.13, HAIR, 0, 0.84, 0.2);
+  goatee.scale.set(0.9, 0.95, 0.6);
+  g.add(goatee);
+  // Swept-back brown hair with a proud cowlick.
   const hairCap = sphere(0.31, HAIR, 0, 1.16, -0.05);
   hairCap.scale.set(1, 0.72, 1.02);
   g.add(hairCap);
@@ -420,6 +423,7 @@ function buildWizard(): TroopRig {
     const sideburn = cyl(0.06, 0.04, 0.22, HAIR, s * 0.27, 0.98, 0.02);
     sideburn.rotation.z = s * 0.12;
     g.add(sideburn);
+    g.add(cyl(0.07, 0.07, 0.08, 0x4a3526, s * 0.36, 0.55, 0)); // wristband
   }
 
   // Staff hand.
