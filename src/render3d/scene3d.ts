@@ -126,30 +126,86 @@ function updateHpText(t: HpText, hp: number): void {
   t.tex.needsUpdate = true;
 }
 
+/** Shared rounded-pill trough texture for HP bars. */
+let pillTexture: THREE.CanvasTexture | null = null;
+
+function pillTex(): THREE.CanvasTexture {
+  if (!pillTexture) {
+    const c = document.createElement("canvas");
+    c.width = 128;
+    c.height = 32;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#10141c";
+    ctx.strokeStyle = "rgba(255,255,255,0.3)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(2, 2, 124, 28, 14);
+    ctx.fill();
+    ctx.stroke();
+    pillTexture = new THREE.CanvasTexture(c);
+  }
+  return pillTexture;
+}
+
 function makeHpBar(width: number, color: number, y: number): {
   group: THREE.Group;
   fill: THREE.Mesh;
 } {
   const group = new THREE.Group();
   const bg = new THREE.Mesh(
-    new THREE.PlaneGeometry(width, 0.16),
-    new THREE.MeshBasicMaterial({ color: 0x10141c }),
+    new THREE.PlaneGeometry(width, 0.2),
+    new THREE.MeshBasicMaterial({ map: pillTex(), transparent: true }),
   );
   const fill = new THREE.Mesh(
-    new THREE.PlaneGeometry(width, 0.16),
+    new THREE.PlaneGeometry(width - 0.06, 0.14),
     new THREE.MeshBasicMaterial({ color }),
   );
   fill.position.z = 0.01;
+  // Gloss highlight rides the fill so it scales with it.
+  const gloss = new THREE.Mesh(
+    new THREE.PlaneGeometry(width - 0.06, 0.05),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }),
+  );
+  gloss.position.set(0, 0.04, 0.01);
+  fill.add(gloss);
   group.add(bg, fill);
   group.position.y = y;
   group.rotation.x = -0.65; // face the tilted camera
   return { group, fill };
 }
 
+/** Small circular level badge capping a tower HP pill. */
+function makeLevelBadge(side: Side): THREE.Sprite {
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const ctx = c.getContext("2d")!;
+  ctx.fillStyle = side === "player" ? "#2c55b8" : "#b02e22";
+  ctx.strokeStyle = "#e8e3d8";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(32, 32, 26, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = "bold 30px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#fff";
+  ctx.fillText("9", 32, 34);
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(c),
+      transparent: true,
+      depthWrite: false,
+    }),
+  );
+  sprite.scale.set(0.42, 0.42, 1);
+  return sprite;
+}
+
 function setHpFill(view: EntityView, frac: number, width: number): void {
   const f = Math.max(0, Math.min(1, frac));
   view.hpFill.scale.x = Math.max(0.001, f);
-  view.hpFill.position.x = (-(1 - f) * width) / 2;
+  view.hpFill.position.x = (-(1 - f) * (width - 0.06)) / 2;
 }
 
 /** One shared sprite material per card+side; labels never change. */
@@ -430,7 +486,13 @@ function buildTowerMesh(e: Entity): EntityView {
   view.hpGroup = bar.group;
   view.hpFill = bar.fill;
 
-  const hpText = makeHpText(barY + 0.45);
+  // CR pill: the HP number sits inside the bar, level badge at the end.
+  const badge = makeLevelBadge(e.side);
+  badge.position.set(-barWidth / 2, 0, 0.06);
+  bar.group.add(badge);
+  const hpText = makeHpText(barY + 0.02);
+  hpText.sprite.scale.set(1.1, 0.4, 1);
+  hpText.sprite.position.z = 0.2;
   root.add(hpText.sprite);
   view.hpText = hpText.text;
 
