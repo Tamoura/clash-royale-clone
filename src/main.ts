@@ -1,7 +1,14 @@
 import { SoundEngine } from "./audio/sound";
-import { checkDeploy, createBattle, deployCard, type BattleState } from "./game/battle";
+import {
+  checkDeploy,
+  createBattle,
+  deployCard,
+  isValidDeck,
+  type BattleState,
+} from "./game/battle";
 import { createBot, tickBot, type BotState } from "./game/bot";
-import { getCard, type CardId } from "./game/cards";
+import { DECK, DEFAULT_DECK, getCard, type CardId } from "./game/cards";
+import { drawCardArt } from "./render/characters";
 import { isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
 import { Battle3D } from "./render3d/scene3d";
@@ -13,7 +20,33 @@ const overlay = document.getElementById("overlay")!;
 const bannerEl = document.getElementById("banner")!;
 const emoteBar = document.getElementById("emotes")!;
 
-let battle: BattleState = createBattle();
+// ---- Player deck (8 cards, persisted) -----------------------------------
+
+const DECK_KEY = "cr-clone-deck";
+
+function loadDeck(): CardId[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(DECK_KEY) ?? "[]") as CardId[];
+    if (isValidDeck(saved)) return saved;
+  } catch {
+    // fall through to the starter deck
+  }
+  return [...DEFAULT_DECK];
+}
+
+let playerDeck: CardId[] = loadDeck();
+
+/** The bot drafts a random legal deck each match. */
+function botDeck(): CardId[] {
+  const pool = [...DECK];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, 8);
+}
+
+let battle: BattleState = createBattle(playerDeck, botDeck());
 let bot: BotState = createBot(Date.now() & 0xffff);
 let selectedCard: CardId | null = null;
 
@@ -38,13 +71,80 @@ function selectCard(id: CardId | null): void {
 }
 
 function restart(): void {
-  battle = createBattle();
+  battle = createBattle(playerDeck, botDeck());
   bot = createBot(Date.now() & 0xffff);
   selectCard(null);
   scene.reset();
   audio.setIntensity(0);
   audio.restartMusic();
   startCountdown();
+}
+
+// ---- Deck picker ---------------------------------------------------------
+
+const pickerRoot = document.getElementById("deckpicker")!;
+
+function buildDeckPicker(): void {
+  pickerRoot.innerHTML = "";
+  const title = document.createElement("h2");
+  title.textContent = "Build your battle deck";
+  pickerRoot.appendChild(title);
+  const count = document.createElement("div");
+  count.className = "deck-count";
+  pickerRoot.appendChild(count);
+  const grid = document.createElement("div");
+  grid.className = "picker-grid";
+  pickerRoot.appendChild(grid);
+  const startBtn = document.createElement("button");
+  startBtn.className = "battle-btn";
+  startBtn.textContent = "Battle!";
+  pickerRoot.appendChild(startBtn);
+
+  const chosen = new Set<CardId>(playerDeck);
+  const sync = (): void => {
+    count.textContent = `${chosen.size} / 8 cards`;
+    startBtn.disabled = chosen.size !== 8;
+    grid.querySelectorAll<HTMLButtonElement>("button.pick").forEach((btn) => {
+      btn.classList.toggle("chosen", chosen.has(btn.dataset.card as CardId));
+    });
+  };
+
+  for (const id of DECK) {
+    const card = getCard(id);
+    const btn = document.createElement("button");
+    btn.className = "pick";
+    btn.dataset.card = id;
+    const c = document.createElement("canvas");
+    c.width = c.height = 48;
+    drawCardArt(c.getContext("2d")!, id, 24, 26, 26);
+    btn.appendChild(c);
+    const name = document.createElement("div");
+    name.textContent = card.name;
+    btn.appendChild(name);
+    const cost = document.createElement("div");
+    cost.className = "pcost";
+    cost.textContent = String(card.cost);
+    btn.appendChild(cost);
+    btn.addEventListener("click", () => {
+      if (chosen.has(id)) chosen.delete(id);
+      else if (chosen.size < 8) chosen.add(id);
+      sync();
+    });
+    grid.appendChild(btn);
+  }
+  sync();
+
+  startBtn.addEventListener("click", () => {
+    playerDeck = DECK.filter((id) => chosen.has(id)); // stable pool order
+    localStorage.setItem(DECK_KEY, JSON.stringify(playerDeck));
+    pickerRoot.classList.remove("show");
+    restart();
+  });
+}
+
+function openDeckPicker(): void {
+  buildDeckPicker();
+  pickerRoot.classList.add("show");
 }
 
 const hud = new Hud(topbar, hudRoot, overlay, {
@@ -58,6 +158,15 @@ const hud = new Hud(topbar, hudRoot, overlay, {
 
 // Audio can only start from a user gesture.
 window.addEventListener("pointerdown", () => audio.resume(), { once: false });
+
+// Deck button in the top bar + pick-your-deck on first load.
+const deckBtn = document.createElement("button");
+deckBtn.className = "mute";
+deckBtn.textContent = "🃏";
+deckBtn.title = "Edit deck";
+deckBtn.addEventListener("click", openDeckPicker);
+topbar.appendChild(deckBtn);
+openDeckPicker();
 
 // ---- Banners & match phases -------------------------------------------
 
@@ -190,6 +299,13 @@ let acc = 0;
 function frame(now: number): void {
   const dt = Math.min(0.25, (now - last) / 1000);
   last = now;
+
+  // The world holds its breath while the deck picker is open.
+  if (pickerRoot.classList.contains("show")) {
+    scene.render(dt);
+    requestAnimationFrame(frame);
+    return;
+  }
 
   if (phase === "countdown") {
     tickCountdown(dt);

@@ -6,7 +6,8 @@ import {
   type TowerKind,
 } from "./arena";
 import {
-  DECK,
+  CARDS,
+  DEFAULT_DECK,
   SPEED_TILES_PER_SEC,
   getCard,
   type BuildingCard,
@@ -219,18 +220,30 @@ function makeTower(state: BattleState, side: Side, kind: TowerKind, x: number, y
   };
 }
 
-export function createBattle(): BattleState {
+/** A legal battle deck: exactly 8 unique, known cards. */
+export function isValidDeck(cards: CardId[]): boolean {
+  return (
+    cards.length === 8 &&
+    new Set(cards).size === 8 &&
+    cards.every((id) => CARDS[id] !== undefined)
+  );
+}
+
+export function createBattle(
+  playerDeck: CardId[] = DEFAULT_DECK,
+  enemyDeck: CardId[] = DEFAULT_DECK,
+): BattleState {
   const state: BattleState = {
     entities: [],
     player: {
       elixir: createElixir(),
-      hand: createHand(DECK),
+      hand: createHand(playerDeck),
       crowns: 0,
       stats: { damageDealt: 0, elixirSpent: 0 },
     },
     enemy: {
       elixir: createElixir(),
-      hand: createHand(DECK),
+      hand: createHand(enemyDeck),
       crowns: 0,
       stats: { damageDealt: 0, elixirSpent: 0 },
     },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { RIVER_Y } from "./arena";
-import { checkDeploy, createBattle, deployCard } from "./battle";
+import { checkDeploy, createBattle, deployCard, isValidDeck } from "./battle";
 
 describe("battle setup", () => {
   it("starts with 6 towers, full hands, and 5 elixir each", () => {
@@ -129,5 +129,30 @@ describe("checkDeploy", () => {
     expect(deployCard(b, "player", "knight", 9, 8)).toBe(false);
     expect(checkDeploy(b, "player", "knight", 9, 24)).toBe("ok");
     expect(deployCard(b, "player", "knight", 9, 24)).toBe(true);
+  });
+});
+
+describe("decks of 8", () => {
+  it("battles run on 8-card decks: 4 in hand, 4 queued", () => {
+    const b = createBattle();
+    expect(b.player.hand.cards).toHaveLength(4);
+    expect(b.player.hand.queue).toHaveLength(4);
+  });
+
+  it("accepts custom decks per side", () => {
+    const deck = [
+      "pekka", "witch", "balloon", "freeze",
+      "zap", "skeletons", "tombstone", "hog-rider",
+    ] as const;
+    const b = createBattle([...deck]);
+    expect(b.player.hand.cards).toEqual(deck.slice(0, 4));
+    expect(b.player.hand.queue).toEqual(deck.slice(4));
+    expect(b.enemy.hand.cards).toHaveLength(4); // default deck
+  });
+
+  it("validates a deck as exactly 8 unique known cards", () => {
+    expect(isValidDeck(["knight", "archers", "giant", "fireball", "musketeer", "mini-pekka", "baby-dragon", "arrows"])).toBe(true);
+    expect(isValidDeck(["knight", "knight", "giant", "fireball", "musketeer", "mini-pekka", "baby-dragon", "arrows"])).toBe(false);
+    expect(isValidDeck(["knight", "archers", "giant"])).toBe(false);
   });
 });

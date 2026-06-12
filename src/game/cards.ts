@@ -538,3 +538,19 @@ export const DECK: CardId[] = [
 export function getCard(id: CardId): Card {
   return CARDS[id];
 }
+
+/**
+ * CR-style battle deck: exactly 8 cards. The first 4 are the opening
+ * hand; this starter deck keeps the classic opening (knight, archers,
+ * giant, fireball).
+ */
+export const DEFAULT_DECK: CardId[] = [
+  "knight",
+  "archers",
+  "giant",
+  "fireball",
+  "musketeer",
+  "mini-pekka",
+  "baby-dragon",
+  "arrows",
+];
