@@ -841,16 +841,40 @@ export class Battle3D {
     }
     this.decorate();
 
+    // CR-style golden dirt lanes from each bridge to the towers.
+    const laneCanvas = document.createElement("canvas");
+    laneCanvas.width = 32;
+    laneCanvas.height = 256;
+    const lctx = laneCanvas.getContext("2d")!;
+    const grad = lctx.createLinearGradient(0, 0, 32, 0);
+    grad.addColorStop(0, "rgba(214,178,94,0)");
+    grad.addColorStop(0.18, "rgba(214,178,94,0.9)");
+    grad.addColorStop(0.5, "rgba(222,189,108,0.95)");
+    grad.addColorStop(0.82, "rgba(214,178,94,0.9)");
+    grad.addColorStop(1, "rgba(214,178,94,0)");
+    lctx.fillStyle = grad;
+    lctx.fillRect(0, 0, 32, 256);
+    // Speckled wear so the path reads as trodden dirt.
+    lctx.fillStyle = "rgba(160,124,58,0.5)";
+    for (let i = 0; i < 90; i++) {
+      lctx.fillRect((i * 13) % 30, (i * 47) % 254, 2, 1.5);
+    }
+    lctx.fillStyle = "rgba(255,236,170,0.35)";
+    for (let i = 0; i < 60; i++) {
+      lctx.fillRect((i * 19 + 5) % 30, (i * 31 + 9) % 254, 1.5, 1);
+    }
+    const laneTex = new THREE.CanvasTexture(laneCanvas);
+    laneTex.colorSpace = THREE.SRGBColorSpace;
     for (const bx of BRIDGE_XS) {
-      const stripe = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.6, ARENA_HEIGHT),
-        new THREE.MeshToonMaterial({ color: 0xffffff, transparent: true, opacity: 0.05 }),
+      const lane = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.9, ARENA_HEIGHT - 1.2),
+        new THREE.MeshToonMaterial({ map: laneTex, transparent: true }),
       );
-      stripe.rotation.x = -Math.PI / 2;
+      lane.rotation.x = -Math.PI / 2;
       const w = toWorld(bx, ARENA_HEIGHT / 2);
-      stripe.position.set(w.x, 0.005, 0);
-      stripe.receiveShadow = true;
-      this.scene.add(stripe);
+      lane.position.set(w.x, 0.012, 0);
+      lane.receiveShadow = true;
+      this.scene.add(lane);
     }
 
     // Bright CR-blue water with drifting light streaks.
