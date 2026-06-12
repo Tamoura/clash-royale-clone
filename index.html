@@ -173,6 +173,33 @@
       .elixir-bar.x2 .x2-tag {
         display: block;
       }
+      #hud {
+        position: relative;
+      }
+      .card-tip {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        transform: translateX(-50%);
+        display: none;
+        background: rgba(13, 19, 34, 0.96);
+        border: 2px solid #d9a93f;
+        border-radius: 10px;
+        padding: 8px 12px;
+        font-size: 12px;
+        color: #dbe3f0;
+        white-space: nowrap;
+        z-index: 6;
+        pointer-events: none;
+        text-align: left;
+      }
+      .card-tip.show {
+        display: block;
+      }
+      .card-tip b {
+        color: #ffe082;
+        display: block;
+        margin-bottom: 2px;
+      }
       .error-shake {
         animation: errShake 0.35s ease;
       }

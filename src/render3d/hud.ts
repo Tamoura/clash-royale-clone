@@ -4,6 +4,7 @@ import { ELIXIR_MAX } from "../game/elixir";
 import { BATTLE_DURATION, OVERTIME_DURATION, isDoubleElixir } from "../game/sim";
 import { drawCardArt } from "../render/characters";
 import { CARD_COLOR } from "../render/cardcolors";
+import { cardStatLines } from "../render/cardinfo";
 
 export interface HudCallbacks {
   onSelectCard(id: CardId | null): void;
@@ -97,8 +98,30 @@ export class Hud {
     const nextWrap = el("div", "next-card", handRow);
     this.nextArt = el("div", "next-art", nextWrap);
     el("div", "next-label", nextWrap).textContent = "next";
+    // Shared stats tooltip floating above the hovered card.
+    const tip = el("div", "card-tip", bottom);
+    const showTip = (btn: HTMLButtonElement): void => {
+      const id = btn.dataset.card as CardId | undefined;
+      if (!id) return;
+      tip.innerHTML = "";
+      const title = document.createElement("b");
+      title.textContent = `${getCard(id).name} · ${getCard(id).cost} elixir`;
+      tip.appendChild(title);
+      for (const line of cardStatLines(id)) {
+        const div = document.createElement("div");
+        div.textContent = line;
+        tip.appendChild(div);
+      }
+      const rect = btn.getBoundingClientRect();
+      const parent = bottom.getBoundingClientRect();
+      tip.style.left = `${rect.left + rect.width / 2 - parent.left}px`;
+      tip.classList.add("show");
+    };
+
     for (let i = 0; i < 4; i++) {
       const btn = el("button", "card", handRow);
+      btn.addEventListener("mouseenter", () => showTip(btn));
+      btn.addEventListener("mouseleave", () => tip.classList.remove("show"));
       // Select on pointerdown so a press can roll straight into a
       // drag onto the field (release deploys there).
       btn.addEventListener("pointerdown", (ev) => {
