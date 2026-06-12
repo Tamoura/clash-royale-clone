@@ -3,6 +3,7 @@ import { getCard, type CardId } from "../game/cards";
 import { ELIXIR_MAX } from "../game/elixir";
 import { BATTLE_DURATION, OVERTIME_DURATION, isDoubleElixir } from "../game/sim";
 import { drawCardArt } from "../render/characters";
+import { CARD_COLOR } from "../render/cardcolors";
 
 export interface HudCallbacks {
   onSelectCard(id: CardId | null): void;
@@ -24,9 +25,22 @@ function el<K extends keyof HTMLElementTagNameMap>(
 
 function cardCanvas(id: CardId): HTMLCanvasElement {
   const c = document.createElement("canvas");
-  c.width = c.height = 64;
+  c.width = c.height = 80;
   const ctx = c.getContext("2d")!;
-  drawCardArt(ctx, id, 32, 34, 34);
+  // Signature backdrop so each card reads at a glance.
+  const base = CARD_COLOR[id];
+  const g = ctx.createRadialGradient(40, 30, 6, 40, 44, 52);
+  g.addColorStop(0, "#ffffff33");
+  g.addColorStop(0.25, base);
+  g.addColorStop(1, "#0a0e16");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.roundRect(1, 1, 78, 78, 10);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  drawCardArt(ctx, id, 40, 43, 42);
   return c;
 }
 

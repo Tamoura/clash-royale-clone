@@ -9,6 +9,7 @@ import {
 import { createBot, tickBot, type BotState } from "./game/bot";
 import { DECK, DEFAULT_DECK, getCard, type CardId } from "./game/cards";
 import { drawCardArt } from "./render/characters";
+import { CARD_COLOR } from "./render/cardcolors";
 import { isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
 import { Battle3D } from "./render3d/scene3d";
@@ -116,7 +117,12 @@ function buildDeckPicker(): void {
     btn.dataset.card = id;
     const c = document.createElement("canvas");
     c.width = c.height = 48;
-    drawCardArt(c.getContext("2d")!, id, 24, 26, 26);
+    const cctx = c.getContext("2d")!;
+    cctx.fillStyle = CARD_COLOR[id];
+    cctx.beginPath();
+    cctx.roundRect(0, 0, 48, 48, 7);
+    cctx.fill();
+    drawCardArt(cctx, id, 24, 26, 26);
     btn.appendChild(c);
     const name = document.createElement("div");
     name.textContent = card.name;
