@@ -12,3 +12,9 @@ Applied the skill's core principles to the procedural rigs:
 attackSwing(e, engaged) in scene3d feeds both field troops and the
 tower crew; animateTroop handles the signed value naturally
 (negative swing raises the arm past rest).
+
+## Demo tooling
+tools/record-battle.cjs: puppeteer-core drives headless Chrome,
+starts a battle (hard bot), deploys knight+archers, records 9s of
+the live canvas via MediaRecorder -> /tmp/cr-battle.webm; convert
+with ffmpeg to mp4/gif. Used to send the user battle clips.
