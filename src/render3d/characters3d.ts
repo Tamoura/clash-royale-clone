@@ -33,12 +33,14 @@ export function toon(color: number): THREE.MeshToonMaterial {
   return new THREE.MeshToonMaterial({ color, gradientMap: gradientMap() });
 }
 
-function glow(color: number, intensity = 1.6): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
-    color,
-    emissive: color,
-    emissiveIntensity: intensity,
-  });
+/**
+ * Unlit "glow" material: MeshBasic ignores lighting and tone-mapping
+ * mutes emissives far less, so gems, orbs, and robot eyes stay hot.
+ */
+function glow(color: number, _intensity = 1.6): THREE.MeshBasicMaterial {
+  const mat = new THREE.MeshBasicMaterial({ color });
+  mat.toneMapped = false; // full saturation, no filmic rolloff
+  return mat;
 }
 
 type Ctx3 = THREE.Object3D;

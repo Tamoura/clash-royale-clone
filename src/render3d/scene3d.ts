@@ -324,6 +324,13 @@ function easeOutBack(t: number): number {
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 }
 
+/** Unlit hot material: ignores lights and skips tone mapping. */
+function unlitGlow(color: number): THREE.MeshBasicMaterial {
+  const mat = new THREE.MeshBasicMaterial({ color });
+  mat.toneMapped = false;
+  return mat;
+}
+
 /** Shared stone-brick texture for tower walls. */
 let brickTexture: THREE.CanvasTexture | null = null;
 
@@ -539,11 +546,7 @@ function buildTombstoneMesh(e: Entity): EntityView {
   root.add(skull);
   const glowOrb = new THREE.Mesh(
     new THREE.SphereGeometry(0.07, 8, 6),
-    new THREE.MeshStandardMaterial({
-      color: 0x76ff03,
-      emissive: 0x76ff03,
-      emissiveIntensity: 1.6,
-    }),
+    unlitGlow(0x76ff03),
   );
   glowOrb.position.set(0, 1.02, 0.02);
   root.add(glowOrb);
@@ -590,21 +593,13 @@ function buildCollectorMesh(e: Entity): EntityView {
   }
   const brew = new THREE.Mesh(
     new THREE.CylinderGeometry(0.5, 0.5, 0.08, 12),
-    new THREE.MeshStandardMaterial({
-      color: 0xd946ef,
-      emissive: 0xa21caf,
-      emissiveIntensity: 1.4,
-    }),
+    unlitGlow(0xd946ef),
   );
   brew.position.y = 0.96;
   root.add(brew);
   const drop = new THREE.Mesh(
     new THREE.SphereGeometry(0.14, 10, 8),
-    new THREE.MeshStandardMaterial({
-      color: 0xe879f9,
-      emissive: 0xd946ef,
-      emissiveIntensity: 1.6,
-    }),
+    unlitGlow(0xe879f9),
   );
   drop.position.y = 1.25;
   root.add(drop);
@@ -982,11 +977,7 @@ export class Battle3D {
         this.scene.add(pole);
         const flame = new THREE.Mesh(
           new THREE.SphereGeometry(0.14, 8, 6),
-          new THREE.MeshStandardMaterial({
-            color: 0xffa726,
-            emissive: 0xff8c1a,
-            emissiveIntensity: 1.8,
-          }),
+          unlitGlow(0xffa726),
         );
         flame.position.set(w.x + 1.45, 1.2, sz * 2.2);
         this.scene.add(flame);
@@ -1410,11 +1401,7 @@ export class Battle3D {
       obj = this.makeArrow(style.color);
     } else {
       const mat = style.glow
-        ? new THREE.MeshStandardMaterial({
-            color: style.color,
-            emissive: style.color,
-            emissiveIntensity: 1.5,
-          })
+        ? unlitGlow(style.color)
         : new THREE.MeshBasicMaterial({ color: style.color });
       const orb = new THREE.Mesh(new THREE.SphereGeometry(style.size, 8, 6), mat);
       if (style.glow) {
@@ -1465,11 +1452,7 @@ export class Battle3D {
     const meteor = new THREE.Group();
     const core = new THREE.Mesh(
       new THREE.SphereGeometry(0.4, 12, 10),
-      new THREE.MeshStandardMaterial({
-        color: 0xffb300,
-        emissive: 0xff6a00,
-        emissiveIntensity: 2,
-      }),
+      unlitGlow(0xffb300),
     );
     meteor.add(core);
     const tail = new THREE.Mesh(
