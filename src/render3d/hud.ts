@@ -135,6 +135,7 @@ export class Hud {
       state.player.hand.cards.forEach((id, i) => {
         const btn = this.cardBtns[i];
         btn.dataset.card = id;
+        btn.dataset.rarity = getCard(id).rarity;
         btn.innerHTML = "";
         btn.appendChild(cardCanvas(id));
         const name = document.createElement("div");

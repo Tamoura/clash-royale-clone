@@ -24,6 +24,9 @@ export type CardId =
 
 export type Speed = "slow" | "medium" | "fast";
 
+/** CR-style card rarity, shown as the card frame color. */
+export type Rarity = "common" | "rare" | "epic";
+
 /** Tiles per second for each named speed. */
 export const SPEED_TILES_PER_SEC: Record<Speed, number> = {
   slow: 0.75,
@@ -67,6 +70,7 @@ export interface UnitStats {
 export interface TroopCard {
   id: CardId;
   name: string;
+  rarity: Rarity;
   kind: "troop";
   cost: number;
   /** Number of units spawned per deploy. */
@@ -77,6 +81,7 @@ export interface TroopCard {
 export interface BuildingCard {
   id: CardId;
   name: string;
+  rarity: Rarity;
   kind: "building";
   cost: number;
   /** Seconds before the building expires on its own. */
@@ -87,6 +92,7 @@ export interface BuildingCard {
 export interface SpellCard {
   id: CardId;
   name: string;
+  rarity: Rarity;
   kind: "spell";
   cost: number;
   damage: number;
@@ -131,6 +137,7 @@ export const CARDS: Record<CardId, Card> = {
   knight: {
     id: "knight",
     name: "Knight",
+    rarity: "common",
     kind: "troop",
     cost: 3,
     count: 1,
@@ -145,6 +152,7 @@ export const CARDS: Record<CardId, Card> = {
   archers: {
     id: "archers",
     name: "Archers",
+    rarity: "common",
     kind: "troop",
     cost: 3,
     count: 2,
@@ -161,6 +169,7 @@ export const CARDS: Record<CardId, Card> = {
   giant: {
     id: "giant",
     name: "Giant",
+    rarity: "rare",
     kind: "troop",
     cost: 5,
     count: 1,
@@ -178,6 +187,7 @@ export const CARDS: Record<CardId, Card> = {
   musketeer: {
     id: "musketeer",
     name: "Musketeer",
+    rarity: "rare",
     kind: "troop",
     cost: 4,
     count: 1,
@@ -194,6 +204,7 @@ export const CARDS: Record<CardId, Card> = {
   "mini-pekka": {
     id: "mini-pekka",
     name: "Mini P.E.K.K.A",
+    rarity: "rare",
     kind: "troop",
     cost: 4,
     count: 1,
@@ -208,6 +219,7 @@ export const CARDS: Record<CardId, Card> = {
   skeletons: {
     id: "skeletons",
     name: "Skeletons",
+    rarity: "common",
     kind: "troop",
     cost: 1,
     count: 3,
@@ -223,6 +235,7 @@ export const CARDS: Record<CardId, Card> = {
   wizard: {
     id: "wizard",
     name: "Wizard",
+    rarity: "rare",
     kind: "troop",
     cost: 5,
     count: 1,
@@ -240,6 +253,7 @@ export const CARDS: Record<CardId, Card> = {
   witch: {
     id: "witch",
     name: "Witch",
+    rarity: "epic",
     kind: "troop",
     cost: 5,
     count: 1,
@@ -259,6 +273,7 @@ export const CARDS: Record<CardId, Card> = {
   "hog-rider": {
     id: "hog-rider",
     name: "Hog Rider",
+    rarity: "rare",
     kind: "troop",
     cost: 4,
     count: 1,
@@ -277,6 +292,7 @@ export const CARDS: Record<CardId, Card> = {
   balloon: {
     id: "balloon",
     name: "Balloon",
+    rarity: "epic",
     kind: "troop",
     cost: 5,
     count: 1,
@@ -297,6 +313,7 @@ export const CARDS: Record<CardId, Card> = {
   "baby-dragon": {
     id: "baby-dragon",
     name: "Baby Dragon",
+    rarity: "epic",
     kind: "troop",
     cost: 4,
     count: 1,
@@ -315,6 +332,7 @@ export const CARDS: Record<CardId, Card> = {
   gargoyles: {
     id: "gargoyles",
     name: "Gargoyles",
+    rarity: "common",
     kind: "troop",
     cost: 3,
     count: 3,
@@ -332,6 +350,7 @@ export const CARDS: Record<CardId, Card> = {
   valkyrie: {
     id: "valkyrie",
     name: "Valkyrie",
+    rarity: "rare",
     kind: "troop",
     cost: 4,
     count: 1,
@@ -347,6 +366,7 @@ export const CARDS: Record<CardId, Card> = {
   prince: {
     id: "prince",
     name: "Prince",
+    rarity: "epic",
     kind: "troop",
     cost: 5,
     count: 1,
@@ -363,6 +383,7 @@ export const CARDS: Record<CardId, Card> = {
   pekka: {
     id: "pekka",
     name: "P.E.K.K.A",
+    rarity: "epic",
     kind: "troop",
     cost: 7,
     count: 1,
@@ -378,6 +399,7 @@ export const CARDS: Record<CardId, Card> = {
   cannon: {
     id: "cannon",
     name: "Cannon",
+    rarity: "common",
     kind: "building",
     cost: 3,
     lifetime: 30,
@@ -393,6 +415,7 @@ export const CARDS: Record<CardId, Card> = {
   tombstone: {
     id: "tombstone",
     name: "Tombstone",
+    rarity: "rare",
     kind: "building",
     cost: 3,
     lifetime: 30,
@@ -410,6 +433,7 @@ export const CARDS: Record<CardId, Card> = {
   fireball: {
     id: "fireball",
     name: "Fireball",
+    rarity: "rare",
     kind: "spell",
     cost: 4,
     damage: 570,
@@ -420,6 +444,7 @@ export const CARDS: Record<CardId, Card> = {
   arrows: {
     id: "arrows",
     name: "Arrows",
+    rarity: "common",
     kind: "spell",
     cost: 3,
     damage: 240,
@@ -430,6 +455,7 @@ export const CARDS: Record<CardId, Card> = {
   zap: {
     id: "zap",
     name: "Zap",
+    rarity: "common",
     kind: "spell",
     cost: 2,
     damage: 250,
@@ -440,6 +466,7 @@ export const CARDS: Record<CardId, Card> = {
   rage: {
     id: "rage",
     name: "Rage",
+    rarity: "epic",
     kind: "spell",
     cost: 2,
     damage: 0,
@@ -450,6 +477,7 @@ export const CARDS: Record<CardId, Card> = {
   freeze: {
     id: "freeze",
     name: "Freeze",
+    rarity: "epic",
     kind: "spell",
     cost: 4,
     damage: 0,

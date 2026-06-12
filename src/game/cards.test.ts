@@ -165,3 +165,21 @@ describe("cards", () => {
     expect(fireball.radius).toBeGreaterThan(0);
   });
 });
+
+describe("rarities", () => {
+  it("every card declares a rarity", () => {
+    for (const id of DECK) {
+      expect(["common", "rare", "epic"]).toContain(getCard(id).rarity);
+    }
+  });
+
+  it("matches CR's classic assignments", () => {
+    expect(getCard("knight").rarity).toBe("common");
+    expect(getCard("giant").rarity).toBe("rare");
+    expect(getCard("witch").rarity).toBe("epic");
+    expect(getCard("pekka").rarity).toBe("epic");
+    expect(getCard("zap").rarity).toBe("common");
+    expect(getCard("fireball").rarity).toBe("rare");
+    expect(getCard("freeze").rarity).toBe("epic");
+  });
+});

@@ -223,6 +223,16 @@
       button.card:hover {
         transform: translateY(-4px);
       }
+      /* Rarity frames, CR-style: silver common, orange rare, purple epic. */
+      button.card[data-rarity="common"] {
+        border-color: #aab7c4;
+      }
+      button.card[data-rarity="rare"] {
+        border-color: #f59e0b;
+      }
+      button.card[data-rarity="epic"] {
+        border-color: #b950e8;
+      }
       button.card.selected {
         border-color: #ffe082;
         box-shadow:
