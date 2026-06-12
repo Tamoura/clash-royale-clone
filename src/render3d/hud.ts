@@ -5,6 +5,7 @@ import { BATTLE_DURATION, OVERTIME_DURATION, elixirMultiplier } from "../game/si
 import { drawCardArt } from "../render/characters";
 import { CARD_COLOR } from "../render/cardcolors";
 import { cardStatLines } from "../render/cardinfo";
+import { cardPortrait } from "./cardportraits";
 
 export interface HudCallbacks {
   onSelectCard(id: CardId | null): void;
@@ -41,7 +42,11 @@ function cardCanvas(id: CardId): HTMLCanvasElement {
   ctx.strokeStyle = "rgba(255,255,255,0.22)";
   ctx.lineWidth = 2;
   ctx.stroke();
-  drawCardArt(ctx, id, 40, 43, 42);
+  // Real rendered 3D portrait when the card has a character rig;
+  // spells keep their painted icon art.
+  const portrait = cardPortrait(id);
+  if (portrait) ctx.drawImage(portrait, -6, -2, 92, 92);
+  else drawCardArt(ctx, id, 40, 43, 42);
   return c;
 }
 
