@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RIVER_Y } from "./arena";
+import { ARENA_WIDTH as ARENA_WIDTH_T, RIVER_Y } from "./arena";
 import { checkDeploy, createBattle, deployCard, isValidDeck, spawnUnits } from "./battle";
 
 describe("battle setup", () => {
@@ -181,5 +181,24 @@ describe("card levels", () => {
     const b = createBattle();
     const [knight] = spawnUnits(b, "player", "knight", 9, 24);
     expect(knight.maxHp).toBe(1400);
+  });
+});
+
+describe("deploy zone expands when a tower falls", () => {
+  it("destroying an enemy princess tower opens that lane for deploys", () => {
+    const b = createBattle();
+    const left = ARENA_WIDTH_T / 2 - 4.5; // left-lane x in enemy half
+    expect(checkDeploy(b, "player", "knight", left, 8)).toBe("bad-spot");
+    const leftTower = b.entities.find(
+      (e) =>
+        e.side === "enemy" &&
+        e.kind === "princess-tower" &&
+        e.x < ARENA_WIDTH_T / 2,
+    )!;
+    b.entities = b.entities.filter((e) => e !== leftTower);
+    expect(checkDeploy(b, "player", "knight", left, 8)).toBe("ok");
+    // The other lane stays closed.
+    const right = ARENA_WIDTH_T / 2 + 4.5;
+    expect(checkDeploy(b, "player", "knight", right, 8)).toBe("bad-spot");
   });
 });

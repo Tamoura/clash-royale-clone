@@ -1,7 +1,9 @@
 import {
+  ARENA_WIDTH,
   canDeployTroopAt,
   inArena,
   towerSpots,
+  type OpenLanes,
   type Side,
   type TowerKind,
 } from "./arena";
@@ -461,6 +463,22 @@ export function applySpell(
 /** Why a deploy would be rejected (or "ok" if it would succeed). */
 export type DeployCheck = "ok" | "finished" | "not-in-hand" | "bad-spot" | "no-elixir";
 
+/**
+ * Lanes where `side` may push into enemy territory — opened wherever
+ * the opponent's princess tower on that side has been destroyed (CR).
+ */
+export function openLanes(state: BattleState, side: Side): OpenLanes {
+  const opp = side === "player" ? "enemy" : "player";
+  const has = (left: boolean): boolean =>
+    state.entities.some(
+      (e) =>
+        e.side === opp &&
+        e.kind === "princess-tower" &&
+        e.x < ARENA_WIDTH / 2 === left,
+    );
+  return { left: !has(true), right: !has(false) };
+}
+
 /** Dry-run of deployCard, used for UI validity feedback. */
 export function checkDeploy(
   state: BattleState,
@@ -474,7 +492,9 @@ export function checkDeploy(
   if (!me.hand.cards.includes(cardId)) return "not-in-hand";
   const card = getCard(cardId);
   const validSpot =
-    card.kind === "spell" ? inArena(x, y) : canDeployTroopAt(side, x, y);
+    card.kind === "spell"
+      ? inArena(x, y)
+      : canDeployTroopAt(side, x, y, openLanes(state, side));
   if (!validSpot) return "bad-spot";
   if (!trySpend(me.elixir, card.cost)) return "no-elixir";
   return "ok";

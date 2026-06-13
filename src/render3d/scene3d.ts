@@ -30,6 +30,8 @@ function toWorld(ax: number, ay: number): { x: number; z: number } {
 }
 
 const SIDE_COLOR: Record<Side, number> = { player: 0x3b82f6, enemy: 0xef4444 };
+/** HP-bar fill: CR convention — your units green, the enemy's red. */
+const HP_COLOR: Record<Side, number> = { player: 0x35d04a, enemy: 0xef4444 };
 
 /**
  * CR-style steep camera (~66° elevation): the field reads almost
@@ -558,7 +560,7 @@ function buildTowerMesh(e: Entity): EntityView {
 
   const barWidth = king ? 2.2 : 1.8;
   const barY = height + (king ? 1.5 : 1.2);
-  const bar = makeHpBar(barWidth, SIDE_COLOR[e.side], barY);
+  const bar = makeHpBar(barWidth, HP_COLOR[e.side], barY);
   root.add(bar.group);
   view.hpGroup = bar.group;
   view.hpFill = bar.fill;
@@ -614,7 +616,7 @@ function buildTombstoneMesh(e: Entity): EntityView {
   glowOrb.position.set(0, 1.02, 0.02);
   root.add(glowOrb);
 
-  const bar = makeHpBar(1.4, SIDE_COLOR[e.side], 1.6);
+  const bar = makeHpBar(1.4, HP_COLOR[e.side], 1.6);
   root.add(bar.group);
   const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
   label.scale.set(2.0, 0.5, 1);
@@ -667,7 +669,7 @@ function buildCollectorMesh(e: Entity): EntityView {
   drop.position.y = 1.25;
   root.add(drop);
 
-  const bar = makeHpBar(1.4, SIDE_COLOR[e.side], 1.7);
+  const bar = makeHpBar(1.4, HP_COLOR[e.side], 1.7);
   root.add(bar.group);
   const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
   label.scale.set(2.0, 0.5, 1);
@@ -714,7 +716,7 @@ function buildBuildingMesh(e: Entity): EntityView {
   barrel.add(breech);
   root.add(barrel);
 
-  const bar = makeHpBar(1.4, SIDE_COLOR[e.side], 1.15);
+  const bar = makeHpBar(1.4, HP_COLOR[e.side], 1.15);
   root.add(bar.group);
   const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
   label.scale.set(2.0, 0.5, 1);
@@ -771,7 +773,7 @@ function buildTroopMesh(e: Entity): EntityView {
   }
 
   const lift = (rig.hover ?? 0) + rig.height * scale;
-  const bar = makeHpBar(0.9, SIDE_COLOR[e.side], lift + 0.25);
+  const bar = makeHpBar(0.9, HP_COLOR[e.side], lift + 0.25);
   bar.group.visible = false; // shown once damaged
   root.add(bar.group);
 

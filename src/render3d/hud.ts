@@ -63,6 +63,7 @@ export class Hud {
   private readonly nextArt: HTMLElement;
   private readonly cardBtns: HTMLButtonElement[] = [];
   private readonly cardVeils: HTMLElement[] = [];
+  private readonly cardReady: boolean[] = [];
   private readonly overlay: HTMLElement;
   private readonly overlayTitle: HTMLElement;
   private readonly overlayScore: HTMLElement;
@@ -243,16 +244,25 @@ export class Hud {
       const cost = getCard(id).cost;
       const affordable = cost <= amount;
       btn.classList.toggle("locked", !affordable);
-      // Radial charge fill: full dark at 0, clears at cost.
+      // Bottom-up charge fill: dark covers the still-uncharged top,
+      // clearing downward as elixir rises toward the card's cost.
       const progress = Math.max(0, Math.min(1, amount / cost));
       const veil = this.cardVeils[i];
       if (affordable) {
         veil.style.display = "none";
+        // Pop once at the moment it becomes playable.
+        if (this.cardReady[i] === false) {
+          btn.classList.remove("ready-pop");
+          void btn.offsetWidth;
+          btn.classList.add("ready-pop");
+        }
+        this.cardReady[i] = true;
       } else {
         veil.style.display = "block";
-        const deg = progress * 360;
+        const pct = (progress * 100).toFixed(1);
         veil.style.background =
-          `conic-gradient(rgba(8,12,22,0) ${deg}deg, rgba(8,12,22,0.62) ${deg}deg)`;
+          `linear-gradient(to top, rgba(8,12,22,0) ${pct}%, rgba(8,12,22,0.66) ${pct}%)`;
+        this.cardReady[i] = false;
       }
     });
     const nextId = state.player.hand.queue[0];

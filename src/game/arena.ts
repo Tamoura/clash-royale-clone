@@ -38,9 +38,24 @@ export function inRiver(y: number): boolean {
   return Math.abs(y - RIVER_Y) < RIVER_HALF_WIDTH;
 }
 
-export function canDeployTroopAt(side: Side, x: number, y: number): boolean {
+/** Lanes (by side) opened into enemy territory by a fallen tower. */
+export interface OpenLanes {
+  left: boolean;
+  right: boolean;
+}
+
+export function canDeployTroopAt(
+  side: Side,
+  x: number,
+  y: number,
+  open: OpenLanes = { left: false, right: false },
+): boolean {
   if (!inArena(x, y) || inRiver(y)) return false;
-  return side === "player" ? y > RIVER_Y : y < RIVER_Y;
+  const ownHalf = side === "player" ? y > RIVER_Y : y < RIVER_Y;
+  if (ownHalf) return true;
+  // Enemy half is deployable only on a lane whose princess tower fell.
+  const leftLane = x < ARENA_WIDTH / 2;
+  return leftLane ? open.left : open.right;
 }
 
 export function nearestBridgeX(x: number): number {

@@ -240,6 +240,15 @@
         border-radius: 9px;
         pointer-events: none;
         z-index: 2;
+        transition: background 0.12s linear;
+      }
+      button.card.ready-pop {
+        animation: readyPop 0.4s ease;
+      }
+      @keyframes readyPop {
+        0% { transform: scale(1); box-shadow: 0 0 0 rgba(255, 235, 120, 0); }
+        45% { transform: scale(1.12); box-shadow: 0 0 16px rgba(255, 235, 120, 0.9); }
+        100% { transform: scale(1); box-shadow: 0 0 0 rgba(255, 235, 120, 0); }
       }
       /* Unaffordable cards desaturate; the veil shows charge progress. */
       button.card.locked {
