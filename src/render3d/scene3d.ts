@@ -739,8 +739,8 @@ function buildTroopMesh(e: Entity): EntityView {
   const root = new THREE.Group();
   // CR proportions: troops read big against the field, with tanks
   // visibly towering over swarm units.
-  // Characters stand 1.5x larger so they read clearly on the board.
-  const scale = (e.cardId === "giant" || e.cardId === "pekka" ? 1.35 : 1.25) * 0.95 * 1.5;
+  // Modest size: towers stay the prominent 1.5x landmarks.
+  const scale = (e.cardId === "giant" || e.cardId === "pekka" ? 1.35 : 1.25) * 0.95;
   rig.group.scale.setScalar(scale);
   root.add(rig.group);
 
