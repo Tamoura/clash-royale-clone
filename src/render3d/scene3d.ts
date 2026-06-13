@@ -1112,6 +1112,40 @@ export class Battle3D {
     }
   }
 
+  /** Flat 6-pointed golden star inlaid in the floor (CR centerpiece). */
+  private makeStarEmblem(z: number): THREE.Group {
+    const g = new THREE.Group();
+    const points = 6;
+    const outer = 2.6;
+    const inner = 1.15;
+    const shape = new THREE.Shape();
+    for (let i = 0; i <= points * 2; i++) {
+      const r = i % 2 === 0 ? outer : inner;
+      const a = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
+      const px = Math.cos(a) * r;
+      const py = Math.sin(a) * r;
+      if (i === 0) shape.moveTo(px, py);
+      else shape.lineTo(px, py);
+    }
+    const star = new THREE.Mesh(
+      new THREE.ShapeGeometry(shape),
+      toon(0xe8b948),
+    );
+    star.rotation.x = -Math.PI / 2;
+    star.position.set(0, 0.03, z);
+    star.receiveShadow = true;
+    g.add(star);
+    // Darker outline ring just under the star for contrast.
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(inner * 0.55, inner * 0.78, 6),
+      toon(0xb8893a),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(0, 0.035, z);
+    g.add(ring);
+    return g;
+  }
+
   /** CR-style checkerboard grass: two greens, one canvas pixel per tile. */
   private makeGrassTexture(): THREE.CanvasTexture {
     const c = document.createElement("canvas");
@@ -1237,6 +1271,12 @@ export class Battle3D {
     );
     river.position.set(0, -0.04, 0);
     this.scene.add(river);
+
+    // The iconic golden star emblem inlaid on each player's half.
+    for (const sz of [-1, 1]) {
+      const z = sz * (ARENA_HEIGHT / 4 + 0.5);
+      this.scene.add(this.makeStarEmblem(z));
+    }
 
     // Wooden plank bridges with seams and side rails.
     const plankCanvas = document.createElement("canvas");
