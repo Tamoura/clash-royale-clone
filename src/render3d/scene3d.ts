@@ -1154,7 +1154,7 @@ export class Battle3D {
     }
     const crescent = new THREE.Mesh(new THREE.ShapeGeometry(shape), toon(0xe8b948));
     crescent.rotation.x = -Math.PI / 2;
-    crescent.rotation.z = -Math.PI / 2; // open the crescent upward
+    crescent.rotation.z = 0; // open the crescent vertically (down the board)
     crescent.position.set(0, 0.03, z);
     crescent.receiveShadow = true;
     g.add(crescent);
