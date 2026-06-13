@@ -57,6 +57,20 @@ npm test         # run the simulation test suite
 npm run build    # typecheck + production build
 ```
 
+## Play a friend on your Wi-Fi (1v1)
+
+```sh
+npm run play     # starts the game + a small relay, prints a link to share
+```
+
+Open the printed `http://<your-ip>:3101` link on each device (same Wi-Fi),
+build a deck, and tap **Play a Friend**. One player taps **Create a game** and
+reads the code aloud; the other taps **Join** and types it in.
+
+Both devices run the identical, fully-deterministic simulation in lockstep —
+the relay (`server/relay.ts`) only forwards each player's deploys, never the
+game state. See `notes/features/online-1v1.md` for the design.
+
 ## Project conventions
 
 - TDD (red-green-refactor); simulation logic never touches the DOM.
