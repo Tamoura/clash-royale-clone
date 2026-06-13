@@ -485,10 +485,23 @@
         display: none;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
+        /* Top-align + scroll so tall content (deck grid, friend lobby) is
+           always reachable on small phone screens. */
+        justify-content: flex-start;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
         gap: 14px;
+        padding: max(18px, env(safe-area-inset-top)) 16px
+          max(24px, env(safe-area-inset-bottom));
+        box-sizing: border-box;
         background: rgba(10, 14, 22, 0.92);
         z-index: 20;
+      }
+      /* Center short content vertically, but let tall content scroll. */
+      #deckpicker::before,
+      #deckpicker::after {
+        content: "";
+        margin: auto;
       }
       #deckpicker.show {
         display: flex;
