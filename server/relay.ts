@@ -35,7 +35,7 @@ wss.on("connection", (ws) => {
     }
     switch (msg.t) {
       case "create":
-        deliver(hub.create(id, msg.deck));
+        deliver(hub.create(id, msg.deck, msg.mode));
         break;
       case "join":
         deliver(hub.join(id, msg.code.toUpperCase(), msg.deck));

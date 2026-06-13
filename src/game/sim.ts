@@ -34,7 +34,15 @@ export function elixirMultiplier(state: BattleState): 1 | 2 | 3 {
 }
 
 export function isDoubleElixir(state: BattleState): boolean {
-  return elixirMultiplier(state) >= 2;
+  return effectiveElixirMultiplier(state) >= 2;
+}
+
+/**
+ * The elixir rate actually applied. A game-mode rate (3x triple, 7x mega) is a
+ * flat override of the normal time-based curve; otherwise the curve applies.
+ */
+export function effectiveElixirMultiplier(state: BattleState): number {
+  return state.elixirRate > 1 ? state.elixirRate : elixirMultiplier(state);
 }
 
 function livingEnemiesOf(state: BattleState, e: Entity): Entity[] {
@@ -407,7 +415,7 @@ export function tick(state: BattleState, dt: number): void {
   if (state.result) return;
   state.time += dt;
 
-  const mult = elixirMultiplier(state);
+  const mult = effectiveElixirMultiplier(state);
   state.player.elixir = tickElixir(state.player.elixir, dt, mult);
   state.enemy.elixir = tickElixir(state.enemy.elixir, dt, mult);
 

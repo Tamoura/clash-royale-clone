@@ -191,6 +191,8 @@ export interface BattleState {
   buffZones: BuffZone[];
   events: BattleEvent[];
   nextEntityId: number;
+  /** Flat elixir-rate multiplier for game modes (1 = normal, 3 = triple, 7 = mega). */
+  elixirRate: number;
 }
 
 interface TowerStats {
@@ -267,6 +269,7 @@ export function createBattle(
   playerDeck: CardId[] = DEFAULT_DECK,
   enemyDeck: CardId[] = DEFAULT_DECK,
   levels: { player?: CardLevels; enemy?: CardLevels } = {},
+  elixirRate = 1,
 ): BattleState {
   const state: BattleState = {
     entities: [],
@@ -292,6 +295,7 @@ export function createBattle(
     buffZones: [],
     events: [],
     nextEntityId: 1,
+    elixirRate,
   };
   for (const side of ["player", "enemy"] as const) {
     for (const spot of towerSpots(side)) {

@@ -1,6 +1,6 @@
 import type { CardId } from "../game/cards";
 import type { InputFrame } from "./lockstep";
-import type { ServerMsg } from "./protocol";
+import type { MatchMode, ServerMsg } from "./protocol";
 
 /** One message the relay should deliver to a single connection. */
 export interface Outbound {
@@ -12,6 +12,7 @@ interface Room {
   code: string;
   host: { conn: string; deck: CardId[] };
   guest: { conn: string; deck: CardId[] } | null;
+  mode: MatchMode;
 }
 
 /**
@@ -25,10 +26,10 @@ export class RoomHub {
 
   constructor(private readonly genCode: () => string) {}
 
-  create(conn: string, deck: CardId[]): Outbound[] {
+  create(conn: string, deck: CardId[], mode: MatchMode): Outbound[] {
     let code = this.genCode();
     while (this.rooms.has(code)) code = this.genCode();
-    this.rooms.set(code, { code, host: { conn, deck }, guest: null });
+    this.rooms.set(code, { code, host: { conn, deck }, guest: null, mode });
     this.connRoom.set(conn, code);
     return [{ to: conn, msg: { t: "created", code } }];
   }
@@ -39,7 +40,7 @@ export class RoomHub {
     if (room.guest) return [{ to: conn, msg: { t: "error", reason: "room-full" } }];
     room.guest = { conn, deck };
     this.connRoom.set(conn, code);
-    const decks = { hostDeck: room.host.deck, guestDeck: deck };
+    const decks = { hostDeck: room.host.deck, guestDeck: deck, mode: room.mode };
     return [
       { to: room.host.conn, msg: { t: "start", role: "host", ...decks } },
       { to: conn, msg: { t: "start", role: "guest", ...decks } },

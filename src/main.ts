@@ -17,7 +17,7 @@ import { Hud } from "./render3d/hud";
 import { Battle3D } from "./render3d/scene3d";
 import { RoomClient, type NetSocket } from "./net/roomClient";
 import { Lockstep } from "./net/lockstep";
-import { sideForRole, type Role } from "./net/protocol";
+import { sideForRole, type Role, type MatchMode } from "./net/protocol";
 import { stateChecksum } from "./net/checksum";
 
 const stage = document.getElementById("stage")!;
@@ -81,6 +81,34 @@ function loadDifficulty(): string {
 }
 
 let difficulty = loadDifficulty();
+
+// ---- Game modes ----------------------------------------------------------
+
+interface GameMode {
+  id: string;
+  name: string;
+  blurb: string;
+  /** Flat elixir rate (1 normal, 3 triple, 7 mega). */
+  elixirRate: number;
+  /** Both players battle with the same random deck. */
+  mirror: boolean;
+}
+
+const GAME_MODES: GameMode[] = [
+  { id: "classic", name: "Classic", blurb: "Your deck, normal elixir", elixirRate: 1, mirror: false },
+  { id: "triple", name: "Triple Elixir ⚡3", blurb: "3× elixir the whole match", elixirRate: 3, mirror: false },
+  { id: "mega", name: "Mega Elixir ⚡7", blurb: "7× elixir — total chaos", elixirRate: 7, mirror: false },
+  { id: "mirror", name: "Mirror Match", blurb: "Both get the same random deck", elixirRate: 1, mirror: true },
+];
+
+const MODE_KEY = "cr-clone-mode";
+
+function loadMode(): GameMode {
+  const id = localStorage.getItem(MODE_KEY);
+  return GAME_MODES.find((m) => m.id === id) ?? GAME_MODES[0];
+}
+
+let gameMode = loadMode();
 
 // ---- Trophies + card levels (persisted progression) --------------------
 
@@ -169,10 +197,14 @@ function selectCard(id: CardId | null): void {
 function restart(): void {
   mode = "solo";
   online = null;
-  battle = createBattle(playerDeck, botDeck(), {
-    player: cardLevels,
-    enemy: botLevels(),
-  });
+  // Mirror mode: player and bot share one random deck for a pure-skill match.
+  const shared = gameMode.mirror ? botDeck() : null;
+  battle = createBattle(
+    shared ?? playerDeck,
+    shared ?? botDeck(),
+    { player: cardLevels, enemy: botLevels() },
+    gameMode.elixirRate,
+  );
   bot = createBot(Date.now() & 0xffff, DIFFICULTIES[difficulty]);
   selectCard(null);
   hud.setReward(null);
@@ -185,7 +217,13 @@ function restart(): void {
 }
 
 /** Begin a networked match once the relay pairs both players. */
-function startOnlineMatch(client: RoomClient, role: Role, hostDeck: CardId[], guestDeck: CardId[]): void {
+function startOnlineMatch(
+  client: RoomClient,
+  role: Role,
+  hostDeck: CardId[],
+  guestDeck: CardId[],
+  matchMode: MatchMode,
+): void {
   const side = sideForRole(role);
   mode = "online";
   const session: OnlineSession = {
@@ -197,8 +235,10 @@ function startOnlineMatch(client: RoomClient, role: Role, hostDeck: CardId[], gu
   };
   online = session;
   // Identical canonical battle on both peers: host=player, guest=enemy.
-  // No card levels online — a fair, fully-deterministic match.
-  battle = createBattle(hostDeck, guestDeck, {});
+  // No card levels online — a fair, fully-deterministic match. Mirror mode
+  // has both sides battle the host's deck.
+  const enemyDeck = matchMode.mirror ? hostDeck : guestDeck;
+  battle = createBattle(hostDeck, enemyDeck, {}, matchMode.elixirRate);
   selectCard(null);
   hud.setReward(null);
   hud.setOpponentName("Friend");
@@ -296,6 +336,33 @@ function buildDeckPicker(): void {
     diffRow.appendChild(btn);
   }
   pickerRoot.appendChild(diffRow);
+
+  // Game-mode selector (applies to Battle the Bot and, for the host, online).
+  const modeLabel = document.createElement("div");
+  modeLabel.className = "collect-label";
+  modeLabel.textContent = "Game mode";
+  pickerRoot.appendChild(modeLabel);
+
+  const modeRow = document.createElement("div");
+  modeRow.className = "mode-row";
+  const modeBlurb = document.createElement("div");
+  modeBlurb.className = "mode-blurb";
+  for (const m of GAME_MODES) {
+    const btn = document.createElement("button");
+    btn.className = "mode-btn";
+    btn.textContent = m.name;
+    btn.classList.toggle("chosen", m.id === gameMode.id);
+    btn.addEventListener("click", () => {
+      gameMode = m;
+      localStorage.setItem(MODE_KEY, m.id);
+      modeRow.querySelectorAll("button").forEach((b) => b.classList.toggle("chosen", b === btn));
+      modeBlurb.textContent = m.blurb;
+    });
+    modeRow.appendChild(btn);
+  }
+  modeBlurb.textContent = gameMode.blurb;
+  pickerRoot.appendChild(modeRow);
+  pickerRoot.appendChild(modeBlurb);
 
   const startBtn = document.createElement("button");
   startBtn.className = "battle-btn";
@@ -400,7 +467,7 @@ function openFriendLobby(deck: CardId[]): void {
 
   const hint = document.createElement("p");
   hint.className = "lobby-hint";
-  hint.textContent = "You both need to be on the same Wi-Fi.";
+  hint.innerHTML = `Mode: <b>${gameMode.name}</b><br/>You both need to be on the same Wi-Fi.`;
   pickerRoot.appendChild(hint);
 
   const status = document.createElement("div");
@@ -439,7 +506,7 @@ function openFriendLobby(deck: CardId[]): void {
     };
     c.onStart = (p) => {
       pickerRoot.classList.remove("show");
-      startOnlineMatch(c, p.role, p.hostDeck, p.guestDeck);
+      startOnlineMatch(c, p.role, p.hostDeck, p.guestDeck, p.mode);
     };
     c.onError = (reason) => {
       createBtn.disabled = false;
@@ -464,7 +531,9 @@ function openFriendLobby(deck: CardId[]): void {
     createBtn.disabled = true;
     const c = connectRoom();
     wire(c);
-    c.create(deck);
+    // Mirror mode: the host supplies one random deck both players battle with.
+    const hostDeck = gameMode.mirror ? botDeck() : deck;
+    c.create(hostDeck, { elixirRate: gameMode.elixirRate, mirror: gameMode.mirror });
   });
   joinBtn.addEventListener("click", () => {
     const code = codeInput.value.trim().toUpperCase();

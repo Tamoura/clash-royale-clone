@@ -1,6 +1,6 @@
 import type { CardId } from "../game/cards";
 import type { InputFrame } from "./lockstep";
-import type { ClientMsg, Role, ServerMsg } from "./protocol";
+import type { ClientMsg, MatchMode, Role, ServerMsg } from "./protocol";
 
 /** Minimal subset of the browser WebSocket the client needs (mockable). */
 export interface NetSocket {
@@ -16,6 +16,7 @@ export interface StartPayload {
   role: Role;
   hostDeck: CardId[];
   guestDeck: CardId[];
+  mode: MatchMode;
 }
 
 /**
@@ -44,8 +45,8 @@ export class RoomClient {
     socket.onclose = () => this.onClose?.();
   }
 
-  create(deck: CardId[]): void {
-    this.send({ t: "create", deck });
+  create(deck: CardId[], mode: MatchMode): void {
+    this.send({ t: "create", deck, mode });
   }
 
   join(code: string, deck: CardId[]): void {
@@ -75,7 +76,12 @@ export class RoomClient {
         this.onCreated?.(msg.code);
         break;
       case "start":
-        this.onStart?.({ role: msg.role, hostDeck: msg.hostDeck, guestDeck: msg.guestDeck });
+        this.onStart?.({
+          role: msg.role,
+          hostDeck: msg.hostDeck,
+          guestDeck: msg.guestDeck,
+          mode: msg.mode,
+        });
         break;
       case "frame":
         this.onFrame?.(msg.frame);
