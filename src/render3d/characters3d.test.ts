@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { getCard, DECK, type CardId } from "../game/cards";
-import { animateTroop, buildTroop } from "./characters3d";
+import { animateTroop, buildTroop, toon } from "./characters3d";
 
 const TROOP_IDS = DECK.filter((id) => getCard(id).kind === "troop");
 
@@ -259,5 +259,27 @@ describe("animation principles", () => {
     animateTroop(rig, { moving: true, swing: 0, time: Math.PI / 10, phase: 0 });
     expect(Math.abs(rig.legs![0].rotation.x)).toBeLessThan(0.02);
     expect(Math.abs(rig.offArm!.rotation.x)).toBeGreaterThan(0.05);
+  });
+});
+
+describe("surface texturing (3d-texturing skill)", () => {
+  it("toon materials carry a shared grain detail map", () => {
+    const a = toon(0x4e342e);
+    const b = toon(0x94a1ae);
+    expect(a.map).not.toBeNull();
+    expect(a.map).toBe(b.map); // one cached texture, not per-material
+    expect(a.map!.userData.shared).toBe(true);
+  });
+
+  it("material instances stay distinct so per-entity flashes don't bleed", () => {
+    // Two separate rigs must own separate materials (emissive is
+    // mutated per entity for damage flash / rage / charge).
+    const m1 = (buildTroop("knight").group.children.find(
+      (c) => (c as THREE.Mesh).isMesh,
+    ) as THREE.Mesh).material;
+    const m2 = (buildTroop("knight").group.children.find(
+      (c) => (c as THREE.Mesh).isMesh,
+    ) as THREE.Mesh).material;
+    expect(m1).not.toBe(m2);
   });
 });

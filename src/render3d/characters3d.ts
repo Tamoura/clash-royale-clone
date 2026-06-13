@@ -30,8 +30,55 @@ function gradientMap(): THREE.DataTexture {
   return toonGradient;
 }
 
+/**
+ * Shared hand-painted grain map (3d-texturing: a detail/AO-style
+ * map gives flat toon surfaces tactile variation without breaking
+ * the cel look). Near-white so it only gently darkens the base
+ * color — soft paper speckle plus a faint diagonal cloth weave.
+ */
+let grainTexture: THREE.DataTexture | null = null;
+
+function grainMap(): THREE.DataTexture {
+  if (!grainTexture) {
+    // Procedural (DataTexture, no DOM): bright base with a faint
+    // diagonal weave + deterministic speckle, all in 0.86..1.0 so
+    // it only gently darkens — punchy colors, tactile surface.
+    const s = 64;
+    const data = new Uint8Array(s * s * 4);
+    let seed = 1337;
+    const rand = (): number => {
+      seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+      return ((seed >>> 8) & 0xffff) / 0xffff;
+    };
+    for (let y = 0; y < s; y++) {
+      for (let x = 0; x < s; x++) {
+        const weave = (x + y) % 4 === 0 ? 0.94 : 1; // diagonal threads
+        const speckle = 1 - rand() * 0.12;
+        const v = Math.round(255 * weave * speckle);
+        const i = (y * s + x) * 4;
+        data[i] = data[i + 1] = data[i + 2] = v;
+        data[i + 3] = 255;
+      }
+    }
+    grainTexture = new THREE.DataTexture(data, s, s, THREE.RGBAFormat);
+    grainTexture.wrapS = grainTexture.wrapT = THREE.RepeatWrapping;
+    grainTexture.repeat.set(2, 2); // finer grain across each face
+    grainTexture.minFilter = THREE.LinearMipmapLinearFilter;
+    grainTexture.magFilter = THREE.LinearFilter;
+    grainTexture.generateMipmaps = true;
+    grainTexture.userData.shared = true; // disposeDeep must skip it
+    grainTexture.colorSpace = THREE.SRGBColorSpace;
+    grainTexture.needsUpdate = true;
+  }
+  return grainTexture;
+}
+
 export function toon(color: number): THREE.MeshToonMaterial {
-  return new THREE.MeshToonMaterial({ color, gradientMap: gradientMap() });
+  return new THREE.MeshToonMaterial({
+    color,
+    gradientMap: gradientMap(),
+    map: grainMap(),
+  });
 }
 
 /**
