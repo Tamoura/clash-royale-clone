@@ -13,6 +13,9 @@ import { damageLabel } from "./popups";
 import { deathStyle } from "./deathfx";
 import { DUST_INTERVAL, blobShadowScale } from "./ground";
 import { spawnStyle } from "./spawnfx";
+import { ShakeController } from "./shake";
+import { ParticleField } from "./particles";
+import { impactStyle } from "./impactfx";
 import {
   animateTroop,
   articulate,
@@ -74,6 +77,16 @@ function attackSwing(e: Entity, engaged: boolean): number {
 /** Render-loop scratch vectors (render-avoid-allocations). */
 const PREV_POS = new THREE.Vector3();
 const LOOK_AT = new THREE.Vector3();
+
+// Hit-spark pool: one InstancedMesh, reused scratch objects (no per-frame
+// allocation — see the three-best-practices skill).
+const PARTICLE_CAP = 320;
+const SPARK_GRAVITY = 7;
+const SPARK_M = new THREE.Matrix4();
+const SPARK_POS = new THREE.Vector3();
+const SPARK_SCALE = new THREE.Vector3();
+const SPARK_QUAT = new THREE.Quaternion();
+const SPARK_COLOR = new THREE.Color();
 
 const TROOP_DEATH_TIME = 0.5;
 const TOWER_DEATH_TIME = 0.8;
@@ -823,9 +836,12 @@ export class Battle3D {
   private dying: DyingView[] = [];
   private readonly hoverDisc: THREE.Mesh;
   private ghost: { id: CardId; rig: TroopRig } | null = null;
-  /** Remaining camera-shake energy (seconds-ish, decays each frame). */
-  private shake = 0;
+  /** Trauma-based camera shake; big impacts punch harder than small ones. */
+  private readonly shakeCtl = new ShakeController();
   private shakeTime = 0;
+  /** Pooled hit sparks / debris, mirrored into one InstancedMesh. */
+  private readonly sparks = new ParticleField(PARTICLE_CAP);
+  private sparkMesh!: THREE.InstancedMesh;
   /** Rubble piles left by fallen towers; cleared on reset. */
   private rubble: THREE.Object3D[] = [];
   /** Sim projectile meshes by projectile id. */
@@ -857,6 +873,19 @@ export class Battle3D {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x9ec8e8);
     this.scene.fog = new THREE.Fog(0x9ec8e8, 45, 75);
+
+    // One InstancedMesh draws every hit spark; unlit + glowing so they pop.
+    const sparkMat = new THREE.MeshBasicMaterial();
+    sparkMat.toneMapped = false;
+    this.sparkMesh = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(1, 6, 5),
+      sparkMat,
+      PARTICLE_CAP,
+    );
+    this.sparkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.sparkMesh.frustumCulled = false;
+    this.sparkMesh.count = 0;
+    this.scene.add(this.sparkMesh);
 
     // Orthographic = no perspective convergence, so the arena reads
     // as a perfectly straight board (not a trapezoid). Angled from
@@ -1690,6 +1719,11 @@ export class Battle3D {
     }
     for (const [id, view] of this.projViews) {
       if (!seen.has(id)) {
+        // Spark where the shot landed (or fizzled) for a crisp impact.
+        this.sparks.emit({
+          x: view.position.x, y: view.position.y, z: view.position.z,
+          count: 5, speed: 3, spread: 1.4, life: 0.4, size: 0.09, color: 0xfff1c4,
+        });
         this.scene.remove(view);
         disposeDeep(view);
         this.projViews.delete(id);
@@ -1931,9 +1965,25 @@ export class Battle3D {
     this.addShake(0.35);
   }
 
-  /** Kick the camera; intensity stacks but is clamped. */
+  /** Kick the camera; trauma stacks but is clamped. */
   private addShake(amount: number): void {
-    this.shake = Math.min(1, this.shake + amount);
+    this.shakeCtl.add(amount);
+  }
+
+  /** Throw a burst of glowing sparks at an arena point. */
+  private emitSparks(
+    ax: number,
+    ay: number,
+    height: number,
+    count: number,
+    speed: number,
+    spread: number,
+    color: number,
+    size: number,
+    life = 0.45,
+  ): void {
+    const w = toWorld(ax, ay);
+    this.sparks.emit({ x: w.x, y: height, z: w.z, count, speed, spread, life, size, color });
   }
 
   /** Dark necromantic disc that summoned skeletons rise through. */
@@ -2148,7 +2198,15 @@ export class Battle3D {
         else this.arrowVolley(ev.x, ev.y, 4);
         break;
       case "attack":
-        if (ev.ranged) this.projectile(ev);
+        if (ev.ranged) {
+          this.projectile(ev);
+        } else {
+          // Melee landed: sparks fly off the struck target and a heavy
+          // bruiser kicks the camera. (Ranged hits spark when the shot lands.)
+          const s = impactStyle(ev.cardId);
+          this.emitSparks(ev.targetX, ev.targetY, 0.8, s.particles, s.speed, s.spread, s.color, s.size);
+          if (s.trauma > 0) this.addShake(s.trauma);
+        }
         break;
       case "death":
         if (ev.kind === "troop") {
@@ -2157,6 +2215,8 @@ export class Battle3D {
           else if (style.kind === "sparks") this.sparkBurst(ev.x, ev.y, style.color);
           else if (style.kind === "deflate") this.deflate(ev.x, ev.y, style.color);
           else this.puff(ev.x, ev.y, style.color, 0.5);
+          // A little extra crunch on every troop death.
+          this.emitSparks(ev.x, ev.y, 0.6, 6, 3.5, 1.5, style.color, 0.09, 0.5);
         } else {
           this.puff(ev.x, ev.y, 0x8b7c69, 1.6);
           if (ev.kind !== "building") {
@@ -2388,6 +2448,27 @@ export class Battle3D {
     }
   }
 
+  /** Advance the spark pool and mirror live particles into the mesh. */
+  private syncSparks(dt: number): void {
+    this.sparks.update(dt, SPARK_GRAVITY);
+    const mesh = this.sparkMesh;
+    let i = 0;
+    for (const p of this.sparks.particles) {
+      if (!p.active) continue;
+      const f = p.life / p.life0; // 1 → 0 as it dies
+      SPARK_POS.set(p.x, p.y, p.z);
+      SPARK_SCALE.setScalar(p.size * (0.35 + 0.65 * f)); // shrink while fading
+      SPARK_M.compose(SPARK_POS, SPARK_QUAT, SPARK_SCALE);
+      mesh.setMatrixAt(i, SPARK_M);
+      SPARK_COLOR.setHex(p.color);
+      mesh.setColorAt(i, SPARK_COLOR);
+      i++;
+    }
+    mesh.count = i;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }
+
   render(dt: number): void {
     // The river drifts sideways forever.
     if (this.waterTex) {
@@ -2432,18 +2513,23 @@ export class Battle3D {
       });
     }
 
-    // Camera shake: fast decaying jitter around the fixed viewpoint.
-    if (this.shake > 0) {
+    // Camera shake: trauma² jitter around the fixed viewpoint.
+    if (this.shakeCtl.active) {
       this.shakeTime += dt;
-      const s = this.shake * 0.35;
+      const s = this.shakeCtl.intensity * 0.7;
       this.camera.position.set(
         Math.sin(this.shakeTime * 53) * s,
         CAM_HOME.y + Math.sin(this.shakeTime * 61) * s * 0.6,
-        CAM_HOME.z + Math.cos(this.shakeTime * 47) * s,
+        cameraZForView() + Math.cos(this.shakeTime * 47) * s,
       );
-      this.shake = Math.max(0, this.shake - dt * 1.8);
-      if (this.shake === 0) this.camera.position.copy(CAM_HOME);
+      this.shakeCtl.update(dt, 1.8);
+      if (!this.shakeCtl.active) {
+        this.camera.position.set(0, CAM_HOME.y, cameraZForView());
+      }
     }
+
+    // Advance and draw the hit-spark pool through one InstancedMesh.
+    this.syncSparks(dt);
 
     this.effects = this.effects.filter((f) => {
       if (f.delay > 0) {
@@ -2511,7 +2597,9 @@ export class Battle3D {
       disposeDeep(view);
     }
     this.projViews.clear();
-    this.shake = 0;
+    this.shakeCtl.update(999, 1); // drain trauma to rest
+    for (const p of this.sparks.particles) p.active = false;
+    this.sparkMesh.count = 0;
     this.camera.position.set(CAM_HOME.x, CAM_HOME.y, cameraZForView());
     this.camera.lookAt(0, 0, 0);
   }
