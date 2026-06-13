@@ -571,7 +571,12 @@ function buildTowerMesh(e: Entity): EntityView {
 
   const barWidth = king ? 2.2 : 1.8;
   const barY = height + (king ? 1.5 : 1.2);
+  // Sit the bar behind the tower, on its outer side: above enemy towers
+  // (-z, the top), below the player's (+z, the bottom). Keyed to the
+  // canonical side, so it mirrors correctly under the guest's flipped view.
+  const barZ = (e.side === "player" ? 1 : -1) * (king ? 1.7 : 1.4);
   const bar = makeHpBar(barWidth, HP_COLOR[e.side], barY);
+  bar.group.position.z = barZ;
   root.add(bar.group);
   view.hpGroup = bar.group;
   view.hpFill = bar.fill;
@@ -582,7 +587,7 @@ function buildTowerMesh(e: Entity): EntityView {
   bar.group.add(badge);
   const hpText = makeHpText(barY + 0.02);
   hpText.sprite.scale.set(1.1, 0.4, 1);
-  hpText.sprite.position.z = 0.2;
+  hpText.sprite.position.z = barZ + 0.2;
   root.add(hpText.sprite);
   view.hpText = hpText.text;
 
