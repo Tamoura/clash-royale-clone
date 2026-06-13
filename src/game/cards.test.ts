@@ -194,3 +194,18 @@ describe("rarities", () => {
     expect(getCard("freeze").rarity).toBe("epic");
   });
 });
+
+describe("card balance tweaks", () => {
+  it("the P.E.K.K.A is nerfed by 100 HP and 100 damage", () => {
+    const pekka = getCard("pekka");
+    if (pekka.kind !== "troop") throw new Error("pekka troop");
+    expect(pekka.unit.maxHp).toBe(2900);
+    expect(pekka.unit.damage).toBe(650);
+  });
+
+  it("the balloon's death bomb is exactly half a normal hit", () => {
+    const balloon = getCard("balloon");
+    if (balloon.kind !== "troop") throw new Error("balloon troop");
+    expect(balloon.unit.deathDamage).toBe(balloon.unit.damage / 2);
+  });
+});

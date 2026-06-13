@@ -394,8 +394,8 @@ export const CARDS: Record<CardId, Card> = {
     cost: 7,
     count: 1,
     unit: unit({
-      maxHp: 3000,
-      damage: 750,
+      maxHp: 2900,
+      damage: 650,
       hitSpeed: 1.8,
       attackRange: MELEE,
       speed: "slow",
