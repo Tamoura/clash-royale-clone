@@ -1599,17 +1599,17 @@ export class Battle3D {
   }
 
   /** A small arrow-shaped missile oriented along its flight path. */
-  private makeArrow(color: number, length = 0.5): THREE.Group {
+  private makeArrow(color: number, length = 0.7): THREE.Group {
     const g = new THREE.Group();
     const shaft = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.02, 0.02, length, 6),
+      new THREE.CylinderGeometry(0.05, 0.05, length, 8),
       new THREE.MeshBasicMaterial({ color }),
     );
     shaft.rotation.x = Math.PI / 2;
     g.add(shaft);
     const tip = new THREE.Mesh(
-      new THREE.ConeGeometry(0.05, 0.12, 6),
-      new THREE.MeshBasicMaterial({ color: 0x9aa3ad }),
+      new THREE.ConeGeometry(0.11, 0.24, 8),
+      new THREE.MeshBasicMaterial({ color: 0x37474f }),
     );
     tip.rotation.x = Math.PI / 2;
     tip.position.z = length / 2;
@@ -1624,12 +1624,13 @@ export class Battle3D {
     if (!style.muzzleFlash) return;
     const from = toWorld(ev.x, ev.y);
     const flash = new THREE.Mesh(
-      new THREE.SphereGeometry(0.14, 8, 6),
-      new THREE.MeshBasicMaterial({ color: 0xfff3c4, transparent: true }),
+      new THREE.SphereGeometry(0.24, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffb300, transparent: true }),
     );
+    (flash.material as THREE.MeshBasicMaterial).toneMapped = false; // stays hot
     flash.position.set(from.x, ev.kind === "troop" ? 0.9 : 1.6, from.z);
-    this.addEffect(flash, 0.08, (frac) => {
-      flash.scale.setScalar(1 + (1 - frac) * 1.6);
+    this.addEffect(flash, 0.1, (frac) => {
+      flash.scale.setScalar(1 + (1 - frac) * 1.8);
       (flash.material as THREE.MeshBasicMaterial).opacity = frac;
     });
   }
@@ -1843,7 +1844,7 @@ export class Battle3D {
       const ox = Math.cos(angle) * r;
       const oz = Math.sin(angle) * r;
       const w = toWorld(ax, ay);
-      const arrow = this.makeArrow(0xd7ccc8, 0.45);
+      const arrow = this.makeArrow(0x4e342e, 0.6);
       const x = w.x + ox;
       const z = w.z + oz;
       const y0 = 6 + (i % 4) * 0.5;
