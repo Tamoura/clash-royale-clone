@@ -23,7 +23,8 @@
         height: 100%;
         display: flex;
         flex-direction: column;
-        max-width: 760px;
+        /* Portrait phone shape so the tall 9:16 arena fills the view. */
+        width: min(100vw, 52vh);
         margin: 0 auto;
       }
       #topbar {

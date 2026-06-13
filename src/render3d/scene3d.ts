@@ -36,7 +36,7 @@ const SIDE_COLOR: Record<Side, number> = { player: 0x3b82f6, enemy: 0xef4444 };
  * flat/2D while the characters stay visibly 3D. Chosen by grid
  * search so the whole arena + stands fit the frustum at fov 48.
  */
-const CAM_HOME = new THREE.Vector3(0, 25, 26);
+const CAM_HOME = new THREE.Vector3(0, 40, 15);
 /** HP bars and similar boards tilt to face that camera square-on. */
 const BAR_TILT = -Math.atan2(CAM_HOME.y, CAM_HOME.z - 1.0);
 
@@ -837,7 +837,7 @@ export class Battle3D {
 
     this.camera = new THREE.PerspectiveCamera(48, 1, 0.1, 120);
     this.camera.position.copy(CAM_HOME);
-    this.camera.lookAt(0, 0, 1.5);
+    this.camera.lookAt(0, 0, 0);
 
     this.buildLights();
     this.buildArena();
