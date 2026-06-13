@@ -23,8 +23,11 @@ interface Room {
 export class RoomHub {
   private readonly rooms = new Map<string, Room>();
   private readonly connRoom = new Map<string, string>();
+  private readonly genCode: () => string;
 
-  constructor(private readonly genCode: () => string) {}
+  constructor(genCode: () => string) {
+    this.genCode = genCode;
+  }
 
   create(conn: string, deck: CardId[], mode: MatchMode): Outbound[] {
     let code = this.genCode();

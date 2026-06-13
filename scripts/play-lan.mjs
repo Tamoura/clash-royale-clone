@@ -23,7 +23,7 @@ const bin = process.platform === "win32" ? "vite.cmd" : "vite";
 const vite = spawn(`node_modules/.bin/${bin}`, ["--host", "--port", String(VITE_PORT), "--strictPort"], {
   stdio: "inherit",
 });
-const relay = spawn(process.execPath, ["--experimental-transform-types", "server/relay.ts"], {
+const relay = spawn(process.execPath, ["server/relay.ts"], {
   stdio: "inherit",
   env: { ...process.env, RELAY_PORT: String(RELAY_PORT) },
 });
