@@ -44,10 +44,30 @@ accumulator loop already drives it. So:
 
 ## Then: plan a mobile app (after 1v1 ships)
 
-## Status
-- [ ] Layer 1 lockstep scheduler
-- [ ] Layer 2 protocol
-- [ ] Layer 3 room client
-- [ ] Layer 4 relay server
-- [ ] Layer 5 viewpoint flip
-- [ ] Layer 6 menu + wiring + manual two-device test
+## How to play (for the parent hosting)
+1. `npm install` once (pulls `ws`).
+2. `npm run play` on one computer — it prints `http://<your-ip>:3101`.
+3. Each kid opens that link on their device (same Wi-Fi), builds a deck,
+   taps **Play a Friend**. One taps **Create a game** and reads the code
+   aloud; the other types it and taps **Join**. Match starts.
+
+## Verification
+- `src/net/integration.test.ts`: two full peers over the lockstep transport,
+  150 ticks, checksums bit-identical every tick (231 tests total pass).
+- Real browser: host page created `DEER`, a node peer joined, host entered
+  online mode and the lockstep advanced — opponent shown as "Friend".
+- `?viewpoint=enemy` (dev) confirms the guest camera flip + HP bars render.
+
+## Status — DONE
+- [x] Layer 1 lockstep scheduler
+- [x] Layer 2 protocol + checksum
+- [x] Layer 3 room client
+- [x] Layer 4 relay server + `npm run play` launcher
+- [x] Layer 5 viewpoint flip (camera + perspective-aware HUD)
+- [x] Layer 6 menu lobby + wiring + automated two-peer test
+
+## Known limitations (future work)
+- Drift detection warns but doesn't auto-resync (fine for same-device kids).
+- No reconnect; if a device drops, the match ends and returns to menu.
+- LAN only — `scripts/play-lan.mjs` is structured so the relay can later be
+  hosted online without client changes.

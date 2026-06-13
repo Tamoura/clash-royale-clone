@@ -1,4 +1,5 @@
 import type { BattleState } from "../game/battle";
+import type { Side } from "../game/arena";
 import { getCard, type CardId } from "../game/cards";
 import { ELIXIR_MAX } from "../game/elixir";
 import { BATTLE_DURATION, OVERTIME_DURATION, elixirMultiplier } from "../game/sim";
@@ -55,6 +56,7 @@ export class Hud {
   private readonly clock: HTMLElement;
   private readonly playerCrowns: HTMLElement;
   private readonly enemyCrowns: HTMLElement;
+  private readonly opponentName: HTMLElement;
   private readonly muteBtn: HTMLButtonElement;
   private readonly elixirFill: HTMLElement;
   private readonly elixirNum: HTMLElement;
@@ -88,6 +90,7 @@ export class Hud {
     right.innerHTML =
       '<span>0</span> 👑 <span class="pname">Rival Bot</span><span class="level">9</span>';
     this.enemyCrowns = right.querySelector("span:first-child")!;
+    this.opponentName = right.querySelector(".pname")!;
     this.muteBtn = el("button", "mute", topbar);
     this.muteBtn.textContent = "🔊";
     this.muteBtn.addEventListener("click", () => {
@@ -180,7 +183,16 @@ export class Hud {
     target.classList.add("error-shake");
   }
 
-  update(state: BattleState): void {
+  /** Relabel the opponent banner (e.g. "Friend" for an online match). */
+  setOpponentName(name: string): void {
+    this.opponentName.textContent = name;
+  }
+
+  update(state: BattleState, mySide: Side = "player"): void {
+    // From the local player's perspective: "me" sits at the bottom.
+    const me = mySide === "player" ? state.player : state.enemy;
+    const foe = mySide === "player" ? state.enemy : state.player;
+
     // Clock.
     const total = state.overtime
       ? BATTLE_DURATION + OVERTIME_DURATION
@@ -190,11 +202,11 @@ export class Hud {
     this.clock.textContent = state.overtime ? `OVERTIME ${text}` : text;
     this.clock.classList.toggle("overtime", state.overtime);
 
-    this.playerCrowns.textContent = String(state.player.crowns);
-    this.enemyCrowns.textContent = String(state.enemy.crowns);
+    this.playerCrowns.textContent = String(me.crowns);
+    this.enemyCrowns.textContent = String(foe.crowns);
 
     // Elixir (the bar runs hot during double elixir).
-    const amount = state.player.elixir.amount;
+    const amount = me.elixir.amount;
     this.elixirFill.style.width = `${(amount / ELIXIR_MAX) * 100}%`;
     this.elixirNum.textContent = String(Math.floor(amount));
     const mult = elixirMultiplier(state);
@@ -202,10 +214,10 @@ export class Hud {
     this.x2Tag.textContent = mult === 3 ? "x3" : "x2";
 
     // Hand (rebuild card art only when the hand changes).
-    const handKey = state.player.hand.cards.join(",");
+    const handKey = me.hand.cards.join(",");
     if (handKey !== this.handKey) {
       this.handKey = handKey;
-      state.player.hand.cards.forEach((id, i) => {
+      me.hand.cards.forEach((id, i) => {
         const btn = this.cardBtns[i];
         const isNewDraw = btn.dataset.card !== undefined && btn.dataset.card !== id;
         btn.dataset.card = id;
@@ -229,7 +241,7 @@ export class Hud {
         key.className = "key-chip";
         key.textContent = String(i + 1); // keyboard shortcut hint
         btn.appendChild(key);
-        const lvl = state.player.levels[id] ?? 1;
+        const lvl = me.levels[id] ?? 1;
         if (lvl > 1) {
           const chip = document.createElement("div");
           chip.className = "lvl-chip";
@@ -238,7 +250,7 @@ export class Hud {
         }
       });
     }
-    state.player.hand.cards.forEach((id, i) => {
+    me.hand.cards.forEach((id, i) => {
       const btn = this.cardBtns[i];
       btn.classList.toggle("selected", this.selected === id);
       const cost = getCard(id).cost;
@@ -265,7 +277,7 @@ export class Hud {
         this.cardReady[i] = false;
       }
     });
-    const nextId = state.player.hand.queue[0];
+    const nextId = me.hand.queue[0];
     if (nextId !== this.nextKey) {
       this.nextKey = nextId;
       this.nextArt.innerHTML = "";
@@ -275,12 +287,15 @@ export class Hud {
     // Result overlay.
     if (state.result) {
       const { winner, playerCrowns, enemyCrowns } = state.result;
+      const iWon = winner === mySide;
       this.overlayTitle.textContent =
-        winner === "player" ? "VICTORY! 🎉" : winner === "enemy" ? "DEFEAT" : "DRAW";
-      this.overlayTitle.dataset.kind = winner;
-      this.overlayScore.textContent = `👑 ${playerCrowns} — ${enemyCrowns} 👑`;
-      const p = state.player.stats;
-      const e = state.enemy.stats;
+        winner === "draw" ? "DRAW" : iWon ? "VICTORY! 🎉" : "DEFEAT";
+      this.overlayTitle.dataset.kind = winner === "draw" ? "draw" : iWon ? "player" : "enemy";
+      const myCrowns = mySide === "player" ? playerCrowns : enemyCrowns;
+      const foeCrowns = mySide === "player" ? enemyCrowns : playerCrowns;
+      this.overlayScore.textContent = `👑 ${myCrowns} — ${foeCrowns} 👑`;
+      const p = me.stats;
+      const e = foe.stats;
       this.overlayStats.innerHTML =
         `<div class="stat-row"><span>${Math.round(p.damageDealt)}</span>` +
         `<label>damage</label><span>${Math.round(e.damageDealt)}</span></div>` +
