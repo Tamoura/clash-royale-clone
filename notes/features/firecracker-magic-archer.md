@@ -37,3 +37,13 @@ Branch: `feature/firecracker-magic-archer` (stacked on `feature/online-1v1`).
 - Lockstep netcode replays inputs (not state), so new sim/projectile fields are
   safe — both clients run the identical deterministic sim.
 - Projectiles are created at exactly one site: `dealDamage` in `sim.ts`.
+
+## Status: complete
+
+Shipped in 4 commits (A–D) following the order above, all green (243 tests,
+clean `tsc`, `npm run build` OK):
+
+- A — card defs + `pierce`/`recoil` UnitStats fields + frame colors.
+- B — sim mechanics: target persistence, pierce flight, recoil hop.
+- C — 3D rigs (`buildFirecracker`, `buildMagicArcher`).
+- D — DECK wiring + 2D deck-tile art + tooltip traits + projectile styles.
