@@ -1123,37 +1123,41 @@ export class Battle3D {
     }
   }
 
-  /** Flat 6-pointed golden star inlaid in the floor (CR centerpiece). */
-  private makeStarEmblem(z: number): THREE.Group {
+  /** Flat golden crescent moon inlaid in the floor (arena centerpiece). */
+  private makeCrescentEmblem(z: number): THREE.Group {
     const g = new THREE.Group();
-    const points = 6;
-    const outer = 2.6;
-    const inner = 1.15;
+    const R = 2.5; // outer disc radius
+    const r = 2.2; // bite disc radius
+    const cx = 1.5; // bite offset; the crescent opens toward +x
+    // Horn (intersection) points of the two circles.
+    const ix = (cx * cx + R * R - r * r) / (2 * cx);
+    const iy = Math.sqrt(Math.max(0, R * R - ix * ix));
+    const thTop = Math.atan2(iy, ix);
+    const thBot = Math.atan2(-iy, ix);
+    const bTop = Math.atan2(iy, ix - cx);
+    const bBot = Math.atan2(-iy, ix - cx);
+    const steps = 48;
     const shape = new THREE.Shape();
-    for (let i = 0; i <= points * 2; i++) {
-      const r = i % 2 === 0 ? outer : inner;
-      const a = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
-      const px = Math.cos(a) * r;
-      const py = Math.sin(a) * r;
-      if (i === 0) shape.moveTo(px, py);
-      else shape.lineTo(px, py);
+    // Outer far arc: top horn, counter-clockwise around the big disc.
+    for (let i = 0; i <= steps; i++) {
+      const a = thTop + (i / steps) * (thBot + Math.PI * 2 - thTop);
+      const x = Math.cos(a) * R;
+      const y = Math.sin(a) * R;
+      if (i === 0) shape.moveTo(x, y);
+      else shape.lineTo(x, y);
     }
-    const star = new THREE.Mesh(
-      new THREE.ShapeGeometry(shape),
-      toon(0xe8b948),
-    );
-    star.rotation.x = -Math.PI / 2;
-    star.position.set(0, 0.03, z);
-    star.receiveShadow = true;
-    g.add(star);
-    // Darker outline ring just under the star for contrast.
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(inner * 0.55, inner * 0.78, 6),
-      toon(0xb8893a),
-    );
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.set(0, 0.035, z);
-    g.add(ring);
+    // Concave inner arc: back along the bite disc through its left bulge.
+    const span = bBot - (bTop - Math.PI * 2);
+    for (let i = 1; i <= steps; i++) {
+      const a = bBot - (i / steps) * span;
+      shape.lineTo(cx + Math.cos(a) * r, Math.sin(a) * r);
+    }
+    const crescent = new THREE.Mesh(new THREE.ShapeGeometry(shape), toon(0xe8b948));
+    crescent.rotation.x = -Math.PI / 2;
+    crescent.rotation.z = -Math.PI / 2; // open the crescent upward
+    crescent.position.set(0, 0.03, z);
+    crescent.receiveShadow = true;
+    g.add(crescent);
     return g;
   }
 
@@ -1338,10 +1342,10 @@ export class Battle3D {
     river.position.set(0, -0.04, 0);
     this.scene.add(river);
 
-    // The iconic golden star emblem inlaid on each player's half.
+    // Golden crescent emblem inlaid on each player's half.
     for (const sz of [-1, 1]) {
       const z = sz * (ARENA_HEIGHT / 4 + 0.5);
-      this.scene.add(this.makeStarEmblem(z));
+      this.scene.add(this.makeCrescentEmblem(z));
     }
 
     // Wooden plank bridges with seams and side rails.
