@@ -62,6 +62,7 @@ export class Hud {
   private x2Tag!: HTMLElement;
   private readonly nextArt: HTMLElement;
   private readonly cardBtns: HTMLButtonElement[] = [];
+  private readonly cardVeils: HTMLElement[] = [];
   private readonly overlay: HTMLElement;
   private readonly overlayTitle: HTMLElement;
   private readonly overlayScore: HTMLElement;
@@ -140,6 +141,10 @@ export class Hud {
         }
         this.cb.onSelectCard(this.selected === id ? null : id);
       });
+      // Radial elixir-charge veil: a dark conic overlay that retreats
+      // clockwise as elixir approaches this card's cost.
+      const veil = el("div", "elixir-veil", btn);
+      this.cardVeils.push(veil);
       this.cardBtns.push(btn);
     }
 
@@ -235,7 +240,20 @@ export class Hud {
     state.player.hand.cards.forEach((id, i) => {
       const btn = this.cardBtns[i];
       btn.classList.toggle("selected", this.selected === id);
-      btn.classList.toggle("locked", getCard(id).cost > amount);
+      const cost = getCard(id).cost;
+      const affordable = cost <= amount;
+      btn.classList.toggle("locked", !affordable);
+      // Radial charge fill: full dark at 0, clears at cost.
+      const progress = Math.max(0, Math.min(1, amount / cost));
+      const veil = this.cardVeils[i];
+      if (affordable) {
+        veil.style.display = "none";
+      } else {
+        veil.style.display = "block";
+        const deg = progress * 360;
+        veil.style.background =
+          `conic-gradient(rgba(8,12,22,0) ${deg}deg, rgba(8,12,22,0.62) ${deg}deg)`;
+      }
     });
     const nextId = state.player.hand.queue[0];
     if (nextId !== this.nextKey) {

@@ -234,6 +234,17 @@
         margin-top: 6px;
         text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
       }
+      .elixir-veil {
+        position: absolute;
+        inset: 0;
+        border-radius: 9px;
+        pointer-events: none;
+        z-index: 2;
+      }
+      /* Unaffordable cards desaturate; the veil shows charge progress. */
+      button.card.locked {
+        filter: grayscale(0.55) brightness(0.85);
+      }
       .key-chip {
         position: absolute;
         right: -6px;
@@ -353,9 +364,7 @@
           0 0 14px rgba(255, 224, 130, 0.8);
         transform: translateY(-4px);
       }
-      button.card.locked {
-        filter: grayscale(0.7) brightness(0.6);
-      }
+      /* (locked styling unified below with the elixir veil) */
       button.card canvas {
         width: 68px;
         height: 68px;

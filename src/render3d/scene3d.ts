@@ -36,7 +36,7 @@ const SIDE_COLOR: Record<Side, number> = { player: 0x3b82f6, enemy: 0xef4444 };
  * flat/2D while the characters stay visibly 3D. Chosen by grid
  * search so the whole arena + stands fit the frustum at fov 48.
  */
-const CAM_HOME = new THREE.Vector3(0, 40, 15);
+const CAM_HOME = new THREE.Vector3(0, 34, 22);
 /** HP bars and similar boards tilt to face that camera square-on. */
 const BAR_TILT = -Math.atan2(CAM_HOME.y, CAM_HOME.z - 1.0);
 
@@ -85,6 +85,8 @@ interface EntityView {
   flashT: number;
   spawnT: number;
   isTroop: boolean;
+  /** Resting scale (towers stand 1.5x for prominence). */
+  baseScale?: number;
   /** Spinning stars shown while the entity is stunned (lazy). */
   stunStars?: THREE.Sprite;
   /** Whether any emissive glow (flash/rage/charge) is applied. */
@@ -576,6 +578,8 @@ function buildTowerMesh(e: Entity): EntityView {
   view.flashT = 0;
   view.spawnT = SPAWN_POP_TIME; // towers don't pop in
   view.isTroop = false;
+  view.baseScale = 1.5; // towers stand 50% larger for prominence
+  root.scale.setScalar(1.5);
   return view as EntityView;
 }
 
@@ -735,7 +739,8 @@ function buildTroopMesh(e: Entity): EntityView {
   const root = new THREE.Group();
   // CR proportions: troops read big against the field, with tanks
   // visibly towering over swarm units.
-  const scale = (e.cardId === "giant" || e.cardId === "pekka" ? 1.35 : 1.25) * 0.95;
+  // Characters stand 1.5x larger so they read clearly on the board.
+  const scale = (e.cardId === "giant" || e.cardId === "pekka" ? 1.35 : 1.25) * 0.95 * 1.5;
   rig.group.scale.setScalar(scale);
   root.add(rig.group);
 
@@ -792,7 +797,7 @@ function buildTroopMesh(e: Entity): EntityView {
 export class Battle3D {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene: THREE.Scene;
-  readonly camera: THREE.PerspectiveCamera;
+  readonly camera: THREE.OrthographicCamera;
   private readonly raycaster = new THREE.Raycaster();
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly views = new Map<number, EntityView>();
@@ -835,9 +840,13 @@ export class Battle3D {
     this.scene.background = new THREE.Color(0x9ec8e8);
     this.scene.fog = new THREE.Fog(0x9ec8e8, 45, 75);
 
-    this.camera = new THREE.PerspectiveCamera(48, 1, 0.1, 120);
+    // Orthographic = no perspective convergence, so the arena reads
+    // as a perfectly straight board (not a trapezoid). Angled from
+    // the player's elevated side, not straight down from the sky.
+    this.camera = new THREE.OrthographicCamera(-10, 10, 18, -18, -50, 120);
     this.camera.position.copy(CAM_HOME);
     this.camera.lookAt(0, 0, 0);
+    this.frameOrtho();
 
     this.buildLights();
     this.buildArena();
@@ -1383,13 +1392,28 @@ export class Battle3D {
     }
   }
 
+  /** Fit the arena to the viewport with an orthographic frustum. */
+  private frameOrtho(): void {
+    const w = this.container.clientWidth || 1;
+    const h = this.container.clientHeight || 1;
+    const aspect = w / h;
+    // World-units of half-height the view must cover so the whole
+    // board (incl. towers + edging) fits; width follows the aspect.
+    const halfH = 15.5;
+    const halfW = Math.max(halfH * aspect, 10.5);
+    this.camera.left = -halfW;
+    this.camera.right = halfW;
+    this.camera.top = halfH;
+    this.camera.bottom = -halfH;
+    this.camera.updateProjectionMatrix();
+  }
+
   resize(): void {
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
     this.renderer.setSize(w, h, false);
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
+    this.frameOrtho();
   }
 
   /** Convert a pointer event to arena tile coordinates, if on the field. */
@@ -2165,17 +2189,18 @@ export class Battle3D {
       view.root.position.z = w.z;
 
       // Spawn entrance: rise out of the ground, or pop-in bounce.
+      const baseScale = view.baseScale ?? 1;
       if (view.spawnT < SPAWN_POP_TIME) {
         view.spawnT += dt;
         const f = Math.min(1, view.spawnT / SPAWN_POP_TIME);
         if (view.spawnStyle === "rise") {
           view.root.position.y = -1.0 * (1 - f) * (1 - f);
-          view.root.scale.setScalar(1);
+          view.root.scale.setScalar(baseScale);
         } else {
-          view.root.scale.setScalar(Math.max(0.05, easeOutBack(f)));
+          view.root.scale.setScalar(Math.max(0.05, easeOutBack(f) * baseScale));
         }
-      } else if (view.root.scale.x !== 1 || view.root.position.y !== 0) {
-        view.root.scale.setScalar(1);
+      } else if (view.root.scale.x !== baseScale || view.root.position.y !== 0) {
+        view.root.scale.setScalar(baseScale);
         view.root.position.y = 0;
       }
 

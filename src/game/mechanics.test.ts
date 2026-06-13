@@ -441,3 +441,27 @@ describe("fireball knockback", () => {
     expect(tower.y).toBe(y);
   });
 });
+
+describe("nearest-target acquisition", () => {
+  it("a troop picks a closer tower over an in-sight but farther troop", () => {
+    const b = createBattle();
+    const tower = b.entities.find(
+      (e) => e.side === "enemy" && e.kind === "princess-tower",
+    )!;
+    const [knight] = spawnUnits(b, "player", "knight", tower.x, tower.y + 2.2);
+    spawnUnits(b, "enemy", "knight", tower.x, tower.y + 6); // in sight, farther
+    tick(b, TICK);
+    expect(knight.targetId).toBe(tower.id);
+  });
+
+  it("a troop picks a closer enemy troop over a farther tower", () => {
+    const b = createBattle();
+    const tower = b.entities.find(
+      (e) => e.side === "enemy" && e.kind === "princess-tower",
+    )!;
+    const [knight] = spawnUnits(b, "player", "knight", tower.x, tower.y + 7);
+    const [foe] = spawnUnits(b, "enemy", "knight", tower.x, tower.y + 4.5);
+    tick(b, TICK);
+    expect(knight.targetId).toBe(foe.id);
+  });
+});

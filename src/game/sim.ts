@@ -82,10 +82,14 @@ function acquireTarget(state: BattleState, e: Entity): Entity | null {
   if (e.targetsBuildingsOnly) {
     return nearest(e, enemies.filter(isBuilding));
   }
-  const troopsInSight = enemies.filter(
-    (o) => o.kind === "troop" && canHit(e, o) && gap(e, o) <= e.sightRange,
+  // Head for the genuinely nearest enemy: any troop within sight plus
+  // every building/tower (which troops always march toward).
+  const candidates = enemies.filter(
+    (o) =>
+      canHit(e, o) &&
+      (isBuilding(o) || (o.kind === "troop" && gap(e, o) <= e.sightRange)),
   );
-  return nearest(e, troopsInSight) ?? nearest(e, enemies.filter(isBuilding));
+  return nearest(e, candidates);
 }
 
 function retarget(state: BattleState, e: Entity): Entity | null {
