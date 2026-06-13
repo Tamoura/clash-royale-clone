@@ -30,16 +30,13 @@ export interface InputFrame {
  */
 export class Lockstep {
   private readonly frames = new Map<number, Partial<Record<Side, DeployCommand[]>>>();
-  private readonly remoteSide: Side;
   private pending: DeployCommand[] = [];
   private simTick = 0;
 
   constructor(
     private readonly localSide: Side,
     private readonly delay: number,
-  ) {
-    this.remoteSide = localSide === "player" ? "enemy" : "player";
-  }
+  ) {}
 
   /**
    * The opening `delay` empty local frames. These unblock ticks `0..delay-1`

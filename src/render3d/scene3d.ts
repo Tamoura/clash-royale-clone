@@ -33,6 +33,15 @@ const SIDE_COLOR: Record<Side, number> = { player: 0x3b82f6, enemy: 0xef4444 };
 /** HP-bar fill: CR convention — your units green, the enemy's red. */
 const HP_COLOR: Record<Side, number> = { player: 0x35d04a, enemy: 0xef4444 };
 
+// Which side sits at the bottom of the screen. The host views as "player"
+// (default); an online guest views as "enemy", so the camera looks from the
+// far side and flat HP bars rotate 180° about Y to match — viewed from the
+// opposite side, the two cancel out and bars read identically.
+let viewSide: Side = "player";
+function cameraZForView(): number {
+  return viewSide === "player" ? CAM_HOME.z : -CAM_HOME.z;
+}
+
 /**
  * CR-style steep camera (~66° elevation): the field reads almost
  * flat/2D while the characters stay visibly 3D. Chosen by grid
@@ -209,7 +218,9 @@ function makeHpBar(width: number, color: number, y: number): {
   fill.add(gloss);
   group.add(bg, fill);
   group.position.y = y;
-  group.rotation.x = BAR_TILT; // face the steep camera
+  // Face the steep camera; for the enemy viewpoint, also spin 180° about Y.
+  if (viewSide === "enemy") group.rotation.set(BAR_TILT, Math.PI, 0, "YXZ");
+  else group.rotation.x = BAR_TILT;
   return { group, fill };
 }
 
@@ -1418,6 +1429,20 @@ export class Battle3D {
     this.frameOrtho();
   }
 
+  /**
+   * Choose which side sits at the bottom of the screen. The host views as
+   * "player" (default); an online guest views as "enemy" so they too look at
+   * their own towers from below. Call before a match builds its entities.
+   */
+  setViewpoint(side: Side): void {
+    viewSide = side;
+    this.camera.position.set(CAM_HOME.x, CAM_HOME.y, cameraZForView());
+    this.camera.lookAt(0, 0, 0);
+    const m = side === "player" ? 1 : -1;
+    this.zonePlane.position.z = m * (ARENA_HEIGHT / 4 + 0.5);
+    this.enemyZonePlane.position.z = -m * (ARENA_HEIGHT / 4 - 0.5);
+  }
+
   /** Convert a pointer event to arena tile coordinates, if on the field. */
   pick(clientX: number, clientY: number): { x: number; y: number } | null {
     const rect = this.renderer.domElement.getBoundingClientRect();
@@ -2477,6 +2502,7 @@ export class Battle3D {
     }
     this.projViews.clear();
     this.shake = 0;
-    this.camera.position.copy(CAM_HOME);
+    this.camera.position.set(CAM_HOME.x, CAM_HOME.y, cameraZForView());
+    this.camera.lookAt(0, 0, 0);
   }
 }
