@@ -566,6 +566,8 @@ export const CARDS: Record<CardId, Card> = {
 export const DECK: CardId[] = [
   "knight",
   "archers",
+  "firecracker",
+  "magic-archer",
   "giant",
   "fireball",
   "musketeer",

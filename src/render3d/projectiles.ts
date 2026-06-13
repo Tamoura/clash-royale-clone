@@ -48,6 +48,12 @@ export function projectileStyle(
       return { ...ORB_DEFAULTS, color: 0x263238, size: 0.15, arc: 0.8 };
     case "musketeer":
       return { ...ORB_DEFAULTS, color: 0x37474f, duration: 0.12, muzzleFlash: true };
+    case "magic-archer":
+      // A piercing magic arrow: glowing purple, flying flat and far.
+      return { ...ORB_DEFAULTS, form: "arrow", color: 0xb98bff, glow: true, arc: 0.12, duration: 0.3 };
+    case "firecracker":
+      // A spitting firework spark with a bright muzzle flash.
+      return { ...ORB_DEFAULTS, color: 0xff7a18, size: 0.13, glow: true, arc: 0.4, muzzleFlash: true };
     default:
       return { ...ORB_DEFAULTS, color: 0x37474f };
   }

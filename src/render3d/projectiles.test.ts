@@ -24,6 +24,19 @@ describe("projectile styles", () => {
     expect(m.glow).toBe(false);
   });
 
+  it("the magic archer looses a glowing flat-flying arrow", () => {
+    const m = projectileStyle("magic-archer", "troop");
+    expect(m.form).toBe("arrow");
+    expect(m.glow).toBe(true);
+    expect(m.arc).toBeLessThan(0.3); // a piercing line, not a lob
+  });
+
+  it("the firecracker spits a glowing spark", () => {
+    const f = projectileStyle("firecracker", "troop");
+    expect(f.glow).toBe(true);
+    expect(f.muzzleFlash).toBe(true);
+  });
+
   it("falls back to a plain ball for unknown ranged attackers", () => {
     const d = projectileStyle("knight", "troop");
     expect(d.form).toBe("orb");

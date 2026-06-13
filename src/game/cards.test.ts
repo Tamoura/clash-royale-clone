@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { CARDS, DECK, getCard } from "./cards";
 
 describe("cards", () => {
-  it("defines the 23-card deck", () => {
+  it("defines the 25-card deck", () => {
     expect(DECK).toEqual([
       "knight",
       "archers",
+      "firecracker",
+      "magic-archer",
       "giant",
       "fireball",
       "musketeer",
