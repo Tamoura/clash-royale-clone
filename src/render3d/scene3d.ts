@@ -36,7 +36,7 @@ const SIDE_COLOR: Record<Side, number> = { player: 0x3b82f6, enemy: 0xef4444 };
  * flat/2D while the characters stay visibly 3D. Chosen by grid
  * search so the whole arena + stands fit the frustum at fov 48.
  */
-const CAM_HOME = new THREE.Vector3(0, 36, 17);
+const CAM_HOME = new THREE.Vector3(0, 25, 26);
 /** HP bars and similar boards tilt to face that camera square-on. */
 const BAR_TILT = -Math.atan2(CAM_HOME.y, CAM_HOME.z - 1.0);
 
@@ -832,12 +832,12 @@ export class Battle3D {
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x76aede);
-    this.scene.fog = new THREE.Fog(0x76aede, 45, 75);
+    this.scene.background = new THREE.Color(0x9ec8e8);
+    this.scene.fog = new THREE.Fog(0x9ec8e8, 45, 75);
 
     this.camera = new THREE.PerspectiveCamera(48, 1, 0.1, 120);
     this.camera.position.copy(CAM_HOME);
-    this.camera.lookAt(0, 0, 1.0);
+    this.camera.lookAt(0, 0, 1.5);
 
     this.buildLights();
     this.buildArena();
@@ -893,16 +893,16 @@ export class Battle3D {
     // Distant ground so the arena never floats in a void.
     const far = new THREE.Mesh(
       new THREE.PlaneGeometry(140, 140),
-      new THREE.MeshToonMaterial({ color: 0x2f5a35 }),
+      new THREE.MeshToonMaterial({ color: 0xdbe6f0 }),
     );
     far.rotation.x = -Math.PI / 2;
     far.position.y = -0.45;
     this.scene.add(far);
 
-    // Outer apron of darker grass framing the arena.
+    // Outer apron of snow framing the arena.
     const apron = new THREE.Mesh(
       new THREE.BoxGeometry(ARENA_WIDTH + 10, 0.36, ARENA_HEIGHT + 10),
-      toon(0x3e7d41),
+      toon(0xe4ecf5),
     );
     apron.position.y = -0.24;
     apron.receiveShadow = true;
@@ -1146,23 +1146,66 @@ export class Battle3D {
     return g;
   }
 
-  /** CR-style checkerboard grass: two greens, one canvas pixel per tile. */
+  /** Winter arena floor: sandy stone tiles with mortar lines (hi-res). */
   private makeGrassTexture(): THREE.CanvasTexture {
+    const tile = 32; // px per arena unit
     const c = document.createElement("canvas");
-    c.width = ARENA_WIDTH;
-    c.height = ARENA_HEIGHT;
+    c.width = ARENA_WIDTH * tile;
+    c.height = ARENA_HEIGHT * tile;
     const ctx = c.getContext("2d")!;
-    for (let y = 0; y < ARENA_HEIGHT; y++) {
-      for (let x = 0; x < ARENA_WIDTH; x++) {
-        ctx.fillStyle = (x + y) % 2 ? "#5cb15f" : "#54a657";
-        ctx.fillRect(x, y, 1, 1);
+    let seed = 7;
+    const rand = (): number => {
+      seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+      return ((seed >>> 8) & 0xffff) / 0xffff;
+    };
+    // Stone blocks span 2 arena units; warm beige with per-tile shade.
+    const block = tile * 2;
+    for (let y = 0; y < c.height; y += block) {
+      for (let x = 0; x < c.width; x += block) {
+        const shade = 0.92 + rand() * 0.08;
+        const r = Math.round(214 * shade);
+        const g = Math.round(196 * shade);
+        const b = Math.round(158 * shade);
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(x, y, block, block);
+        // Speckle for grit.
+        ctx.fillStyle = "rgba(120,100,70,0.10)";
+        for (let s = 0; s < 6; s++) {
+          ctx.fillRect(x + rand() * block, y + rand() * block, 2, 2);
+        }
       }
     }
+    // Mortar grid between blocks.
+    ctx.strokeStyle = "rgba(120,100,70,0.45)";
+    ctx.lineWidth = 2;
+    for (let x = 0; x <= c.width; x += block) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, c.height);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= c.height; y += block) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(c.width, y);
+      ctx.stroke();
+    }
     const tex = new THREE.CanvasTexture(c);
-    tex.magFilter = THREE.NearestFilter; // crisp tile edges
-    tex.minFilter = THREE.NearestFilter;
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
+  }
+
+  /** A lumpy snow drift mound (winter theme scenery). */
+  private makeSnowDrift(x: number, z: number, scale: number): THREE.Mesh {
+    const drift = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+      toon(0xeef4ff),
+    );
+    drift.scale.set(scale, scale * 0.45, scale);
+    drift.position.set(x, -0.05, z);
+    drift.castShadow = true;
+    drift.receiveShadow = true;
+    return drift;
   }
 
   private buildArena(): void {
@@ -1171,22 +1214,34 @@ export class Battle3D {
     const field = new THREE.Mesh(
       new THREE.BoxGeometry(ARENA_WIDTH + 0.6, 0.4, ARENA_HEIGHT),
       [
-        toon(0x4c9e4f).clone(), // sides
-        toon(0x4c9e4f).clone(),
+        toon(0xb8a886).clone(), // stone sides
+        toon(0xb8a886).clone(),
         fieldMat, // top
-        toon(0x4c9e4f).clone(),
-        toon(0x4c9e4f).clone(),
-        toon(0x4c9e4f).clone(),
+        toon(0xb8a886).clone(),
+        toon(0xb8a886).clone(),
+        toon(0xb8a886).clone(),
       ],
     );
     field.position.set(0, -0.2, 0);
     field.receiveShadow = true;
     this.scene.add(field);
 
-    // Pale stone edging around the playfield, post at each corner.
+    // Snow drifts piled along the playfield edges (winter theme).
+    const dhw = ARENA_WIDTH / 2 + 1.1;
+    const dhd = ARENA_HEIGHT / 2 + 0.6;
+    const driftSpots: Array<[number, number, number]> = [
+      [-dhw, -11, 1.6], [-dhw, -3, 1.3], [-dhw, 6, 1.7], [-dhw, 13, 1.4],
+      [dhw, -13, 1.5], [dhw, -5, 1.6], [dhw, 4, 1.3], [dhw, 12, 1.7],
+      [-5, -dhd, 1.8], [5, -dhd, 1.5], [-6, dhd, 1.6], [6, dhd, 1.9],
+    ];
+    for (const [x, z, sc] of driftSpots) {
+      this.scene.add(this.makeSnowDrift(x, z, sc));
+    }
+
+    // Pale snowy stone edging around the playfield, post at each corner.
     const hw = ARENA_WIDTH / 2 + 0.45;
     const hd = ARENA_HEIGHT / 2 + 0.15;
-    const stone = 0xc6bda9;
+    const stone = 0xd8d0c0;
     for (const side of [-1, 1]) {
       const rail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.34, ARENA_HEIGHT + 0.9), toon(stone));
       rail.position.set(side * hw, 0.05, 0);
