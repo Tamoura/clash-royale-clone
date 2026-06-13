@@ -148,18 +148,45 @@ function restart(): void {
 
 const pickerRoot = document.getElementById("deckpicker")!;
 
+/** Small card tile canvas reused in the deck row and collection grid. */
+function cardTileCanvas(id: CardId): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = c.height = 48;
+  const ctx = c.getContext("2d")!;
+  ctx.fillStyle = CARD_COLOR[id];
+  ctx.beginPath();
+  ctx.roundRect(0, 0, 48, 48, 7);
+  ctx.fill();
+  drawCardArt(ctx, id, 24, 26, 26);
+  return c;
+}
+
 function buildDeckPicker(): void {
   pickerRoot.innerHTML = "";
   const title = document.createElement("h2");
   title.textContent = "Build your battle deck";
   pickerRoot.appendChild(title);
+
+  // Ordered deck of up to 8; slots fill as you pick, click to remove.
+  const deck: CardId[] = playerDeck.slice(0, 8);
+
+  const deckRow = document.createElement("div");
+  deckRow.className = "deck-slots";
+  pickerRoot.appendChild(deckRow);
+
   const count = document.createElement("div");
   count.className = "deck-count";
   pickerRoot.appendChild(count);
+
+  const collectLabel = document.createElement("div");
+  collectLabel.className = "collect-label";
+  collectLabel.textContent = "Collection — tap to add";
+  pickerRoot.appendChild(collectLabel);
+
   const grid = document.createElement("div");
   grid.className = "picker-grid";
   pickerRoot.appendChild(grid);
-  // Opponent difficulty selector.
+
   const diffRow = document.createElement("div");
   diffRow.className = "diff-row";
   for (const level of Object.keys(DIFFICULTIES)) {
@@ -183,33 +210,52 @@ function buildDeckPicker(): void {
   startBtn.textContent = "Battle!";
   pickerRoot.appendChild(startBtn);
 
-  const chosen = new Set<CardId>(playerDeck);
-  const sync = (): void => {
-    const costs = [...chosen].map((id) => getCard(id).cost);
+  const remove = (id: CardId): void => {
+    const i = deck.indexOf(id);
+    if (i >= 0) deck.splice(i, 1);
+    sync();
+  };
+  const add = (id: CardId): void => {
+    if (!deck.includes(id) && deck.length < 8) deck.push(id);
+    else if (deck.includes(id)) remove(id); // tapping an added card removes it
+    sync();
+  };
+
+  function sync(): void {
+    // Rebuild the 8 deck slots (filled in pick order, then empties).
+    deckRow.innerHTML = "";
+    for (let i = 0; i < 8; i++) {
+      const id = deck[i];
+      const slot = document.createElement("button");
+      slot.className = id ? "deck-slot filled" : "deck-slot empty";
+      if (id) {
+        slot.appendChild(cardTileCanvas(id));
+        const cost = document.createElement("div");
+        cost.className = "pcost";
+        cost.textContent = String(getCard(id).cost);
+        slot.appendChild(cost);
+        slot.title = `Remove ${getCard(id).name}`;
+        slot.addEventListener("click", () => remove(id));
+      }
+      deckRow.appendChild(slot);
+    }
+    const costs = deck.map((id) => getCard(id).cost);
     const avg = costs.length
       ? (costs.reduce((s, c) => s + c, 0) / costs.length).toFixed(1)
       : "0.0";
-    count.textContent = `${chosen.size} / 8 cards · average ${avg} elixir`;
-    startBtn.disabled = chosen.size !== 8;
+    count.textContent = `${deck.length} / 8 cards · average ${avg} elixir`;
+    startBtn.disabled = deck.length !== 8;
     grid.querySelectorAll<HTMLButtonElement>("button.pick").forEach((btn) => {
-      btn.classList.toggle("chosen", chosen.has(btn.dataset.card as CardId));
+      btn.classList.toggle("chosen", deck.includes(btn.dataset.card as CardId));
     });
-  };
+  }
 
   for (const id of DECK) {
     const card = getCard(id);
     const btn = document.createElement("button");
     btn.className = "pick";
     btn.dataset.card = id;
-    const c = document.createElement("canvas");
-    c.width = c.height = 48;
-    const cctx = c.getContext("2d")!;
-    cctx.fillStyle = CARD_COLOR[id];
-    cctx.beginPath();
-    cctx.roundRect(0, 0, 48, 48, 7);
-    cctx.fill();
-    drawCardArt(cctx, id, 24, 26, 26);
-    btn.appendChild(c);
+    btn.appendChild(cardTileCanvas(id));
     const name = document.createElement("div");
     name.textContent = card.name;
     btn.appendChild(name);
@@ -217,17 +263,13 @@ function buildDeckPicker(): void {
     cost.className = "pcost";
     cost.textContent = String(card.cost);
     btn.appendChild(cost);
-    btn.addEventListener("click", () => {
-      if (chosen.has(id)) chosen.delete(id);
-      else if (chosen.size < 8) chosen.add(id);
-      sync();
-    });
+    btn.addEventListener("click", () => add(id));
     grid.appendChild(btn);
   }
   sync();
 
   startBtn.addEventListener("click", () => {
-    playerDeck = DECK.filter((id) => chosen.has(id)); // stable pool order
+    playerDeck = deck.slice();
     localStorage.setItem(DECK_KEY, JSON.stringify(playerDeck));
     pickerRoot.classList.remove("show");
     restart();

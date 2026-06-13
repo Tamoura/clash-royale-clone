@@ -499,11 +499,47 @@
         margin: 0;
         text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
       }
+      #deckpicker .deck-slots {
+        display: grid;
+        grid-template-columns: repeat(4, 64px);
+        gap: 8px;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 2px solid #d9a93f;
+        border-radius: 12px;
+      }
+      #deckpicker .deck-slot {
+        position: relative;
+        width: 64px;
+        height: 64px;
+        border-radius: 9px;
+        border: 2px dashed #46587f;
+        background: rgba(13, 19, 34, 0.6);
+        cursor: default;
+        padding: 0;
+      }
+      #deckpicker .deck-slot.filled {
+        border: 3px solid #ffe082;
+        background: linear-gradient(180deg, #31435f, #1f2c44);
+        cursor: pointer;
+      }
+      #deckpicker .deck-slot canvas {
+        width: 54px;
+        height: 54px;
+      }
+      #deckpicker .collect-label {
+        color: #9fb3d9;
+        font-size: 13px;
+        margin-top: 2px;
+      }
       #deckpicker .picker-grid {
         display: grid;
-        grid-template-columns: repeat(8, 76px);
-        gap: 8px;
+        grid-template-columns: repeat(6, 70px);
+        gap: 7px;
         max-width: 700px;
+      }
+      #deckpicker .pick.chosen {
+        opacity: 0.4;
       }
       #deckpicker .pick {
         position: relative;
