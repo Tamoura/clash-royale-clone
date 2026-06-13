@@ -65,6 +65,7 @@ export class Hud {
   private readonly nextArt: HTMLElement;
   private readonly cardBtns: HTMLButtonElement[] = [];
   private readonly cardVeils: HTMLElement[] = [];
+  private readonly cardNeeds: HTMLElement[] = [];
   private readonly cardReady: boolean[] = [];
   private readonly overlay: HTMLElement;
   private readonly overlayTitle: HTMLElement;
@@ -145,10 +146,12 @@ export class Hud {
         }
         this.cb.onSelectCard(this.selected === id ? null : id);
       });
-      // Radial elixir-charge veil: a dark conic overlay that retreats
-      // clockwise as elixir approaches this card's cost.
+      // Bottom-up elixir-charge fill that rises as the card nears playable.
       const veil = el("div", "elixir-veil", btn);
+      // "+N" badge: how much more elixir is needed (hidden once playable).
+      const need = el("div", "card-need", btn);
       this.cardVeils.push(veil);
+      this.cardNeeds.push(need);
       this.cardBtns.push(btn);
     }
 
@@ -248,6 +251,10 @@ export class Hud {
           chip.textContent = `Lv.${lvl}`;
           btn.appendChild(chip);
         }
+        // Re-attach the persistent charge overlay + "+N" badge, which the
+        // innerHTML reset above detaches.
+        btn.appendChild(this.cardVeils[i]);
+        btn.appendChild(this.cardNeeds[i]);
       });
     }
     me.hand.cards.forEach((id, i) => {
@@ -260,8 +267,10 @@ export class Hud {
       // clearing downward as elixir rises toward the card's cost.
       const progress = Math.max(0, Math.min(1, amount / cost));
       const veil = this.cardVeils[i];
+      const need = this.cardNeeds[i];
       if (affordable) {
         veil.style.display = "none";
+        need.style.display = "none";
         // Pop once at the moment it becomes playable.
         if (this.cardReady[i] === false) {
           btn.classList.remove("ready-pop");
@@ -271,9 +280,19 @@ export class Hud {
         this.cardReady[i] = true;
       } else {
         veil.style.display = "block";
-        const pct = (progress * 100).toFixed(1);
+        // Bright elixir-pink fill rises from the bottom to the charge level,
+        // with a glowing edge; dark covers the part still to charge.
+        const pct = progress * 100;
+        const edge = Math.max(0, pct - 5);
         veil.style.background =
-          `linear-gradient(to top, rgba(8,12,22,0) ${pct}%, rgba(8,12,22,0.66) ${pct}%)`;
+          `linear-gradient(to top,` +
+          ` rgba(242,58,168,0.40) 0%,` +
+          ` rgba(242,58,168,0.40) ${edge.toFixed(1)}%,` +
+          ` rgba(255,190,235,0.95) ${pct.toFixed(1)}%,` +
+          ` rgba(8,12,22,0.74) ${pct.toFixed(1)}%,` +
+          ` rgba(8,12,22,0.74) 100%)`;
+        need.style.display = "block";
+        need.textContent = `+${Math.ceil(cost - amount)}`;
         this.cardReady[i] = false;
       }
     });

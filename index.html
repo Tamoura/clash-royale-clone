@@ -252,7 +252,25 @@
       }
       /* Unaffordable cards desaturate; the veil shows charge progress. */
       button.card.locked {
-        filter: grayscale(0.55) brightness(0.85);
+        filter: grayscale(0.85) brightness(0.72);
+      }
+      /* "+N more elixir" badge centered on a charging card. */
+      .card-need {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 3;
+        pointer-events: none;
+        font-size: 18px;
+        font-weight: bold;
+        color: #fff;
+        background: rgba(193, 24, 120, 0.9);
+        border: 2px solid #ff9ad4;
+        border-radius: 9px;
+        padding: 1px 8px;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
       }
       .key-chip {
         position: absolute;
