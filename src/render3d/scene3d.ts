@@ -450,6 +450,47 @@ function brickTex(): THREE.CanvasTexture {
   return brickTexture;
 }
 
+/** A gold crescent-and-orb finial that tops domes and spires. */
+function crescentFinial(s: number): THREE.Group {
+  const g = new THREE.Group();
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(s * 0.3, 8, 6), toon(THEME.gold));
+  ball.castShadow = true;
+  g.add(ball);
+  const cres = new THREE.Mesh(
+    new THREE.TorusGeometry(s * 0.55, s * 0.15, 8, 16, Math.PI * 1.35),
+    toon(THEME.goldLight),
+  );
+  cres.position.y = s * 1.05;
+  cres.rotation.z = Math.PI * 0.33;
+  cres.castShadow = true;
+  g.add(cres);
+  return g;
+}
+
+/** An onion dome on a stone drum, crowned with a crescent finial. */
+function onionDome(r: number, color: number): THREE.Group {
+  const g = new THREE.Group();
+  const drum = new THREE.Mesh(
+    new THREE.CylinderGeometry(r * 0.92, r * 1.02, r * 0.5, 12),
+    toon(THEME.sand),
+  );
+  drum.position.y = r * 0.25;
+  drum.castShadow = true;
+  g.add(drum);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), toon(color));
+  bulb.scale.set(1, 1.3, 1);
+  bulb.position.y = r * 0.5 + r * 0.72;
+  bulb.castShadow = true;
+  g.add(bulb);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(r * 0.34, r * 0.7, 12), toon(color));
+  tip.position.y = r * 0.5 + r * 1.6;
+  g.add(tip);
+  const fin = crescentFinial(r * 0.9);
+  fin.position.y = r * 0.5 + r * 1.95;
+  g.add(fin);
+  return g;
+}
+
 function buildTowerMesh(e: Entity): EntityView {
   const root = new THREE.Group();
   const king = e.kind === "king-tower";
@@ -514,8 +555,30 @@ function buildTowerMesh(e: Entity): EntityView {
     }
   }
 
+  // Islamic silhouette: corner cupolas with crescent finials, plus a big
+  // central dome (king) or a crescent spire (princess) set toward the rear
+  // so the tower crew stays visible at the front.
+  const domeColor = king ? THEME.turquoise : THEME.teal;
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const cup = onionDome(radius * 0.26, domeColor);
+      cup.position.set(sx * radius * 0.82, height + 0.02, sz * radius * 0.82);
+      root.add(cup);
+    }
+  }
+
   // Door + team banner facing the enemy.
   const facing = e.side === "player" ? -1 : 1;
+  const rearZ = facing * -radius * 0.5;
+  if (king) {
+    const dome = onionDome(radius * 0.62, domeColor);
+    dome.position.set(0, height + 0.05, rearZ);
+    root.add(dome);
+  } else {
+    const fin = crescentFinial(0.55);
+    fin.position.set(0, height + 0.2, rearZ);
+    root.add(fin);
+  }
   const door = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.1), toon(0x4a3826));
   door.position.set(0, 0.62, facing * radius * 1.01);
   root.add(door);
