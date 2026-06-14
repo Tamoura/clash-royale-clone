@@ -1175,20 +1175,28 @@ export class Battle3D {
       }
     }
 
+    // Date palms instead of pines (desert oasis).
     const tree = (x: number, z: number, s: number): void => {
       const g = new THREE.Group();
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.5, 8), toon(0x6e4a28));
-      trunk.position.y = 0.25;
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 1.5, 8), toon(0x8a6a3e));
+      trunk.position.y = 0.75;
+      trunk.rotation.z = 0.06;
       trunk.castShadow = true;
       g.add(trunk);
+      // A crown of drooping fronds radiating from the top.
+      for (let i = 0; i < 7; i++) {
+        const frond = new THREE.Mesh(new THREE.ConeGeometry(0.16, 1.0, 5), toon(i % 2 ? 0x3f8f45 : 0x57a83f));
+        const a = (i / 7) * Math.PI * 2;
+        frond.position.set(Math.cos(a) * 0.42, 1.5, Math.sin(a) * 0.42);
+        frond.rotation.set(Math.PI / 2 - 0.5, 0, -a + Math.PI / 2);
+        frond.castShadow = true;
+        g.add(frond);
+      }
+      // A little cluster of dates under the crown.
       for (let i = 0; i < 3; i++) {
-        const layer = new THREE.Mesh(
-          new THREE.ConeGeometry(0.75 - i * 0.18, 0.7, 10),
-          toon(i % 2 ? 0x3f8f45 : 0x4ba14f),
-        );
-        layer.position.y = 0.62 + i * 0.42;
-        layer.castShadow = true;
-        g.add(layer);
+        const date = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 5), toon(0x9c4a2a));
+        date.position.set(Math.cos(i * 2) * 0.12, 1.36, Math.sin(i * 2) * 0.12);
+        g.add(date);
       }
       g.position.set(x, 0, z);
       g.scale.setScalar(s);
@@ -1493,50 +1501,29 @@ export class Battle3D {
       this.scene.add(this.makeCrescentEmblem(z));
     }
 
-    // Wooden plank bridges with seams and side rails.
-    const plankCanvas = document.createElement("canvas");
-    plankCanvas.width = 64;
-    plankCanvas.height = 64;
-    const pctx = plankCanvas.getContext("2d")!;
-    // CR's bridges are golden-yellow boardwalks, not brown.
-    pctx.fillStyle = "#e0b04f";
-    pctx.fillRect(0, 0, 64, 64);
-    pctx.fillStyle = "#c2913a";
-    for (let i = 0; i < 8; i++) pctx.fillRect(0, i * 8, 64, 1.6);
-    pctx.fillStyle = "rgba(122,86,28,0.5)";
-    for (let i = 0; i < 10; i++) {
-      pctx.fillRect((i * 23) % 60, ((i * 17) % 7) * 8 + 3, 2.5, 1.5);
-    }
-    pctx.fillStyle = "rgba(255,235,170,0.4)";
-    for (let i = 0; i < 8; i++) {
-      pctx.fillRect((i * 29 + 7) % 60, ((i * 13) % 7) * 8 + 1, 3, 1);
-    }
-    const plankTex = new THREE.CanvasTexture(plankCanvas);
-    plankTex.colorSpace = THREE.SRGBColorSpace;
-
+    // Ornate sandstone bridges: gold-rimmed deck, parapet walls, and a
+    // little teal cupola finial at each end.
     for (const bx of BRIDGE_XS) {
       const w = toWorld(bx, RIVER_Y);
-      const deck = new THREE.Mesh(
-        new THREE.BoxGeometry(2.0, 0.18, 2.6),
-        new THREE.MeshToonMaterial({ map: plankTex }),
-      );
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.2, 2.6), toon(THEME.sand));
       deck.position.set(w.x, 0.1, 0);
       deck.castShadow = true;
       deck.receiveShadow = true;
       this.scene.add(deck);
+      const rim = new THREE.Mesh(new THREE.BoxGeometry(2.06, 0.06, 2.66), toon(THEME.gold));
+      rim.position.set(w.x, 0.21, 0);
+      this.scene.add(rim);
       for (const side of [-1, 1]) {
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.3, 2.6), toon(0xb8893a));
-        rail.position.set(w.x + side * 0.95, 0.3, 0);
-        rail.castShadow = true;
-        this.scene.add(rail);
-        // Rail posts at each end of the bridge.
-        for (const ez of [-1.18, 1.18]) {
-          const post = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.09, 0.09, 0.5, 8),
-            toon(0x5d3f24),
-          );
-          post.position.set(w.x + side * 0.95, 0.32, ez);
-          post.castShadow = true;
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.34, 2.6), toon(THEME.stone));
+        wall.position.set(w.x + side * 0.92, 0.34, 0);
+        wall.castShadow = true;
+        this.scene.add(wall);
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.07, 2.66), toon(THEME.gold));
+        cap.position.set(w.x + side * 0.92, 0.53, 0);
+        this.scene.add(cap);
+        for (const ez of [-1.2, 1.2]) {
+          const post = onionDome(0.16, THEME.teal);
+          post.position.set(w.x + side * 0.92, 0.4, ez);
           this.scene.add(post);
         }
       }
