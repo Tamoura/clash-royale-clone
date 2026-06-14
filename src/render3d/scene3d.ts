@@ -16,7 +16,7 @@ import { spawnStyle } from "./spawnfx";
 import { ShakeController } from "./shake";
 import { ParticleField } from "./particles";
 import { impactStyle } from "./impactfx";
-import { THEME } from "./theme";
+import { THEME, ARABIC, ARENA_THEME } from "./theme";
 import {
   animateTroop,
   articulate,
@@ -46,28 +46,12 @@ function cameraZForView(): number {
   return viewSide === "player" ? CAM_HOME.z : -CAM_HOME.z;
 }
 
-/**
- * Two arena looks: the original "normal" (winter-stone) world and the
- * "arabic" Moorish/Islamic theme. Read once at load (persisted); the toggle
- * in main.ts re-saves it and reloads. Guarded so node tests (no localStorage)
- * fall back safely.
- */
-export type ArenaTheme = "normal" | "arabic";
-export const ARENA_THEME_KEY = "cr-clone-arena-theme";
-function readArenaTheme(): ArenaTheme {
-  try {
-    return localStorage.getItem(ARENA_THEME_KEY) === "normal" ? "normal" : "arabic";
-  } catch {
-    return "arabic";
-  }
-}
-const arenaTheme: ArenaTheme = readArenaTheme();
-const arabic = arenaTheme === "arabic";
-/** Per-theme scenery palette. */
+/** Per-theme scenery palette (theme flag lives in theme.ts). */
+const arabic = ARABIC;
 const ARENA_PALETTE = {
   normal: { sky: 0x9ec8e8, apron: 0xe4ecf5, far: 0xdbe6f0, fieldSide: 0xb8a886, edging: 0xd8d0c0, drift: 0xeef4ff },
   arabic: { sky: THEME.sky, apron: 0xd8c79a, far: 0xd8c79a, fieldSide: THEME.stone, edging: THEME.sand, drift: 0xe6d2a6 },
-}[arenaTheme];
+}[ARENA_THEME];
 
 /**
  * CR-style steep camera (~66° elevation): the field reads almost

@@ -21,3 +21,21 @@ export const THEME = {
 export function hexStr(n: number): string {
   return "#" + (n & 0xffffff).toString(16).padStart(6, "0");
 }
+
+/**
+ * Which arena look is active. Read once at load (persisted); the toggle in
+ * main.ts re-saves it and reloads. Lives here (not in scene3d) so both the
+ * renderer and the character rigs can read it without a circular import.
+ * Guarded so node tests (no localStorage) fall back safely.
+ */
+export type ArenaTheme = "normal" | "arabic";
+export const ARENA_THEME_KEY = "cr-clone-arena-theme";
+function readArenaTheme(): ArenaTheme {
+  try {
+    return localStorage.getItem(ARENA_THEME_KEY) === "normal" ? "normal" : "arabic";
+  } catch {
+    return "arabic";
+  }
+}
+export const ARENA_THEME: ArenaTheme = readArenaTheme();
+export const ARABIC = ARENA_THEME === "arabic";

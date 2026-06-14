@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import type { CardId } from "../game/cards";
+import { ARABIC } from "./theme";
 
 /**
  * Chunky cel-shaded characters built from primitives — big heads,
@@ -244,6 +245,43 @@ export interface TroopRig {
   extras?: (t: number, phase: number) => void;
 }
 
+/**
+ * A wrapped turban for the Arabic theme — layered cloth folds, a jewelled
+ * front band, and a small peak. Centred on the head; the caller positions it.
+ */
+function turban(r: number, cloth: number, gem = 0xc0392b): THREE.Group {
+  const g = new THREE.Group();
+  const wrap = sphere(r * 1.14, cloth, 0, r * 0.5, 0);
+  wrap.scale.set(1, 0.72, 1);
+  g.add(wrap);
+  const fold = sphere(r * 1.04, cloth, 0, r * 0.28, 0.04);
+  fold.scale.set(1.06, 0.5, 1.06);
+  g.add(fold);
+  const band = box(r * 0.5, r * 0.16, r * 0.06, gem, 0, r * 0.46, r * 1.0);
+  g.add(band);
+  g.add(sphere(r * 0.12, gem, 0, r * 0.46, r * 1.06)); // front jewel
+  g.add(cone(r * 0.16, r * 0.3, cloth, 0, r * 1.02, 0)); // top peak
+  return g;
+}
+
+/** A curved scimitar: gold hilt + crossguard and a swept steel blade. */
+function scimitar(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(cyl(0.05, 0.05, 0.2, 0x6d4c41, 0, -0.1, 0)); // grip
+  g.add(box(0.22, 0.05, 0.09, 0xf2c14e, 0, 0.0, 0)); // crossguard
+  g.add(sphere(0.05, 0xf2c14e, 0, -0.21, 0)); // pommel
+  const blade = new THREE.Mesh(
+    cachedGeo("scimitar-blade", () => new THREE.TorusGeometry(0.46, 0.045, 6, 18, Math.PI * 0.82)),
+    toon(0xdde4ec),
+  );
+  blade.scale.set(1, 1, 0.42); // flatten the ring into a blade
+  blade.position.set(-0.36, 0.08, 0);
+  blade.rotation.z = -0.5;
+  blade.castShadow = true;
+  g.add(blade);
+  return g;
+}
+
 function buildKnight(): TroopRig {
   const g = new THREE.Group();
   const legs = [makeLeg(0x4e342e, -0.15, 0.3, 0.17), makeLeg(0x4e342e, 0.15, 0.3, 0.17)];
@@ -256,11 +294,17 @@ function buildKnight(): TroopRig {
   addEyes(head, 0.32, 0.38, 0.1, "brave");
   head.add(box(0.26, 0.06, 0.05, 0xd9b34a, 0, -0.1, 0.29)); // blond mustache (CR)
   g.add(head);
-  g.add(cyl(0.34, 0.36, 0.18, 0x94a1ae, 0, 1.22, 0)); // helmet band
-  const dome = sphere(0.33, 0x94a1ae, 0, 1.28, 0);
-  dome.scale.y = 0.65;
-  g.add(dome);
-  g.add(box(0.07, 0.2, 0.05, 0x94a1ae, 0, 1.05, 0.31)); // nose guard
+  if (ARABIC) {
+    const t = turban(0.32, 0x2e6f6b);
+    t.position.y = 1.04;
+    g.add(t);
+  } else {
+    g.add(cyl(0.34, 0.36, 0.18, 0x94a1ae, 0, 1.22, 0)); // helmet band
+    const dome = sphere(0.33, 0x94a1ae, 0, 1.28, 0);
+    dome.scale.y = 0.65;
+    g.add(dome);
+    g.add(box(0.07, 0.2, 0.05, 0x94a1ae, 0, 1.05, 0.31)); // nose guard
+  }
 
   // Shield arm.
   const offArm = new THREE.Group();
@@ -275,9 +319,15 @@ function buildKnight(): TroopRig {
   const arm = new THREE.Group();
   arm.position.set(0.4, 0.8, 0);
   arm.add(box(0.13, 0.3, 0.13, SKIN, 0, -0.15, 0));
-  arm.add(box(0.26, 0.06, 0.1, 0x8d6e63, 0, -0.32, 0)); // guard
-  arm.add(box(0.07, 0.72, 0.14, 0xdde4ec, 0, 0.06, 0)); // blade
-  arm.add(sphere(0.06, 0xf2c14e, 0, -0.4, 0)); // pommel
+  if (ARABIC) {
+    const s = scimitar();
+    s.position.set(0, -0.32, 0);
+    arm.add(s);
+  } else {
+    arm.add(box(0.26, 0.06, 0.1, 0x8d6e63, 0, -0.32, 0)); // guard
+    arm.add(box(0.07, 0.72, 0.14, 0xdde4ec, 0, 0.06, 0)); // blade
+    arm.add(sphere(0.06, 0xf2c14e, 0, -0.4, 0)); // pommel
+  }
   g.add(arm);
   return { group: g, arm, armRest: -0.55, swingAmp: 1.7, height: 1.5, legs, offArm };
 }
@@ -291,10 +341,16 @@ function buildArcher(): TroopRig {
   const head = sphere(0.28, SKIN, 0, 0.94, 0);
   addEyes(head, 0.28, 0.38, 0.1, "cute");
   g.add(head);
-  const hair = sphere(0.29, 0xec5fa3, 0, 1.02, -0.02);
-  hair.scale.set(1, 0.62, 1);
-  g.add(hair);
-  g.add(sphere(0.13, 0xec5fa3, 0, 1.12, -0.24)); // bun
+  if (ARABIC) {
+    const t = turban(0.28, 0x9c3848);
+    t.position.y = 0.94;
+    g.add(t);
+  } else {
+    const hair = sphere(0.29, 0xec5fa3, 0, 1.02, -0.02);
+    hair.scale.set(1, 0.62, 1);
+    g.add(hair);
+    g.add(sphere(0.13, 0xec5fa3, 0, 1.12, -0.24)); // bun
+  }
   // Quiver on the back.
   const quiver = cyl(0.07, 0.07, 0.34, 0x6d4c41, -0.12, 0.62, -0.2);
   quiver.rotation.z = 0.35;
@@ -382,17 +438,26 @@ function buildMusketeer(): TroopRig {
   g.add(head);
   // CR look: purple coiffed curls under a steel helmet with a
   // team-colored feather, plus a metal shoulder pad.
-  for (const s of [-1, 1]) {
-    g.add(sphere(0.12, 0x8347c2, s * 0.2, 1.06, -0.14)); // curls
-    g.add(sphere(0.09, 0x8347c2, s * 0.26, 0.92, -0.06)); // side curls
+  if (ARABIC) {
+    const t = turban(0.29, 0x3a2f7a, 0xf2c14e); // indigo turban, gold band
+    t.position.y = 1.0;
+    g.add(t);
+    const plume = cone(0.06, 0.32, 0x3b82f6, 0, 1.52, -0.02); // aigrette plume
+    plume.rotation.z = -0.3;
+    g.add(plume);
+  } else {
+    for (const s of [-1, 1]) {
+      g.add(sphere(0.12, 0x8347c2, s * 0.2, 1.06, -0.14)); // curls
+      g.add(sphere(0.09, 0x8347c2, s * 0.26, 0.92, -0.06)); // side curls
+    }
+    const helm = sphere(0.31, 0x9aa3ad, 0, 1.18, 0);
+    helm.scale.y = 0.72;
+    g.add(helm);
+    g.add(cyl(0.315, 0.325, 0.08, 0x78909c, 0, 1.1, 0)); // helmet rim
+    const feather = cone(0.07, 0.34, 0x3b82f6, 0.2, 1.46, 0);
+    feather.rotation.z = -0.6;
+    g.add(feather); // team-colored feather
   }
-  const helm = sphere(0.31, 0x9aa3ad, 0, 1.18, 0);
-  helm.scale.y = 0.72;
-  g.add(helm);
-  g.add(cyl(0.315, 0.325, 0.08, 0x78909c, 0, 1.1, 0)); // helmet rim
-  const feather = cone(0.07, 0.34, 0x3b82f6, 0.2, 1.46, 0);
-  feather.rotation.z = -0.6;
-  g.add(feather); // team-colored feather
   g.add(sphere(0.14, 0x9aa3ad, 0.34, 0.74, 0)); // shoulder pad
 
   const offArm = new THREE.Group();
