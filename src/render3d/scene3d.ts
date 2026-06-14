@@ -16,6 +16,7 @@ import { spawnStyle } from "./spawnfx";
 import { ShakeController } from "./shake";
 import { ParticleField } from "./particles";
 import { impactStyle } from "./impactfx";
+import { THEME, hexStr } from "./theme";
 import {
   animateTroop,
   articulate,
@@ -871,8 +872,8 @@ export class Battle3D {
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x9ec8e8);
-    this.scene.fog = new THREE.Fog(0x9ec8e8, 45, 75);
+    this.scene.background = new THREE.Color(THEME.sky);
+    this.scene.fog = new THREE.Fog(THEME.sky, 45, 75);
 
     // One InstancedMesh draws every hit spark; unlit + glowing so they pop.
     const sparkMat = new THREE.MeshBasicMaterial();
@@ -949,16 +950,16 @@ export class Battle3D {
     // Distant ground so the arena never floats in a void.
     const far = new THREE.Mesh(
       new THREE.PlaneGeometry(140, 140),
-      new THREE.MeshToonMaterial({ color: 0xdbe6f0 }),
+      new THREE.MeshToonMaterial({ color: 0xd8c79a }),
     );
     far.rotation.x = -Math.PI / 2;
     far.position.y = -0.45;
     this.scene.add(far);
 
-    // Outer apron of snow framing the arena.
+    // Outer apron of warm sand framing the arena.
     const apron = new THREE.Mesh(
       new THREE.BoxGeometry(ARENA_WIDTH + 10, 0.36, ARENA_HEIGHT + 10),
-      toon(0xe4ecf5),
+      toon(0xd8c79a),
     );
     apron.position.y = -0.24;
     apron.receiveShadow = true;
@@ -1206,60 +1207,96 @@ export class Battle3D {
     return g;
   }
 
-  /** Winter arena floor: sandy stone tiles with mortar lines (hi-res). */
+  /** Islamic zellige floor: 8-point-star-and-cross tilework, gold strapwork. */
   private makeGrassTexture(): THREE.CanvasTexture {
     const tile = 32; // px per arena unit
     const c = document.createElement("canvas");
     c.width = ARENA_WIDTH * tile;
     c.height = ARENA_HEIGHT * tile;
     const ctx = c.getContext("2d")!;
-    let seed = 7;
-    const rand = (): number => {
-      seed = (seed * 1664525 + 1013904223) & 0xffffffff;
-      return ((seed >>> 8) & 0xffff) / 0xffff;
+    const gold = hexStr(THEME.gold);
+
+    // Warm plaster base.
+    ctx.fillStyle = hexStr(THEME.cream);
+    ctx.fillRect(0, 0, c.width, c.height);
+
+    const cell = tile * 4; // one star motif every 4 arena units
+    const R = cell * 0.46;
+    const inner = R * 0.41;
+    const star8 = (cx: number, cy: number, o: number, i2: number): void => {
+      ctx.beginPath();
+      for (let i = 0; i < 16; i++) {
+        const a = (Math.PI / 8) * i - Math.PI / 2;
+        const rad = i % 2 === 0 ? o : i2;
+        const x = cx + Math.cos(a) * rad;
+        const y = cy + Math.sin(a) * rad;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
     };
-    // Stone blocks span 2 arena units; warm beige with per-tile shade.
-    const block = tile * 2;
-    for (let y = 0; y < c.height; y += block) {
-      for (let x = 0; x < c.width; x += block) {
-        const shade = 0.92 + rand() * 0.08;
-        const r = Math.round(214 * shade);
-        const g = Math.round(196 * shade);
-        const b = Math.round(158 * shade);
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
-        ctx.fillRect(x, y, block, block);
-        // Speckle for grit.
-        ctx.fillStyle = "rgba(120,100,70,0.10)";
-        for (let s = 0; s < 6; s++) {
-          ctx.fillRect(x + rand() * block, y + rand() * block, 2, 2);
-        }
+    const diamond = (cx: number, cy: number, s: number): void => {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - s);
+      ctx.lineTo(cx + s, cy);
+      ctx.lineTo(cx, cy + s);
+      ctx.lineTo(cx - s, cy);
+      ctx.closePath();
+    };
+
+    ctx.lineJoin = "round";
+    // Terracotta cross/diamond linkers sit on the cell corners.
+    for (let y = 0; y <= c.height; y += cell) {
+      for (let x = 0; x <= c.width; x += cell) {
+        diamond(x, y, cell * 0.22);
+        ctx.fillStyle = hexStr(THEME.terracotta);
+        ctx.fill();
+        ctx.strokeStyle = gold;
+        ctx.lineWidth = tile * 0.12;
+        ctx.stroke();
       }
     }
-    // Mortar grid between blocks.
-    ctx.strokeStyle = "rgba(120,100,70,0.45)";
-    ctx.lineWidth = 2;
-    for (let x = 0; x <= c.width; x += block) {
+    // Turquoise eight-point stars at each cell centre, gold strapwork.
+    for (let y = cell / 2; y < c.height; y += cell) {
+      for (let x = cell / 2; x < c.width; x += cell) {
+        star8(x, y, R, inner);
+        ctx.fillStyle = hexStr(THEME.turquoise);
+        ctx.fill();
+        ctx.strokeStyle = gold;
+        ctx.lineWidth = tile * 0.18;
+        ctx.stroke();
+        star8(x, y, R * 0.52, inner * 0.52);
+        ctx.strokeStyle = hexStr(THEME.goldLight);
+        ctx.lineWidth = tile * 0.06;
+        ctx.stroke();
+      }
+    }
+    // Faint gold lattice for the interlaced look.
+    ctx.strokeStyle = "rgba(202,162,63,0.22)";
+    ctx.lineWidth = tile * 0.05;
+    for (let x = cell / 2; x < c.width; x += cell) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, c.height);
       ctx.stroke();
     }
-    for (let y = 0; y <= c.height; y += block) {
+    for (let y = cell / 2; y < c.height; y += cell) {
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(c.width, y);
       ctx.stroke();
     }
+
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
   }
 
-  /** A lumpy snow drift mound (winter theme scenery). */
+  /** A lumpy sand dune mound (desert scenery). */
   private makeSnowDrift(x: number, z: number, scale: number): THREE.Mesh {
     const drift = new THREE.Mesh(
       new THREE.SphereGeometry(1, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
-      toon(0xeef4ff),
+      toon(0xe6d2a6),
     );
     drift.scale.set(scale, scale * 0.45, scale);
     drift.position.set(x, -0.05, z);
@@ -1274,12 +1311,12 @@ export class Battle3D {
     const field = new THREE.Mesh(
       new THREE.BoxGeometry(ARENA_WIDTH + 0.6, 0.4, ARENA_HEIGHT),
       [
-        toon(0xb8a886).clone(), // stone sides
-        toon(0xb8a886).clone(),
+        toon(THEME.stone).clone(), // stone sides
+        toon(THEME.stone).clone(),
         fieldMat, // top
-        toon(0xb8a886).clone(),
-        toon(0xb8a886).clone(),
-        toon(0xb8a886).clone(),
+        toon(THEME.stone).clone(),
+        toon(THEME.stone).clone(),
+        toon(THEME.stone).clone(),
       ],
     );
     field.position.set(0, -0.2, 0);
@@ -1298,10 +1335,10 @@ export class Battle3D {
       this.scene.add(this.makeSnowDrift(x, z, sc));
     }
 
-    // Pale snowy stone edging around the playfield, post at each corner.
+    // Sandstone edging around the playfield, post at each corner.
     const hw = ARENA_WIDTH / 2 + 0.45;
     const hd = ARENA_HEIGHT / 2 + 0.15;
-    const stone = 0xd8d0c0;
+    const stone = THEME.sand;
     for (const side of [-1, 1]) {
       const rail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.34, ARENA_HEIGHT + 0.9), toon(stone));
       rail.position.set(side * hw, 0.05, 0);
