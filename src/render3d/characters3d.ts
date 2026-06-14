@@ -1218,11 +1218,104 @@ function buildMagicArcher(): TroopRig {
   return { group: g, arm, armRest: -1.0, swingAmp: 0.7, height: 1.5, legs, offArm };
 }
 
+function buildBat(): TroopRig {
+  const g = new THREE.Group();
+  const body = sphere(0.16, 0x3a2f4a, 0, 0.3, 0);
+  body.scale.set(1, 1.05, 0.9);
+  g.add(body);
+  for (const s of [-1, 1]) {
+    g.add(cone(0.06, 0.16, 0x2c2338, s * 0.08, 0.46, 0)); // ear
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), glow(0xffd54f, 2));
+    eye.position.set(s * 0.06, 0.32, 0.13);
+    g.add(eye);
+    g.add(box(0.02, 0.05, 0.02, 0xffffff, s * 0.03, 0.22, 0.12)); // fang
+  }
+  const wings: Wing[] = [];
+  for (const s of [-1, 1]) {
+    const wing = new THREE.Group();
+    wing.position.set(s * 0.12, 0.32, -0.04);
+    wing.add(box(0.34, 0.03, 0.22, 0x2c2338, s * 0.18, 0, 0));
+    wing.rotation.z = s * 0.4;
+    g.add(wing);
+    wings.push({ obj: wing, base: s * 0.4, amp: s * 0.9 });
+  }
+  return { group: g, arm: null, armRest: 0, swingAmp: 0, height: 0.7, hover: 0.85, wings };
+}
+
+function buildMinion(): TroopRig {
+  const g = new THREE.Group();
+  const body = sphere(0.2, 0x2f6fb0, 0, 0.36, 0);
+  body.scale.set(1, 1.15, 0.92);
+  g.add(body);
+  g.add(sphere(0.17, 0x3f7fc0, 0, 0.66, 0.03)); // head
+  g.add(cone(0.05, 0.14, 0x9fd0ff, 0, 0.84, 0)); // horn
+  const beak = cone(0.05, 0.12, 0xffca28, 0, 0.64, 0.2);
+  beak.rotation.x = Math.PI / 2;
+  g.add(beak);
+  for (const s of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), glow(0xfff1a8, 2));
+    eye.position.set(s * 0.07, 0.7, 0.16);
+    g.add(eye);
+  }
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.18, 0.44, 0);
+  offArm.add(box(0.06, 0.18, 0.06, 0x2f6fb0, 0, -0.09, 0));
+  g.add(offArm);
+  const arm = new THREE.Group();
+  arm.position.set(0.18, 0.44, 0.04);
+  arm.add(box(0.06, 0.18, 0.06, 0x2f6fb0, 0, -0.09, 0));
+  g.add(arm);
+  const wings: Wing[] = [];
+  for (const s of [-1, 1]) {
+    const wing = new THREE.Group();
+    wing.position.set(s * 0.16, 0.56, -0.1);
+    wing.add(box(0.4, 0.03, 0.26, 0x255f96, s * 0.22, 0, 0));
+    wing.rotation.z = s * 0.45;
+    g.add(wing);
+    wings.push({ obj: wing, base: s * 0.45, amp: s * 0.8 });
+  }
+  return { group: g, arm, armRest: -0.4, swingAmp: 0.8, height: 0.95, hover: 0.88, wings, offArm };
+}
+
+function buildExecutioner(): TroopRig {
+  const g = new THREE.Group();
+  const legs = [makeLeg(0x2f3a2c, -0.16, 0.3, 0.18), makeLeg(0x2f3a2c, 0.16, 0.3, 0.18)];
+  g.add(...legs);
+  g.add(cyl(0.34, 0.42, 0.5, 0x3f7a4a, 0, 0.56, 0)); // burly tunic
+  g.add(cyl(0.44, 0.44, 0.1, 0x2c5836, 0, 0.36, 0)); // belt
+  const head = sphere(0.3, SKIN, 0, 1.06, 0);
+  addEyes(head, 0.3, 0.34, 0.06, "angry");
+  g.add(head);
+  const hood = sphere(0.34, 0x2f5d3a, 0, 1.12, -0.04);
+  hood.scale.set(1, 0.95, 1);
+  g.add(hood);
+  g.add(cone(0.18, 0.34, 0x2f5d3a, 0, 1.42, -0.06)); // hood point
+  for (const s of [-1, 1]) g.add(sphere(0.16, 0x2c5836, s * 0.4, 0.78, 0)); // shoulder pads
+
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.42, 0.74, 0);
+  offArm.add(box(0.14, 0.34, 0.14, SKIN, 0, -0.17, 0));
+  g.add(offArm);
+  const arm = new THREE.Group();
+  arm.position.set(0.42, 0.76, 0.05);
+  arm.add(box(0.14, 0.34, 0.14, SKIN, 0, -0.17, 0)); // forearm
+  const handle = cyl(0.04, 0.04, 0.6, 0x6d4c41, 0, -0.1, 0.3);
+  handle.rotation.x = Math.PI / 2;
+  arm.add(handle);
+  arm.add(box(0.1, 0.4, 0.34, 0xc9d2da, 0, -0.1, 0.6)); // wide axe head
+  g.add(arm);
+  return { group: g, arm, armRest: -0.2, swingAmp: 0.9, height: 1.55, legs, offArm };
+}
+
 const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   knight: buildKnight,
   archers: buildArcher,
   firecracker: buildFirecracker,
   "magic-archer": buildMagicArcher,
+  bats: buildBat,
+  minions: buildMinion,
+  "skeleton-army": buildSkeleton,
+  executioner: buildExecutioner,
   giant: buildGiant,
   musketeer: buildMusketeer,
   "mini-pekka": buildMiniPekka,

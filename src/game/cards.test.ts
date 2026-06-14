@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CARDS, DECK, getCard } from "./cards";
 
 describe("cards", () => {
-  it("defines the 25-card deck", () => {
+  it("defines the 29-card deck", () => {
     expect(DECK).toEqual([
       "knight",
       "archers",
@@ -25,6 +25,10 @@ describe("cards", () => {
       "tombstone",
       "elixir-collector",
       "gargoyles",
+      "bats",
+      "minions",
+      "skeleton-army",
+      "executioner",
       "arrows",
       "zap",
       "rage",
@@ -169,6 +173,40 @@ describe("cards", () => {
     expect(ma.unit.targetsAir).toBe(true);
     expect(ma.unit.attackRange).toBeGreaterThan(6); // longest reach in the game
     expect(ma.unit.recoil).toBe(0);
+  });
+
+  it("bats are a cheap 5-strong flying swarm", () => {
+    const bats = getCard("bats");
+    if (bats.kind !== "troop") throw new Error("bats should be a troop");
+    expect(bats.cost).toBe(2);
+    expect(bats.count).toBe(5);
+    expect(bats.unit.flying).toBe(true);
+    expect(bats.unit.targetsAir).toBe(true);
+  });
+
+  it("the skeleton army is a big cheap ground swarm", () => {
+    const army = getCard("skeleton-army");
+    if (army.kind !== "troop") throw new Error("skeleton-army should be a troop");
+    expect(army.count).toBeGreaterThanOrEqual(12);
+    expect(army.unit.maxHp).toBeLessThan(150); // each one is fragile
+  });
+
+  it("minions are 3 short-range flyers", () => {
+    const m = getCard("minions");
+    if (m.kind !== "troop") throw new Error("minions should be a troop");
+    expect(m.count).toBe(3);
+    expect(m.unit.flying).toBe(true);
+    expect(m.unit.targetsAir).toBe(true);
+    expect(m.unit.attackRange).toBeGreaterThan(1); // ranged spit
+  });
+
+  it("the executioner throws a piercing axe", () => {
+    const ex = getCard("executioner");
+    if (ex.kind !== "troop") throw new Error("executioner should be a troop");
+    expect(ex.cost).toBe(5);
+    expect(ex.unit.pierce).toBe(true);
+    expect(ex.unit.targetsAir).toBe(true);
+    expect(ex.unit.attackRange).toBeGreaterThan(1);
   });
 
   it("every card has a positive elixir cost", () => {

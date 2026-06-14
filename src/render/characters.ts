@@ -723,6 +723,11 @@ const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = 
   cannon: drawCannon,
   tombstone: drawTombstone,
   "elixir-collector": drawCollector,
+  // New swarm/area cards reuse the closest existing art for their tiles.
+  bats: drawGargoyle,
+  minions: drawGargoyle,
+  "skeleton-army": drawSkeleton,
+  executioner: drawValkyrie,
 };
 
 /**

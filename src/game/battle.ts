@@ -347,6 +347,24 @@ const SPAWN_OFFSETS: Record<number, Array<[number, number]>> = {
 };
 
 /**
+ * Spawn offsets for a multi-unit card. Small counts use the hand-tuned
+ * presets; bigger swarms (Bats, Skeleton Army…) pack into an even,
+ * deterministic phyllotaxis spiral so they don't all stack on one tile.
+ */
+function spawnOffsets(count: number): Array<[number, number]> {
+  const preset = SPAWN_OFFSETS[count];
+  if (preset) return preset;
+  const out: Array<[number, number]> = [];
+  const spacing = 0.42;
+  for (let i = 0; i < count; i++) {
+    const r = spacing * Math.sqrt(i);
+    const a = i * 2.399963; // golden angle, for even packing
+    out.push([Math.cos(a) * r, Math.sin(a) * r]);
+  }
+  return out;
+}
+
+/**
  * Spawn the units of a troop card directly, bypassing hand/elixir/zone
  * checks. Used by deployCard and by tests.
  */
@@ -364,7 +382,7 @@ export function spawnUnits(
 
 function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number, y: number): Entity[] {
   const mult = levelMultiplier(sideState(state, side).levels, card.id);
-  const offsets = SPAWN_OFFSETS[card.count] ?? [[0, 0]];
+  const offsets = spawnOffsets(card.count);
   const spawned: Entity[] = [];
   for (const [dx, dy] of offsets) {
     spawned.push({

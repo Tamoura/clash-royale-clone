@@ -466,6 +466,21 @@ describe("nearest-target acquisition", () => {
   });
 });
 
+describe("swarm spawning", () => {
+  it("spawns all 15 skeletons of the army, spread apart (not stacked)", () => {
+    const b = createBattle();
+    const army = spawnUnits(b, "player", "skeleton-army", 9, 22);
+    expect(army.length).toBe(15);
+    const distinct = new Set(army.map((e) => `${e.x.toFixed(2)},${e.y.toFixed(2)}`));
+    expect(distinct.size).toBeGreaterThan(10); // not all on the same tile
+  });
+
+  it("spawns 5 bats", () => {
+    const b = createBattle();
+    expect(spawnUnits(b, "player", "bats", 9, 22).length).toBe(5);
+  });
+});
+
 describe("target persistence", () => {
   it("an engaged attacker keeps its target when a nearer enemy is deployed", () => {
     const b = createBattle();

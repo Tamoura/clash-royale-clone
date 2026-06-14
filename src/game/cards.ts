@@ -18,6 +18,10 @@ export type CardId =
   | "balloon"
   | "baby-dragon"
   | "gargoyles"
+  | "bats"
+  | "minions"
+  | "skeleton-army"
+  | "executioner"
   | "valkyrie"
   | "prince"
   | "pekka"
@@ -400,6 +404,78 @@ export const CARDS: Record<CardId, Card> = {
       radius: 0.35,
     }),
   },
+  bats: {
+    id: "bats",
+    name: "Bats",
+    rarity: "common",
+    kind: "troop",
+    cost: 2,
+    count: 5,
+    unit: unit({
+      maxHp: 70,
+      damage: 70,
+      hitSpeed: 1.1,
+      attackRange: MELEE,
+      speed: "fast",
+      targetsAir: true,
+      flying: true,
+      radius: 0.28,
+    }),
+  },
+  minions: {
+    id: "minions",
+    name: "Minions",
+    rarity: "common",
+    kind: "troop",
+    cost: 3,
+    count: 3,
+    unit: unit({
+      maxHp: 190,
+      damage: 90,
+      hitSpeed: 1.0,
+      attackRange: 2, // short-range spit (distinguishes them from Gargoyles)
+      sightRange: 5.5,
+      speed: "fast",
+      targetsAir: true,
+      flying: true,
+      radius: 0.32,
+    }),
+  },
+  "skeleton-army": {
+    id: "skeleton-army",
+    name: "Skeleton Army",
+    rarity: "epic",
+    kind: "troop",
+    cost: 3,
+    count: 15,
+    unit: unit({
+      maxHp: 80,
+      damage: 80,
+      hitSpeed: 1.0,
+      attackRange: MELEE,
+      speed: "fast",
+      radius: 0.28,
+    }),
+  },
+  executioner: {
+    id: "executioner",
+    name: "Executioner",
+    rarity: "epic",
+    kind: "troop",
+    cost: 5,
+    count: 1,
+    unit: unit({
+      maxHp: 700,
+      damage: 180,
+      hitSpeed: 2.4,
+      attackRange: 4.5,
+      sightRange: 6,
+      speed: "medium",
+      targetsAir: true,
+      pierce: true, // the axe flies out in a line through everything it hits
+      radius: 0.55,
+    }),
+  },
   valkyrie: {
     id: "valkyrie",
     name: "Valkyrie",
@@ -585,6 +661,10 @@ export const DECK: CardId[] = [
   "tombstone",
   "elixir-collector",
   "gargoyles",
+  "bats",
+  "minions",
+  "skeleton-army",
+  "executioner",
   "arrows",
   "zap",
   "rage",
