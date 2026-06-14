@@ -16,7 +16,7 @@ import { spawnStyle } from "./spawnfx";
 import { ShakeController } from "./shake";
 import { ParticleField } from "./particles";
 import { impactStyle } from "./impactfx";
-import { THEME, hexStr } from "./theme";
+import { THEME } from "./theme";
 import {
   animateTroop,
   articulate,
@@ -1356,10 +1356,9 @@ export class Battle3D {
     c.width = ARENA_WIDTH * tile;
     c.height = ARENA_HEIGHT * tile;
     const ctx = c.getContext("2d")!;
-    const gold = hexStr(THEME.gold);
 
-    // Warm plaster base.
-    ctx.fillStyle = hexStr(THEME.cream);
+    // Pale warm plaster base — kept light so the units read clearly on top.
+    ctx.fillStyle = "#efe7cf";
     ctx.fillRect(0, 0, c.width, c.height);
 
     const cell = tile * 4; // one star motif every 4 arena units
@@ -1387,35 +1386,31 @@ export class Battle3D {
     };
 
     ctx.lineJoin = "round";
-    // Terracotta cross/diamond linkers sit on the cell corners.
+    // Everything is drawn as a faint tint + thin strapwork so the pattern
+    // stays a quiet "watermark" the troops read clearly against.
     for (let y = 0; y <= c.height; y += cell) {
       for (let x = 0; x <= c.width; x += cell) {
-        diamond(x, y, cell * 0.22);
-        ctx.fillStyle = hexStr(THEME.terracotta);
+        diamond(x, y, cell * 0.2);
+        ctx.fillStyle = "rgba(184,92,56,0.10)";
         ctx.fill();
-        ctx.strokeStyle = gold;
-        ctx.lineWidth = tile * 0.12;
+        ctx.strokeStyle = "rgba(202,162,63,0.20)";
+        ctx.lineWidth = tile * 0.05;
         ctx.stroke();
       }
     }
-    // Turquoise eight-point stars at each cell centre, gold strapwork.
     for (let y = cell / 2; y < c.height; y += cell) {
       for (let x = cell / 2; x < c.width; x += cell) {
         star8(x, y, R, inner);
-        ctx.fillStyle = hexStr(THEME.turquoise);
+        ctx.fillStyle = "rgba(26,163,160,0.12)";
         ctx.fill();
-        ctx.strokeStyle = gold;
-        ctx.lineWidth = tile * 0.18;
-        ctx.stroke();
-        star8(x, y, R * 0.52, inner * 0.52);
-        ctx.strokeStyle = hexStr(THEME.goldLight);
+        ctx.strokeStyle = "rgba(202,162,63,0.28)";
         ctx.lineWidth = tile * 0.06;
         ctx.stroke();
       }
     }
-    // Faint gold lattice for the interlaced look.
-    ctx.strokeStyle = "rgba(202,162,63,0.22)";
-    ctx.lineWidth = tile * 0.05;
+    // Whisper-faint gold lattice for the interlaced look.
+    ctx.strokeStyle = "rgba(202,162,63,0.07)";
+    ctx.lineWidth = tile * 0.04;
     for (let x = cell / 2; x < c.width; x += cell) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
