@@ -2,7 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#14203a" />
     <title>Clash Royale Clone</title>
     <style>
       html,
@@ -16,11 +23,17 @@
           "Chalkboard SE", "Marker Felt", "Comic Sans MS",
           "Trebuchet MS", system-ui, sans-serif;
         user-select: none;
+        -webkit-user-select: none;
         overflow: hidden;
+        /* Mobile: no rubber-band scroll/pull-to-refresh, no tap flash. */
+        overscroll-behavior: none;
         -webkit-font-smoothing: antialiased;
+        -webkit-tap-highlight-color: transparent;
       }
       #app {
-        height: 100%;
+        /* Dynamic viewport height so mobile browser chrome can't clip it. */
+        height: 100vh;
+        height: 100dvh;
         display: flex;
         flex-direction: column;
         /* Portrait phone shape so the tall 9:16 arena fills the view. */
@@ -32,7 +45,8 @@
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        padding: 8px 14px;
+        /* Keep clear of the notch / status bar at the top. */
+        padding: calc(8px + env(safe-area-inset-top)) 14px 8px;
         color: #e5e7eb;
         background: linear-gradient(180deg, #1d2a47 0%, #14203a 100%);
         border-bottom: 3px solid #2e4470;
@@ -118,6 +132,8 @@
         flex: 1;
         position: relative;
         min-height: 0;
+        /* Drag-to-deploy must not pan/zoom the page on touch devices. */
+        touch-action: none;
       }
       #stage canvas {
         position: absolute;
@@ -125,12 +141,14 @@
         width: 100% !important;
         height: 100% !important;
         cursor: crosshair;
+        touch-action: none;
       }
       #hud {
         background: linear-gradient(180deg, #1d2a47 0%, #14203a 100%);
         border-top: 3px solid #2e4470;
         box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.06);
-        padding: 8px 14px 12px;
+        /* Keep the card row above the home indicator on phones. */
+        padding: 8px 14px calc(12px + env(safe-area-inset-bottom));
       }
       .elixir-row {
         display: flex;
