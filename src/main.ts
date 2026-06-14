@@ -14,7 +14,7 @@ import { drawCardArt } from "./render/characters";
 import { CARD_COLOR } from "./render/cardcolors";
 import { isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
-import { Battle3D } from "./render3d/scene3d";
+import { Battle3D, ARENA_THEME_KEY } from "./render3d/scene3d";
 import { RoomClient, type NetSocket } from "./net/roomClient";
 import { Lockstep } from "./net/lockstep";
 import { sideForRole, type Role, type MatchMode } from "./net/protocol";
@@ -759,6 +759,12 @@ window.addEventListener("keydown", (ev) => {
   const n = Number(ev.key);
   if (n >= 1 && n <= 4) selectCard(mySideState().hand.cards[n - 1]);
   if (ev.key === "Escape") selectCard(null);
+  // "T" switches the arena theme (Arabic ⇄ normal); reloads to rebuild.
+  if (ev.key === "t" || ev.key === "T") {
+    const cur = localStorage.getItem(ARENA_THEME_KEY) === "normal" ? "normal" : "arabic";
+    localStorage.setItem(ARENA_THEME_KEY, cur === "arabic" ? "normal" : "arabic");
+    location.reload();
+  }
 });
 
 const SIM_DT = 1 / 30;
