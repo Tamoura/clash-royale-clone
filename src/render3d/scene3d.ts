@@ -491,6 +491,75 @@ function onionDome(r: number, color: number): THREE.Group {
   return g;
 }
 
+/** An ornate fanoos lantern: gold cage around a warm glow, capped + ringed. */
+function makeLantern(s = 1): THREE.Group {
+  const g = new THREE.Group();
+  const glow = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.11 * s, 0.09 * s, 0.3 * s, 8),
+    unlitGlow(0xffb347),
+  );
+  glow.position.y = 0.2 * s;
+  g.add(glow);
+  for (const [ry, rr] of [[0.35, 0.12], [0.05, 0.1]] as const) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(rr * s, 0.02 * s, 6, 10), toon(THEME.gold));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = ry * s;
+    g.add(ring);
+  }
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.1 * s, 0.16 * s, 6), toon(THEME.gold));
+  cap.position.y = 0.44 * s;
+  g.add(cap);
+  const drop = new THREE.Mesh(new THREE.SphereGeometry(0.04 * s, 6, 5), toon(THEME.gold));
+  drop.position.y = -0.02 * s;
+  g.add(drop);
+  return g;
+}
+
+/** A horseshoe-arch gateway straddling a bridge, crescent + hanging lantern. */
+function archGateway(): THREE.Group {
+  const g = new THREE.Group();
+  const span = 1.0;
+  const pierH = 1.1;
+  const pierR = 0.16;
+  for (const sx of [-1, 1]) {
+    const pier = new THREE.Mesh(
+      new THREE.CylinderGeometry(pierR, pierR * 1.1, pierH, 10),
+      toon(THEME.sand),
+    );
+    pier.position.set(sx * span, pierH / 2, 0);
+    pier.castShadow = true;
+    g.add(pier);
+    const base = new THREE.Mesh(
+      new THREE.CylinderGeometry(pierR * 1.3, pierR * 1.45, 0.12, 10),
+      toon(THEME.gold),
+    );
+    base.position.set(sx * span, 0.06, 0);
+    g.add(base);
+  }
+  // Semicircular arch (half-torus in the x-y plane) bridging the piers.
+  const arch = new THREE.Mesh(new THREE.TorusGeometry(span, pierR, 8, 20, Math.PI), toon(THEME.sand));
+  arch.position.y = pierH;
+  arch.castShadow = true;
+  g.add(arch);
+  const trim = new THREE.Mesh(
+    new THREE.TorusGeometry(span + pierR * 0.55, pierR * 0.28, 6, 20, Math.PI),
+    toon(THEME.gold),
+  );
+  trim.position.y = pierH;
+  g.add(trim);
+  const fin = crescentFinial(0.42);
+  fin.position.set(0, pierH + span + 0.04, 0);
+  g.add(fin);
+  // Lantern on a short chain hung from the keystone.
+  const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.34, 4), toon(THEME.gold));
+  chain.position.set(0, pierH + span - 0.32, 0);
+  g.add(chain);
+  const lantern = makeLantern(1.0);
+  lantern.position.set(0, pierH + span - 0.7, 0);
+  g.add(lantern);
+  return g;
+}
+
 function buildTowerMesh(e: Entity): EntityView {
   const root = new THREE.Group();
   const king = e.kind === "king-tower";
@@ -1155,23 +1224,25 @@ export class Battle3D {
     tent(-tHw, -tHd, 0xd44a3b);
     tent(tHw, -tHd, 0xd44a3b);
 
-    // Torches flanking each bridge approach.
+    // Lantern posts flanking each bridge approach.
     for (const bx of BRIDGE_XS) {
       const w = toWorld(bx, RIVER_Y);
       for (const sz of [-1, 1]) {
         const pole = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.06, 0.08, 1.1, 6),
-          toon(0x5a4632),
+          new THREE.CylinderGeometry(0.05, 0.07, 1.1, 6),
+          toon(THEME.stone),
         );
         pole.position.set(w.x + 1.45, 0.55, sz * 2.2);
         pole.castShadow = true;
         this.scene.add(pole);
-        const flame = new THREE.Mesh(
-          new THREE.SphereGeometry(0.14, 8, 6),
-          unlitGlow(0xffa726),
-        );
-        flame.position.set(w.x + 1.45, 1.2, sz * 2.2);
-        this.scene.add(flame);
+        // A little gold arm the lantern hangs from.
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.28, 4), toon(THEME.gold));
+        arm.rotation.z = Math.PI / 2;
+        arm.position.set(w.x + 1.32, 1.08, sz * 2.2);
+        this.scene.add(arm);
+        const lantern = makeLantern(0.95);
+        lantern.position.set(w.x + 1.2, 0.92, sz * 2.2);
+        this.scene.add(lantern);
       }
     }
 
@@ -1513,6 +1584,10 @@ export class Battle3D {
       const rim = new THREE.Mesh(new THREE.BoxGeometry(2.06, 0.06, 2.66), toon(THEME.gold));
       rim.position.set(w.x, 0.21, 0);
       this.scene.add(rim);
+      // Horseshoe-arch gateway with a crescent and a hanging lantern.
+      const gate = archGateway();
+      gate.position.set(w.x, 0.2, 0);
+      this.scene.add(gate);
       for (const side of [-1, 1]) {
         const wall = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.34, 2.6), toon(THEME.stone));
         wall.position.set(w.x + side * 0.92, 0.34, 0);
