@@ -1,7 +1,8 @@
 import * as THREE from "three";
-import { ARENA_HEIGHT, ARENA_WIDTH, BRIDGE_XS, RIVER_Y, type Side } from "../game/arena";
+import { ARENA_HEIGHT, ARENA_WIDTH, BRIDGE_XS, RIVER_Y, type OpenLanes, type Side } from "../game/arena";
 import {
   distance,
+  openLanes,
   type BattleEvent,
   type BattleState,
   type Entity,
@@ -997,8 +998,15 @@ export class Battle3D {
   /** Scrolling river texture + accumulated flow time. */
   private waterTex: THREE.CanvasTexture | null = null;
   private waterTime = 0;
-  private readonly zonePlane: THREE.Mesh;
-  private readonly enemyZonePlane: THREE.Mesh;
+  private readonly zonePlane: THREE.Mesh; // own-half deploy area (blue)
+  // Enemy half, split per lane: a dark "no-deploy" overlay that turns into a
+  // blue "deployable" strip once that lane's princess tower falls.
+  private readonly enemyDarkL: THREE.Mesh;
+  private readonly enemyDarkR: THREE.Mesh;
+  private readonly laneBlueL: THREE.Mesh;
+  private readonly laneBlueR: THREE.Mesh;
+  private zoneShown = false;
+  private lastOpen: OpenLanes = { left: false, right: false };
   private readonly container: HTMLElement;
 
   constructor(container: HTMLElement) {
@@ -1058,16 +1066,23 @@ export class Battle3D {
     this.zonePlane.visible = false;
     this.scene.add(this.zonePlane);
 
-    // CR-style "can't deploy there": the enemy half goes dark while
-    // a troop card is being placed.
-    this.enemyZonePlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(ARENA_WIDTH, ARENA_HEIGHT / 2 + 1),
-      new THREE.MeshBasicMaterial({ color: 0x1a0b10, transparent: true, opacity: 0.38 }),
-    );
-    this.enemyZonePlane.rotation.x = -Math.PI / 2;
-    this.enemyZonePlane.position.set(0, 0.026, -ARENA_HEIGHT / 4 + 0.5);
-    this.enemyZonePlane.visible = false;
-    this.scene.add(this.enemyZonePlane);
+    // Enemy half, one mesh per lane. Dark "can't deploy" by default; swapped
+    // for a blue "deployable" strip when that lane opens (tower fell).
+    const laneW = ARENA_WIDTH / 2;
+    const zoneStrip = (color: number, opacity: number, depth: number): THREE.Mesh => {
+      const m = new THREE.Mesh(
+        new THREE.PlaneGeometry(laneW, depth),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity }),
+      );
+      m.rotation.x = -Math.PI / 2;
+      m.visible = false;
+      this.scene.add(m);
+      return m;
+    };
+    this.enemyDarkL = zoneStrip(0x1a0b10, 0.38, ARENA_HEIGHT / 2 + 1);
+    this.enemyDarkR = zoneStrip(0x1a0b10, 0.38, ARENA_HEIGHT / 2 + 1);
+    this.laneBlueL = zoneStrip(0x3b82f6, 0.16, ARENA_HEIGHT / 2 - 1);
+    this.laneBlueR = zoneStrip(0x3b82f6, 0.16, ARENA_HEIGHT / 2 - 1);
 
     this.resize();
     window.addEventListener("resize", () => this.resize());
@@ -1741,7 +1756,14 @@ export class Battle3D {
     this.camera.lookAt(0, 0, 0);
     const m = side === "player" ? 1 : -1;
     this.zonePlane.position.z = m * (ARENA_HEIGHT / 4 + 0.5);
-    this.enemyZonePlane.position.z = -m * (ARENA_HEIGHT / 4 - 0.5);
+    // Enemy half (opposite side); left lane at -x, right lane at +x.
+    const ez = -m * (ARENA_HEIGHT / 4 - 0.5); // dark overlay centre
+    const bz = -m * (ARENA_HEIGHT / 4 + 0.5); // blue strip centre (off the river)
+    const lx = ARENA_WIDTH / 4;
+    this.enemyDarkL.position.set(-lx, 0.026, ez);
+    this.enemyDarkR.position.set(lx, 0.026, ez);
+    this.laneBlueL.position.set(-lx, 0.027, bz);
+    this.laneBlueR.position.set(lx, 0.027, bz);
   }
 
   /** Convert a pointer event to arena tile coordinates, if on the field. */
@@ -1815,8 +1837,22 @@ export class Battle3D {
   }
 
   setZoneVisible(visible: boolean): void {
-    this.zonePlane.visible = visible;
-    this.enemyZonePlane.visible = visible;
+    this.zoneShown = visible;
+    this.applyDeployZone();
+  }
+
+  /**
+   * Show the deploy overlay: own half blue; each enemy-half lane is dark
+   * (forbidden) until its tower falls, then it lights up blue (deployable).
+   */
+  private applyDeployZone(): void {
+    const v = this.zoneShown;
+    const open = this.lastOpen;
+    this.zonePlane.visible = v;
+    this.laneBlueL.visible = v && open.left;
+    this.laneBlueR.visible = v && open.right;
+    this.enemyDarkL.visible = v && !open.left;
+    this.enemyDarkR.visible = v && !open.right;
   }
 
   private addEffect(
@@ -2527,6 +2563,13 @@ export class Battle3D {
   /** Create/update/remove meshes to mirror the battle state. */
   sync(state: BattleState, dt: number): void {
     this.syncProjectiles(state);
+    // Keep the deploy overlay in step with opened lanes (a tower falling
+    // expands where you can deploy).
+    const open = openLanes(state, viewSide);
+    if (open.left !== this.lastOpen.left || open.right !== this.lastOpen.right) {
+      this.lastOpen = open;
+      this.applyDeployZone();
+    }
     const seen = new Set<number>();
     for (const e of state.entities) {
       seen.add(e.id);
