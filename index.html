@@ -550,17 +550,20 @@
       }
       #deckpicker .deck-slots {
         display: grid;
-        grid-template-columns: repeat(4, 64px);
+        grid-template-columns: repeat(4, 1fr);
         gap: 8px;
         padding: 12px;
+        width: 100%;
+        max-width: 320px;
+        box-sizing: border-box;
         background: rgba(255, 255, 255, 0.06);
         border: 2px solid #d9a93f;
         border-radius: 12px;
       }
       #deckpicker .deck-slot {
         position: relative;
-        width: 64px;
-        height: 64px;
+        width: 100%;
+        aspect-ratio: 1 / 1;
         border-radius: 9px;
         border: 2px dashed #46587f;
         background: rgba(13, 19, 34, 0.6);
@@ -573,8 +576,9 @@
         cursor: pointer;
       }
       #deckpicker .deck-slot canvas {
-        width: 54px;
-        height: 54px;
+        width: 86%;
+        height: 86%;
+        margin: 7%;
       }
       #deckpicker .collect-label {
         color: #9fb3d9;
@@ -583,9 +587,11 @@
       }
       #deckpicker .picker-grid {
         display: grid;
-        grid-template-columns: repeat(6, 70px);
-        gap: 7px;
-        max-width: 700px;
+        /* Fluid columns so 6 cards always fit the phone width. */
+        grid-template-columns: repeat(6, 1fr);
+        gap: 6px;
+        width: 100%;
+        max-width: 460px;
       }
       #deckpicker .pick.chosen {
         opacity: 0.4;
@@ -602,8 +608,10 @@
         font-weight: bold;
       }
       #deckpicker .pick canvas {
-        width: 44px;
-        height: 44px;
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1 / 1;
+        display: block;
       }
       #deckpicker .pick.chosen {
         border-color: #ffe082;
