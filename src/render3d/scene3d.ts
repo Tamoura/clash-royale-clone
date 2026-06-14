@@ -18,6 +18,9 @@ import { ShakeController } from "./shake";
 import { ParticleField } from "./particles";
 import { impactStyle } from "./impactfx";
 import { THEME, ARABIC, ARENA_THEME } from "./theme";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import {
   animateTroop,
   articulate,
@@ -998,6 +1001,9 @@ export class Battle3D {
   /** Scrolling river texture + accumulated flow time. */
   private waterTex: THREE.CanvasTexture | null = null;
   private waterTime = 0;
+  /** Post-processing: a selective bloom pass so glows actually glow. */
+  private readonly composer: EffectComposer;
+  private readonly bloom: UnrealBloomPass;
   private readonly zonePlane: THREE.Mesh; // own-half deploy area (blue)
   // Enemy half, split per lane: a dark "no-deploy" overlay that turns into a
   // blue "deployable" strip once that lane's princess tower falls.
@@ -1084,6 +1090,13 @@ export class Battle3D {
     this.laneBlueL = zoneStrip(0x3b82f6, 0.16, ARENA_HEIGHT / 2 - 1);
     this.laneBlueR = zoneStrip(0x3b82f6, 0.16, ARENA_HEIGHT / 2 - 1);
 
+    // Bloom pipeline: only bright pixels (the unlit "glow" materials —
+    // lanterns, spell FX, hit-sparks) bloom, so it stays subtle and cheap.
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.4, 0.85);
+    this.composer.addPass(this.bloom);
+
     this.resize();
     window.addEventListener("resize", () => this.resize());
   }
@@ -1100,6 +1113,10 @@ export class Battle3D {
     sun.shadow.camera.bottom = -20;
     sun.shadow.camera.far = 60;
     this.scene.add(sun);
+    // Cool rim light from the opposite-back edge for a glossy silhouette pop.
+    const rim = new THREE.DirectionalLight(0x9fc6ff, 0.5);
+    rim.position.set(-12, 9, -11);
+    this.scene.add(rim);
   }
 
   private decorate(): void {
@@ -1740,8 +1757,11 @@ export class Battle3D {
   resize(): void {
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
+    const dpr = Math.min(2, window.devicePixelRatio);
     this.renderer.setSize(w, h, false);
-    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+    this.renderer.setPixelRatio(dpr);
+    this.composer.setPixelRatio(dpr);
+    this.composer.setSize(w, h);
     this.frameOrtho();
   }
 
@@ -2868,7 +2888,7 @@ export class Battle3D {
       return true;
     });
 
-    this.renderer.render(this.scene, this.camera);
+    this.composer.render();
   }
 
   /** Remove every entity mesh (used on battle restart). */
