@@ -130,10 +130,17 @@ export class Hud {
       tip.classList.add("show");
     };
 
+    // Stat tooltips are hover-only — they're useless and intrusive on touch,
+    // so only wire them up on devices with a real hovering pointer (desktop).
+    const canHover =
+      typeof window !== "undefined" && !!window.matchMedia?.("(hover: hover)").matches;
+
     for (let i = 0; i < 4; i++) {
       const btn = el("button", "card", handRow);
-      btn.addEventListener("mouseenter", () => showTip(btn));
-      btn.addEventListener("mouseleave", () => tip.classList.remove("show"));
+      if (canHover) {
+        btn.addEventListener("mouseenter", () => showTip(btn));
+        btn.addEventListener("mouseleave", () => tip.classList.remove("show"));
+      }
       // Select on pointerdown so a press can roll straight into a
       // drag onto the field (release deploys there).
       btn.addEventListener("pointerdown", (ev) => {
