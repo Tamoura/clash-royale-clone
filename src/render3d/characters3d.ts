@@ -471,16 +471,18 @@ function buildMiniPekka(): TroopRig {
   const legs = [makeLeg(0x10141c, -0.15, 0.3, 0.18), makeLeg(0x10141c, 0.15, 0.3, 0.18)];
   g.add(...legs);
   g.add(box(0.52, 0.42, 0.36, 0x202b3d, 0, 0.5, 0)); // body
-  g.add(sphere(0.08, 0x4fd8ff, 0, 0.56, 0.19)); // chest light
+  g.add(box(0.42, 0.14, 0.4, 0x39455c, 0, 0.64, 0.02)); // chest plate ridge
+  g.add(sphere(0.08, 0x4fd8ff, 0, 0.5, 0.2)); // chest light
   g.add(box(0.6, 0.5, 0.54, 0x26334a, 0, 1.02, 0)); // helmet head
   const eye = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.09, 0.04), glow(0x4fd8ff, 2.2));
   eye.position.set(0, 1.04, 0.28);
   g.add(eye);
   for (const s of [-1, 1]) {
-    const horn = cone(0.08, 0.36, 0xb7c2cc, s * 0.34, 1.36, 0);
+    const horn = cone(0.09, 0.4, 0xc7d0dd, s * 0.34, 1.38, 0);
     horn.rotation.z = -s * 0.55;
     g.add(horn);
-    g.add(sphere(0.07, 0xb7c2cc, s * 0.31, 0.62, 0)); // shoulder bolt
+    g.add(sphere(0.13, 0x39455c, s * 0.32, 0.62, 0)); // shoulder pad
+    g.add(sphere(0.06, 0xb7c2cc, s * 0.32, 0.7, 0.08)); // bolt
   }
 
   const offArm = new THREE.Group();
@@ -493,6 +495,9 @@ function buildMiniPekka(): TroopRig {
   arm.add(box(0.13, 0.28, 0.13, 0x202b3d, 0, -0.14, 0));
   arm.add(box(0.06, 0.2, 0.06, 0x6d4c41, 0, -0.38, 0)); // handle
   arm.add(box(0.05, 0.62, 0.34, 0xb7c2cc, 0, -0.1, 0.1)); // cleaver
+  const cleaverEdge = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.62, 0.05), glow(0x76e6ff, 2.0));
+  cleaverEdge.position.set(0, -0.1, 0.28); // glowing cutting edge
+  arm.add(cleaverEdge);
   g.add(arm);
   return { group: g, arm, armRest: -0.5, swingAmp: 1.9, height: 1.65, legs, offArm };
 }
@@ -822,22 +827,35 @@ function buildValkyrie(): TroopRig {
     braid.rotation.z = s * 0.25;
     g.add(braid);
   }
+  // Battle armor: steel pauldrons with rivets, a leather chest guard,
+  // and a gold headband.
+  for (const s of [-1, 1]) {
+    g.add(sphere(0.15, 0x9aa3ad, s * 0.36, 0.78, 0)); // pauldron
+    g.add(sphere(0.05, 0xf2c14e, s * 0.36, 0.86, 0.08)); // rivet
+  }
+  g.add(box(0.36, 0.3, 0.3, 0x6b4a2a, 0, 0.66, 0.06)); // chest guard
+  g.add(diamond(0.07, 0xf2c14e, 0, 0.7, 0.24)); // emblem
+  g.add(cyl(0.31, 0.31, 0.06, 0xf2c14e, 0, 1.22, 0)); // headband
 
   const offArm = new THREE.Group();
   offArm.position.set(-0.38, 0.74, 0);
   offArm.add(box(0.13, 0.28, 0.13, SKIN, 0, -0.14, 0));
   g.add(offArm);
 
-  // Huge double axe.
+  // Huge double axe with gold hubs and a haft spike.
   const arm = new THREE.Group();
   arm.position.set(0.38, 0.78, 0);
   arm.add(box(0.13, 0.28, 0.13, SKIN, 0, -0.14, 0));
   arm.add(cyl(0.035, 0.035, 0.85, 0x6d4c41, 0, -0.1, 0.16)); // haft
+  arm.add(cone(0.05, 0.2, 0xc7d0dd, 0, 0.4, 0.16)); // haft spike
   for (const s of [-1, 1]) {
     const blade = cyl(0.22, 0.22, 0.06, 0xb7c2cc, s * 0.18, 0.28, 0.16);
     blade.rotation.z = Math.PI / 2;
     blade.scale.y = 0.4;
     arm.add(blade);
+    const hub = cyl(0.09, 0.09, 0.08, 0xf2c14e, s * 0.1, 0.28, 0.16);
+    hub.rotation.z = Math.PI / 2;
+    arm.add(hub);
   }
   g.add(arm);
   return { group: g, arm, armRest: -0.55, swingAmp: 1.9, height: 1.45, legs, offArm };
