@@ -90,23 +90,27 @@ Current characters are procedural toon/"vinyl figurine" rigs in
 `MeshToonMaterial`, ~29 per-card builders). Make them read better and look
 more premium. Uses the installed 3D skills (3d-modeling, 3d-rigging,
 3d-texturing, 3d-animation, three-best-practices).
-- [ ] **Silhouette & proportion pass** — chibi head-scale + distinct
-      per-class silhouettes so every card reads at a glance (M)
-- [ ] **Faces & expressions** — cleaner eyes/brows, idle blink, attack
-      grimace (M)
-- [ ] **Material variety** — two-tone trims; cloth vs metal vs skin; rim
-      light / Fresnel so shapes pop (M)
-- [ ] **Animation polish** — secondary motion (capes, hair, tails jiggle),
-      better anticipation/follow-through on attacks (M)
-- [ ] **Lighting & post** — rim light, softer shadows, subtle bloom on
-      glowing bits, light color grade (S–M)
-- [ ] **Hero passes** for marquee cards (Knight, Wizard, P.E.K.K.A, Prince,
-      dragons) — extra love where it's most seen (M)
-- [ ] **Perf guard** — LOD/instancing if detail grows (3d-asset-optimization) (M)
+ART DIRECTION (decided): **CR chunky-cartoon** (big head, bold cel outline),
+chosen via a 4-style prototype comparison. Shipped on PR #94:
+- [x] **Material variety / rim light** — Fresnel rim baked into shared
+      `toon()` (addRimLight via onBeforeCompile); +20% saturation; cleaner
+      grain. All 29 + towers pop.
+- [x] **Lighting** — softer battle shadows + cool back-rim in scene3d.
+- [x] **Hero passes** — Knight (kite shield, plume, gold diamond emblem),
+      Wizard (hat + glowing crystal staff), P.E.K.K.A (glowing sword edge);
+      enhanced Valkyrie, Mini-P.E.K.K.A (glow cleaver), Giant.
+- [ ] **Bloom post** in the BATTLE scene (glows: gems/eyes/visors/orbs/
+      projectiles). Deferred — render-pipeline change (EffectComposer +
+      UnrealBloomPass + OutputPass); couldn't verify a headless battle
+      unattended. Next visual win.
+- [ ] **Big-head proportion pass** — heads aren't grouped with hats/hair,
+      so it's per-builder, not a safe global. Optional.
+- [ ] **Further detail** for remaining units (most are already well-detailed;
+      candidates: Prince, swarm units) (M)
+- [ ] **Perf guard** — LOD/instancing if detail grows (M)
 
-Open art-direction decision (drives everything): keep & refine the vinyl/toy
-look, go CR-accurate chunky-cartoon, push toward semi-realistic/PBR, or lean
-cute-chibi. Then choose scope (a few hero cards first vs all 29).
+Note: most of the roster was already richly modeled; "still basic" was mainly
+the Knight + flat lighting, both fixed.
 
 ## Recommended sequence
 1. **Feel & Safety** — Track A juice + the self-play CI guard (C).
