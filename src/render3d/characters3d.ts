@@ -270,42 +270,69 @@ export interface TroopRig {
   extras?: (t: number, phase: number) => void;
 }
 
+/** A gold diamond stud (heraldic, no cross). */
+function diamond(r: number, color: number, x: number, y: number, z: number): THREE.Mesh {
+  const geo = cachedGeo(`oct:${r}`, () => new THREE.OctahedronGeometry(r));
+  return shadowed(new THREE.Mesh(geo, toon(color)), x, y, z);
+}
+
 function buildKnight(): TroopRig {
   const g = new THREE.Group();
-  const legs = [makeLeg(0x4e342e, -0.15, 0.3, 0.17), makeLeg(0x4e342e, 0.15, 0.3, 0.17)];
+  const BLUE = 0x2f6bd8, BLUEDK = 0x244e9c, STEEL = 0xb9c4d2, GOLD = 0xf2c14e, LEATHER = 0x5a3a1c, RED = 0xc23b3b;
+  const legs = [makeLeg(BLUEDK, -0.16, 0.32, 0.18), makeLeg(BLUEDK, 0.16, 0.32, 0.18)];
+  for (const leg of legs) leg.add(sphere(0.1, GOLD, 0, -0.18, 0.12)); // knee rivet
   g.add(...legs);
-  g.add(cyl(0.3, 0.36, 0.45, 0x54606f, 0, 0.52, 0)); // armor torso
-  g.add(cyl(0.37, 0.37, 0.09, 0x3a2a1c, 0, 0.34, 0)); // belt
-  g.add(sphere(0.16, 0x94a1ae, -0.34, 0.68, 0)); // pauldron
-  g.add(sphere(0.16, 0x94a1ae, 0.34, 0.68, 0)); // pauldron
-  const head = sphere(0.32, SKIN, 0, 1.04, 0);
-  addEyes(head, 0.32, 0.38, 0.1, "brave");
-  head.add(box(0.26, 0.06, 0.05, 0xd9b34a, 0, -0.1, 0.29)); // blond mustache (CR)
-  g.add(head);
-  g.add(cyl(0.34, 0.36, 0.18, 0x94a1ae, 0, 1.22, 0)); // helmet band
-  const dome = sphere(0.33, 0x94a1ae, 0, 1.28, 0);
-  dome.scale.y = 0.65;
-  g.add(dome);
-  g.add(box(0.07, 0.2, 0.05, 0x94a1ae, 0, 1.05, 0.31)); // nose guard
 
-  // Shield arm.
+  // Layered torso: tunic, breastplate, chainmail collar, belt, tabard, emblem.
+  g.add(cyl(0.3, 0.36, 0.5, BLUE, 0, 0.56, 0));
+  g.add(box(0.56, 0.48, 0.42, STEEL, 0, 0.66, 0));
+  g.add(cyl(0.28, 0.28, 0.12, 0x9aa6b5, 0, 0.92, 0));
+  g.add(cyl(0.37, 0.37, 0.09, LEATHER, 0, 0.34, 0));
+  g.add(box(0.13, 0.13, 0.06, GOLD, 0, 0.34, 0.28)); // buckle
+  g.add(box(0.24, 0.46, 0.04, BLUEDK, 0, 0.52, 0.25)); // tabard
+  g.add(diamond(0.1, GOLD, 0, 0.7, 0.27)); // chest emblem
+  for (const sx of [-1, 1]) {
+    g.add(sphere(0.18, STEEL, sx * 0.38, 0.82, 0)); // pauldron
+    g.add(sphere(0.055, GOLD, sx * 0.38, 0.92, 0.1)); // rivet
+  }
+
+  // Bigger head + face + helmet.
+  const head = sphere(0.36, SKIN, 0, 1.16, 0);
+  addEyes(head, 0.36, 0.32, 0.08, "brave");
+  head.add(box(0.24, 0.06, 0.05, 0xd9b34a, 0, -0.12, 0.33)); // blond mustache
+  g.add(head);
+  g.add(cyl(0.39, 0.39, 0.12, 0x9aa6b5, 0, 1.32, 0)); // helmet brim
+  const dome = sphere(0.37, STEEL, 0, 1.4, 0);
+  dome.scale.y = 0.82;
+  g.add(dome);
+  g.add(box(0.07, 0.22, 0.06, STEEL, 0, 1.08, 0.34)); // nose guard
+  g.add(box(0.1, 0.5, 0.16, 0xe23b3b, 0, 1.74, -0.05)); // plume
+  const cape = box(0.5, 0.7, 0.05, 0x7a1f2b, 0, 0.62, -0.28);
+  cape.rotation.x = 0.08;
+  g.add(cape);
+
+  // Shield arm: a gold-bordered kite shield with a boss + emblem.
   const offArm = new THREE.Group();
-  offArm.position.set(-0.4, 0.78, 0);
-  offArm.add(box(0.13, 0.32, 0.13, 0x54606f, 0, -0.16, 0));
-  const shield = box(0.08, 0.46, 0.36, 0x8d6e63, -0.08, -0.3, 0.08);
-  offArm.add(shield);
-  offArm.add(sphere(0.07, 0x94a1ae, -0.13, -0.3, 0.08)); // boss
+  offArm.position.set(-0.42, 0.82, 0);
+  offArm.add(box(0.14, 0.32, 0.14, BLUE, 0, -0.16, 0));
+  offArm.add(sphere(0.11, STEEL, 0, -0.32, 0.02)); // gauntlet
+  offArm.add(box(0.42, 0.56, 0.05, GOLD, -0.1, -0.28, 0.16)); // border
+  offArm.add(box(0.34, 0.48, 0.07, RED, -0.1, -0.28, 0.18)); // face
+  offArm.add(sphere(0.08, STEEL, -0.1, -0.22, 0.24)); // boss
+  offArm.add(cone(0.07, 0.16, GOLD, -0.1, -0.4, 0.24)); // emblem
   g.add(offArm);
 
-  // Sword arm.
+  // Sword arm: gauntlet, crossguard, fullered blade, gold pommel.
   const arm = new THREE.Group();
-  arm.position.set(0.4, 0.8, 0);
-  arm.add(box(0.13, 0.3, 0.13, SKIN, 0, -0.15, 0));
-  arm.add(box(0.26, 0.06, 0.1, 0x8d6e63, 0, -0.32, 0)); // guard
-  arm.add(box(0.07, 0.72, 0.14, 0xdde4ec, 0, 0.06, 0)); // blade
-  arm.add(sphere(0.06, 0xf2c14e, 0, -0.4, 0)); // pommel
+  arm.position.set(0.42, 0.84, 0);
+  arm.add(box(0.15, 0.32, 0.15, BLUE, 0, -0.16, 0));
+  arm.add(sphere(0.12, STEEL, 0, -0.33, 0.02)); // gauntlet
+  arm.add(box(0.28, 0.07, 0.1, GOLD, 0, -0.3, 0.02)); // crossguard
+  arm.add(box(0.08, 0.82, 0.14, 0xe7ecf3, 0, 0.13, 0.02)); // blade
+  arm.add(sphere(0.06, GOLD, 0, -0.44, 0.02)); // pommel
   g.add(arm);
-  return { group: g, arm, armRest: -0.55, swingAmp: 1.7, height: 1.5, legs, offArm };
+
+  return { group: g, arm, armRest: -0.5, swingAmp: 1.7, height: 1.6, legs, offArm };
 }
 
 function buildArcher(): TroopRig {
