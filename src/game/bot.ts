@@ -1,6 +1,7 @@
 import { ARENA_WIDTH, BRIDGE_XS, RIVER_Y, nearestBridgeX } from "./arena";
 import { deployCard, distance, type BattleState, type Entity } from "./battle";
 import { getCard, type CardId } from "./cards";
+import { isDoubleElixir } from "./sim";
 
 /** Seconds between bot decisions. */
 export const THINK_INTERVAL = 1.0;
@@ -112,6 +113,34 @@ function botTanks(state: BattleState): Entity[] {
   );
 }
 
+/**
+ * Which lane to attack. Beeline an open lane (the player's princess there
+ * has fallen, so the path runs straight to the king); otherwise commit to
+ * the lane of the player's weaker tower to finish it. Splitting pressure
+ * between lanes is what stalls games out — focus closes them.
+ */
+function targetLaneX(state: BattleState, bot: BotState): number {
+  const towers = state.entities.filter(
+    (e) => e.side === "player" && e.kind === "princess-tower",
+  );
+  for (const bx of BRIDGE_XS) {
+    if (!towers.some((t) => Math.abs(t.x - bx) < 2)) return bx; // open lane
+  }
+  if (towers.length === 2 && towers[0].hp !== towers[1].hp) {
+    const weaker = towers[0].hp < towers[1].hp ? towers[0] : towers[1];
+    return nearestBridgeX(weaker.x);
+  }
+  return BRIDGE_XS[bot.rng() < 0.5 ? 0 : 1];
+}
+
+/**
+ * The elixir at which the bot commits to a push. In double elixir (and
+ * overtime) it presses harder — sitting on elixir then just wastes it.
+ */
+function effectivePushAt(state: BattleState, bot: BotState): number {
+  return isDoubleElixir(state) ? Math.max(5, bot.pushAt - 2) : bot.pushAt;
+}
+
 /** A spot on the bot's half, between the threat and its towers. */
 function defenseSpot(threat: Entity): { x: number; y: number } {
   return {
@@ -209,7 +238,7 @@ function tryEconomy(state: BattleState, bot: BotState): boolean {
 }
 
 function tryPush(state: BattleState, bot: BotState): boolean {
-  if (state.enemy.elixir.amount < bot.pushAt) return false;
+  if (state.enemy.elixir.amount < effectivePushAt(state, bot)) return false;
   const affordable = affordableTroops(state);
   if (affordable.length === 0) return false;
 
@@ -225,7 +254,7 @@ function tryPush(state: BattleState, bot: BotState): boolean {
     return deployCard(state, "enemy", pick, nearestBridgeX(lead.x), RIVER_Y - 4);
   }
 
-  const lane = BRIDGE_XS[bot.rng() < 0.5 ? 0 : 1];
+  const lane = targetLaneX(state, bot);
   // Otherwise lead with a win-condition; failing that, commit the most
   // expensive troop we can (a meaningful unit, never a stray skeleton).
   const wincons = affordable.filter(isWinCondition);
