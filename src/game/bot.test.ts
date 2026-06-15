@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RIVER_Y } from "./arena";
+import { BRIDGE_XS, RIVER_Y } from "./arena";
 import { createBattle, spawnUnits } from "./battle";
 import { botThink, createBot, tickBot } from "./bot";
 import { createHand } from "./hand";
@@ -175,6 +175,53 @@ describe("piloting", () => {
     b.enemy.elixir = { amount: 10 };
     botThink(b, createBot(42));
     expect(buildingsOf(b).some((x) => x.cardId === "cannon")).toBe(true);
+  });
+});
+
+describe("closing", () => {
+  const pushLaneX = (b: ReturnType<typeof createBattle>): number => {
+    const t = troopsOf(b, "enemy");
+    return t.reduce((s, e) => s + e.x, 0) / t.length;
+  };
+  const dropPlayerTower = (b: ReturnType<typeof createBattle>, laneX: number) => {
+    b.entities = b.entities.filter(
+      (e) => !(e.side === "player" && e.kind === "princess-tower" && Math.abs(e.x - laneX) < 2),
+    );
+  };
+
+  it("beelines an open lane once a tower is down", () => {
+    const b = createBattle();
+    dropPlayerTower(b, BRIDGE_XS[1]); // right tower destroyed -> right lane open
+    giveBotHand(b, ["giant", "knight", "archers", "wizard"]);
+    botThink(b, createBot(42));
+    expect(troopsOf(b, "enemy").length).toBeGreaterThan(0);
+    expect(Math.abs(pushLaneX(b) - BRIDGE_XS[1])).toBeLessThan(2.5);
+  });
+
+  it("focuses the weaker standing tower", () => {
+    const b = createBattle();
+    const right = b.entities.find(
+      (e) => e.side === "player" && e.kind === "princess-tower" && e.x > 9,
+    )!;
+    right.hp = 200; // right tower is the weaker one
+    giveBotHand(b, ["giant", "knight", "archers", "wizard"]);
+    botThink(b, createBot(42));
+    expect(Math.abs(pushLaneX(b) - BRIDGE_XS[1])).toBeLessThan(2.5);
+  });
+
+  it("pushes on less elixir in double elixir", () => {
+    const b = createBattle();
+    b.time = 130; // double elixir
+    b.enemy.elixir = { amount: 6 }; // below the normal pushAt of 8
+    giveBotHand(b, ["giant", "knight", "archers", "wizard"]);
+    b.enemy.elixir = { amount: 6 };
+    botThink(b, createBot(42));
+    expect(troopsOf(b, "enemy").length).toBeGreaterThan(0);
+    // ...but a normal-time bot at 6 elixir still holds.
+    const c = createBattle();
+    c.enemy.elixir = { amount: 6 };
+    botThink(c, createBot(42));
+    expect(troopsOf(c, "enemy")).toHaveLength(0);
   });
 });
 
