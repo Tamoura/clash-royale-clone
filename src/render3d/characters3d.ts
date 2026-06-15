@@ -21,7 +21,8 @@ let toonGradient: THREE.DataTexture | null = null;
 
 function gradientMap(): THREE.DataTexture {
   if (!toonGradient) {
-    const data = new Uint8Array([90, 180, 255]);
+    // Three hard bands with a deeper core shadow → bolder cel pop.
+    const data = new Uint8Array([74, 172, 255]);
     toonGradient = new THREE.DataTexture(data, 3, 1, THREE.RedFormat);
     toonGradient.minFilter = THREE.NearestFilter;
     toonGradient.magFilter = THREE.NearestFilter;
@@ -52,8 +53,8 @@ function grainMap(): THREE.DataTexture {
     };
     for (let y = 0; y < s; y++) {
       for (let x = 0; x < s; x++) {
-        const weave = (x + y) % 4 === 0 ? 0.94 : 1; // diagonal threads
-        const speckle = 1 - rand() * 0.12;
+        const weave = (x + y) % 4 === 0 ? 0.97 : 1; // diagonal threads (subtle)
+        const speckle = 1 - rand() * 0.06;
         const v = Math.round(255 * weave * speckle);
         const i = (y * s + x) * 4;
         data[i] = data[i + 1] = data[i + 2] = v;
@@ -74,8 +75,13 @@ function grainMap(): THREE.DataTexture {
 }
 
 export function toon(color: number): THREE.MeshToonMaterial {
+  // Punch up saturation for bold, candy-cartoon colors (CR look).
+  const c = new THREE.Color(color);
+  const hsl = { h: 0, s: 0, l: 0 };
+  c.getHSL(hsl);
+  c.setHSL(hsl.h, Math.min(1, hsl.s * 1.2), hsl.l);
   return new THREE.MeshToonMaterial({
-    color,
+    color: c,
     gradientMap: gradientMap(),
     map: grainMap(),
   });
@@ -1096,8 +1102,12 @@ const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
  * Add inverted-hull silhouette outlines to a rig's larger meshes.
  * One black material per rig so death-fade can't bleed across units.
  */
+/** Bold CR-style cel outline: near-black and thick. */
+const OUTLINE_COLOR = 0x0b0e16;
+const OUTLINE_SCALE = 1.09;
+
 export function outlineRig(group: THREE.Group): void {
-  const mat = new THREE.MeshBasicMaterial({ color: 0x141925, side: THREE.BackSide });
+  const mat = new THREE.MeshBasicMaterial({ color: OUTLINE_COLOR, side: THREE.BackSide });
   const targets: THREE.Mesh[] = [];
   group.traverse((o) => {
     const mesh = o as THREE.Mesh;
@@ -1111,7 +1121,7 @@ export function outlineRig(group: THREE.Group): void {
   for (const mesh of targets) {
     const hull = new THREE.Mesh(mesh.geometry, mat);
     hull.name = "outline";
-    hull.scale.setScalar(1.06);
+    hull.scale.setScalar(OUTLINE_SCALE);
     mesh.add(hull);
   }
 }
