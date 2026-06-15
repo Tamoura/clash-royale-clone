@@ -16,6 +16,7 @@ import { isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
 import { Battle3D } from "./render3d/scene3d";
 import { ARENA_THEME_KEY } from "./render3d/theme";
+import { cardPortrait } from "./render3d/cardportraits";
 import { RoomClient, type NetSocket } from "./net/roomClient";
 import { Lockstep } from "./net/lockstep";
 import { sideForRole, type Role, type MatchMode } from "./net/protocol";
@@ -281,16 +282,23 @@ function endOnlineMatch(message: string): void {
 
 const pickerRoot = document.getElementById("deckpicker")!;
 
-/** Small card tile canvas reused in the deck row and collection grid. */
+/** Card tile canvas reused in the deck row and collection grid. */
 function cardTileCanvas(id: CardId): HTMLCanvasElement {
+  const S = 128; // hi-res so the character reads clearly on the tile
   const c = document.createElement("canvas");
-  c.width = c.height = 48;
+  c.width = c.height = S;
   const ctx = c.getContext("2d")!;
   ctx.fillStyle = CARD_COLOR[id];
   ctx.beginPath();
-  ctx.roundRect(0, 0, 48, 48, 7);
+  ctx.roundRect(0, 0, S, S, S * 0.14);
   ctx.fill();
-  drawCardArt(ctx, id, 24, 26, 26);
+  // Use the crisp 3D portrait (troops/buildings); spells fall back to 2D art.
+  const portrait = cardPortrait(id);
+  if (portrait) {
+    ctx.drawImage(portrait, S * 0.04, 0, S * 0.92, S * 0.92);
+  } else {
+    drawCardArt(ctx, id, S / 2, S * 0.54, S * 0.5);
+  }
   return c;
 }
 
