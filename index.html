@@ -9,7 +9,11 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CR Clone" />
     <meta name="theme-color" content="#14203a" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="icon" type="image/png" href="icon-192.png" />
     <title>Clash Royale Clone</title>
     <style>
       html,
@@ -380,13 +384,16 @@
         width: 92px;
         border: 3px solid #c98a2b;
         border-radius: 12px;
-        background: linear-gradient(180deg, #4a6fa5 0%, #2c4a78 55%, #233c63 100%);
+        background: linear-gradient(180deg, #5c81bb 0%, #35578c 52%, #243d66 100%);
+        /* Layered bevel: gold inner hairline + top sheen + drop shadow. */
         box-shadow:
-          inset 0 2px 0 rgba(255, 255, 255, 0.25),
-          0 3px 6px rgba(0, 0, 0, 0.45);
+          inset 0 0 0 1.5px rgba(255, 233, 170, 0.35),
+          inset 0 3px 0 rgba(255, 255, 255, 0.28),
+          inset 0 -6px 10px rgba(0, 0, 0, 0.28),
+          0 3px 7px rgba(0, 0, 0, 0.5);
         color: #fff;
         cursor: pointer;
-        padding: 8px 4px 16px;
+        padding: 8px 5px 16px;
         transition: transform 0.08s ease;
       }
       button.card:hover {
@@ -411,10 +418,15 @@
       }
       /* (locked styling unified below with the elixir veil) */
       button.card canvas {
-        width: 68px;
-        height: 68px;
-        border-radius: 8px;
-        filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.4));
+        width: 72px;
+        height: 72px;
+        border-radius: 9px;
+        /* Framed "window": a recessed jewel backdrop behind the portrait. */
+        background: radial-gradient(circle at 50% 32%, #334a72 0%, #1a2740 100%);
+        border: 2px solid rgba(10, 16, 30, 0.55);
+        box-shadow:
+          inset 0 2px 7px rgba(0, 0, 0, 0.55),
+          0 1px 1px rgba(255, 255, 255, 0.12);
       }
       .card-name {
         font-size: 11px;
