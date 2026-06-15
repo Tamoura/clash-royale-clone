@@ -411,6 +411,11 @@ function buildGiant(): TroopRig {
   g.add(beard);
   g.add(box(0.5, 0.07, 0.06, 0x5d3d22, 0, 1.92, 0.36)); // heavy brow
   g.add(sphere(0.09, SKIN, 0, 1.74, 0.42)); // nose
+  if (ARABIC) {
+    const t = turban(0.42, 0x9c5a2a, 0xf2c14e);
+    t.position.y = 1.78;
+    g.add(t);
+  }
 
   const offArm = new THREE.Group();
   offArm.position.set(-0.66, 1.28, 0);
@@ -554,21 +559,29 @@ function buildWizard(): TroopRig {
   const goatee = sphere(0.13, HAIR, 0, 0.84, 0.2);
   goatee.scale.set(0.9, 0.95, 0.6);
   g.add(goatee);
-  // Swept-back brown hair with a proud cowlick.
-  const hairCap = sphere(0.31, HAIR, 0, 1.16, -0.05);
-  hairCap.scale.set(1, 0.72, 1.02);
-  g.add(hairCap);
-  const backSweep = sphere(0.18, HAIR, 0, 1.04, -0.26);
-  backSweep.scale.set(1.1, 0.9, 0.7);
-  g.add(backSweep);
-  const cowlick = cone(0.09, 0.22, HAIR, 0.05, 1.42, 0.05);
-  cowlick.rotation.z = -0.35;
-  g.add(cowlick);
+  if (ARABIC) {
+    const t = turban(0.3, 0x2f6f6b, 0x76ff03); // teal turban, green mage jewel
+    t.position.y = 1.06;
+    g.add(t);
+  } else {
+    // Swept-back brown hair with a proud cowlick.
+    const hairCap = sphere(0.31, HAIR, 0, 1.16, -0.05);
+    hairCap.scale.set(1, 0.72, 1.02);
+    g.add(hairCap);
+    const backSweep = sphere(0.18, HAIR, 0, 1.04, -0.26);
+    backSweep.scale.set(1.1, 0.9, 0.7);
+    g.add(backSweep);
+    const cowlick = cone(0.09, 0.22, HAIR, 0.05, 1.42, 0.05);
+    cowlick.rotation.z = -0.35;
+    g.add(cowlick);
+    for (const s of [-1, 1]) {
+      const sideburn = cyl(0.06, 0.04, 0.22, HAIR, s * 0.27, 0.98, 0.02);
+      sideburn.rotation.z = s * 0.12;
+      g.add(sideburn);
+    }
+  }
   for (const s of [-1, 1]) {
-    const sideburn = cyl(0.06, 0.04, 0.22, HAIR, s * 0.27, 0.98, 0.02);
-    sideburn.rotation.z = s * 0.12;
-    g.add(sideburn);
-    g.add(cyl(0.07, 0.07, 0.08, 0x4a3526, s * 0.36, 0.55, 0)); // wristband
+    g.add(cyl(0.07, 0.07, 0.08, 0x4a3526, s * 0.36, 0.55, 0)); // wristband (both)
   }
 
   // Staff hand.
@@ -832,13 +845,19 @@ function buildValkyrie(): TroopRig {
   const head = sphere(0.3, SKIN, 0, 1.04, 0);
   addEyes(head, 0.3, 0.38, 0.1, "angry");
   g.add(head);
-  const hair = sphere(0.31, 0xe07b39, 0, 1.12, -0.03);
-  hair.scale.set(1, 0.66, 1);
-  g.add(hair);
-  for (const s of [-1, 1]) {
-    const braid = cyl(0.07, 0.05, 0.5, 0xe07b39, s * 0.27, 0.84, -0.1);
-    braid.rotation.z = s * 0.25;
-    g.add(braid);
+  if (ARABIC) {
+    const t = turban(0.3, 0x9c3848, 0xf2c14e); // crimson headscarf, gold band
+    t.position.y = 1.04;
+    g.add(t);
+  } else {
+    const hair = sphere(0.31, 0xe07b39, 0, 1.12, -0.03);
+    hair.scale.set(1, 0.66, 1);
+    g.add(hair);
+    for (const s of [-1, 1]) {
+      const braid = cyl(0.07, 0.05, 0.5, 0xe07b39, s * 0.27, 0.84, -0.1);
+      braid.rotation.z = s * 0.25;
+      g.add(braid);
+    }
   }
 
   const offArm = new THREE.Group();
@@ -908,14 +927,21 @@ function buildPrince(): TroopRig {
   goatee.scale.set(0.9, 0.8, 0.6);
   head.add(goatee);
   g.add(head);
-  // Golden helm with a raised visor and a team-colored feather.
-  g.add(cyl(0.28, 0.3, 0.2, 0xf2c14e, 0, 1.84, -0.1)); // helmet band
-  const helmDome = sphere(0.29, 0xf2c14e, 0, 1.92, -0.1);
-  helmDome.scale.y = 0.72;
-  g.add(helmDome);
-  g.add(box(0.4, 0.07, 0.06, 0xd9a93f, 0, 1.96, 0.12)); // raised visor
-  for (const s of [-1, 1]) {
-    g.add(box(0.06, 0.18, 0.16, 0xf2c14e, s * 0.26, 1.7, -0.04)); // cheek guard
+  if (ARABIC) {
+    // Royal gold turban with a ruby jewel, in place of the helm.
+    const t = turban(0.27, 0xf2c14e, 0xb71c1c);
+    t.position.set(0, 1.66, -0.1);
+    g.add(t);
+  } else {
+    // Golden helm with a raised visor and a team-colored feather.
+    g.add(cyl(0.28, 0.3, 0.2, 0xf2c14e, 0, 1.84, -0.1)); // helmet band
+    const helmDome = sphere(0.29, 0xf2c14e, 0, 1.92, -0.1);
+    helmDome.scale.y = 0.72;
+    g.add(helmDome);
+    g.add(box(0.4, 0.07, 0.06, 0xd9a93f, 0, 1.96, 0.12)); // raised visor
+    for (const s of [-1, 1]) {
+      g.add(box(0.06, 0.18, 0.16, 0xf2c14e, s * 0.26, 1.7, -0.04)); // cheek guard
+    }
   }
   const plume = cone(0.08, 0.4, 0x3b82f6, 0, 2.22, -0.16);
   plume.rotation.x = 0.25;
@@ -982,8 +1008,14 @@ function buildHogRider(): TroopRig {
   const head = sphere(0.26, RIDER, 0, 1.5, -0.12);
   addEyes(head, 0.26, 0.38, 0.1, "angry");
   g.add(head);
-  const mohawk = box(0.08, 0.26, 0.4, 0x2d1b0e, 0, 1.76, -0.12);
-  g.add(mohawk);
+  if (ARABIC) {
+    const t = turban(0.26, 0x6f5340, 0xf2c14e); // brown turban, gold jewel
+    t.position.set(0, 1.5, -0.12);
+    g.add(t);
+  } else {
+    const mohawk = box(0.08, 0.26, 0.4, 0x2d1b0e, 0, 1.76, -0.12);
+    g.add(mohawk);
+  }
   // The iconic big dark beard.
   const beard = sphere(0.2, 0x2d1b0e, 0, 1.36, 0.02);
   beard.scale.set(1.05, 0.8, 0.75);
