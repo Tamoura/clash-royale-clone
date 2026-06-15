@@ -1407,7 +1407,30 @@ export class Battle3D {
     return g;
   }
 
-  /** Original winter floor: sandy stone blocks with mortar lines. */
+  /** Gold eight-point star inlaid in the floor (the classic CR arena mark). */
+  private makeStarEmblem(z: number): THREE.Group {
+    const g = new THREE.Group();
+    const R = 2.6;
+    const r = 0.95; // sharp points
+    const shape = new THREE.Shape();
+    for (let i = 0; i < 16; i++) {
+      const a = (Math.PI / 8) * i - Math.PI / 2;
+      const rad = i % 2 === 0 ? R : r;
+      const x = Math.cos(a) * rad;
+      const y = Math.sin(a) * rad;
+      if (i === 0) shape.moveTo(x, y);
+      else shape.lineTo(x, y);
+    }
+    shape.closePath();
+    const star = new THREE.Mesh(new THREE.ShapeGeometry(shape), toon(0xe8b948));
+    star.rotation.x = -Math.PI / 2;
+    star.position.set(0, 0.03, z);
+    star.receiveShadow = true;
+    g.add(star);
+    return g;
+  }
+
+  /** CR-style floor: a regular grid of warm sandstone tiles, lightly beveled. */
   private makeStoneTexture(): THREE.CanvasTexture {
     const tile = 32;
     const c = document.createElement("canvas");
@@ -1419,29 +1442,23 @@ export class Battle3D {
       seed = (seed * 1664525 + 1013904223) & 0xffffffff;
       return ((seed >>> 8) & 0xffff) / 0xffff;
     };
-    const block = tile * 2;
+    const block = Math.round(tile * 1.5); // ~1.5-unit tiles, like CR's grid
     for (let y = 0; y < c.height; y += block) {
       for (let x = 0; x < c.width; x += block) {
-        const shade = 0.92 + rand() * 0.08;
-        ctx.fillStyle = `rgb(${Math.round(214 * shade)},${Math.round(196 * shade)},${Math.round(158 * shade)})`;
+        const shade = 0.95 + rand() * 0.05;
+        ctx.fillStyle = `rgb(${Math.round(226 * shade)},${Math.round(206 * shade)},${Math.round(168 * shade)})`;
         ctx.fillRect(x, y, block, block);
-        ctx.fillStyle = "rgba(120,100,70,0.10)";
-        for (let s = 0; s < 6; s++) ctx.fillRect(x + rand() * block, y + rand() * block, 2, 2);
+        // Fine grit.
+        ctx.fillStyle = "rgba(150,128,92,0.07)";
+        for (let s = 0; s < 4; s++) ctx.fillRect(x + rand() * block, y + rand() * block, 2, 2);
+        // Per-tile bevel: light top/left, shadowed bottom/right (raised stone).
+        ctx.fillStyle = "rgba(255,248,225,0.20)";
+        ctx.fillRect(x, y, block, 2);
+        ctx.fillRect(x, y, 2, block);
+        ctx.fillStyle = "rgba(120,98,64,0.22)";
+        ctx.fillRect(x, y + block - 2, block, 2);
+        ctx.fillRect(x + block - 2, y, 2, block);
       }
-    }
-    ctx.strokeStyle = "rgba(120,100,70,0.45)";
-    ctx.lineWidth = 2;
-    for (let x = 0; x <= c.width; x += block) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, c.height);
-      ctx.stroke();
-    }
-    for (let y = 0; y <= c.height; y += block) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(c.width, y);
-      ctx.stroke();
     }
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -1640,7 +1657,8 @@ export class Battle3D {
     waterCanvas.width = 128;
     waterCanvas.height = 32;
     const wctx = waterCanvas.getContext("2d")!;
-    wctx.fillStyle = "#3f97e0";
+    // Arabic: bright garden-pool blue. Normal: CR's deep teal-green river.
+    wctx.fillStyle = arabic ? "#3f97e0" : "#2f7d77";
     wctx.fillRect(0, 0, 128, 32);
     wctx.strokeStyle = "rgba(255,255,255,0.5)";
     wctx.lineWidth = 1.6;
@@ -1662,10 +1680,10 @@ export class Battle3D {
     river.position.set(0, -0.04, 0);
     this.scene.add(river);
 
-    // Golden crescent emblem inlaid on each player's half.
+    // Gold emblem on each half: crescent (Arabic) or CR-style star (normal).
     for (const sz of [-1, 1]) {
       const z = sz * (ARENA_HEIGHT / 4 + 0.5);
-      this.scene.add(this.makeCrescentEmblem(z));
+      this.scene.add(arabic ? this.makeCrescentEmblem(z) : this.makeStarEmblem(z));
     }
 
     if (arabic) {
@@ -1700,38 +1718,33 @@ export class Battle3D {
         }
       }
     } else {
-      // Original golden-plank boardwalk bridges.
-      const plankCanvas = document.createElement("canvas");
-      plankCanvas.width = 64;
-      plankCanvas.height = 64;
-      const pctx = plankCanvas.getContext("2d")!;
-      pctx.fillStyle = "#e0b04f";
-      pctx.fillRect(0, 0, 64, 64);
-      pctx.fillStyle = "#c2913a";
-      for (let i = 0; i < 8; i++) pctx.fillRect(0, i * 8, 64, 1.6);
-      pctx.fillStyle = "rgba(122,86,28,0.5)";
-      for (let i = 0; i < 10; i++) pctx.fillRect((i * 23) % 60, ((i * 17) % 7) * 8 + 3, 2.5, 1.5);
-      pctx.fillStyle = "rgba(255,235,170,0.4)";
-      for (let i = 0; i < 8; i++) pctx.fillRect((i * 29 + 7) % 60, ((i * 13) % 7) * 8 + 1, 3, 1);
-      const plankTex = new THREE.CanvasTexture(plankCanvas);
-      plankTex.colorSpace = THREE.SRGBColorSpace;
+      // CR-style grey stone bridges with crenellated side walls.
+      const STONE = 0x9aa1a8;
+      const STONE_DK = 0x767d85;
       for (const bx of BRIDGE_XS) {
         const w = toWorld(bx, RIVER_Y);
-        const deck = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.18, 2.6), new THREE.MeshToonMaterial({ map: plankTex }));
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.2, 2.6), toon(STONE));
         deck.position.set(w.x, 0.1, 0);
         deck.castShadow = true;
         deck.receiveShadow = true;
         this.scene.add(deck);
+        // Dark seams so the deck reads as stone blocks.
+        for (const sz of [-0.6, 0, 0.6]) {
+          const seam = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.205, 0.05), toon(STONE_DK));
+          seam.position.set(w.x, 0.1, sz);
+          this.scene.add(seam);
+        }
         for (const side of [-1, 1]) {
-          const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.3, 2.6), toon(0xb8893a));
-          rail.position.set(w.x + side * 0.95, 0.3, 0);
-          rail.castShadow = true;
-          this.scene.add(rail);
-          for (const ez of [-1.18, 1.18]) {
-            const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.5, 8), toon(0x5d3f24));
-            post.position.set(w.x + side * 0.95, 0.32, ez);
-            post.castShadow = true;
-            this.scene.add(post);
+          const wall = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.34, 2.6), toon(STONE_DK));
+          wall.position.set(w.x + side * 0.91, 0.3, 0);
+          wall.castShadow = true;
+          this.scene.add(wall);
+          // Merlons (crenellations) along the wall top.
+          for (const ez of [-1.0, -0.33, 0.33, 1.0]) {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.18, 0.32), toon(STONE));
+            m.position.set(w.x + side * 0.91, 0.5, ez);
+            m.castShadow = true;
+            this.scene.add(m);
           }
         }
       }
