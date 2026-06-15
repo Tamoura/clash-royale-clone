@@ -89,7 +89,7 @@ export class Hud {
     this.clock = el("div", "clock", topbar);
     const right = el("div", "crowns enemy", topbar);
     right.innerHTML =
-      '<span>0</span> 👑 <span class="pname">Rival Bot</span><span class="level">9</span>';
+      '<span>0</span> 👑 <span class="pname">Bot</span><span class="level">9</span>';
     this.enemyCrowns = right.querySelector("span:first-child")!;
     this.opponentName = right.querySelector(".pname")!;
     this.muteBtn = el("button", "mute", topbar);

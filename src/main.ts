@@ -210,7 +210,7 @@ function restart(): void {
   bot = createBot(Date.now() & 0xffff, DIFFICULTIES[difficulty]);
   selectCard(null);
   hud.setReward(null);
-  hud.setOpponentName("Rival Bot");
+  hud.setOpponentName("Bot");
   scene.setViewpoint("player");
   scene.reset();
   audio.setIntensity(0);
@@ -274,7 +274,7 @@ function endOnlineMatch(message: string): void {
   mode = "solo";
   showBanner(message);
   scene.setViewpoint("player");
-  hud.setOpponentName("Rival Bot");
+  hud.setOpponentName("Bot");
   setTimeout(openDeckPicker, 1800);
 }
 
