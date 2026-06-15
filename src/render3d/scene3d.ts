@@ -898,7 +898,14 @@ export class Battle3D {
     sun.shadow.camera.top = 20;
     sun.shadow.camera.bottom = -20;
     sun.shadow.camera.far = 60;
+    sun.shadow.radius = 5; // softer contact shadows
+    sun.shadow.bias = -0.0004;
     this.scene.add(sun);
+    // Cool back-rim light to separate troops from the ground and pair
+    // with the material rim highlight.
+    const backRim = new THREE.DirectionalLight(0x9fc4ff, 0.6);
+    backRim.position.set(-8, 10, -14);
+    this.scene.add(backRim);
   }
 
   private decorate(): void {

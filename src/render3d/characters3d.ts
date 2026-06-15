@@ -74,17 +74,37 @@ function grainMap(): THREE.DataTexture {
   return grainTexture;
 }
 
+/**
+ * Inject a cool Fresnel rim-light into a lit material's fragment shader —
+ * a bright edge where the surface turns away from the camera. This single
+ * touch makes every rounded shape read as 3D and gives the whole roster a
+ * premium "lit figurine" pop. Shared source ⇒ Three reuses one program.
+ */
+function addRimLight(mat: THREE.Material): void {
+  mat.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace(
+      "#include <dithering_fragment>",
+      `float _rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
+       _rim = smoothstep(0.72, 1.0, _rim) * 0.26;
+       gl_FragColor.rgb += _rim * vec3(0.42, 0.56, 0.80);
+       #include <dithering_fragment>`,
+    );
+  };
+}
+
 export function toon(color: number): THREE.MeshToonMaterial {
   // Punch up saturation for bold, candy-cartoon colors (CR look).
   const c = new THREE.Color(color);
   const hsl = { h: 0, s: 0, l: 0 };
   c.getHSL(hsl);
   c.setHSL(hsl.h, Math.min(1, hsl.s * 1.2), hsl.l);
-  return new THREE.MeshToonMaterial({
+  const mat = new THREE.MeshToonMaterial({
     color: c,
     gradientMap: gradientMap(),
     map: grainMap(),
   });
+  addRimLight(mat);
+  return mat;
 }
 
 /**
