@@ -1,4 +1,4 @@
-import { BRIDGE_XS, RIVER_Y } from "./arena";
+import { ARENA_WIDTH, BRIDGE_XS, RIVER_Y, nearestBridgeX } from "./arena";
 import { deployCard, distance, type BattleState, type Entity } from "./battle";
 import { getCard, type CardId } from "./cards";
 
@@ -78,6 +78,40 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
 
+/** HP at which a troop is heavy enough to lead (or anchor) a push. */
+const TANK_HP = 1400;
+
+/** A win-condition: a building-targeting troop (Giant, Hog, Balloon). */
+function isWinCondition(id: CardId): boolean {
+  const c = getCard(id);
+  return c.kind === "troop" && c.unit.targetsBuildingsOnly;
+}
+
+/** A troop beefy enough to spearhead a push (win-condition or high HP). */
+function isTankCard(id: CardId): boolean {
+  const c = getCard(id);
+  return c.kind === "troop" && (c.unit.targetsBuildingsOnly || c.unit.maxHp >= TANK_HP);
+}
+
+/** A defensive building (Cannon, Tombstone) — anything but the collector. */
+function isDefensiveBuilding(id: CardId): boolean {
+  const c = getCard(id);
+  return c.kind === "building" && c.unit.elixirInterval === 0;
+}
+
+/** An economy building (the Elixir Collector). */
+function isEconomyBuilding(id: CardId): boolean {
+  const c = getCard(id);
+  return c.kind === "building" && c.unit.elixirInterval > 0;
+}
+
+/** The bot's own tanks/win-conditions currently on the field. */
+function botTanks(state: BattleState): Entity[] {
+  return state.entities.filter(
+    (e) => e.side === "enemy" && e.kind === "troop" && e.cardId !== null && isTankCard(e.cardId),
+  );
+}
+
 /** A spot on the bot's half, between the threat and its towers. */
 function defenseSpot(threat: Entity): { x: number; y: number } {
   return {
@@ -131,10 +165,24 @@ function trySpellCluster(state: BattleState): boolean {
   return false;
 }
 
+/** Heavy ground threats (Giant, P.E.K.K.A…) a building can kite and stall. */
+function isHeavyGroundThreat(threat: Entity): boolean {
+  return !threat.flying && (threat.targetsBuildingsOnly || threat.maxHp >= 2000);
+}
+
 function tryDefend(state: BattleState, bot: BotState): boolean {
   const invaders = playerTroops(state).filter((e) => e.y < RIVER_Y + 1);
   if (invaders.length === 0) return false;
   const threat = invaders.reduce((a, b) => (a.y < b.y ? a : b));
+  // A defensive building pulls a heavy ground tank off its lane and onto
+  // itself — far better elixir economy than trading troops with it.
+  if (isHeavyGroundThreat(threat)) {
+    const building = affordableTroops(state).find(isDefensiveBuilding);
+    if (building) {
+      const spot = { x: clamp(threat.x, 4, ARENA_WIDTH - 4), y: clamp(threat.y - 3, 3, RIVER_Y - 2) };
+      if (deployCard(state, "enemy", building, spot.x, spot.y)) return true;
+    }
+  }
   const cards = defenseCandidates(state, threat);
   if (cards.length === 0) return false;
   const card = cards[Math.floor(bot.rng() * cards.length)];
@@ -142,14 +190,53 @@ function tryDefend(state: BattleState, bot: BotState): boolean {
   return deployCard(state, "enemy", card, spot.x, spot.y);
 }
 
+/** Cheapest first — for value support behind a tank. */
+function byCostAsc(a: CardId, b: CardId): number {
+  return getCard(a).cost - getCard(b).cost;
+}
+
+/**
+ * Build economy when it's safe: at max elixir with nothing invading, drop
+ * the collector deep on our own side rather than spilling elixir.
+ */
+function tryEconomy(state: BattleState, bot: BotState): boolean {
+  if (state.enemy.elixir.amount < bot.pushAt) return false;
+  if (playerTroops(state).some((e) => e.y < RIVER_Y + 1)) return false;
+  const collector = affordableTroops(state).find(isEconomyBuilding);
+  if (!collector) return false;
+  // Center-back, in front of the king tower, where it's hard to snipe.
+  return deployCard(state, "enemy", collector, ARENA_WIDTH / 2, 5);
+}
+
 function tryPush(state: BattleState, bot: BotState): boolean {
   if (state.enemy.elixir.amount < bot.pushAt) return false;
-  const cards = affordableTroops(state);
-  if (cards.length === 0) return false;
-  const card = cards[Math.floor(bot.rng() * cards.length)];
+  const affordable = affordableTroops(state);
+  if (affordable.length === 0) return false;
+
+  // Already have a tank out front? Feed the cheapest support into its lane
+  // so the push arrives together instead of dribbling in piecemeal.
+  const tanks = botTanks(state);
+  if (tanks.length > 0) {
+    const lead = tanks.reduce((a, b) => (a.y > b.y ? a : b)); // furthest advanced
+    const support = affordable
+      .filter((id) => getCard(id).kind === "troop" && !isWinCondition(id))
+      .sort(byCostAsc);
+    const pick = support[0] ?? affordable[0];
+    return deployCard(state, "enemy", pick, nearestBridgeX(lead.x), RIVER_Y - 4);
+  }
+
   const lane = BRIDGE_XS[bot.rng() < 0.5 ? 0 : 1];
-  // Deploy behind the bridge so the push builds up on the way in.
-  return deployCard(state, "enemy", card, lane, RIVER_Y - 4);
+  // Otherwise lead with a win-condition; failing that, commit the most
+  // expensive troop we can (a meaningful unit, never a stray skeleton).
+  const wincons = affordable.filter(isWinCondition);
+  if (wincons.length > 0) {
+    const pick = wincons.sort(byCostAsc)[wincons.length - 1];
+    return deployCard(state, "enemy", pick, lane, RIVER_Y - 4);
+  }
+  const troops = affordable.filter((id) => getCard(id).kind === "troop");
+  const pool = troops.length > 0 ? troops : affordable;
+  const pick = pool.sort(byCostAsc)[pool.length - 1];
+  return deployCard(state, "enemy", pick, lane, RIVER_Y - 4);
 }
 
 /** Make at most one play right now. */
@@ -157,6 +244,7 @@ export function botThink(state: BattleState, bot: BotState): void {
   if (state.result) return;
   if (trySpellCluster(state)) return;
   if (tryDefend(state, bot)) return;
+  if (tryEconomy(state, bot)) return;
   tryPush(state, bot);
 }
 

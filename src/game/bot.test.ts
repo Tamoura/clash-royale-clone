@@ -124,6 +124,60 @@ describe("bot", () => {
   });
 });
 
+describe("piloting", () => {
+  const buildingsOf = (b: ReturnType<typeof createBattle>) =>
+    b.entities.filter((e) => e.side === "enemy" && e.kind === "building");
+
+  it("pushes with a win-condition as the spearhead, not a cheap troop", () => {
+    const b = createBattle();
+    giveBotHand(b, ["giant", "skeletons", "archers", "wizard"]); // 10 elixir
+    botThink(b, createBot(42));
+    const troops = troopsOf(b, "enemy");
+    expect(troops.length).toBeGreaterThan(0);
+    // The single play should be the giant, not the 1-elixir skeletons.
+    expect(troops.every((t) => t.cardId === "giant")).toBe(true);
+  });
+
+  it("sends support to the lane where its tank is already pushing", () => {
+    const b = createBattle();
+    spawnUnits(b, "enemy", "giant", 3.5, RIVER_Y - 3); // tank on the left lane
+    b.enemy.hand = createHand([
+      "musketeer", "knight", "archers", "skeletons",
+      "wizard", "valkyrie", "bats", "minions",
+    ] as never);
+    b.enemy.elixir = { amount: 10 };
+    botThink(b, createBot(42));
+    const support = troopsOf(b, "enemy").filter((t) => t.cardId !== "giant");
+    expect(support.length).toBeGreaterThan(0);
+    for (const s of support) expect(Math.abs(s.x - 3.5)).toBeLessThan(2.5);
+  });
+
+  it("drops an elixir collector in the back when flush and unthreatened", () => {
+    const b = createBattle();
+    b.enemy.hand = createHand([
+      "elixir-collector", "knight", "archers", "skeletons",
+      "giant", "musketeer", "valkyrie", "bats",
+    ] as never);
+    b.enemy.elixir = { amount: 10 };
+    botThink(b, createBot(42));
+    const buildings = buildingsOf(b);
+    expect(buildings.map((x) => x.cardId)).toEqual(["elixir-collector"]);
+    expect(buildings[0].y).toBeLessThan(8); // deep on its own side, not at the bridge
+  });
+
+  it("answers a ground tank with a defensive building when it has one", () => {
+    const b = createBattle();
+    spawnUnits(b, "player", "giant", 3.5, RIVER_Y - 2); // ground tank invading
+    b.enemy.hand = createHand([
+      "cannon", "knight", "archers", "skeletons",
+      "musketeer", "valkyrie", "bats", "minions",
+    ] as never);
+    b.enemy.elixir = { amount: 10 };
+    botThink(b, createBot(42));
+    expect(buildingsOf(b).some((x) => x.cardId === "cannon")).toBe(true);
+  });
+});
+
 describe("difficulty", () => {
   it("a slower thinker waits longer between plays", () => {
     const b = createBattle();
