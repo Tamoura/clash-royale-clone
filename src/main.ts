@@ -568,6 +568,7 @@ function openDeckPicker(): void {
 
 const hud = new Hud(topbar, hudRoot, overlay, {
   onSelectCard: selectCard,
+  onDeployAt: (x, y) => tryDeployAt(x, y),
   onRestart: restart,
   onToggleSound: () => {
     audio.setMuted(!audio.muted);
@@ -746,7 +747,7 @@ function tryDeployAt(clientX: number, clientY: number): void {
   }
 }
 
-// Click-to-place and drag-from-hand both end in a pointerup on the field.
+// Tap-to-place: release on the field deploys the selected card.
 scene.renderer.domElement.addEventListener("pointerup", (ev) => {
   tryDeployAt(ev.clientX, ev.clientY);
 });
@@ -853,5 +854,6 @@ if (import.meta.env.DEV) {
     sum: () => stateChecksum(battle),
     tick: () => online?.tick ?? 0,
     mode: () => mode,
+    entities: () => battle.entities.length,
   };
 }

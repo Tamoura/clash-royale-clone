@@ -10,6 +10,8 @@ import { cardPortrait } from "./cardportraits";
 
 export interface HudCallbacks {
   onSelectCard(id: CardId | null): void;
+  /** Release of a card-drag over the field — deploy at these page coords. */
+  onDeployAt(clientX: number, clientY: number): void;
   onRestart(): void;
   /** Returns the new muted state. */
   onToggleSound(): boolean;
@@ -141,17 +143,27 @@ export class Hud {
         btn.addEventListener("mouseenter", () => showTip(btn));
         btn.addEventListener("mouseleave", () => tip.classList.remove("show"));
       }
-      // Select on pointerdown so a press can roll straight into a
-      // drag onto the field (release deploys there).
+      // Select on pointerdown so the same press rolls straight into a drag
+      // onto the field. Keep the (implicit) pointer capture on the card so
+      // every pointermove/up of the gesture is delivered — they bubble to the
+      // window handlers that move the ghost and deploy on release.
+      let downX = 0;
+      let downY = 0;
       btn.addEventListener("pointerdown", (ev) => {
         const id = btn.dataset.card as CardId | undefined;
         if (!id) return;
-        // Touch implicitly captures the pointer; release it so the
-        // field receives the pointerup that completes a drag-deploy.
-        if (btn.hasPointerCapture(ev.pointerId)) {
-          btn.releasePointerCapture(ev.pointerId);
-        }
+        ev.preventDefault();
+        downX = ev.clientX;
+        downY = ev.clientY;
         this.cb.onSelectCard(this.selected === id ? null : id);
+      });
+      // The card keeps (implicit) pointer capture through a touch drag, so the
+      // release fires here rather than on the canvas. If the pointer actually
+      // travelled onto the field, treat it as a drag-to-deploy. A plain tap
+      // (no movement) just selects — the player then taps the field to place.
+      btn.addEventListener("pointerup", (ev) => {
+        const moved = Math.hypot(ev.clientX - downX, ev.clientY - downY);
+        if (moved > 16) this.cb.onDeployAt(ev.clientX, ev.clientY);
       });
       // Bottom-up elixir-charge fill that rises as the card nears playable.
       const veil = el("div", "elixir-veil", btn);
