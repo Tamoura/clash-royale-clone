@@ -84,11 +84,35 @@ orientations (cancels side/tempo bias).
 - [ ] Tinker mode — edit a card's stats in-game, then battle it (M)
 - [ ] In-game guided tutorial ("how it works" as you play) (M)
 
+### I — Modeling & Character Polish (better-looking troops)
+Current characters are procedural toon/"vinyl figurine" rigs in
+`render3d/characters3d.ts` (RoundedBox + spheres, shared grain map,
+`MeshToonMaterial`, ~29 per-card builders). Make them read better and look
+more premium. Uses the installed 3D skills (3d-modeling, 3d-rigging,
+3d-texturing, 3d-animation, three-best-practices).
+- [ ] **Silhouette & proportion pass** — chibi head-scale + distinct
+      per-class silhouettes so every card reads at a glance (M)
+- [ ] **Faces & expressions** — cleaner eyes/brows, idle blink, attack
+      grimace (M)
+- [ ] **Material variety** — two-tone trims; cloth vs metal vs skin; rim
+      light / Fresnel so shapes pop (M)
+- [ ] **Animation polish** — secondary motion (capes, hair, tails jiggle),
+      better anticipation/follow-through on attacks (M)
+- [ ] **Lighting & post** — rim light, softer shadows, subtle bloom on
+      glowing bits, light color grade (S–M)
+- [ ] **Hero passes** for marquee cards (Knight, Wizard, P.E.K.K.A, Prince,
+      dragons) — extra love where it's most seen (M)
+- [ ] **Perf guard** — LOD/instancing if detail grows (3d-asset-optimization) (M)
+
+Open art-direction decision (drives everything): keep & refine the vinyl/toy
+look, go CR-accurate chunky-cartoon, push toward semi-realistic/PBR, or lean
+cute-chibi. Then choose scope (a few hero cards first vs all 29).
+
 ## Recommended sequence
 1. **Feel & Safety** — Track A juice + the self-play CI guard (C).
 2. **Fair & Complete** — Balance Lab + win-condition buff (B) + bot rage/freeze (C).
 3. **Replayability** — Replays + Draft/Challenge (D).
 4. **Retention** — Progression loop (E).
-5. **Reach & Teach** — Tinker mode (H) + mobile/online (F/G).
+5. **Look & Teach** — Character polish (I) + Tinker mode (H) + mobile/online (F/G).
 
 Effort key: S = hours · M = 1–2 days · L = 3+ days.
