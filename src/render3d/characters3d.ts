@@ -399,7 +399,8 @@ function buildGiant(): TroopRig {
   g.add(belly);
   g.add(box(0.34, 0.26, 0.06, 0xa96f3d, 0.2, 0.85, 0.49)); // patch
   g.add(cyl(0.63, 0.63, 0.12, 0x7a5230, 0, 0.55, 0)); // belt
-  g.add(sphere(0.09, 0xf2c14e, 0, 0.55, 0.6)); // buckle
+  g.add(sphere(0.11, 0xf2c14e, 0, 0.55, 0.6)); // buckle
+  g.add(cyl(0.5, 0.6, 0.34, 0x8a5a35, 0, 0.4, 0)); // loincloth skirt
   const head = sphere(0.42, SKIN, 0, 1.72, 0);
   addEyes(head, 0.42, 0.34, 0.18, "calm");
   g.add(head);
@@ -412,12 +413,14 @@ function buildGiant(): TroopRig {
   const offArm = new THREE.Group();
   offArm.position.set(-0.66, 1.28, 0);
   offArm.add(box(0.24, 0.5, 0.24, SKIN, 0, -0.3, 0));
+  offArm.add(cyl(0.16, 0.16, 0.12, 0xf2c14e, 0, -0.5, 0)); // gold wristband
   offArm.add(sphere(0.21, SKIN, 0, -0.62, 0));
   offArm.rotation.x = -0.2;
   g.add(offArm);
   const arm = new THREE.Group();
   arm.position.set(0.66, 1.28, 0);
   arm.add(box(0.24, 0.5, 0.24, SKIN, 0, -0.3, 0));
+  arm.add(cyl(0.17, 0.17, 0.12, 0xf2c14e, 0, -0.52, 0)); // gold wristband
   arm.add(sphere(0.23, SKIN, 0, -0.64, 0));
   g.add(arm);
   return { group: g, arm, armRest: -0.35, swingAmp: 1.4, height: 2.1, legs, offArm };
