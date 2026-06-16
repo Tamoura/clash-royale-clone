@@ -140,6 +140,20 @@ describe("cel outlines", () => {
     }
   });
 
+  it("outlines are bold — thick and near-black — for the CR cartoon look", () => {
+    let outline: THREE.Mesh | null = null;
+    buildTroop("knight").group.traverse((o) => {
+      if (o.name === "outline" && !outline) outline = o as THREE.Mesh;
+    });
+    expect(outline).not.toBeNull();
+    const o = outline as unknown as THREE.Mesh;
+    expect(o.scale.x).toBeGreaterThanOrEqual(1.08); // thicker than the old 1.06
+    const mat = o.material as THREE.MeshBasicMaterial;
+    expect(mat.color.r).toBeLessThan(0.08); // near-black, not navy
+    expect(mat.color.g).toBeLessThan(0.08);
+    expect(mat.color.b).toBeLessThan(0.08);
+  });
+
   it("outlines are skipped for tiny detail meshes", () => {
     const rig = buildTroop("skeletons");
     let total = 0;

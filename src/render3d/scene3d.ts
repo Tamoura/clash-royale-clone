@@ -778,9 +778,10 @@ function buildTombstoneMesh(e: Entity): EntityView {
   cap.position.set(0, 1.02, -0.12);
   cap.castShadow = true;
   root.add(cap);
-  const cross = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.05), toon(0x78909c));
-  cross.position.set(0, 0.78, -0.01);
-  root.add(cross);
+  // Carved "RIP" plate on the headstone (replaces the old cross bar).
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.26, 0.04), toon(0x78909c));
+  plate.position.set(0, 0.74, 0.01);
+  root.add(plate);
   const skull = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), toon(0xf5f2ea));
   skull.position.set(0.32, 0.12, 0.32);
   root.add(skull);
@@ -1112,11 +1113,14 @@ export class Battle3D {
     sun.shadow.camera.top = 20;
     sun.shadow.camera.bottom = -20;
     sun.shadow.camera.far = 60;
+    sun.shadow.radius = 5; // softer contact shadows
+    sun.shadow.bias = -0.0004;
     this.scene.add(sun);
-    // Cool rim light from the opposite-back edge for a glossy silhouette pop.
-    const rim = new THREE.DirectionalLight(0x9fc6ff, 0.5);
-    rim.position.set(-12, 9, -11);
-    this.scene.add(rim);
+    // Cool back-rim light to separate troops from the ground and pair
+    // with the material rim highlight.
+    const backRim = new THREE.DirectionalLight(0x9fc4ff, 0.6);
+    backRim.position.set(-8, 10, -14);
+    this.scene.add(backRim);
   }
 
   private decorate(): void {
