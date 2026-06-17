@@ -14,6 +14,8 @@ import { CARD_COLOR } from "./render/cardcolors";
 import { isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
 import { Battle3D } from "./render3d/scene3d";
+import { loadMode, saveMode, type GameMode } from "./launcher/mode";
+import { launchUnity } from "./launcher/unityPanel";
 
 const stage = document.getElementById("stage")!;
 
@@ -76,6 +78,11 @@ function loadDifficulty(): string {
 }
 
 let difficulty = loadDifficulty();
+
+// ---- Native vs Unity edition (chosen on the intro) ----------------------
+
+const unityStage = document.getElementById("unity-stage")!;
+let gameMode: GameMode = loadMode(localStorage);
 
 // ---- Trophies + card levels (persisted progression) --------------------
 
@@ -163,6 +170,40 @@ function cardTileCanvas(id: CardId): HTMLCanvasElement {
 
 function buildDeckPicker(): void {
   pickerRoot.innerHTML = "";
+
+  // Edition toggle: the original in-browser build, or the Unity WebGL build.
+  const modeRow = document.createElement("div");
+  modeRow.className = "mode-row";
+  const modeNote = document.createElement("div");
+  modeNote.className = "mode-note";
+  const MODE_LABEL: Record<GameMode, string> = {
+    native: "Native (Three.js)",
+    unity: "Unity (WebGL)",
+  };
+  const MODE_HELP: Record<GameMode, string> = {
+    native: "The original TypeScript + Three.js game runs right here.",
+    unity: "Launches the Unity WebGL build served from /unity/.",
+  };
+  for (const mode of ["native", "unity"] as GameMode[]) {
+    const btn = document.createElement("button");
+    btn.className = "mode-btn";
+    btn.textContent = MODE_LABEL[mode];
+    btn.classList.toggle("chosen", mode === gameMode);
+    btn.addEventListener("click", () => {
+      gameMode = mode;
+      saveMode(localStorage, mode);
+      modeRow
+        .querySelectorAll("button")
+        .forEach((b) => b.classList.toggle("chosen", b === btn));
+      modeNote.textContent = MODE_HELP[mode];
+      startBtn.textContent = mode === "unity" ? "Launch Unity" : "Battle!";
+    });
+    modeRow.appendChild(btn);
+  }
+  pickerRoot.appendChild(modeRow);
+  modeNote.textContent = MODE_HELP[gameMode];
+  pickerRoot.appendChild(modeNote);
+
   const title = document.createElement("h2");
   title.textContent = "Build your battle deck";
   pickerRoot.appendChild(title);
@@ -207,7 +248,7 @@ function buildDeckPicker(): void {
 
   const startBtn = document.createElement("button");
   startBtn.className = "battle-btn";
-  startBtn.textContent = "Battle!";
+  startBtn.textContent = gameMode === "unity" ? "Launch Unity" : "Battle!";
   pickerRoot.appendChild(startBtn);
 
   const remove = (id: CardId): void => {
@@ -272,7 +313,11 @@ function buildDeckPicker(): void {
     playerDeck = deck.slice();
     localStorage.setItem(DECK_KEY, JSON.stringify(playerDeck));
     pickerRoot.classList.remove("show");
-    restart();
+    if (gameMode === "unity") {
+      void launchUnity(unityStage, openDeckPicker);
+    } else {
+      restart();
+    }
   });
 }
 
