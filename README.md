@@ -48,6 +48,20 @@ no Supercell assets are used.
   `src/audio/`, `src/main.ts`) are a thin shell driven by the sim's
   event stream.
 
+## Two editions (Native + Unity)
+
+The intro screen has a **Native / Unity** toggle:
+
+- **Native** — the original in-browser TypeScript + Three.js game (default).
+- **Unity** — a Unity build of the same game, sharing a C# port of the exact
+  deterministic battle sim (verified bit-identical to the TS version). It
+  loads from `/unity/` once you've built it for WebGL; until then the toggle
+  shows a "not built yet" placeholder.
+
+The Unity project and its build/test instructions live in
+[`unity/README.md`](unity/README.md). Drop a WebGL build into `public/unity/`
+to light up the toggle.
+
 ## Development
 
 ```sh

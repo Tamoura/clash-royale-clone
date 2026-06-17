@@ -48,11 +48,27 @@ Project: `unity/ClashRoyaleUnity` (Unity 2022.3 LTS, Built-in pipeline).
 - `Assets/Tests/EditMode/` — NUnit tests mirroring the TS sim tests.
 - `unity/README.md` — open + WebGL build instructions.
 
+## Verification
+
+Unity isn't installed locally, so the C# was verified out-of-band with the
+`dotnet` 9 SDK (the Sim assembly is UnityEngine-free):
+
+- **PRNG parity:** C# `Mulberry32` matches the JS mulberry32 stream exactly
+  for seeds 1 and 12345.
+- **Sim parity:** a scripted 40s battle (bot seed 777, scripted Giant deploy)
+  produces a **bit-identical** end-state fingerprint in TS and C# — same
+  entity hash (`443274240`), crowns, elixir, and damage.
+- **EditMode tests:** the 24 NUnit tests compile and pass under `dotnet test`
+  with NUnit 3.x (matching Unity's NUnit 3.5).
+- The Game/ MonoBehaviours depend on UnityEngine and were not compiled here;
+  written against stable 2022.3 APIs and reviewed (note: class `Sim` was
+  renamed `Simulation` to avoid a namespace/type collision in `ClashRoyale.Game`).
+
 ## Status
 
 - [x] Web mode module + tests (green)
 - [x] Web intro toggle + Unity panel
-- [ ] C# sim port
-- [ ] Unity scene + driver + HUD
-- [ ] Unity project files + EditMode tests + README
+- [x] C# sim port (verified bit-identical to TS)
+- [x] Unity scene + driver + HUD
+- [x] Unity project files + EditMode tests + README
 - [ ] PR

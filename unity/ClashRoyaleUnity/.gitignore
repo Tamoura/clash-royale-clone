@@ -1,0 +1,28 @@
+# Unity-generated folders and files — regenerated on open/build.
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+
+# Unity build/IDE artifacts
+*.csproj
+*.sln
+*.unityproj
+*.user
+*.booproj
+*.pidb
+*.suo
+.vs/
+.idea/
+.vsconfig
+
+# OS / asset import caches
+.DS_Store
+*.apk
+*.aab
+*.unitypackage
+crashlytics-build.properties

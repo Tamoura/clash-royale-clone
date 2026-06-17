@@ -1,3 +1,7 @@
 node_modules/
 dist/
 .DS_Store
+
+# Unity WebGL build dropped into the serve slot — keep only the placeholder.
+public/unity/*
+!public/unity/README.md
