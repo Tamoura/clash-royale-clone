@@ -25,9 +25,13 @@ namespace ClashRoyale.Game
             public CharacterAnim Anim;
             public Vector3 LastPos;
             public bool HasLast;
+            public double LastCooldown;
+            public float AttackHold;
+            public string AttackClip = "1H_Melee_Attack_Chop";
         }
 
         private readonly Dictionary<int, EntityView> views = new();
+        private readonly List<(EntityView view, float ttl)> dying = new();
         private Transform entityRoot;
         private GameObject deployZone;
         public Camera Camera { get; private set; }
@@ -80,11 +84,11 @@ namespace ClashRoyale.Game
 
             Camera.clearFlags = CameraClearFlags.Skybox;
             Camera.orthographic = false;
-            Camera.fieldOfView = 46f;
+            Camera.fieldOfView = 44f;
             // Angled portrait framing: top-down enough to read the board, tilted
             // enough that the real character models have presence.
-            Camera.transform.position = new Vector3(0f, 33f, -19f);
-            Camera.transform.LookAt(new Vector3(0f, 0f, -0.5f));
+            Camera.transform.position = new Vector3(0f, 29f, -18f);
+            Camera.transform.LookAt(new Vector3(0f, 0f, -1f));
             Camera.allowHDR = true;
         }
 
@@ -245,7 +249,33 @@ namespace ClashRoyale.Game
                     view.Root.transform.rotation = Quaternion.Slerp(
                         view.Root.transform.rotation, Quaternion.LookRotation(faceDir), 0.25f);
 
-                    view.Anim?.Play(moving ? "Walking_A" : "Idle");
+                    // An attack just landed when the cooldown jumps back up.
+                    if (e.Cooldown > view.LastCooldown + 0.05)
+                    {
+                        view.AttackHold = 0.45f;
+                    }
+
+                    view.LastCooldown = e.Cooldown;
+                    if (view.AttackHold > 0f)
+                    {
+                        view.AttackHold -= Time.deltaTime;
+                    }
+
+                    if (view.Anim != null)
+                    {
+                        if (moving)
+                        {
+                            view.Anim.Play("Walking_A");
+                        }
+                        else if (view.AttackHold > 0f)
+                        {
+                            view.Anim.Play(view.AttackClip, false);
+                        }
+                        else
+                        {
+                            view.Anim.Play("Idle");
+                        }
+                    }
                 }
 
                 view.LastPos = pos;
@@ -264,13 +294,43 @@ namespace ClashRoyale.Game
 
             foreach (int id in dead)
             {
-                Object.Destroy(views[id].Root);
-                if (views[id].HpPivot != null)
+                EntityView v = views[id];
+                if (v.HpPivot != null)
                 {
-                    Object.Destroy(views[id].HpPivot.gameObject);
+                    Object.Destroy(v.HpPivot.gameObject);
+                    v.HpPivot = null;
+                }
+
+                if (v.Anim != null)
+                {
+                    // Play the death clip, then clean up after it.
+                    v.Anim.Play("Death_A", false);
+                    dying.Add((v, 1.1f));
+                }
+                else
+                {
+                    Object.Destroy(v.Root);
                 }
 
                 views.Remove(id);
+            }
+
+            for (int i = dying.Count - 1; i >= 0; i--)
+            {
+                float ttl = dying[i].ttl - Time.deltaTime;
+                if (ttl <= 0f)
+                {
+                    if (dying[i].view.Root != null)
+                    {
+                        Object.Destroy(dying[i].view.Root);
+                    }
+
+                    dying.RemoveAt(i);
+                }
+                else
+                {
+                    dying[i] = (dying[i].view, ttl);
+                }
             }
         }
 
@@ -279,6 +339,7 @@ namespace ClashRoyale.Game
             GameObject root;
             float topY;
             CharacterAnim anim = null;
+            string attackClip = "1H_Melee_Attack_Chop";
 
             if (e.Kind == EntityKind.PrincessTower || e.Kind == EntityKind.KingTower)
             {
@@ -286,7 +347,7 @@ namespace ClashRoyale.Game
                 topY = e.Kind == EntityKind.KingTower ? 3.6f : 2.8f;
             }
             else if (e.Kind == EntityKind.Troop &&
-                     KayKitModels.TryBuild(e.CardId.Value, e.Side, (float)e.Radius, out GameObject model, out anim))
+                     KayKitModels.TryBuild(e.CardId.Value, e.Side, (float)e.Radius, out GameObject model, out anim, out attackClip))
             {
                 root = model;
                 topY = 2.2f * Mathf.Max(0.7f, (float)e.Radius / 0.5f);
@@ -299,7 +360,7 @@ namespace ClashRoyale.Game
 
             root.transform.SetParent(entityRoot, false);
 
-            EntityView view = new EntityView { Root = root, TopY = topY, Anim = anim };
+            EntityView view = new EntityView { Root = root, TopY = topY, Anim = anim, AttackClip = attackClip };
             BuildHpBar(view, e);
             return view;
         }

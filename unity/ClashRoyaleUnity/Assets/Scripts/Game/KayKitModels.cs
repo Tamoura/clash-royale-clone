@@ -17,16 +17,19 @@ namespace ClashRoyale.Game
         /// <summary>Approx height (model units) so we can scale to the board.</summary>
         private const float ModelHeight = 1.8f;
 
-        public static bool TryBuild(CardId id, Side side, float radius, out GameObject root, out CharacterAnim anim)
+        public static bool TryBuild(CardId id, Side side, float radius, out GameObject root, out CharacterAnim anim, out string attackClip)
         {
             root = null;
             anim = null;
+            attackClip = "1H_Melee_Attack_Chop";
 
             string model = MapModel(id);
             if (model == null)
             {
                 return false;
             }
+
+            attackClip = AttackClip(model);
 
             var prefab = Resources.Load<GameObject>($"KayKit/{model}");
             if (prefab == null)
@@ -74,7 +77,7 @@ namespace ClashRoyale.Game
             anim.Init(animator, clips, "Idle");
 
             // Scale the ~1.8u model to the unit's board footprint.
-            float target = 1.5f * Mathf.Max(0.7f, radius / 0.5f);
+            float target = 1.75f * Mathf.Max(0.75f, radius / 0.5f);
             float s = target / ModelHeight;
             root.transform.localScale = new Vector3(s, s, s);
             return true;
@@ -96,6 +99,17 @@ namespace ClashRoyale.Game
                 CardId.Musketeer => "Rogue",
                 CardId.Skeletons => "Skeleton",
                 _ => null, // hog-rider, flyers, buildings -> primitive factory
+            };
+        }
+
+        private static string AttackClip(string model)
+        {
+            return model switch
+            {
+                "Mage" => "Spellcast_Shoot",
+                "Rogue" => "1H_Ranged_Shoot",
+                "Barbarian" => "2H_Melee_Attack_Chop",
+                _ => "1H_Melee_Attack_Slice_Diagonal",
             };
         }
     }
