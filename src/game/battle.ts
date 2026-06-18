@@ -57,6 +57,10 @@ export interface Entity {
   chargeDistance: number;
   /** Distance walked toward the current target since the last hit. */
   chargeProgress: number;
+  /** Projectile pierces every enemy along its flight line (false = single hit). */
+  pierce: boolean;
+  /** Tiles this entity hops backward (away from its target) after firing. */
+  recoil: number;
   /** Seconds of post-deployment freeze remaining. */
   deployTimer: number;
   /** Seconds of stun remaining (no moving or attacking). */
@@ -131,6 +135,15 @@ export interface Projectile {
   splashRadius: number;
   /** Whether the splash may hit flyers. */
   targetsAir: boolean;
+  /** Pierces straight through every enemy in its path instead of homing. */
+  pierce: boolean;
+  /** Unit travel direction (pierce only); normalized. */
+  dirX: number;
+  dirY: number;
+  /** Tiles of flight remaining before the pierce shot expires. */
+  range: number;
+  /** Ids of entities a pierce shot has already damaged (hit each once). */
+  hitIds: number[];
 }
 
 /** A lingering area that boosts one side's troops (Rage). */
@@ -191,6 +204,8 @@ export interface BattleState {
   buffZones: BuffZone[];
   events: BattleEvent[];
   nextEntityId: number;
+  /** Flat elixir-rate multiplier for game modes (1 = normal, 3 = triple, 7 = mega). */
+  elixirRate: number;
 }
 
 interface TowerStats {
@@ -232,6 +247,8 @@ function makeTower(state: BattleState, side: Side, kind: TowerKind, x: number, y
     splashRadius: 0,
     chargeDistance: 0,
     chargeProgress: 0,
+    pierce: false,
+    recoil: 0,
     deployTimer: 0,
     stunTimer: 0,
     decayPerSec: 0,
@@ -267,6 +284,7 @@ export function createBattle(
   playerDeck: CardId[] = DEFAULT_DECK,
   enemyDeck: CardId[] = DEFAULT_DECK,
   levels: { player?: CardLevels; enemy?: CardLevels } = {},
+  elixirRate = 1,
 ): BattleState {
   const state: BattleState = {
     entities: [],
@@ -292,6 +310,7 @@ export function createBattle(
     buffZones: [],
     events: [],
     nextEntityId: 1,
+    elixirRate,
   };
   for (const side of ["player", "enemy"] as const) {
     for (const spot of towerSpots(side)) {
@@ -328,6 +347,24 @@ const SPAWN_OFFSETS: Record<number, Array<[number, number]>> = {
 };
 
 /**
+ * Spawn offsets for a multi-unit card. Small counts use the hand-tuned
+ * presets; bigger swarms (Bats, Skeleton Army…) pack into an even,
+ * deterministic phyllotaxis spiral so they don't all stack on one tile.
+ */
+function spawnOffsets(count: number): Array<[number, number]> {
+  const preset = SPAWN_OFFSETS[count];
+  if (preset) return preset;
+  const out: Array<[number, number]> = [];
+  const spacing = 0.42;
+  for (let i = 0; i < count; i++) {
+    const r = spacing * Math.sqrt(i);
+    const a = i * 2.399963; // golden angle, for even packing
+    out.push([Math.cos(a) * r, Math.sin(a) * r]);
+  }
+  return out;
+}
+
+/**
  * Spawn the units of a troop card directly, bypassing hand/elixir/zone
  * checks. Used by deployCard and by tests.
  */
@@ -345,7 +382,7 @@ export function spawnUnits(
 
 function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number, y: number): Entity[] {
   const mult = levelMultiplier(sideState(state, side).levels, card.id);
-  const offsets = SPAWN_OFFSETS[card.count] ?? [[0, 0]];
+  const offsets = spawnOffsets(card.count);
   const spawned: Entity[] = [];
   for (const [dx, dy] of offsets) {
     spawned.push({
@@ -369,6 +406,8 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       splashRadius: card.unit.splashRadius,
       chargeDistance: card.unit.chargeDistance,
       chargeProgress: 0,
+      pierce: card.unit.pierce,
+      recoil: card.unit.recoil,
       deployTimer: DEPLOY_DELAY,
       stunTimer: 0,
       radius: card.unit.radius,
@@ -413,6 +452,8 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
     splashRadius: u.splashRadius,
     chargeDistance: 0,
     chargeProgress: 0,
+    pierce: false,
+    recoil: 0,
     deployTimer: DEPLOY_DELAY,
     stunTimer: 0,
     decayPerSec: (u.maxHp * mult) / card.lifetime,

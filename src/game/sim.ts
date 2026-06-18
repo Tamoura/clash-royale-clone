@@ -12,6 +12,7 @@ import {
   type BattleResult,
   type BattleState,
   type Entity,
+  type Projectile,
 } from "./battle";
 import { ELIXIR_MAX, tickElixir } from "./elixir";
 
@@ -34,7 +35,15 @@ export function elixirMultiplier(state: BattleState): 1 | 2 | 3 {
 }
 
 export function isDoubleElixir(state: BattleState): boolean {
-  return elixirMultiplier(state) >= 2;
+  return effectiveElixirMultiplier(state) >= 2;
+}
+
+/**
+ * The elixir rate actually applied. A game-mode rate (3x triple, 7x mega) is a
+ * flat override of the normal time-based curve; otherwise the curve applies.
+ */
+export function effectiveElixirMultiplier(state: BattleState): number {
+  return state.elixirRate > 1 ? state.elixirRate : elixirMultiplier(state);
 }
 
 function livingEnemiesOf(state: BattleState, e: Entity): Entity[] {
@@ -94,6 +103,12 @@ function acquireTarget(state: BattleState, e: Entity): Entity | null {
 
 function retarget(state: BattleState, e: Entity): Entity | null {
   const current = findById(state, e.targetId);
+  // Once engaged (the current target is within attack range), stay locked
+  // onto it until it dies or leaves range — a newly deployed nearer enemy
+  // can't pull an attacker off the foe it's already trading blows with.
+  if (current && canHit(e, current) && gap(e, current) <= e.attackRange) {
+    return current;
+  }
   if (isBuilding(e)) {
     // Towers drop targets that leave range.
     if (current && current.kind === "troop" && gap(e, current) <= e.attackRange) {
@@ -146,6 +161,7 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
   const ranged = e.attackRange > 1;
   if (ranged) {
     // The shot must fly there first; damage lands on arrival.
+    const d = Math.max(1e-6, distance(e, target));
     state.projectiles.push({
       id: state.nextEntityId++,
       side: e.side,
@@ -160,6 +176,13 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
       damage,
       splashRadius: e.splashRadius,
       targetsAir: e.targetsAir,
+      pierce: e.pierce,
+      // A pierce shot flies straight along the firing line for its full
+      // range, damaging everything it passes; a normal shot homes in.
+      dirX: (target.x - e.x) / d,
+      dirY: (target.y - e.y) / d,
+      range: e.attackRange,
+      hitIds: [],
     });
   } else {
     const myStats = sideState(state, e.side).stats;
@@ -177,6 +200,12 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
   }
   e.chargeProgress = 0;
   e.cooldown = e.hitSpeed;
+  // Recoil: the shooter kicks itself backward, away from its target.
+  if (e.recoil > 0) {
+    const d = Math.max(1e-6, distance(e, target));
+    e.x += ((e.x - target.x) / d) * e.recoil;
+    e.y += ((e.y - target.y) / d) * e.recoil;
+  }
   state.events.push({
     type: "attack",
     kind: e.kind,
@@ -189,9 +218,53 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
   });
 }
 
+/** Half-width of a pierce shot's hit corridor, in tiles. */
+export const PIERCE_HALF_WIDTH = 0.5;
+
+/** Shortest distance from point p to the segment a->b. */
+function segmentDistance(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  px: number,
+  py: number,
+): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+}
+
+/**
+ * Advance a piercing shot along its fixed firing line, damaging every
+ * enemy whose body the segment crosses (each hit once), until spent.
+ */
+function tickPierce(state: BattleState, p: Projectile, dt: number): boolean {
+  const step = Math.min(p.speed * dt, p.range);
+  const fromX = p.x;
+  const fromY = p.y;
+  p.x += p.dirX * step;
+  p.y += p.dirY * step;
+  p.range -= step;
+  const myStats = sideState(state, p.side).stats;
+  for (const o of state.entities) {
+    if (o.side === p.side || o.hp <= 0 || p.hitIds.includes(o.id)) continue;
+    if (o.flying && !p.targetsAir) continue;
+    if (segmentDistance(fromX, fromY, p.x, p.y, o.x, o.y) <= o.radius + PIERCE_HALF_WIDTH) {
+      o.hp -= p.damage;
+      myStats.damageDealt += p.damage;
+      p.hitIds.push(o.id);
+    }
+  }
+  return p.range > 1e-6; // keep flying until its range is used up
+}
+
 /** Fly each shot toward its (moving) target; impact on arrival. */
 function tickProjectiles(state: BattleState, dt: number): void {
   state.projectiles = state.projectiles.filter((p) => {
+    if (p.pierce) return tickPierce(state, p, dt);
     const target = state.entities.find((o) => o.id === p.targetId);
     if (!target || target.hp <= 0) return false; // fizzle mid-air
     const dx = target.x - p.x;
@@ -407,7 +480,7 @@ export function tick(state: BattleState, dt: number): void {
   if (state.result) return;
   state.time += dt;
 
-  const mult = elixirMultiplier(state);
+  const mult = effectiveElixirMultiplier(state);
   state.player.elixir = tickElixir(state.player.elixir, dt, mult);
   state.enemy.elixir = tickElixir(state.enemy.elixir, dt, mult);
 

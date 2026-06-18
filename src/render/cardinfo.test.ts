@@ -27,4 +27,9 @@ describe("card stat lines", () => {
       expect(cardStatLines(id).length).toBeGreaterThanOrEqual(2);
     }
   });
+
+  it("calls out piercing shots and recoil", () => {
+    expect(cardStatLines("magic-archer").join(" ")).toMatch(/pierc/i);
+    expect(cardStatLines("firecracker").join(" ")).toMatch(/recoil|kick/i);
+  });
 });

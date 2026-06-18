@@ -131,6 +131,68 @@ function drawArcher(ctx: Ctx, anim: Anim): void {
   eyes(ctx, -4);
 }
 
+function drawFirecracker(ctx: Ctx, anim: Anim): void {
+  // Firework launcher tube on the shoulder, kicking up as it fires.
+  ctx.save();
+  ctx.translate(5.4, -1 - anim.swing * 2);
+  ctx.rotate(-0.15);
+  box(ctx, -1, -1.6, 7, 3.2, 1.5, "#d64027"); // tube
+  box(ctx, 5, -2, 1.6, 4, 0.6, "#f2c14e"); // muzzle band
+  circle(ctx, 6.6, 0, 1.2, "#ffd54f"); // packed firework
+  ctx.restore();
+
+  box(ctx, -4.5, -1, 9, 8, 3, "#e2542b"); // orange tunic
+  circle(ctx, 0, -5, 5, SKIN); // head
+  for (const s of [-1, 1]) circle(ctx, s * 5, -6, 1.6, "#3a2a1c"); // pigtails
+  outlined(ctx, "#f2c14e", () => {
+    // little party hat
+    ctx.beginPath();
+    ctx.moveTo(-3.4, -8.4);
+    ctx.lineTo(3.4, -8.4);
+    ctx.lineTo(0, -13);
+    ctx.closePath();
+  });
+  eyes(ctx, -4.6);
+}
+
+function drawMagicArcher(ctx: Ctx, anim: Anim): void {
+  // Dark bow out front with a glowing nocked arrow.
+  ctx.save();
+  ctx.translate(-6.2, -1);
+  ctx.strokeStyle = "#37206b";
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.arc(0, 0, 6, -Math.PI * 0.4, Math.PI * 0.4); // bow limb
+  ctx.stroke();
+  ctx.strokeStyle = "#b39ddb";
+  ctx.lineWidth = 0.9;
+  ctx.beginPath();
+  const tipY = 6 * Math.sin(Math.PI * 0.4);
+  const tipX = 6 * Math.cos(Math.PI * 0.4);
+  ctx.moveTo(tipX, -tipY);
+  ctx.lineTo(anim.swing * 3, 0);
+  ctx.lineTo(tipX, tipY);
+  ctx.stroke();
+  ctx.strokeStyle = "#b98bff"; // glowing magic arrow
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(anim.swing * 3, 0);
+  ctx.lineTo(-7, 0);
+  ctx.stroke();
+  ctx.restore();
+
+  box(ctx, -4.2, -1, 8.4, 9, 3, "#5e3aa6"); // mystic robe
+  outlined(ctx, "#4a2d8f", () => {
+    // pointed hood
+    ctx.beginPath();
+    ctx.arc(0, -5, 5.4, Math.PI * 0.92, Math.PI * 0.08);
+    ctx.lineTo(0, -12);
+    ctx.closePath();
+  });
+  circle(ctx, 0, -5, 4.4, SKIN); // shadowed face
+  eyes(ctx, -4.6);
+}
+
 function drawGiant(ctx: Ctx, anim: Anim): void {
   // Fists; the leading one punches forward on attack.
   circle(ctx, -8.2, 3, 2.6, SKIN);
@@ -643,6 +705,8 @@ function drawCollector(ctx: Ctx, _anim: Anim): void {
 const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = {
   knight: drawKnight,
   archers: drawArcher,
+  firecracker: drawFirecracker,
+  "magic-archer": drawMagicArcher,
   giant: drawGiant,
   musketeer: drawMusketeer,
   "mini-pekka": drawMiniPekka,
@@ -659,6 +723,11 @@ const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = 
   cannon: drawCannon,
   tombstone: drawTombstone,
   "elixir-collector": drawCollector,
+  // New swarm/area cards reuse the closest existing art for their tiles.
+  bats: drawGargoyle,
+  minions: drawGargoyle,
+  "skeleton-army": drawSkeleton,
+  executioner: drawValkyrie,
 };
 
 /**

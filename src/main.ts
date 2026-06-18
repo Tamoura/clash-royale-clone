@@ -9,12 +9,19 @@ import {
 } from "./game/battle";
 import { createBot, tickBot, type BotProfile, type BotState } from "./game/bot";
 import { DECK, DEFAULT_DECK, getCard, type CardId } from "./game/cards";
+import type { Side } from "./game/arena";
 import { drawCardArt } from "./render/characters";
 import { CARD_COLOR } from "./render/cardcolors";
 import { isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
 import { Battle3D } from "./render3d/scene3d";
-import { loadMode, saveMode, type GameMode } from "./launcher/mode";
+import { ARENA_THEME_KEY } from "./render3d/theme";
+import { cardPortrait } from "./render3d/cardportraits";
+import { RoomClient, type NetSocket } from "./net/roomClient";
+import { Lockstep } from "./net/lockstep";
+import { sideForRole, type Role, type MatchMode } from "./net/protocol";
+import { stateChecksum } from "./net/checksum";
+import { loadEdition, saveEdition, type Edition } from "./launcher/mode";
 import { launchUnity } from "./launcher/unityPanel";
 
 const stage = document.getElementById("stage")!;
@@ -79,10 +86,38 @@ function loadDifficulty(): string {
 
 let difficulty = loadDifficulty();
 
+// ---- Game modes ----------------------------------------------------------
+
+interface GameMode {
+  id: string;
+  name: string;
+  blurb: string;
+  /** Flat elixir rate (1 normal, 3 triple, 7 mega). */
+  elixirRate: number;
+  /** Both players battle with the same random deck. */
+  mirror: boolean;
+}
+
+const GAME_MODES: GameMode[] = [
+  { id: "classic", name: "Classic", blurb: "Your deck, normal elixir", elixirRate: 1, mirror: false },
+  { id: "triple", name: "Triple Elixir ⚡3", blurb: "3× elixir the whole match", elixirRate: 3, mirror: false },
+  { id: "mega", name: "Mega Elixir ⚡7", blurb: "7× elixir — total chaos", elixirRate: 7, mirror: false },
+  { id: "mirror", name: "Mirror Match", blurb: "Both get the same random deck", elixirRate: 1, mirror: true },
+];
+
+const MODE_KEY = "cr-clone-mode";
+
+function loadMode(): GameMode {
+  const id = localStorage.getItem(MODE_KEY);
+  return GAME_MODES.find((m) => m.id === id) ?? GAME_MODES[0];
+}
+
+let gameMode = loadMode();
+
 // ---- Native vs Unity edition (chosen on the intro) ----------------------
 
 const unityStage = document.getElementById("unity-stage")!;
-let gameMode: GameMode = loadMode(localStorage);
+let edition: Edition = loadEdition(localStorage);
 
 // ---- Trophies + card levels (persisted progression) --------------------
 
@@ -117,6 +152,31 @@ let battle: BattleState = createBattle(playerDeck, botDeck(), {
 let bot: BotState = createBot(Date.now() & 0xffff, DIFFICULTIES[difficulty]);
 let selectedCard: CardId | null = null;
 
+// ---- Online 1v1 (LAN lockstep) -----------------------------------------
+
+const INPUT_DELAY = 4; // ticks of input latency hidden (~133ms at 30Hz)
+const SYNC_EVERY = 30; // exchange a drift checksum once a second
+
+let mode: "solo" | "online" = "solo";
+interface OnlineSession {
+  client: RoomClient;
+  ls: Lockstep;
+  side: Side;
+  tick: number;
+  sums: Map<number, number>; // my checksum per sync tick, for drift detection
+}
+let online: OnlineSession | null = null;
+
+/** Which side the local player controls (host=player, guest=enemy, solo=player). */
+function localSide(): Side {
+  return online ? online.side : "player";
+}
+
+/** The local player's side-state (hand, elixir) in the current battle. */
+function mySideState(): BattleState["player"] {
+  return localSide() === "player" ? battle.player : battle.enemy;
+}
+
 let scene: Battle3D;
 try {
   scene = new Battle3D(stage);
@@ -131,6 +191,12 @@ try {
 }
 const audio = new SoundEngine();
 
+// Dev aid: ?viewpoint=enemy previews the online guest's flipped camera.
+if (import.meta.env.DEV) {
+  const v = new URLSearchParams(location.search).get("viewpoint");
+  if (v === "enemy" || v === "player") scene.setViewpoint(v);
+}
+
 function selectCard(id: CardId | null): void {
   selectedCard = id;
   hud.setSelected(id);
@@ -138,33 +204,108 @@ function selectCard(id: CardId | null): void {
 }
 
 function restart(): void {
-  battle = createBattle(playerDeck, botDeck(), {
-    player: cardLevels,
-    enemy: botLevels(),
-  });
+  mode = "solo";
+  online = null;
+  // Mirror mode: player and bot share one random deck for a pure-skill match.
+  const shared = gameMode.mirror ? botDeck() : null;
+  battle = createBattle(
+    shared ?? playerDeck,
+    shared ?? botDeck(),
+    { player: cardLevels, enemy: botLevels() },
+    gameMode.elixirRate,
+  );
   bot = createBot(Date.now() & 0xffff, DIFFICULTIES[difficulty]);
   selectCard(null);
   hud.setReward(null);
+  hud.setOpponentName("Bot");
+  scene.setViewpoint("player");
   scene.reset();
   audio.setIntensity(0);
   audio.restartMusic();
   startCountdown();
 }
 
+/** Begin a networked match once the relay pairs both players. */
+function startOnlineMatch(
+  client: RoomClient,
+  role: Role,
+  hostDeck: CardId[],
+  guestDeck: CardId[],
+  matchMode: MatchMode,
+): void {
+  const side = sideForRole(role);
+  mode = "online";
+  const session: OnlineSession = {
+    client,
+    ls: new Lockstep(side, INPUT_DELAY),
+    side,
+    tick: 0,
+    sums: new Map(),
+  };
+  online = session;
+  // Identical canonical battle on both peers: host=player, guest=enemy.
+  // No card levels online — a fair, fully-deterministic match. Mirror mode
+  // has both sides battle the host's deck.
+  const enemyDeck = matchMode.mirror ? hostDeck : guestDeck;
+  battle = createBattle(hostDeck, enemyDeck, {}, matchMode.elixirRate);
+  selectCard(null);
+  hud.setReward(null);
+  hud.setOpponentName("Friend");
+  scene.setViewpoint(side);
+  scene.reset();
+  audio.setIntensity(0);
+  audio.restartMusic();
+
+  // In-match networking: if the peer drops, the lockstep would stall forever,
+  // so end gracefully; compare drift checksums to catch desync early.
+  client.onFrame = (frame) => session.ls.receive(frame);
+  client.onPeerLeft = () => endOnlineMatch("Your friend left the game.");
+  client.onClose = () => endOnlineMatch("Lost connection to your friend.");
+  client.onSync = (tick, checksum) => {
+    const mine = session.sums.get(tick);
+    if (mine !== undefined && mine !== checksum) {
+      showBanner("Connection out of sync");
+    }
+  };
+
+  // Opening frames unblock the first ticks before any deploy can be scheduled.
+  for (const f of session.ls.bootstrap()) client.sendFrame(f);
+  startCountdown();
+}
+
+/** Tear down a networked match and return to the menu with a message. */
+function endOnlineMatch(message: string): void {
+  if (mode !== "online") return;
+  online?.client.leave();
+  online = null;
+  mode = "solo";
+  showBanner(message);
+  scene.setViewpoint("player");
+  hud.setOpponentName("Bot");
+  setTimeout(openDeckPicker, 1800);
+}
+
 // ---- Deck picker ---------------------------------------------------------
 
 const pickerRoot = document.getElementById("deckpicker")!;
 
-/** Small card tile canvas reused in the deck row and collection grid. */
+/** Card tile canvas reused in the deck row and collection grid. */
 function cardTileCanvas(id: CardId): HTMLCanvasElement {
+  const S = 128; // hi-res so the character reads clearly on the tile
   const c = document.createElement("canvas");
-  c.width = c.height = 48;
+  c.width = c.height = S;
   const ctx = c.getContext("2d")!;
   ctx.fillStyle = CARD_COLOR[id];
   ctx.beginPath();
-  ctx.roundRect(0, 0, 48, 48, 7);
+  ctx.roundRect(0, 0, S, S, S * 0.14);
   ctx.fill();
-  drawCardArt(ctx, id, 24, 26, 26);
+  // Use the crisp 3D portrait (troops/buildings); spells fall back to 2D art.
+  const portrait = cardPortrait(id);
+  if (portrait) {
+    ctx.drawImage(portrait, S * 0.04, 0, S * 0.92, S * 0.92);
+  } else {
+    drawCardArt(ctx, id, S / 2, S * 0.54, S * 0.5);
+  }
   return c;
 }
 
@@ -172,37 +313,37 @@ function buildDeckPicker(): void {
   pickerRoot.innerHTML = "";
 
   // Edition toggle: the original in-browser build, or the Unity WebGL build.
-  const modeRow = document.createElement("div");
-  modeRow.className = "mode-row";
-  const modeNote = document.createElement("div");
-  modeNote.className = "mode-note";
-  const MODE_LABEL: Record<GameMode, string> = {
+  const editionRow = document.createElement("div");
+  editionRow.className = "mode-row";
+  const editionNote = document.createElement("div");
+  editionNote.className = "mode-note";
+  const EDITION_LABEL: Record<Edition, string> = {
     native: "Native (Three.js)",
     unity: "Unity (WebGL)",
   };
-  const MODE_HELP: Record<GameMode, string> = {
+  const EDITION_HELP: Record<Edition, string> = {
     native: "The original TypeScript + Three.js game runs right here.",
     unity: "Launches the Unity WebGL build served from /unity/.",
   };
-  for (const mode of ["native", "unity"] as GameMode[]) {
+  for (const ed of ["native", "unity"] as Edition[]) {
     const btn = document.createElement("button");
     btn.className = "mode-btn";
-    btn.textContent = MODE_LABEL[mode];
-    btn.classList.toggle("chosen", mode === gameMode);
+    btn.textContent = EDITION_LABEL[ed];
+    btn.classList.toggle("chosen", ed === edition);
     btn.addEventListener("click", () => {
-      gameMode = mode;
-      saveMode(localStorage, mode);
-      modeRow
+      edition = ed;
+      saveEdition(localStorage, ed);
+      editionRow
         .querySelectorAll("button")
         .forEach((b) => b.classList.toggle("chosen", b === btn));
-      modeNote.textContent = MODE_HELP[mode];
-      startBtn.textContent = mode === "unity" ? "Launch Unity" : "Battle!";
+      editionNote.textContent = EDITION_HELP[ed];
+      startBtn.textContent = ed === "unity" ? "Launch Unity" : "Battle the Bot";
     });
-    modeRow.appendChild(btn);
+    editionRow.appendChild(btn);
   }
-  pickerRoot.appendChild(modeRow);
-  modeNote.textContent = MODE_HELP[gameMode];
-  pickerRoot.appendChild(modeNote);
+  pickerRoot.appendChild(editionRow);
+  editionNote.textContent = EDITION_HELP[edition];
+  pickerRoot.appendChild(editionNote);
 
   const title = document.createElement("h2");
   title.textContent = "Build your battle deck";
@@ -246,10 +387,42 @@ function buildDeckPicker(): void {
   }
   pickerRoot.appendChild(diffRow);
 
+  // Game-mode selector (applies to Battle the Bot and, for the host, online).
+  const modeLabel = document.createElement("div");
+  modeLabel.className = "collect-label";
+  modeLabel.textContent = "Game mode";
+  pickerRoot.appendChild(modeLabel);
+
+  const modeRow = document.createElement("div");
+  modeRow.className = "mode-row";
+  const modeBlurb = document.createElement("div");
+  modeBlurb.className = "mode-blurb";
+  for (const m of GAME_MODES) {
+    const btn = document.createElement("button");
+    btn.className = "mode-btn";
+    btn.textContent = m.name;
+    btn.classList.toggle("chosen", m.id === gameMode.id);
+    btn.addEventListener("click", () => {
+      gameMode = m;
+      localStorage.setItem(MODE_KEY, m.id);
+      modeRow.querySelectorAll("button").forEach((b) => b.classList.toggle("chosen", b === btn));
+      modeBlurb.textContent = m.blurb;
+    });
+    modeRow.appendChild(btn);
+  }
+  modeBlurb.textContent = gameMode.blurb;
+  pickerRoot.appendChild(modeRow);
+  pickerRoot.appendChild(modeBlurb);
+
   const startBtn = document.createElement("button");
   startBtn.className = "battle-btn";
-  startBtn.textContent = gameMode === "unity" ? "Launch Unity" : "Battle!";
+  startBtn.textContent = edition === "unity" ? "Launch Unity" : "Battle the Bot";
   pickerRoot.appendChild(startBtn);
+
+  const friendBtn = document.createElement("button");
+  friendBtn.className = "battle-btn friend";
+  friendBtn.textContent = "Play a Friend";
+  pickerRoot.appendChild(friendBtn);
 
   const remove = (id: CardId): void => {
     const i = deck.indexOf(id);
@@ -286,6 +459,7 @@ function buildDeckPicker(): void {
       : "0.0";
     count.textContent = `${deck.length} / 8 cards · average ${avg} elixir`;
     startBtn.disabled = deck.length !== 8;
+    friendBtn.disabled = deck.length !== 8;
     grid.querySelectorAll<HTMLButtonElement>("button.pick").forEach((btn) => {
       btn.classList.toggle("chosen", deck.includes(btn.dataset.card as CardId));
     });
@@ -309,15 +483,126 @@ function buildDeckPicker(): void {
   }
   sync();
 
-  startBtn.addEventListener("click", () => {
+  function saveDeck(): void {
     playerDeck = deck.slice();
     localStorage.setItem(DECK_KEY, JSON.stringify(playerDeck));
+  }
+
+  startBtn.addEventListener("click", () => {
+    saveDeck();
     pickerRoot.classList.remove("show");
-    if (gameMode === "unity") {
+    if (edition === "unity") {
       void launchUnity(unityStage, openDeckPicker, playerDeck);
     } else {
       restart();
     }
+  });
+
+  friendBtn.addEventListener("click", () => {
+    saveDeck();
+    openFriendLobby(deck.slice());
+  });
+}
+
+// ---- Friend lobby (create / join a LAN room) ---------------------------
+
+function connectRoom(): RoomClient {
+  // The browser WebSocket satisfies NetSocket at runtime; its DOM event-handler
+  // typings differ only in the (ignored) event argument.
+  const sock = new WebSocket(`ws://${location.hostname}:3110`) as unknown as NetSocket;
+  return new RoomClient(sock);
+}
+
+function openFriendLobby(deck: CardId[]): void {
+  pickerRoot.innerHTML = "";
+  const title = document.createElement("h2");
+  title.textContent = "Play a Friend";
+  pickerRoot.appendChild(title);
+
+  const hint = document.createElement("p");
+  hint.className = "lobby-hint";
+  hint.innerHTML = `Mode: <b>${gameMode.name}</b><br/>You both need to be on the same Wi-Fi.`;
+  pickerRoot.appendChild(hint);
+
+  const status = document.createElement("div");
+  status.className = "lobby-status";
+  pickerRoot.appendChild(status);
+
+  const createBtn = document.createElement("button");
+  createBtn.className = "battle-btn";
+  createBtn.textContent = "Create a game";
+  pickerRoot.appendChild(createBtn);
+
+  const joinRow = document.createElement("div");
+  joinRow.className = "join-row";
+  const codeInput = document.createElement("input");
+  codeInput.className = "code-input";
+  codeInput.placeholder = "CODE";
+  codeInput.maxLength = 5;
+  codeInput.autocapitalize = "characters";
+  const joinBtn = document.createElement("button");
+  joinBtn.className = "battle-btn join";
+  joinBtn.textContent = "Join";
+  joinRow.append(codeInput, joinBtn);
+  pickerRoot.appendChild(joinRow);
+
+  const backBtn = document.createElement("button");
+  backBtn.className = "back-btn";
+  backBtn.textContent = "← Back";
+  pickerRoot.appendChild(backBtn);
+
+  let client: RoomClient | null = null;
+  const wire = (c: RoomClient): void => {
+    client = c;
+    c.onCreated = (code) => {
+      status.innerHTML =
+        `Your code: <b class="big-code">${code}</b><br/>Tell your friend, then wait…`;
+    };
+    c.onStart = (p) => {
+      pickerRoot.classList.remove("show");
+      startOnlineMatch(c, p.role, p.hostDeck, p.guestDeck, p.mode);
+    };
+    c.onError = (reason) => {
+      createBtn.disabled = false;
+      status.textContent =
+        reason === "no-such-room"
+          ? "No game with that code."
+          : reason === "room-full"
+            ? "That game is already full."
+            : "Couldn't join that game.";
+    };
+    c.onPeerLeft = () => {
+      status.textContent = "Your friend left the game.";
+    };
+    c.onClose = () => {
+      if (mode !== "online") status.textContent = "Couldn't reach the game server.";
+    };
+  };
+
+  createBtn.addEventListener("click", () => {
+    if (client) return;
+    status.textContent = "Connecting…";
+    createBtn.disabled = true;
+    const c = connectRoom();
+    wire(c);
+    // Mirror mode: the host supplies one random deck both players battle with.
+    const hostDeck = gameMode.mirror ? botDeck() : deck;
+    c.create(hostDeck, { elixirRate: gameMode.elixirRate, mirror: gameMode.mirror });
+  });
+  joinBtn.addEventListener("click", () => {
+    const code = codeInput.value.trim().toUpperCase();
+    if (!code) {
+      status.textContent = "Type your friend's code first.";
+      return;
+    }
+    status.textContent = "Connecting…";
+    const c = connectRoom();
+    wire(c);
+    c.join(code, deck);
+  });
+  backBtn.addEventListener("click", () => {
+    client?.leave();
+    openDeckPicker();
   });
 }
 
@@ -328,6 +613,7 @@ function openDeckPicker(): void {
 
 const hud = new Hud(topbar, hudRoot, overlay, {
   onSelectCard: selectCard,
+  onDeployAt: (x, y) => tryDeployAt(x, y),
   onRestart: restart,
   onToggleSound: () => {
     audio.setMuted(!audio.muted);
@@ -437,7 +723,7 @@ for (const emoji of EMOTES) {
   const btn = document.createElement("button");
   btn.textContent = emoji;
   btn.addEventListener("click", () => {
-    scene.showEmote("player", emoji);
+    scene.showEmote(localSide(), emoji);
     audio.emotePop();
   });
   emoteBar.appendChild(btn);
@@ -466,7 +752,7 @@ function showPreview(clientX: number, clientY: number): void {
   const pos = scene.pick(clientX, clientY);
   const valid =
     pos !== null &&
-    checkDeploy(battle, "player", selectedCard, pos.x, pos.y) === "ok";
+    checkDeploy(battle, localSide(), selectedCard, pos.x, pos.y) === "ok";
   scene.setHover(
     pos,
     card.kind === "spell" ? card.radius : 0.6,
@@ -480,11 +766,21 @@ function tryDeployAt(clientX: number, clientY: number): void {
   if (battle.result || !selectedCard) return;
   const pos = scene.pick(clientX, clientY);
   if (!pos) return;
-  const verdict = checkDeploy(battle, "player", selectedCard, pos.x, pos.y);
-  if (verdict === "ok" && deployCard(battle, "player", selectedCard, pos.x, pos.y)) {
-    selectCard(null);
-    clearPreview();
-    return;
+  const side = localSide();
+  const verdict = checkDeploy(battle, side, selectedCard, pos.x, pos.y);
+  if (verdict === "ok") {
+    if (online) {
+      // Lockstep: schedule the deploy; both peers apply it at the same tick.
+      online.ls.queue({ side, cardId: selectedCard, x: pos.x, y: pos.y });
+      selectCard(null);
+      clearPreview();
+      return;
+    }
+    if (deployCard(battle, side, selectedCard, pos.x, pos.y)) {
+      selectCard(null);
+      clearPreview();
+      return;
+    }
   }
   // Tell the player why the play was refused.
   if (verdict === "no-elixir") {
@@ -496,7 +792,7 @@ function tryDeployAt(clientX: number, clientY: number): void {
   }
 }
 
-// Click-to-place and drag-from-hand both end in a pointerup on the field.
+// Tap-to-place: release on the field deploys the selected card.
 scene.renderer.domElement.addEventListener("pointerup", (ev) => {
   tryDeployAt(ev.clientX, ev.clientY);
 });
@@ -516,8 +812,14 @@ scene.renderer.domElement.addEventListener("contextmenu", (ev) => {
 
 window.addEventListener("keydown", (ev) => {
   const n = Number(ev.key);
-  if (n >= 1 && n <= 4) selectCard(battle.player.hand.cards[n - 1]);
+  if (n >= 1 && n <= 4) selectCard(mySideState().hand.cards[n - 1]);
   if (ev.key === "Escape") selectCard(null);
+  // "T" switches the arena theme (Arabic ⇄ normal); reloads to rebuild.
+  if (ev.key === "t" || ev.key === "T") {
+    const cur = localStorage.getItem(ARENA_THEME_KEY) === "normal" ? "normal" : "arabic";
+    localStorage.setItem(ARENA_THEME_KEY, cur === "arabic" ? "normal" : "arabic");
+    location.reload();
+  }
 });
 
 const SIM_DT = 1 / 30;
@@ -537,6 +839,26 @@ function frame(now: number): void {
 
   if (phase === "countdown") {
     tickCountdown(dt);
+  } else if (mode === "online" && online) {
+    acc += dt;
+    while (acc >= SIM_DT) {
+      // Lockstep: advance only when the peer's frame for this tick is in hand.
+      if (!online.ls.ready()) break;
+      const { commands, outgoing } = online.ls.step();
+      for (const c of commands) deployCard(battle, c.side, c.cardId, c.x, c.y);
+      tick(battle, SIM_DT);
+      online.client.sendFrame(outgoing);
+      online.tick++;
+      if (online.tick % SYNC_EVERY === 0) {
+        const cs = stateChecksum(battle);
+        online.sums.set(online.tick, cs);
+        if (online.sums.size > 10) online.sums.delete([...online.sums.keys()][0]);
+        online.client.sendSync(online.tick, cs);
+      }
+      acc -= SIM_DT;
+    }
+    // While stalled on the peer, don't bank a backlog that bursts on resume.
+    acc = Math.min(acc, SIM_DT * 3);
   } else {
     acc += dt;
     while (acc >= SIM_DT) {
@@ -549,11 +871,13 @@ function frame(now: number): void {
   for (const ev of battle.events.splice(0)) {
     audio.onEvent(ev);
     scene.onEvent(ev);
-    // The bot has feelings about crowns.
-    if (ev.type === "crown") botEmote(ev.winner === "enemy" ? "😂" : "😭");
+    if (ev.type === "crown" && mode === "solo") botEmote(ev.winner === "enemy" ? "😂" : "😭");
     if (ev.type === "finish") {
-      botEmote(ev.winner === "enemy" ? "🎉" : "😭");
-      applyMatchResult(ev.winner);
+      // Online friendly matches don't touch trophies/levels.
+      if (mode === "solo") {
+        botEmote(ev.winner === "enemy" ? "🎉" : "😭");
+        applyMatchResult(ev.winner);
+      }
     }
   }
   checkBanners();
@@ -563,8 +887,18 @@ function frame(now: number): void {
   }
   scene.sync(battle, dt);
   scene.render(dt);
-  hud.update(battle);
+  hud.update(battle, localSide());
   requestAnimationFrame(frame);
 }
 
 requestAnimationFrame(frame);
+
+// Dev-only hook for the lockstep determinism test (stripped from prod builds).
+if (import.meta.env.DEV) {
+  (window as unknown as { __cr: unknown }).__cr = {
+    sum: () => stateChecksum(battle),
+    tick: () => online?.tick ?? 0,
+    mode: () => mode,
+    entities: () => battle.entities.length,
+  };
+}

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import type { CardId } from "../game/cards";
+import { ARABIC } from "./theme";
 
 /**
  * Chunky cel-shaded characters built from primitives — big heads,
@@ -21,7 +22,8 @@ let toonGradient: THREE.DataTexture | null = null;
 
 function gradientMap(): THREE.DataTexture {
   if (!toonGradient) {
-    const data = new Uint8Array([90, 180, 255]);
+    // Three hard bands with a deeper core shadow → bolder cel pop.
+    const data = new Uint8Array([74, 172, 255]);
     toonGradient = new THREE.DataTexture(data, 3, 1, THREE.RedFormat);
     toonGradient.minFilter = THREE.NearestFilter;
     toonGradient.magFilter = THREE.NearestFilter;
@@ -52,8 +54,8 @@ function grainMap(): THREE.DataTexture {
     };
     for (let y = 0; y < s; y++) {
       for (let x = 0; x < s; x++) {
-        const weave = (x + y) % 4 === 0 ? 0.94 : 1; // diagonal threads
-        const speckle = 1 - rand() * 0.12;
+        const weave = (x + y) % 4 === 0 ? 0.97 : 1; // diagonal threads (subtle)
+        const speckle = 1 - rand() * 0.06;
         const v = Math.round(255 * weave * speckle);
         const i = (y * s + x) * 4;
         data[i] = data[i + 1] = data[i + 2] = v;
@@ -73,12 +75,37 @@ function grainMap(): THREE.DataTexture {
   return grainTexture;
 }
 
+/**
+ * Inject a cool Fresnel rim-light into a lit material's fragment shader —
+ * a bright edge where the surface turns away from the camera. This single
+ * touch makes every rounded shape read as 3D and gives the whole roster a
+ * premium "lit figurine" pop. Shared source ⇒ Three reuses one program.
+ */
+function addRimLight(mat: THREE.Material): void {
+  mat.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace(
+      "#include <dithering_fragment>",
+      `float _rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
+       _rim = smoothstep(0.72, 1.0, _rim) * 0.26;
+       gl_FragColor.rgb += _rim * vec3(0.42, 0.56, 0.80);
+       #include <dithering_fragment>`,
+    );
+  };
+}
+
 export function toon(color: number): THREE.MeshToonMaterial {
-  return new THREE.MeshToonMaterial({
-    color,
+  // Punch up saturation for bold, candy-cartoon colors (CR look).
+  const c = new THREE.Color(color);
+  const hsl = { h: 0, s: 0, l: 0 };
+  c.getHSL(hsl);
+  c.setHSL(hsl.h, Math.min(1, hsl.s * 1.2), hsl.l);
+  const mat = new THREE.MeshToonMaterial({
+    color: c,
     gradientMap: gradientMap(),
     map: grainMap(),
   });
+  addRimLight(mat);
+  return mat;
 }
 
 /**
@@ -244,42 +271,118 @@ export interface TroopRig {
   extras?: (t: number, phase: number) => void;
 }
 
+/**
+ * A wrapped turban for the Arabic theme — layered cloth folds, a jewelled
+ * front band, and a small peak. Centred on the head; the caller positions it.
+ */
+function turban(r: number, cloth: number, gem = 0xc0392b): THREE.Group {
+  const g = new THREE.Group();
+  const wrap = sphere(r * 1.14, cloth, 0, r * 0.5, 0);
+  wrap.scale.set(1, 0.72, 1);
+  g.add(wrap);
+  const fold = sphere(r * 1.04, cloth, 0, r * 0.28, 0.04);
+  fold.scale.set(1.06, 0.5, 1.06);
+  g.add(fold);
+  const band = box(r * 0.5, r * 0.16, r * 0.06, gem, 0, r * 0.46, r * 1.0);
+  g.add(band);
+  g.add(sphere(r * 0.12, gem, 0, r * 0.46, r * 1.06)); // front jewel
+  g.add(cone(r * 0.16, r * 0.3, cloth, 0, r * 1.02, 0)); // top peak
+  return g;
+}
+
+/** A curved scimitar: gold hilt + crossguard and a swept steel blade. */
+function scimitar(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(cyl(0.05, 0.05, 0.2, 0x6d4c41, 0, -0.1, 0)); // grip
+  g.add(box(0.22, 0.05, 0.09, 0xf2c14e, 0, 0.0, 0)); // crossguard
+  g.add(sphere(0.05, 0xf2c14e, 0, -0.21, 0)); // pommel
+  const blade = new THREE.Mesh(
+    cachedGeo("scimitar-blade", () => new THREE.TorusGeometry(0.46, 0.045, 6, 18, Math.PI * 0.82)),
+    toon(0xdde4ec),
+  );
+  blade.scale.set(1, 1, 0.42); // flatten the ring into a blade
+  blade.position.set(-0.36, 0.08, 0);
+  blade.rotation.z = -0.5;
+  blade.castShadow = true;
+  g.add(blade);
+  return g;
+}
+
+/** A gold diamond stud (heraldic, no cross). */
+function diamond(r: number, color: number, x: number, y: number, z: number): THREE.Mesh {
+  const geo = cachedGeo(`oct:${r}`, () => new THREE.OctahedronGeometry(r));
+  return shadowed(new THREE.Mesh(geo, toon(color)), x, y, z);
+}
+
 function buildKnight(): TroopRig {
   const g = new THREE.Group();
-  const legs = [makeLeg(0x4e342e, -0.15, 0.3, 0.17), makeLeg(0x4e342e, 0.15, 0.3, 0.17)];
+  const BLUE = 0x2f6bd8, BLUEDK = 0x244e9c, STEEL = 0xb9c4d2, GOLD = 0xf2c14e, LEATHER = 0x5a3a1c, RED = 0xc23b3b;
+  const legs = [makeLeg(BLUEDK, -0.16, 0.32, 0.18), makeLeg(BLUEDK, 0.16, 0.32, 0.18)];
+  for (const leg of legs) leg.add(sphere(0.1, GOLD, 0, -0.18, 0.12)); // knee rivet
   g.add(...legs);
-  g.add(cyl(0.3, 0.36, 0.45, 0x54606f, 0, 0.52, 0)); // armor torso
-  g.add(cyl(0.37, 0.37, 0.09, 0x3a2a1c, 0, 0.34, 0)); // belt
-  g.add(sphere(0.16, 0x94a1ae, -0.34, 0.68, 0)); // pauldron
-  g.add(sphere(0.16, 0x94a1ae, 0.34, 0.68, 0)); // pauldron
-  const head = sphere(0.32, SKIN, 0, 1.04, 0);
-  addEyes(head, 0.32, 0.38, 0.1, "brave");
-  head.add(box(0.26, 0.06, 0.05, 0xd9b34a, 0, -0.1, 0.29)); // blond mustache (CR)
-  g.add(head);
-  g.add(cyl(0.34, 0.36, 0.18, 0x94a1ae, 0, 1.22, 0)); // helmet band
-  const dome = sphere(0.33, 0x94a1ae, 0, 1.28, 0);
-  dome.scale.y = 0.65;
-  g.add(dome);
-  g.add(box(0.07, 0.2, 0.05, 0x94a1ae, 0, 1.05, 0.31)); // nose guard
 
-  // Shield arm.
+  // Layered torso: tunic, breastplate, chainmail collar, belt, tabard, emblem.
+  g.add(cyl(0.3, 0.36, 0.5, BLUE, 0, 0.56, 0));
+  g.add(box(0.56, 0.48, 0.42, STEEL, 0, 0.66, 0));
+  g.add(cyl(0.28, 0.28, 0.12, 0x9aa6b5, 0, 0.92, 0));
+  g.add(cyl(0.37, 0.37, 0.09, LEATHER, 0, 0.34, 0));
+  g.add(box(0.13, 0.13, 0.06, GOLD, 0, 0.34, 0.28)); // buckle
+  g.add(box(0.24, 0.46, 0.04, BLUEDK, 0, 0.52, 0.25)); // tabard
+  g.add(diamond(0.1, GOLD, 0, 0.7, 0.27)); // chest emblem
+  for (const sx of [-1, 1]) {
+    g.add(sphere(0.18, STEEL, sx * 0.38, 0.82, 0)); // pauldron
+    g.add(sphere(0.055, GOLD, sx * 0.38, 0.92, 0.1)); // rivet
+  }
+
+  // Bigger head + face + helmet.
+  const head = sphere(0.36, SKIN, 0, 1.16, 0);
+  addEyes(head, 0.36, 0.32, 0.08, "brave");
+  head.add(box(0.24, 0.06, 0.05, 0xd9b34a, 0, -0.12, 0.33)); // blond mustache
+  g.add(head);
+  if (ARABIC) {
+    const t = turban(0.36, 0x2e6f6b);
+    t.position.y = 1.16;
+    g.add(t);
+  } else {
+    g.add(cyl(0.39, 0.39, 0.12, 0x9aa6b5, 0, 1.32, 0)); // helmet brim
+    const dome = sphere(0.37, STEEL, 0, 1.4, 0);
+    dome.scale.y = 0.82;
+    g.add(dome);
+    g.add(box(0.07, 0.22, 0.06, STEEL, 0, 1.08, 0.34)); // nose guard
+    g.add(box(0.1, 0.5, 0.16, 0xe23b3b, 0, 1.74, -0.05)); // plume
+  }
+  const cape = box(0.5, 0.7, 0.05, 0x7a1f2b, 0, 0.62, -0.28);
+  cape.rotation.x = 0.08;
+  g.add(cape);
+
+  // Shield arm: a gold-bordered kite shield with a boss + emblem.
   const offArm = new THREE.Group();
-  offArm.position.set(-0.4, 0.78, 0);
-  offArm.add(box(0.13, 0.32, 0.13, 0x54606f, 0, -0.16, 0));
-  const shield = box(0.08, 0.46, 0.36, 0x8d6e63, -0.08, -0.3, 0.08);
-  offArm.add(shield);
-  offArm.add(sphere(0.07, 0x94a1ae, -0.13, -0.3, 0.08)); // boss
+  offArm.position.set(-0.42, 0.82, 0);
+  offArm.add(box(0.14, 0.32, 0.14, BLUE, 0, -0.16, 0));
+  offArm.add(sphere(0.11, STEEL, 0, -0.32, 0.02)); // gauntlet
+  offArm.add(box(0.42, 0.56, 0.05, GOLD, -0.1, -0.28, 0.16)); // border
+  offArm.add(box(0.34, 0.48, 0.07, RED, -0.1, -0.28, 0.18)); // face
+  offArm.add(sphere(0.08, STEEL, -0.1, -0.22, 0.24)); // boss
+  offArm.add(cone(0.07, 0.16, GOLD, -0.1, -0.4, 0.24)); // emblem
   g.add(offArm);
 
-  // Sword arm.
+  // Sword arm: gauntlet, crossguard, fullered blade, gold pommel.
   const arm = new THREE.Group();
-  arm.position.set(0.4, 0.8, 0);
-  arm.add(box(0.13, 0.3, 0.13, SKIN, 0, -0.15, 0));
-  arm.add(box(0.26, 0.06, 0.1, 0x8d6e63, 0, -0.32, 0)); // guard
-  arm.add(box(0.07, 0.72, 0.14, 0xdde4ec, 0, 0.06, 0)); // blade
-  arm.add(sphere(0.06, 0xf2c14e, 0, -0.4, 0)); // pommel
+  arm.position.set(0.42, 0.84, 0);
+  arm.add(box(0.15, 0.32, 0.15, BLUE, 0, -0.16, 0));
+  arm.add(sphere(0.12, STEEL, 0, -0.33, 0.02)); // gauntlet
+  if (ARABIC) {
+    const s = scimitar();
+    s.position.set(0, -0.34, 0.02);
+    arm.add(s);
+  } else {
+    arm.add(box(0.28, 0.07, 0.1, GOLD, 0, -0.3, 0.02)); // crossguard
+    arm.add(box(0.08, 0.82, 0.14, 0xe7ecf3, 0, 0.13, 0.02)); // blade
+    arm.add(sphere(0.06, GOLD, 0, -0.44, 0.02)); // pommel
+  }
   g.add(arm);
-  return { group: g, arm, armRest: -0.55, swingAmp: 1.7, height: 1.5, legs, offArm };
+
+  return { group: g, arm, armRest: -0.5, swingAmp: 1.7, height: 1.6, legs, offArm };
 }
 
 function buildArcher(): TroopRig {
@@ -291,10 +394,16 @@ function buildArcher(): TroopRig {
   const head = sphere(0.28, SKIN, 0, 0.94, 0);
   addEyes(head, 0.28, 0.38, 0.1, "cute");
   g.add(head);
-  const hair = sphere(0.29, 0xec5fa3, 0, 1.02, -0.02);
-  hair.scale.set(1, 0.62, 1);
-  g.add(hair);
-  g.add(sphere(0.13, 0xec5fa3, 0, 1.12, -0.24)); // bun
+  if (ARABIC) {
+    const t = turban(0.28, 0x9c3848);
+    t.position.y = 0.94;
+    g.add(t);
+  } else {
+    const hair = sphere(0.29, 0xec5fa3, 0, 1.02, -0.02);
+    hair.scale.set(1, 0.62, 1);
+    g.add(hair);
+    g.add(sphere(0.13, 0xec5fa3, 0, 1.12, -0.24)); // bun
+  }
   // Quiver on the back.
   const quiver = cyl(0.07, 0.07, 0.34, 0x6d4c41, -0.12, 0.62, -0.2);
   quiver.rotation.z = 0.35;
@@ -346,7 +455,8 @@ function buildGiant(): TroopRig {
   g.add(belly);
   g.add(box(0.34, 0.26, 0.06, 0xa96f3d, 0.2, 0.85, 0.49)); // patch
   g.add(cyl(0.63, 0.63, 0.12, 0x7a5230, 0, 0.55, 0)); // belt
-  g.add(sphere(0.09, 0xf2c14e, 0, 0.55, 0.6)); // buckle
+  g.add(sphere(0.11, 0xf2c14e, 0, 0.55, 0.6)); // buckle
+  g.add(cyl(0.5, 0.6, 0.34, 0x8a5a35, 0, 0.4, 0)); // loincloth skirt
   const head = sphere(0.42, SKIN, 0, 1.72, 0);
   addEyes(head, 0.42, 0.34, 0.18, "calm");
   g.add(head);
@@ -355,16 +465,23 @@ function buildGiant(): TroopRig {
   g.add(beard);
   g.add(box(0.5, 0.07, 0.06, 0x5d3d22, 0, 1.92, 0.36)); // heavy brow
   g.add(sphere(0.09, SKIN, 0, 1.74, 0.42)); // nose
+  if (ARABIC) {
+    const t = turban(0.42, 0x9c5a2a, 0xf2c14e);
+    t.position.y = 1.78;
+    g.add(t);
+  }
 
   const offArm = new THREE.Group();
   offArm.position.set(-0.66, 1.28, 0);
   offArm.add(box(0.24, 0.5, 0.24, SKIN, 0, -0.3, 0));
+  offArm.add(cyl(0.16, 0.16, 0.12, 0xf2c14e, 0, -0.5, 0)); // gold wristband
   offArm.add(sphere(0.21, SKIN, 0, -0.62, 0));
   offArm.rotation.x = -0.2;
   g.add(offArm);
   const arm = new THREE.Group();
   arm.position.set(0.66, 1.28, 0);
   arm.add(box(0.24, 0.5, 0.24, SKIN, 0, -0.3, 0));
+  arm.add(cyl(0.17, 0.17, 0.12, 0xf2c14e, 0, -0.52, 0)); // gold wristband
   arm.add(sphere(0.23, SKIN, 0, -0.64, 0));
   g.add(arm);
   return { group: g, arm, armRest: -0.35, swingAmp: 1.4, height: 2.1, legs, offArm };
@@ -382,17 +499,26 @@ function buildMusketeer(): TroopRig {
   g.add(head);
   // CR look: purple coiffed curls under a steel helmet with a
   // team-colored feather, plus a metal shoulder pad.
-  for (const s of [-1, 1]) {
-    g.add(sphere(0.12, 0x8347c2, s * 0.2, 1.06, -0.14)); // curls
-    g.add(sphere(0.09, 0x8347c2, s * 0.26, 0.92, -0.06)); // side curls
+  if (ARABIC) {
+    const t = turban(0.29, 0x3a2f7a, 0xf2c14e); // indigo turban, gold band
+    t.position.y = 1.0;
+    g.add(t);
+    const plume = cone(0.06, 0.32, 0x3b82f6, 0, 1.52, -0.02); // aigrette plume
+    plume.rotation.z = -0.3;
+    g.add(plume);
+  } else {
+    for (const s of [-1, 1]) {
+      g.add(sphere(0.12, 0x8347c2, s * 0.2, 1.06, -0.14)); // curls
+      g.add(sphere(0.09, 0x8347c2, s * 0.26, 0.92, -0.06)); // side curls
+    }
+    const helm = sphere(0.31, 0x9aa3ad, 0, 1.18, 0);
+    helm.scale.y = 0.72;
+    g.add(helm);
+    g.add(cyl(0.315, 0.325, 0.08, 0x78909c, 0, 1.1, 0)); // helmet rim
+    const feather = cone(0.07, 0.34, 0x3b82f6, 0.2, 1.46, 0);
+    feather.rotation.z = -0.6;
+    g.add(feather); // team-colored feather
   }
-  const helm = sphere(0.31, 0x9aa3ad, 0, 1.18, 0);
-  helm.scale.y = 0.72;
-  g.add(helm);
-  g.add(cyl(0.315, 0.325, 0.08, 0x78909c, 0, 1.1, 0)); // helmet rim
-  const feather = cone(0.07, 0.34, 0x3b82f6, 0.2, 1.46, 0);
-  feather.rotation.z = -0.6;
-  g.add(feather); // team-colored feather
   g.add(sphere(0.14, 0x9aa3ad, 0.34, 0.74, 0)); // shoulder pad
 
   const offArm = new THREE.Group();
@@ -418,16 +544,18 @@ function buildMiniPekka(): TroopRig {
   const legs = [makeLeg(0x10141c, -0.15, 0.3, 0.18), makeLeg(0x10141c, 0.15, 0.3, 0.18)];
   g.add(...legs);
   g.add(box(0.52, 0.42, 0.36, 0x202b3d, 0, 0.5, 0)); // body
-  g.add(sphere(0.08, 0x4fd8ff, 0, 0.56, 0.19)); // chest light
+  g.add(box(0.42, 0.14, 0.4, 0x39455c, 0, 0.64, 0.02)); // chest plate ridge
+  g.add(sphere(0.08, 0x4fd8ff, 0, 0.5, 0.2)); // chest light
   g.add(box(0.6, 0.5, 0.54, 0x26334a, 0, 1.02, 0)); // helmet head
   const eye = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.09, 0.04), glow(0x4fd8ff, 2.2));
   eye.position.set(0, 1.04, 0.28);
   g.add(eye);
   for (const s of [-1, 1]) {
-    const horn = cone(0.08, 0.36, 0xb7c2cc, s * 0.34, 1.36, 0);
+    const horn = cone(0.09, 0.4, 0xc7d0dd, s * 0.34, 1.38, 0);
     horn.rotation.z = -s * 0.55;
     g.add(horn);
-    g.add(sphere(0.07, 0xb7c2cc, s * 0.31, 0.62, 0)); // shoulder bolt
+    g.add(sphere(0.13, 0x39455c, s * 0.32, 0.62, 0)); // shoulder pad
+    g.add(sphere(0.06, 0xb7c2cc, s * 0.32, 0.7, 0.08)); // bolt
   }
 
   const offArm = new THREE.Group();
@@ -440,6 +568,9 @@ function buildMiniPekka(): TroopRig {
   arm.add(box(0.13, 0.28, 0.13, 0x202b3d, 0, -0.14, 0));
   arm.add(box(0.06, 0.2, 0.06, 0x6d4c41, 0, -0.38, 0)); // handle
   arm.add(box(0.05, 0.62, 0.34, 0xb7c2cc, 0, -0.1, 0.1)); // cleaver
+  const cleaverEdge = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.62, 0.05), glow(0x76e6ff, 2.0));
+  cleaverEdge.position.set(0, -0.1, 0.28); // glowing cutting edge
+  arm.add(cleaverEdge);
   g.add(arm);
   return { group: g, arm, armRest: -0.5, swingAmp: 1.9, height: 1.65, legs, offArm };
 }
@@ -473,62 +604,62 @@ function buildSkeleton(): TroopRig {
 }
 
 function buildWizard(): TroopRig {
-  // CR-accurate: blue cloak over a dark brown shirt, brown swept
-  // hair and goatee, no hat (wiki: team cloak, brown hair/goatee).
-  const ROBE = 0x3f6ad8;
-  const HAIR = 0x5b3a21;
+  // Premium classic wizard: flared star-trimmed robe, pointed hat,
+  // glowing crystal staff, and the fire-orb casting hand.
+  const ROBE = 0x2456c8, ROBEDK = 0x18337e, TRIM = 0xf2c14e, HAIR = 0xeef3fa;
   const g = new THREE.Group();
-  g.add(cyl(0.28, 0.48, 0.72, ROBE, 0, 0.4, 0)); // blue cloak
-  g.add(cyl(0.27, 0.3, 0.16, 0x4a3526, 0, 0.68, 0)); // brown shirt collar
-  g.add(cyl(0.39, 0.42, 0.08, 0x5d4037, 0, 0.5, 0)); // leather belt
-  g.add(box(0.09, 0.09, 0.04, 0xf2c14e, 0, 0.5, 0.4)); // gold buckle
-  const head = sphere(0.3, SKIN, 0, 1.06, 0);
-  addEyes(head, 0.3, 0.38, 0.1, "calm");
+  g.add(cyl(0.26, 0.52, 0.92, ROBE, 0, 0.47, 0)); // flared robe
+  g.add(cyl(0.52, 0.54, 0.1, ROBEDK, 0, 0.05, 0)); // hem
+  g.add(cyl(0.4, 0.42, 0.08, 0x5a3a1c, 0, 0.76, 0)); // belt
+  g.add(box(0.1, 0.1, 0.05, TRIM, 0, 0.76, 0.42)); // buckle
+  for (let i = 0; i < 3; i++) g.add(sphere(0.045, TRIM, 0, 0.62 - i * 0.17, 0.4)); // star buttons
+  const head = sphere(0.32, SKIN, 0, 1.12, 0);
+  addEyes(head, 0.32, 0.32, 0.08, "brave");
   g.add(head);
-  // Brown goatee, not a full beard.
-  const goatee = sphere(0.13, HAIR, 0, 0.84, 0.2);
-  goatee.scale.set(0.9, 0.95, 0.6);
-  g.add(goatee);
-  // Swept-back brown hair with a proud cowlick.
-  const hairCap = sphere(0.31, HAIR, 0, 1.16, -0.05);
-  hairCap.scale.set(1, 0.72, 1.02);
-  g.add(hairCap);
-  const backSweep = sphere(0.18, HAIR, 0, 1.04, -0.26);
-  backSweep.scale.set(1.1, 0.9, 0.7);
-  g.add(backSweep);
-  const cowlick = cone(0.09, 0.22, HAIR, 0.05, 1.42, 0.05);
-  cowlick.rotation.z = -0.35;
-  g.add(cowlick);
-  for (const s of [-1, 1]) {
-    const sideburn = cyl(0.06, 0.04, 0.22, HAIR, s * 0.27, 0.98, 0.02);
-    sideburn.rotation.z = s * 0.12;
-    g.add(sideburn);
-    g.add(cyl(0.07, 0.07, 0.08, 0x4a3526, s * 0.36, 0.55, 0)); // wristband
+  // White hair tufts + short beard, kept clear of the lit face.
+  for (const s of [-1, 1]) g.add(sphere(0.12, HAIR, s * 0.28, 1.02, 0.04));
+  const beard = cone(0.2, 0.42, HAIR, 0, 0.84, 0.12);
+  beard.rotation.x = Math.PI;
+  g.add(beard);
+  if (ARABIC) {
+    const t = turban(0.32, 0x2f6f6b, 0x76ff03); // teal turban, green mage jewel
+    t.position.y = 1.12;
+    g.add(t);
+  } else {
+    // Pointed hat with brim band + glowing tip star.
+    const hat = cone(0.44, 1.0, ROBEDK, 0, 1.66, -0.05);
+    hat.rotation.x = -0.1;
+    g.add(hat);
+    g.add(cyl(0.46, 0.46, 0.1, ROBE, 0, 1.26, 0)); // brim band
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 10), glow(0xfff1a8, 1.8));
+    tip.position.set(0.08, 2.12, -0.16);
+    g.add(tip);
   }
 
-  // Staff hand.
+  // Staff hand with a glowing crystal.
   const offArm = new THREE.Group();
-  offArm.position.set(-0.36, 0.78, 0);
+  offArm.position.set(-0.4, 0.78, 0);
   offArm.add(box(0.11, 0.26, 0.11, ROBE, 0, -0.13, 0));
-  const staff = cyl(0.03, 0.03, 0.95, 0x6d4c41, 0, -0.3, 0.08);
-  offArm.add(staff);
-  offArm.add(sphere(0.09, 0x4fd8ff, 0, 0.2, 0.08));
+  offArm.add(cyl(0.032, 0.038, 1.15, 0x6d4c41, 0, -0.12, 0.08)); // shaft
+  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.13), glow(0x59c8ff, 1.8));
+  crystal.position.set(0, 0.5, 0.08);
+  offArm.add(crystal);
   g.add(offArm);
 
-  // Casting hand with fire orb.
+  // Casting hand with fire orb (the attack).
   const arm = new THREE.Group();
-  arm.position.set(0.36, 0.8, 0);
+  arm.position.set(0.4, 0.8, 0);
   arm.add(box(0.11, 0.26, 0.11, ROBE, 0, -0.13, 0));
   const orb = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), glow(0xff7a00, 1.8));
   orb.position.set(0, -0.34, 0.1);
   arm.add(orb);
   g.add(arm);
   const flicker = (t: number, phase: number) => {
-    // Fire orb breathes and sputters.
     const s = 1 + Math.sin(t * 11 + phase) * 0.12 + Math.sin(t * 23 + phase * 2) * 0.05;
     orb.scale.setScalar(s);
+    crystal.rotation.y = t * 1.5;
   };
-  return { group: g, arm, armRest: -0.9, swingAmp: 1.1, height: 1.5, offArm, extras: flicker };
+  return { group: g, arm, armRest: -0.9, swingAmp: 1.1, height: 1.7, offArm, extras: flicker };
 }
 
 function buildWitch(): TroopRig {
@@ -767,30 +898,49 @@ function buildValkyrie(): TroopRig {
   const head = sphere(0.3, SKIN, 0, 1.04, 0);
   addEyes(head, 0.3, 0.38, 0.1, "angry");
   g.add(head);
-  const hair = sphere(0.31, 0xe07b39, 0, 1.12, -0.03);
-  hair.scale.set(1, 0.66, 1);
-  g.add(hair);
-  for (const s of [-1, 1]) {
-    const braid = cyl(0.07, 0.05, 0.5, 0xe07b39, s * 0.27, 0.84, -0.1);
-    braid.rotation.z = s * 0.25;
-    g.add(braid);
+  if (ARABIC) {
+    const t = turban(0.3, 0x9c3848, 0xf2c14e); // crimson headscarf, gold band
+    t.position.y = 1.04;
+    g.add(t);
+  } else {
+    const hair = sphere(0.31, 0xe07b39, 0, 1.12, -0.03);
+    hair.scale.set(1, 0.66, 1);
+    g.add(hair);
+    for (const s of [-1, 1]) {
+      const braid = cyl(0.07, 0.05, 0.5, 0xe07b39, s * 0.27, 0.84, -0.1);
+      braid.rotation.z = s * 0.25;
+      g.add(braid);
+    }
   }
+  // Battle armor: steel pauldrons with rivets, a leather chest guard,
+  // and a gold headband.
+  for (const s of [-1, 1]) {
+    g.add(sphere(0.15, 0x9aa3ad, s * 0.36, 0.78, 0)); // pauldron
+    g.add(sphere(0.05, 0xf2c14e, s * 0.36, 0.86, 0.08)); // rivet
+  }
+  g.add(box(0.36, 0.3, 0.3, 0x6b4a2a, 0, 0.66, 0.06)); // chest guard
+  g.add(diamond(0.07, 0xf2c14e, 0, 0.7, 0.24)); // emblem
+  g.add(cyl(0.31, 0.31, 0.06, 0xf2c14e, 0, 1.22, 0)); // headband
 
   const offArm = new THREE.Group();
   offArm.position.set(-0.38, 0.74, 0);
   offArm.add(box(0.13, 0.28, 0.13, SKIN, 0, -0.14, 0));
   g.add(offArm);
 
-  // Huge double axe.
+  // Huge double axe with gold hubs and a haft spike.
   const arm = new THREE.Group();
   arm.position.set(0.38, 0.78, 0);
   arm.add(box(0.13, 0.28, 0.13, SKIN, 0, -0.14, 0));
   arm.add(cyl(0.035, 0.035, 0.85, 0x6d4c41, 0, -0.1, 0.16)); // haft
+  arm.add(cone(0.05, 0.2, 0xc7d0dd, 0, 0.4, 0.16)); // haft spike
   for (const s of [-1, 1]) {
     const blade = cyl(0.22, 0.22, 0.06, 0xb7c2cc, s * 0.18, 0.28, 0.16);
     blade.rotation.z = Math.PI / 2;
     blade.scale.y = 0.4;
     arm.add(blade);
+    const hub = cyl(0.09, 0.09, 0.08, 0xf2c14e, s * 0.1, 0.28, 0.16);
+    hub.rotation.z = Math.PI / 2;
+    arm.add(hub);
   }
   g.add(arm);
   return { group: g, arm, armRest: -0.55, swingAmp: 1.9, height: 1.45, legs, offArm };
@@ -843,14 +993,21 @@ function buildPrince(): TroopRig {
   goatee.scale.set(0.9, 0.8, 0.6);
   head.add(goatee);
   g.add(head);
-  // Golden helm with a raised visor and a team-colored feather.
-  g.add(cyl(0.28, 0.3, 0.2, 0xf2c14e, 0, 1.84, -0.1)); // helmet band
-  const helmDome = sphere(0.29, 0xf2c14e, 0, 1.92, -0.1);
-  helmDome.scale.y = 0.72;
-  g.add(helmDome);
-  g.add(box(0.4, 0.07, 0.06, 0xd9a93f, 0, 1.96, 0.12)); // raised visor
-  for (const s of [-1, 1]) {
-    g.add(box(0.06, 0.18, 0.16, 0xf2c14e, s * 0.26, 1.7, -0.04)); // cheek guard
+  if (ARABIC) {
+    // Royal gold turban with a ruby jewel, in place of the helm.
+    const t = turban(0.27, 0xf2c14e, 0xb71c1c);
+    t.position.set(0, 1.66, -0.1);
+    g.add(t);
+  } else {
+    // Golden helm with a raised visor and a team-colored feather.
+    g.add(cyl(0.28, 0.3, 0.2, 0xf2c14e, 0, 1.84, -0.1)); // helmet band
+    const helmDome = sphere(0.29, 0xf2c14e, 0, 1.92, -0.1);
+    helmDome.scale.y = 0.72;
+    g.add(helmDome);
+    g.add(box(0.4, 0.07, 0.06, 0xd9a93f, 0, 1.96, 0.12)); // raised visor
+    for (const s of [-1, 1]) {
+      g.add(box(0.06, 0.18, 0.16, 0xf2c14e, s * 0.26, 1.7, -0.04)); // cheek guard
+    }
   }
   const plume = cone(0.08, 0.4, 0x3b82f6, 0, 2.22, -0.16);
   plume.rotation.x = 0.25;
@@ -917,8 +1074,14 @@ function buildHogRider(): TroopRig {
   const head = sphere(0.26, RIDER, 0, 1.5, -0.12);
   addEyes(head, 0.26, 0.38, 0.1, "angry");
   g.add(head);
-  const mohawk = box(0.08, 0.26, 0.4, 0x2d1b0e, 0, 1.76, -0.12);
-  g.add(mohawk);
+  if (ARABIC) {
+    const t = turban(0.26, 0x6f5340, 0xf2c14e); // brown turban, gold jewel
+    t.position.set(0, 1.5, -0.12);
+    g.add(t);
+  } else {
+    const mohawk = box(0.08, 0.26, 0.4, 0x2d1b0e, 0, 1.76, -0.12);
+    g.add(mohawk);
+  }
   // The iconic big dark beard.
   const beard = sphere(0.2, 0x2d1b0e, 0, 1.36, 0.02);
   beard.scale.set(1.05, 0.8, 0.75);
@@ -993,6 +1156,12 @@ function buildPekka(): TroopRig {
   arm.add(box(0.44, 0.09, 0.16, 0x39455c, 0, -0.46, 0)); // crossguard
   arm.add(box(0.13, 1.3, 0.26, 0xdde4ec, 0, 0.24, 0)); // huge blade
   arm.add(box(0.05, 1.28, 0.04, 0x9aa8bd, 0, 0.24, 0.12)); // fuller line
+  // Glowing energy edges (unlit → bloom-ready).
+  for (const s of [-1, 1]) {
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(0.03, 1.3, 0.07), glow(0x76e6ff, 2.2));
+    edge.position.set(s * 0.075, 0.24, 0);
+    arm.add(edge);
+  }
   arm.add(cone(0.13, 0.24, 0xdde4ec, 0, 1.0, 0)); // blade point
   g.add(arm);
   return { group: g, arm, armRest: -0.62, swingAmp: 1.8, height: 2.4, legs, offArm };
@@ -1074,9 +1243,183 @@ export function buildTowerKing(): TroopRig {
   return { group: g, arm, armRest: -0.4, swingAmp: 1.2, height: 1.55, offArm };
 }
 
+function buildFirecracker(): TroopRig {
+  const g = new THREE.Group();
+  const legs = [makeLeg(0x4a2c1a, -0.11, 0.26, 0.13), makeLeg(0x4a2c1a, 0.11, 0.26, 0.13)];
+  g.add(...legs);
+  g.add(cyl(0.23, 0.3, 0.4, 0xe2542b, 0, 0.46, 0)); // orange tunic
+  g.add(cyl(0.31, 0.31, 0.07, 0xb23a18, 0, 0.3, 0)); // belt
+  const head = sphere(0.27, SKIN, 0, 0.92, 0);
+  addEyes(head, 0.27, 0.38, 0.1, "brave");
+  g.add(head);
+  // Tied-up hair with two stubby pigtails.
+  const hair = sphere(0.28, 0x3a2a1c, 0, 1.0, -0.02);
+  hair.scale.set(1, 0.6, 1);
+  g.add(hair);
+  for (const s of [-1, 1]) g.add(sphere(0.1, 0x3a2a1c, s * 0.26, 1.04, -0.12));
+  g.add(cone(0.16, 0.2, 0xf2c14e, 0, 1.26, 0)); // little party hat
+
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.3, 0.62, 0);
+  offArm.add(box(0.11, 0.26, 0.11, SKIN, 0, -0.13, 0));
+  g.add(offArm);
+
+  // A fat firework launcher tube held forward on the shoulder.
+  const arm = new THREE.Group();
+  arm.position.set(0.32, 0.66, 0.05);
+  arm.add(box(0.11, 0.26, 0.11, SKIN, 0, -0.13, 0));
+  const tube = cyl(0.13, 0.13, 0.6, 0xd64027, 0, -0.24, 0.28);
+  tube.rotation.x = Math.PI / 2;
+  arm.add(tube);
+  arm.add(cyl(0.15, 0.15, 0.06, 0xf2c14e, 0, -0.24, 0.56).rotateX(Math.PI / 2)); // muzzle band
+  arm.add(sphere(0.07, 0xffd54f, 0, -0.24, 0.62)); // packed firework
+  const fuse = cyl(0.012, 0.012, 0.12, 0x4a4a4a, 0.0, -0.1, 0.3);
+  fuse.rotation.z = 0.5;
+  arm.add(fuse);
+  g.add(arm);
+  return { group: g, arm, armRest: -0.2, swingAmp: 0.5, height: 1.3, legs, offArm };
+}
+
+function buildMagicArcher(): TroopRig {
+  const g = new THREE.Group();
+  const legs = [makeLeg(0x2a1f44, -0.12, 0.3, 0.14), makeLeg(0x2a1f44, 0.12, 0.3, 0.14)];
+  g.add(...legs);
+  g.add(cyl(0.24, 0.36, 0.56, 0x5e3aa6, 0, 0.56, 0)); // long mystic robe
+  g.add(cyl(0.3, 0.32, 0.07, 0x3c2470, 0, 0.42, 0)); // sash
+  const head = sphere(0.28, SKIN, 0, 1.06, 0);
+  addEyes(head, 0.28, 0.36, 0.08, "calm");
+  g.add(head);
+  // Pointed hood draped over the head.
+  const hood = sphere(0.32, 0x4a2d8f, 0, 1.12, -0.04);
+  hood.scale.set(1, 0.9, 1);
+  g.add(hood);
+  g.add(cone(0.2, 0.4, 0x4a2d8f, 0, 1.42, -0.06)); // hood point
+
+  const offArm = new THREE.Group();
+  offArm.position.set(0.32, 0.76, 0);
+  offArm.add(box(0.11, 0.28, 0.11, 0x5e3aa6, 0, -0.14, 0));
+  g.add(offArm);
+
+  // Bow arm out front, holding a glowing nocked arrow.
+  const arm = new THREE.Group();
+  arm.position.set(-0.32, 0.78, 0.05);
+  arm.add(box(0.11, 0.28, 0.11, 0x5e3aa6, 0, -0.14, 0));
+  const bow = new THREE.Mesh(
+    new THREE.TorusGeometry(0.36, 0.035, 8, 16, Math.PI),
+    toon(0x37206b),
+  );
+  bow.castShadow = true;
+  bow.position.set(0, -0.28, 0.16);
+  bow.rotation.set(0, -Math.PI / 2, 0);
+  arm.add(bow);
+  arm.add(box(0.015, 0.7, 0.015, 0xb39ddb, 0, -0.28, 0.16)); // string
+  const glowArrow = cyl(0.03, 0.03, 0.56, 0x9d6bff, 0, -0.28, 0.3);
+  glowArrow.rotation.x = Math.PI / 2;
+  glowArrow.material = glow(0xb98bff);
+  arm.add(glowArrow);
+  arm.add(sphere(0.06, 0xd7b3ff, 0, -0.28, 0.56)); // arrow's magic tip
+  g.add(arm);
+  return { group: g, arm, armRest: -1.0, swingAmp: 0.7, height: 1.5, legs, offArm };
+}
+
+function buildBat(): TroopRig {
+  const g = new THREE.Group();
+  const body = sphere(0.16, 0x3a2f4a, 0, 0.3, 0);
+  body.scale.set(1, 1.05, 0.9);
+  g.add(body);
+  for (const s of [-1, 1]) {
+    g.add(cone(0.06, 0.16, 0x2c2338, s * 0.08, 0.46, 0)); // ear
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), glow(0xffd54f, 2));
+    eye.position.set(s * 0.06, 0.32, 0.13);
+    g.add(eye);
+    g.add(box(0.02, 0.05, 0.02, 0xffffff, s * 0.03, 0.22, 0.12)); // fang
+  }
+  const wings: Wing[] = [];
+  for (const s of [-1, 1]) {
+    const wing = new THREE.Group();
+    wing.position.set(s * 0.12, 0.32, -0.04);
+    wing.add(box(0.34, 0.03, 0.22, 0x2c2338, s * 0.18, 0, 0));
+    wing.rotation.z = s * 0.4;
+    g.add(wing);
+    wings.push({ obj: wing, base: s * 0.4, amp: s * 0.9 });
+  }
+  return { group: g, arm: null, armRest: 0, swingAmp: 0, height: 0.7, hover: 0.85, wings };
+}
+
+function buildMinion(): TroopRig {
+  const g = new THREE.Group();
+  const body = sphere(0.2, 0x2f6fb0, 0, 0.36, 0);
+  body.scale.set(1, 1.15, 0.92);
+  g.add(body);
+  g.add(sphere(0.17, 0x3f7fc0, 0, 0.66, 0.03)); // head
+  g.add(cone(0.05, 0.14, 0x9fd0ff, 0, 0.84, 0)); // horn
+  const beak = cone(0.05, 0.12, 0xffca28, 0, 0.64, 0.2);
+  beak.rotation.x = Math.PI / 2;
+  g.add(beak);
+  for (const s of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), glow(0xfff1a8, 2));
+    eye.position.set(s * 0.07, 0.7, 0.16);
+    g.add(eye);
+  }
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.18, 0.44, 0);
+  offArm.add(box(0.06, 0.18, 0.06, 0x2f6fb0, 0, -0.09, 0));
+  g.add(offArm);
+  const arm = new THREE.Group();
+  arm.position.set(0.18, 0.44, 0.04);
+  arm.add(box(0.06, 0.18, 0.06, 0x2f6fb0, 0, -0.09, 0));
+  g.add(arm);
+  const wings: Wing[] = [];
+  for (const s of [-1, 1]) {
+    const wing = new THREE.Group();
+    wing.position.set(s * 0.16, 0.56, -0.1);
+    wing.add(box(0.4, 0.03, 0.26, 0x255f96, s * 0.22, 0, 0));
+    wing.rotation.z = s * 0.45;
+    g.add(wing);
+    wings.push({ obj: wing, base: s * 0.45, amp: s * 0.8 });
+  }
+  return { group: g, arm, armRest: -0.4, swingAmp: 0.8, height: 0.95, hover: 0.88, wings, offArm };
+}
+
+function buildExecutioner(): TroopRig {
+  const g = new THREE.Group();
+  const legs = [makeLeg(0x2f3a2c, -0.16, 0.3, 0.18), makeLeg(0x2f3a2c, 0.16, 0.3, 0.18)];
+  g.add(...legs);
+  g.add(cyl(0.34, 0.42, 0.5, 0x3f7a4a, 0, 0.56, 0)); // burly tunic
+  g.add(cyl(0.44, 0.44, 0.1, 0x2c5836, 0, 0.36, 0)); // belt
+  const head = sphere(0.3, SKIN, 0, 1.06, 0);
+  addEyes(head, 0.3, 0.34, 0.06, "angry");
+  g.add(head);
+  const hood = sphere(0.34, 0x2f5d3a, 0, 1.12, -0.04);
+  hood.scale.set(1, 0.95, 1);
+  g.add(hood);
+  g.add(cone(0.18, 0.34, 0x2f5d3a, 0, 1.42, -0.06)); // hood point
+  for (const s of [-1, 1]) g.add(sphere(0.16, 0x2c5836, s * 0.4, 0.78, 0)); // shoulder pads
+
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.42, 0.74, 0);
+  offArm.add(box(0.14, 0.34, 0.14, SKIN, 0, -0.17, 0));
+  g.add(offArm);
+  const arm = new THREE.Group();
+  arm.position.set(0.42, 0.76, 0.05);
+  arm.add(box(0.14, 0.34, 0.14, SKIN, 0, -0.17, 0)); // forearm
+  const handle = cyl(0.04, 0.04, 0.6, 0x6d4c41, 0, -0.1, 0.3);
+  handle.rotation.x = Math.PI / 2;
+  arm.add(handle);
+  arm.add(box(0.1, 0.4, 0.34, 0xc9d2da, 0, -0.1, 0.6)); // wide axe head
+  g.add(arm);
+  return { group: g, arm, armRest: -0.2, swingAmp: 0.9, height: 1.55, legs, offArm };
+}
+
 const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   knight: buildKnight,
   archers: buildArcher,
+  firecracker: buildFirecracker,
+  "magic-archer": buildMagicArcher,
+  bats: buildBat,
+  minions: buildMinion,
+  "skeleton-army": buildSkeleton,
+  executioner: buildExecutioner,
   giant: buildGiant,
   musketeer: buildMusketeer,
   "mini-pekka": buildMiniPekka,
@@ -1096,8 +1439,12 @@ const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
  * Add inverted-hull silhouette outlines to a rig's larger meshes.
  * One black material per rig so death-fade can't bleed across units.
  */
+/** Bold CR-style cel outline: near-black and thick. */
+const OUTLINE_COLOR = 0x0b0e16;
+const OUTLINE_SCALE = 1.09;
+
 export function outlineRig(group: THREE.Group): void {
-  const mat = new THREE.MeshBasicMaterial({ color: 0x141925, side: THREE.BackSide });
+  const mat = new THREE.MeshBasicMaterial({ color: OUTLINE_COLOR, side: THREE.BackSide });
   const targets: THREE.Mesh[] = [];
   group.traverse((o) => {
     const mesh = o as THREE.Mesh;
@@ -1111,7 +1458,7 @@ export function outlineRig(group: THREE.Group): void {
   for (const mesh of targets) {
     const hull = new THREE.Mesh(mesh.geometry, mat);
     hull.name = "outline";
-    hull.scale.setScalar(1.06);
+    hull.scale.setScalar(OUTLINE_SCALE);
     mesh.add(hull);
   }
 }

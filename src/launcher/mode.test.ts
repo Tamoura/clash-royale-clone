@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_MODE,
-  MODE_KEY,
+  DEFAULT_EDITION,
+  EDITION_KEY,
   checkUnityBuild,
-  isGameMode,
-  loadMode,
-  otherMode,
-  saveMode,
+  isEdition,
+  loadEdition,
+  otherEdition,
+  saveEdition,
   unityBuildUrl,
   type ModeStorage,
 } from "./mode";
@@ -20,33 +20,33 @@ function fakeStorage(seed: Record<string, string> = {}): ModeStorage {
   };
 }
 
-describe("game mode", () => {
+describe("edition", () => {
   it("defaults to the native version when nothing is stored", () => {
-    expect(loadMode(fakeStorage())).toBe(DEFAULT_MODE);
-    expect(DEFAULT_MODE).toBe("native");
+    expect(loadEdition(fakeStorage())).toBe(DEFAULT_EDITION);
+    expect(DEFAULT_EDITION).toBe("native");
   });
 
-  it("round-trips a saved mode through storage", () => {
+  it("round-trips a saved edition through storage", () => {
     const storage = fakeStorage();
-    saveMode(storage, "unity");
-    expect(storage.getItem(MODE_KEY)).toBe("unity");
-    expect(loadMode(storage)).toBe("unity");
+    saveEdition(storage, "unity");
+    expect(storage.getItem(EDITION_KEY)).toBe("unity");
+    expect(loadEdition(storage)).toBe("unity");
   });
 
   it("ignores a corrupt stored value and falls back to the default", () => {
-    expect(loadMode(fakeStorage({ [MODE_KEY]: "nintendo" }))).toBe(DEFAULT_MODE);
+    expect(loadEdition(fakeStorage({ [EDITION_KEY]: "nintendo" }))).toBe(DEFAULT_EDITION);
   });
 
-  it("recognises only the two real modes", () => {
-    expect(isGameMode("native")).toBe(true);
-    expect(isGameMode("unity")).toBe(true);
-    expect(isGameMode("xbox")).toBe(false);
-    expect(isGameMode(null)).toBe(false);
+  it("recognises only the two real editions", () => {
+    expect(isEdition("native")).toBe(true);
+    expect(isEdition("unity")).toBe(true);
+    expect(isEdition("xbox")).toBe(false);
+    expect(isEdition(null)).toBe(false);
   });
 
-  it("toggles between the two modes", () => {
-    expect(otherMode("native")).toBe("unity");
-    expect(otherMode("unity")).toBe("native");
+  it("toggles between the two editions", () => {
+    expect(otherEdition("native")).toBe("unity");
+    expect(otherEdition("unity")).toBe("native");
   });
 });
 
@@ -70,7 +70,6 @@ describe("unity build url", () => {
     const missing = await checkUnityBuild(async () => ({ ok: false }) as Response);
     expect(missing).toBe(false);
 
-    // A network/file error means "no build" rather than a thrown rejection.
     const errored = await checkUnityBuild(async () => {
       throw new Error("not found");
     });

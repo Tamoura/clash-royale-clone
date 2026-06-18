@@ -1,7 +1,8 @@
 import * as THREE from "three";
-import { ARENA_HEIGHT, ARENA_WIDTH, BRIDGE_XS, RIVER_Y, type Side } from "../game/arena";
+import { ARENA_HEIGHT, ARENA_WIDTH, BRIDGE_XS, RIVER_Y, type OpenLanes, type Side } from "../game/arena";
 import {
   distance,
+  openLanes,
   type BattleEvent,
   type BattleState,
   type Entity,
@@ -13,6 +14,13 @@ import { damageLabel } from "./popups";
 import { deathStyle } from "./deathfx";
 import { DUST_INTERVAL, blobShadowScale } from "./ground";
 import { spawnStyle } from "./spawnfx";
+import { ShakeController } from "./shake";
+import { ParticleField } from "./particles";
+import { impactStyle } from "./impactfx";
+import { THEME, ARABIC, ARENA_THEME } from "./theme";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import {
   animateTroop,
   articulate,
@@ -32,6 +40,22 @@ function toWorld(ax: number, ay: number): { x: number; z: number } {
 const SIDE_COLOR: Record<Side, number> = { player: 0x3b82f6, enemy: 0xef4444 };
 /** HP-bar fill: CR convention — your units green, the enemy's red. */
 const HP_COLOR: Record<Side, number> = { player: 0x35d04a, enemy: 0xef4444 };
+
+// Which side sits at the bottom of the screen. The host views as "player"
+// (default); an online guest views as "enemy", so the camera looks from the
+// far side and flat HP bars rotate 180° about Y to match — viewed from the
+// opposite side, the two cancel out and bars read identically.
+let viewSide: Side = "player";
+function cameraZForView(): number {
+  return viewSide === "player" ? CAM_HOME.z : -CAM_HOME.z;
+}
+
+/** Per-theme scenery palette (theme flag lives in theme.ts). */
+const arabic = ARABIC;
+const ARENA_PALETTE = {
+  normal: { sky: 0x9ec8e8, apron: 0xe4ecf5, far: 0xdbe6f0, fieldSide: 0xb8a886, edging: 0xd8d0c0, drift: 0xeef4ff },
+  arabic: { sky: THEME.sky, apron: 0xd8c79a, far: 0xd8c79a, fieldSide: THEME.stone, edging: THEME.sand, drift: 0xe6d2a6 },
+}[ARENA_THEME];
 
 /**
  * CR-style steep camera (~66° elevation): the field reads almost
@@ -65,6 +89,16 @@ function attackSwing(e: Entity, engaged: boolean): number {
 /** Render-loop scratch vectors (render-avoid-allocations). */
 const PREV_POS = new THREE.Vector3();
 const LOOK_AT = new THREE.Vector3();
+
+// Hit-spark pool: one InstancedMesh, reused scratch objects (no per-frame
+// allocation — see the three-best-practices skill).
+const PARTICLE_CAP = 320;
+const SPARK_GRAVITY = 7;
+const SPARK_M = new THREE.Matrix4();
+const SPARK_POS = new THREE.Vector3();
+const SPARK_SCALE = new THREE.Vector3();
+const SPARK_QUAT = new THREE.Quaternion();
+const SPARK_COLOR = new THREE.Color();
 
 const TROOP_DEATH_TIME = 0.5;
 const TOWER_DEATH_TIME = 0.8;
@@ -209,7 +243,9 @@ function makeHpBar(width: number, color: number, y: number): {
   fill.add(gloss);
   group.add(bg, fill);
   group.position.y = y;
-  group.rotation.x = BAR_TILT; // face the steep camera
+  // Face the steep camera; for the enemy viewpoint, also spin 180° about Y.
+  if (viewSide === "enemy") group.rotation.set(BAR_TILT, Math.PI, 0, "YXZ");
+  else group.rotation.x = BAR_TILT;
   return { group, fill };
 }
 
@@ -425,6 +461,116 @@ function brickTex(): THREE.CanvasTexture {
   return brickTexture;
 }
 
+/** A gold crescent-and-orb finial that tops domes and spires. */
+function crescentFinial(s: number): THREE.Group {
+  const g = new THREE.Group();
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(s * 0.3, 8, 6), toon(THEME.gold));
+  ball.castShadow = true;
+  g.add(ball);
+  const cres = new THREE.Mesh(
+    new THREE.TorusGeometry(s * 0.55, s * 0.15, 8, 16, Math.PI * 1.35),
+    toon(THEME.goldLight),
+  );
+  cres.position.y = s * 1.05;
+  cres.rotation.z = Math.PI * 0.33;
+  cres.castShadow = true;
+  g.add(cres);
+  return g;
+}
+
+/** An onion dome on a stone drum, crowned with a crescent finial. */
+function onionDome(r: number, color: number): THREE.Group {
+  const g = new THREE.Group();
+  const drum = new THREE.Mesh(
+    new THREE.CylinderGeometry(r * 0.92, r * 1.02, r * 0.5, 12),
+    toon(THEME.sand),
+  );
+  drum.position.y = r * 0.25;
+  drum.castShadow = true;
+  g.add(drum);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), toon(color));
+  bulb.scale.set(1, 1.3, 1);
+  bulb.position.y = r * 0.5 + r * 0.72;
+  bulb.castShadow = true;
+  g.add(bulb);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(r * 0.34, r * 0.7, 12), toon(color));
+  tip.position.y = r * 0.5 + r * 1.6;
+  g.add(tip);
+  const fin = crescentFinial(r * 0.9);
+  fin.position.y = r * 0.5 + r * 1.95;
+  g.add(fin);
+  return g;
+}
+
+/** An ornate fanoos lantern: gold cage around a warm glow, capped + ringed. */
+function makeLantern(s = 1): THREE.Group {
+  const g = new THREE.Group();
+  const glow = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.11 * s, 0.09 * s, 0.3 * s, 8),
+    unlitGlow(0xffb347),
+  );
+  glow.position.y = 0.2 * s;
+  g.add(glow);
+  for (const [ry, rr] of [[0.35, 0.12], [0.05, 0.1]] as const) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(rr * s, 0.02 * s, 6, 10), toon(THEME.gold));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = ry * s;
+    g.add(ring);
+  }
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.1 * s, 0.16 * s, 6), toon(THEME.gold));
+  cap.position.y = 0.44 * s;
+  g.add(cap);
+  const drop = new THREE.Mesh(new THREE.SphereGeometry(0.04 * s, 6, 5), toon(THEME.gold));
+  drop.position.y = -0.02 * s;
+  g.add(drop);
+  return g;
+}
+
+/** A horseshoe-arch gateway straddling a bridge, crescent + hanging lantern. */
+function archGateway(): THREE.Group {
+  const g = new THREE.Group();
+  const span = 1.0;
+  const pierH = 1.1;
+  const pierR = 0.16;
+  for (const sx of [-1, 1]) {
+    const pier = new THREE.Mesh(
+      new THREE.CylinderGeometry(pierR, pierR * 1.1, pierH, 10),
+      toon(THEME.sand),
+    );
+    pier.position.set(sx * span, pierH / 2, 0);
+    pier.castShadow = true;
+    g.add(pier);
+    const base = new THREE.Mesh(
+      new THREE.CylinderGeometry(pierR * 1.3, pierR * 1.45, 0.12, 10),
+      toon(THEME.gold),
+    );
+    base.position.set(sx * span, 0.06, 0);
+    g.add(base);
+  }
+  // Semicircular arch (half-torus in the x-y plane) bridging the piers.
+  const arch = new THREE.Mesh(new THREE.TorusGeometry(span, pierR, 8, 20, Math.PI), toon(THEME.sand));
+  arch.position.y = pierH;
+  arch.castShadow = true;
+  g.add(arch);
+  const trim = new THREE.Mesh(
+    new THREE.TorusGeometry(span + pierR * 0.55, pierR * 0.28, 6, 20, Math.PI),
+    toon(THEME.gold),
+  );
+  trim.position.y = pierH;
+  g.add(trim);
+  const fin = crescentFinial(0.42);
+  fin.position.set(0, pierH + span + 0.04, 0);
+  g.add(fin);
+  // Lantern on a short chain hung from the keystone.
+  const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.34, 4), toon(THEME.gold));
+  chain.position.set(0, pierH + span - 0.32, 0);
+  g.add(chain);
+  const lantern = makeLantern(1.0);
+  lantern.position.set(0, pierH + span - 0.7, 0);
+  g.add(lantern);
+  return g;
+}
+
 function buildTowerMesh(e: Entity): EntityView {
   const root = new THREE.Group();
   const king = e.kind === "king-tower";
@@ -491,6 +637,30 @@ function buildTowerMesh(e: Entity): EntityView {
 
   // Door + team banner facing the enemy.
   const facing = e.side === "player" ? -1 : 1;
+
+  // Arabic theme: crown the tower with onion-dome cupolas at the corners and
+  // a big central dome (king) or crescent spire (princess) toward the rear,
+  // so the tower crew stays visible up front.
+  if (arabic) {
+    const domeColor = king ? THEME.turquoise : THEME.teal;
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const cup = onionDome(radius * 0.26, domeColor);
+        cup.position.set(sx * radius * 0.82, height + 0.02, sz * radius * 0.82);
+        root.add(cup);
+      }
+    }
+    const rearZ = facing * -radius * 0.5;
+    if (king) {
+      const dome = onionDome(radius * 0.62, domeColor);
+      dome.position.set(0, height + 0.05, rearZ);
+      root.add(dome);
+    } else {
+      const fin = crescentFinial(0.55);
+      fin.position.set(0, height + 0.2, rearZ);
+      root.add(fin);
+    }
+  }
   const door = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.1), toon(0x4a3826));
   door.position.set(0, 0.62, facing * radius * 1.01);
   root.add(door);
@@ -560,7 +730,12 @@ function buildTowerMesh(e: Entity): EntityView {
 
   const barWidth = king ? 2.2 : 1.8;
   const barY = height + (king ? 1.5 : 1.2);
+  // Sit the bar behind the tower, on its outer side: above enemy towers
+  // (-z, the top), below the player's (+z, the bottom). Keyed to the
+  // canonical side, so it mirrors correctly under the guest's flipped view.
+  const barZ = (e.side === "player" ? 1 : -1) * (king ? 1.7 : 1.4);
   const bar = makeHpBar(barWidth, HP_COLOR[e.side], barY);
+  bar.group.position.z = barZ;
   root.add(bar.group);
   view.hpGroup = bar.group;
   view.hpFill = bar.fill;
@@ -571,7 +746,7 @@ function buildTowerMesh(e: Entity): EntityView {
   bar.group.add(badge);
   const hpText = makeHpText(barY + 0.02);
   hpText.sprite.scale.set(1.1, 0.4, 1);
-  hpText.sprite.position.z = 0.2;
+  hpText.sprite.position.z = barZ + 0.2;
   root.add(hpText.sprite);
   view.hpText = hpText.text;
 
@@ -603,9 +778,10 @@ function buildTombstoneMesh(e: Entity): EntityView {
   cap.position.set(0, 1.02, -0.12);
   cap.castShadow = true;
   root.add(cap);
-  const cross = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.05), toon(0x78909c));
-  cross.position.set(0, 0.78, -0.01);
-  root.add(cross);
+  // Carved "RIP" plate on the headstone (replaces the old cross bar).
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.26, 0.04), toon(0x78909c));
+  plate.position.set(0, 0.74, 0.01);
+  root.add(plate);
   const skull = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), toon(0xf5f2ea));
   skull.position.set(0.32, 0.12, 0.32);
   root.add(skull);
@@ -807,9 +983,12 @@ export class Battle3D {
   private dying: DyingView[] = [];
   private readonly hoverDisc: THREE.Mesh;
   private ghost: { id: CardId; rig: TroopRig } | null = null;
-  /** Remaining camera-shake energy (seconds-ish, decays each frame). */
-  private shake = 0;
+  /** Trauma-based camera shake; big impacts punch harder than small ones. */
+  private readonly shakeCtl = new ShakeController();
   private shakeTime = 0;
+  /** Pooled hit sparks / debris, mirrored into one InstancedMesh. */
+  private readonly sparks = new ParticleField(PARTICLE_CAP);
+  private sparkMesh!: THREE.InstancedMesh;
   /** Rubble piles left by fallen towers; cleared on reset. */
   private rubble: THREE.Object3D[] = [];
   /** Sim projectile meshes by projectile id. */
@@ -823,8 +1002,18 @@ export class Battle3D {
   /** Scrolling river texture + accumulated flow time. */
   private waterTex: THREE.CanvasTexture | null = null;
   private waterTime = 0;
-  private readonly zonePlane: THREE.Mesh;
-  private readonly enemyZonePlane: THREE.Mesh;
+  /** Post-processing: a selective bloom pass so glows actually glow. */
+  private readonly composer: EffectComposer;
+  private readonly bloom: UnrealBloomPass;
+  private readonly zonePlane: THREE.Mesh; // own-half deploy area (blue)
+  // Enemy half, split per lane: a dark "no-deploy" overlay that turns into a
+  // blue "deployable" strip once that lane's princess tower falls.
+  private readonly enemyDarkL: THREE.Mesh;
+  private readonly enemyDarkR: THREE.Mesh;
+  private readonly laneBlueL: THREE.Mesh;
+  private readonly laneBlueR: THREE.Mesh;
+  private zoneShown = false;
+  private lastOpen: OpenLanes = { left: false, right: false };
   private readonly container: HTMLElement;
 
   constructor(container: HTMLElement) {
@@ -839,8 +1028,21 @@ export class Battle3D {
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x9ec8e8);
-    this.scene.fog = new THREE.Fog(0x9ec8e8, 45, 75);
+    this.scene.background = new THREE.Color(ARENA_PALETTE.sky);
+    this.scene.fog = new THREE.Fog(ARENA_PALETTE.sky, 45, 75);
+
+    // One InstancedMesh draws every hit spark; unlit + glowing so they pop.
+    const sparkMat = new THREE.MeshBasicMaterial();
+    sparkMat.toneMapped = false;
+    this.sparkMesh = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(1, 6, 5),
+      sparkMat,
+      PARTICLE_CAP,
+    );
+    this.sparkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.sparkMesh.frustumCulled = false;
+    this.sparkMesh.count = 0;
+    this.scene.add(this.sparkMesh);
 
     // Orthographic = no perspective convergence, so the arena reads
     // as a perfectly straight board (not a trapezoid). Angled from
@@ -871,16 +1073,30 @@ export class Battle3D {
     this.zonePlane.visible = false;
     this.scene.add(this.zonePlane);
 
-    // CR-style "can't deploy there": the enemy half goes dark while
-    // a troop card is being placed.
-    this.enemyZonePlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(ARENA_WIDTH, ARENA_HEIGHT / 2 + 1),
-      new THREE.MeshBasicMaterial({ color: 0x1a0b10, transparent: true, opacity: 0.38 }),
-    );
-    this.enemyZonePlane.rotation.x = -Math.PI / 2;
-    this.enemyZonePlane.position.set(0, 0.026, -ARENA_HEIGHT / 4 + 0.5);
-    this.enemyZonePlane.visible = false;
-    this.scene.add(this.enemyZonePlane);
+    // Enemy half, one mesh per lane. Dark "can't deploy" by default; swapped
+    // for a blue "deployable" strip when that lane opens (tower fell).
+    const laneW = ARENA_WIDTH / 2;
+    const zoneStrip = (color: number, opacity: number, depth: number): THREE.Mesh => {
+      const m = new THREE.Mesh(
+        new THREE.PlaneGeometry(laneW, depth),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity }),
+      );
+      m.rotation.x = -Math.PI / 2;
+      m.visible = false;
+      this.scene.add(m);
+      return m;
+    };
+    this.enemyDarkL = zoneStrip(0x1a0b10, 0.38, ARENA_HEIGHT / 2 + 1);
+    this.enemyDarkR = zoneStrip(0x1a0b10, 0.38, ARENA_HEIGHT / 2 + 1);
+    this.laneBlueL = zoneStrip(0x3b82f6, 0.16, ARENA_HEIGHT / 2 - 1);
+    this.laneBlueR = zoneStrip(0x3b82f6, 0.16, ARENA_HEIGHT / 2 - 1);
+
+    // Bloom pipeline: only bright pixels (the unlit "glow" materials —
+    // lanterns, spell FX, hit-sparks) bloom, so it stays subtle and cheap.
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.4, 0.85);
+    this.composer.addPass(this.bloom);
 
     this.resize();
     window.addEventListener("resize", () => this.resize());
@@ -897,23 +1113,30 @@ export class Battle3D {
     sun.shadow.camera.top = 20;
     sun.shadow.camera.bottom = -20;
     sun.shadow.camera.far = 60;
+    sun.shadow.radius = 5; // softer contact shadows
+    sun.shadow.bias = -0.0004;
     this.scene.add(sun);
+    // Cool back-rim light to separate troops from the ground and pair
+    // with the material rim highlight.
+    const backRim = new THREE.DirectionalLight(0x9fc4ff, 0.6);
+    backRim.position.set(-8, 10, -14);
+    this.scene.add(backRim);
   }
 
   private decorate(): void {
     // Distant ground so the arena never floats in a void.
     const far = new THREE.Mesh(
       new THREE.PlaneGeometry(140, 140),
-      new THREE.MeshToonMaterial({ color: 0xdbe6f0 }),
+      new THREE.MeshToonMaterial({ color: ARENA_PALETTE.far }),
     );
     far.rotation.x = -Math.PI / 2;
     far.position.y = -0.45;
     this.scene.add(far);
 
-    // Outer apron of snow framing the arena.
+    // Outer apron framing the arena.
     const apron = new THREE.Mesh(
       new THREE.BoxGeometry(ARENA_WIDTH + 10, 0.36, ARENA_HEIGHT + 10),
-      toon(0xe4ecf5),
+      toon(ARENA_PALETTE.apron),
     );
     apron.position.y = -0.24;
     apron.receiveShadow = true;
@@ -1046,40 +1269,67 @@ export class Battle3D {
     tent(-tHw, -tHd, 0xd44a3b);
     tent(tHw, -tHd, 0xd44a3b);
 
-    // Torches flanking each bridge approach.
+    // Lanterns (arabic) or torches (normal) flanking each bridge approach.
     for (const bx of BRIDGE_XS) {
       const w = toWorld(bx, RIVER_Y);
       for (const sz of [-1, 1]) {
-        const pole = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.06, 0.08, 1.1, 6),
-          toon(0x5a4632),
-        );
-        pole.position.set(w.x + 1.45, 0.55, sz * 2.2);
-        pole.castShadow = true;
-        this.scene.add(pole);
-        const flame = new THREE.Mesh(
-          new THREE.SphereGeometry(0.14, 8, 6),
-          unlitGlow(0xffa726),
-        );
-        flame.position.set(w.x + 1.45, 1.2, sz * 2.2);
-        this.scene.add(flame);
+        if (arabic) {
+          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 1.1, 6), toon(THEME.stone));
+          pole.position.set(w.x + 1.45, 0.55, sz * 2.2);
+          pole.castShadow = true;
+          this.scene.add(pole);
+          const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.28, 4), toon(THEME.gold));
+          arm.rotation.z = Math.PI / 2;
+          arm.position.set(w.x + 1.32, 1.08, sz * 2.2);
+          this.scene.add(arm);
+          const lantern = makeLantern(0.95);
+          lantern.position.set(w.x + 1.2, 0.92, sz * 2.2);
+          this.scene.add(lantern);
+        } else {
+          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.1, 6), toon(0x5a4632));
+          pole.position.set(w.x + 1.45, 0.55, sz * 2.2);
+          pole.castShadow = true;
+          this.scene.add(pole);
+          const flame = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), unlitGlow(0xffa726));
+          flame.position.set(w.x + 1.45, 1.2, sz * 2.2);
+          this.scene.add(flame);
+        }
       }
     }
 
+    // Date palms (arabic) or pines (normal).
     const tree = (x: number, z: number, s: number): void => {
       const g = new THREE.Group();
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.5, 8), toon(0x6e4a28));
-      trunk.position.y = 0.25;
-      trunk.castShadow = true;
-      g.add(trunk);
-      for (let i = 0; i < 3; i++) {
-        const layer = new THREE.Mesh(
-          new THREE.ConeGeometry(0.75 - i * 0.18, 0.7, 10),
-          toon(i % 2 ? 0x3f8f45 : 0x4ba14f),
-        );
-        layer.position.y = 0.62 + i * 0.42;
-        layer.castShadow = true;
-        g.add(layer);
+      if (arabic) {
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 1.5, 8), toon(0x8a6a3e));
+        trunk.position.y = 0.75;
+        trunk.rotation.z = 0.06;
+        trunk.castShadow = true;
+        g.add(trunk);
+        for (let i = 0; i < 7; i++) {
+          const frond = new THREE.Mesh(new THREE.ConeGeometry(0.16, 1.0, 5), toon(i % 2 ? 0x3f8f45 : 0x57a83f));
+          const a = (i / 7) * Math.PI * 2;
+          frond.position.set(Math.cos(a) * 0.42, 1.5, Math.sin(a) * 0.42);
+          frond.rotation.set(Math.PI / 2 - 0.5, 0, -a + Math.PI / 2);
+          frond.castShadow = true;
+          g.add(frond);
+        }
+        for (let i = 0; i < 3; i++) {
+          const date = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 5), toon(0x9c4a2a));
+          date.position.set(Math.cos(i * 2) * 0.12, 1.36, Math.sin(i * 2) * 0.12);
+          g.add(date);
+        }
+      } else {
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.5, 8), toon(0x6e4a28));
+        trunk.position.y = 0.25;
+        trunk.castShadow = true;
+        g.add(trunk);
+        for (let i = 0; i < 3; i++) {
+          const layer = new THREE.Mesh(new THREE.ConeGeometry(0.75 - i * 0.18, 0.7, 10), toon(i % 2 ? 0x3f8f45 : 0x4ba14f));
+          layer.position.y = 0.62 + i * 0.42;
+          layer.castShadow = true;
+          g.add(layer);
+        }
       }
       g.position.set(x, 0, z);
       g.scale.setScalar(s);
@@ -1123,43 +1373,70 @@ export class Battle3D {
     }
   }
 
-  /** Flat 6-pointed golden star inlaid in the floor (CR centerpiece). */
+  /** Flat golden crescent moon inlaid in the floor (arena centerpiece). */
+  private makeCrescentEmblem(z: number): THREE.Group {
+    const g = new THREE.Group();
+    const R = 2.5; // outer disc radius
+    const r = 2.2; // bite disc radius
+    const cx = 1.5; // bite offset; the crescent opens toward +x
+    // Horn (intersection) points of the two circles.
+    const ix = (cx * cx + R * R - r * r) / (2 * cx);
+    const iy = Math.sqrt(Math.max(0, R * R - ix * ix));
+    const thTop = Math.atan2(iy, ix);
+    const thBot = Math.atan2(-iy, ix);
+    const bTop = Math.atan2(iy, ix - cx);
+    const bBot = Math.atan2(-iy, ix - cx);
+    const steps = 48;
+    const shape = new THREE.Shape();
+    // Outer far arc: top horn, counter-clockwise around the big disc.
+    for (let i = 0; i <= steps; i++) {
+      const a = thTop + (i / steps) * (thBot + Math.PI * 2 - thTop);
+      const x = Math.cos(a) * R;
+      const y = Math.sin(a) * R;
+      if (i === 0) shape.moveTo(x, y);
+      else shape.lineTo(x, y);
+    }
+    // Concave inner arc: back along the bite disc through its left bulge.
+    const span = bBot - (bTop - Math.PI * 2);
+    for (let i = 1; i <= steps; i++) {
+      const a = bBot - (i / steps) * span;
+      shape.lineTo(cx + Math.cos(a) * r, Math.sin(a) * r);
+    }
+    const crescent = new THREE.Mesh(new THREE.ShapeGeometry(shape), toon(0xe8b948));
+    crescent.rotation.x = -Math.PI / 2;
+    crescent.rotation.z = 0; // open the crescent vertically (down the board)
+    crescent.position.set(0, 0.03, z);
+    crescent.receiveShadow = true;
+    g.add(crescent);
+    return g;
+  }
+
+  /** Gold eight-point star inlaid in the floor (the classic CR arena mark). */
   private makeStarEmblem(z: number): THREE.Group {
     const g = new THREE.Group();
-    const points = 6;
-    const outer = 2.6;
-    const inner = 1.15;
+    const R = 2.6;
+    const r = 0.95; // sharp points
     const shape = new THREE.Shape();
-    for (let i = 0; i <= points * 2; i++) {
-      const r = i % 2 === 0 ? outer : inner;
-      const a = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
-      const px = Math.cos(a) * r;
-      const py = Math.sin(a) * r;
-      if (i === 0) shape.moveTo(px, py);
-      else shape.lineTo(px, py);
+    for (let i = 0; i < 16; i++) {
+      const a = (Math.PI / 8) * i - Math.PI / 2;
+      const rad = i % 2 === 0 ? R : r;
+      const x = Math.cos(a) * rad;
+      const y = Math.sin(a) * rad;
+      if (i === 0) shape.moveTo(x, y);
+      else shape.lineTo(x, y);
     }
-    const star = new THREE.Mesh(
-      new THREE.ShapeGeometry(shape),
-      toon(0xe8b948),
-    );
+    shape.closePath();
+    const star = new THREE.Mesh(new THREE.ShapeGeometry(shape), toon(0xe8b948));
     star.rotation.x = -Math.PI / 2;
     star.position.set(0, 0.03, z);
     star.receiveShadow = true;
     g.add(star);
-    // Darker outline ring just under the star for contrast.
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(inner * 0.55, inner * 0.78, 6),
-      toon(0xb8893a),
-    );
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.set(0, 0.035, z);
-    g.add(ring);
     return g;
   }
 
-  /** Winter arena floor: sandy stone tiles with mortar lines (hi-res). */
-  private makeGrassTexture(): THREE.CanvasTexture {
-    const tile = 32; // px per arena unit
+  /** CR-style floor: a regular grid of warm sandstone tiles, lightly beveled. */
+  private makeStoneTexture(): THREE.CanvasTexture {
+    const tile = 32;
     const c = document.createElement("canvas");
     c.width = ARENA_WIDTH * tile;
     c.height = ARENA_HEIGHT * tile;
@@ -1169,48 +1446,114 @@ export class Battle3D {
       seed = (seed * 1664525 + 1013904223) & 0xffffffff;
       return ((seed >>> 8) & 0xffff) / 0xffff;
     };
-    // Stone blocks span 2 arena units; warm beige with per-tile shade.
-    const block = tile * 2;
+    const block = Math.round(tile * 1.5); // ~1.5-unit tiles, like CR's grid
     for (let y = 0; y < c.height; y += block) {
       for (let x = 0; x < c.width; x += block) {
-        const shade = 0.92 + rand() * 0.08;
-        const r = Math.round(214 * shade);
-        const g = Math.round(196 * shade);
-        const b = Math.round(158 * shade);
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        const shade = 0.95 + rand() * 0.05;
+        ctx.fillStyle = `rgb(${Math.round(226 * shade)},${Math.round(206 * shade)},${Math.round(168 * shade)})`;
         ctx.fillRect(x, y, block, block);
-        // Speckle for grit.
-        ctx.fillStyle = "rgba(120,100,70,0.10)";
-        for (let s = 0; s < 6; s++) {
-          ctx.fillRect(x + rand() * block, y + rand() * block, 2, 2);
-        }
+        // Fine grit.
+        ctx.fillStyle = "rgba(150,128,92,0.07)";
+        for (let s = 0; s < 4; s++) ctx.fillRect(x + rand() * block, y + rand() * block, 2, 2);
+        // Per-tile bevel: light top/left, shadowed bottom/right (raised stone).
+        ctx.fillStyle = "rgba(255,248,225,0.20)";
+        ctx.fillRect(x, y, block, 2);
+        ctx.fillRect(x, y, 2, block);
+        ctx.fillStyle = "rgba(120,98,64,0.22)";
+        ctx.fillRect(x, y + block - 2, block, 2);
+        ctx.fillRect(x + block - 2, y, 2, block);
       }
-    }
-    // Mortar grid between blocks.
-    ctx.strokeStyle = "rgba(120,100,70,0.45)";
-    ctx.lineWidth = 2;
-    for (let x = 0; x <= c.width; x += block) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, c.height);
-      ctx.stroke();
-    }
-    for (let y = 0; y <= c.height; y += block) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(c.width, y);
-      ctx.stroke();
     }
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
   }
 
-  /** A lumpy snow drift mound (winter theme scenery). */
+  /** Islamic zellige floor: 8-point-star-and-cross tilework, gold strapwork. */
+  private makeZelligeTexture(): THREE.CanvasTexture {
+    const tile = 32; // px per arena unit
+    const c = document.createElement("canvas");
+    c.width = ARENA_WIDTH * tile;
+    c.height = ARENA_HEIGHT * tile;
+    const ctx = c.getContext("2d")!;
+
+    // Pale warm plaster base — kept light so the units read clearly on top.
+    ctx.fillStyle = "#efe7cf";
+    ctx.fillRect(0, 0, c.width, c.height);
+
+    const cell = tile * 4; // one star motif every 4 arena units
+    const R = cell * 0.46;
+    const inner = R * 0.41;
+    const star8 = (cx: number, cy: number, o: number, i2: number): void => {
+      ctx.beginPath();
+      for (let i = 0; i < 16; i++) {
+        const a = (Math.PI / 8) * i - Math.PI / 2;
+        const rad = i % 2 === 0 ? o : i2;
+        const x = cx + Math.cos(a) * rad;
+        const y = cy + Math.sin(a) * rad;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+    };
+    const diamond = (cx: number, cy: number, s: number): void => {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - s);
+      ctx.lineTo(cx + s, cy);
+      ctx.lineTo(cx, cy + s);
+      ctx.lineTo(cx - s, cy);
+      ctx.closePath();
+    };
+
+    ctx.lineJoin = "round";
+    // Everything is drawn as a faint tint + thin strapwork so the pattern
+    // stays a quiet "watermark" the troops read clearly against.
+    for (let y = 0; y <= c.height; y += cell) {
+      for (let x = 0; x <= c.width; x += cell) {
+        diamond(x, y, cell * 0.2);
+        ctx.fillStyle = "rgba(184,92,56,0.10)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(202,162,63,0.20)";
+        ctx.lineWidth = tile * 0.05;
+        ctx.stroke();
+      }
+    }
+    for (let y = cell / 2; y < c.height; y += cell) {
+      for (let x = cell / 2; x < c.width; x += cell) {
+        star8(x, y, R, inner);
+        ctx.fillStyle = "rgba(26,163,160,0.12)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(202,162,63,0.28)";
+        ctx.lineWidth = tile * 0.06;
+        ctx.stroke();
+      }
+    }
+    // Whisper-faint gold lattice for the interlaced look.
+    ctx.strokeStyle = "rgba(202,162,63,0.07)";
+    ctx.lineWidth = tile * 0.04;
+    for (let x = cell / 2; x < c.width; x += cell) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, c.height);
+      ctx.stroke();
+    }
+    for (let y = cell / 2; y < c.height; y += cell) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(c.width, y);
+      ctx.stroke();
+    }
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  /** A lumpy mound edging the field (snow drift / sand dune by theme). */
   private makeSnowDrift(x: number, z: number, scale: number): THREE.Mesh {
     const drift = new THREE.Mesh(
       new THREE.SphereGeometry(1, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
-      toon(0xeef4ff),
+      toon(ARENA_PALETTE.drift),
     );
     drift.scale.set(scale, scale * 0.45, scale);
     drift.position.set(x, -0.05, z);
@@ -1221,16 +1564,18 @@ export class Battle3D {
 
   private buildArena(): void {
     // One checkered playfield slab instead of two flat halves.
-    const fieldMat = new THREE.MeshToonMaterial({ map: this.makeGrassTexture() });
+    const fieldMat = new THREE.MeshToonMaterial({
+      map: arabic ? this.makeZelligeTexture() : this.makeStoneTexture(),
+    });
     const field = new THREE.Mesh(
       new THREE.BoxGeometry(ARENA_WIDTH + 0.6, 0.4, ARENA_HEIGHT),
       [
-        toon(0xb8a886).clone(), // stone sides
-        toon(0xb8a886).clone(),
+        toon(ARENA_PALETTE.fieldSide).clone(), // stone sides
+        toon(ARENA_PALETTE.fieldSide).clone(),
         fieldMat, // top
-        toon(0xb8a886).clone(),
-        toon(0xb8a886).clone(),
-        toon(0xb8a886).clone(),
+        toon(ARENA_PALETTE.fieldSide).clone(),
+        toon(ARENA_PALETTE.fieldSide).clone(),
+        toon(ARENA_PALETTE.fieldSide).clone(),
       ],
     );
     field.position.set(0, -0.2, 0);
@@ -1249,10 +1594,10 @@ export class Battle3D {
       this.scene.add(this.makeSnowDrift(x, z, sc));
     }
 
-    // Pale snowy stone edging around the playfield, post at each corner.
+    // Edging around the playfield, post at each corner.
     const hw = ARENA_WIDTH / 2 + 0.45;
     const hd = ARENA_HEIGHT / 2 + 0.15;
-    const stone = 0xd8d0c0;
+    const stone = ARENA_PALETTE.edging;
     for (const side of [-1, 1]) {
       const rail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.34, ARENA_HEIGHT + 0.9), toon(stone));
       rail.position.set(side * hw, 0.05, 0);
@@ -1316,7 +1661,8 @@ export class Battle3D {
     waterCanvas.width = 128;
     waterCanvas.height = 32;
     const wctx = waterCanvas.getContext("2d")!;
-    wctx.fillStyle = "#3f97e0";
+    // Arabic: bright garden-pool blue. Normal: CR's deep teal-green river.
+    wctx.fillStyle = arabic ? "#3f97e0" : "#2f7d77";
     wctx.fillRect(0, 0, 128, 32);
     wctx.strokeStyle = "rgba(255,255,255,0.5)";
     wctx.lineWidth = 1.6;
@@ -1338,57 +1684,72 @@ export class Battle3D {
     river.position.set(0, -0.04, 0);
     this.scene.add(river);
 
-    // The iconic golden star emblem inlaid on each player's half.
+    // Gold emblem on each half: crescent (Arabic) or CR-style star (normal).
     for (const sz of [-1, 1]) {
       const z = sz * (ARENA_HEIGHT / 4 + 0.5);
-      this.scene.add(this.makeStarEmblem(z));
+      this.scene.add(arabic ? this.makeCrescentEmblem(z) : this.makeStarEmblem(z));
     }
 
-    // Wooden plank bridges with seams and side rails.
-    const plankCanvas = document.createElement("canvas");
-    plankCanvas.width = 64;
-    plankCanvas.height = 64;
-    const pctx = plankCanvas.getContext("2d")!;
-    // CR's bridges are golden-yellow boardwalks, not brown.
-    pctx.fillStyle = "#e0b04f";
-    pctx.fillRect(0, 0, 64, 64);
-    pctx.fillStyle = "#c2913a";
-    for (let i = 0; i < 8; i++) pctx.fillRect(0, i * 8, 64, 1.6);
-    pctx.fillStyle = "rgba(122,86,28,0.5)";
-    for (let i = 0; i < 10; i++) {
-      pctx.fillRect((i * 23) % 60, ((i * 17) % 7) * 8 + 3, 2.5, 1.5);
-    }
-    pctx.fillStyle = "rgba(255,235,170,0.4)";
-    for (let i = 0; i < 8; i++) {
-      pctx.fillRect((i * 29 + 7) % 60, ((i * 13) % 7) * 8 + 1, 3, 1);
-    }
-    const plankTex = new THREE.CanvasTexture(plankCanvas);
-    plankTex.colorSpace = THREE.SRGBColorSpace;
-
-    for (const bx of BRIDGE_XS) {
-      const w = toWorld(bx, RIVER_Y);
-      const deck = new THREE.Mesh(
-        new THREE.BoxGeometry(2.0, 0.18, 2.6),
-        new THREE.MeshToonMaterial({ map: plankTex }),
-      );
-      deck.position.set(w.x, 0.1, 0);
-      deck.castShadow = true;
-      deck.receiveShadow = true;
-      this.scene.add(deck);
-      for (const side of [-1, 1]) {
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.3, 2.6), toon(0xb8893a));
-        rail.position.set(w.x + side * 0.95, 0.3, 0);
-        rail.castShadow = true;
-        this.scene.add(rail);
-        // Rail posts at each end of the bridge.
-        for (const ez of [-1.18, 1.18]) {
-          const post = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.09, 0.09, 0.5, 8),
-            toon(0x5d3f24),
-          );
-          post.position.set(w.x + side * 0.95, 0.32, ez);
-          post.castShadow = true;
-          this.scene.add(post);
+    if (arabic) {
+      // Ornate sandstone bridges with a horseshoe-arch gateway, parapets,
+      // gold rim, and teal cupola finials at each end.
+      for (const bx of BRIDGE_XS) {
+        const w = toWorld(bx, RIVER_Y);
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.2, 2.6), toon(THEME.sand));
+        deck.position.set(w.x, 0.1, 0);
+        deck.castShadow = true;
+        deck.receiveShadow = true;
+        this.scene.add(deck);
+        const rim = new THREE.Mesh(new THREE.BoxGeometry(2.06, 0.06, 2.66), toon(THEME.gold));
+        rim.position.set(w.x, 0.21, 0);
+        this.scene.add(rim);
+        const gate = archGateway();
+        gate.position.set(w.x, 0.2, 0);
+        this.scene.add(gate);
+        for (const side of [-1, 1]) {
+          const wall = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.34, 2.6), toon(THEME.stone));
+          wall.position.set(w.x + side * 0.92, 0.34, 0);
+          wall.castShadow = true;
+          this.scene.add(wall);
+          const cap = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.07, 2.66), toon(THEME.gold));
+          cap.position.set(w.x + side * 0.92, 0.53, 0);
+          this.scene.add(cap);
+          for (const ez of [-1.2, 1.2]) {
+            const post = onionDome(0.16, THEME.teal);
+            post.position.set(w.x + side * 0.92, 0.4, ez);
+            this.scene.add(post);
+          }
+        }
+      }
+    } else {
+      // CR-style grey stone bridges with crenellated side walls.
+      const STONE = 0x9aa1a8;
+      const STONE_DK = 0x767d85;
+      for (const bx of BRIDGE_XS) {
+        const w = toWorld(bx, RIVER_Y);
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.2, 2.6), toon(STONE));
+        deck.position.set(w.x, 0.1, 0);
+        deck.castShadow = true;
+        deck.receiveShadow = true;
+        this.scene.add(deck);
+        // Dark seams so the deck reads as stone blocks.
+        for (const sz of [-0.6, 0, 0.6]) {
+          const seam = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.205, 0.05), toon(STONE_DK));
+          seam.position.set(w.x, 0.1, sz);
+          this.scene.add(seam);
+        }
+        for (const side of [-1, 1]) {
+          const wall = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.34, 2.6), toon(STONE_DK));
+          wall.position.set(w.x + side * 0.91, 0.3, 0);
+          wall.castShadow = true;
+          this.scene.add(wall);
+          // Merlons (crenellations) along the wall top.
+          for (const ez of [-1.0, -0.33, 0.33, 1.0]) {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.18, 0.32), toon(STONE));
+            m.position.set(w.x + side * 0.91, 0.5, ez);
+            m.castShadow = true;
+            this.scene.add(m);
+          }
         }
       }
     }
@@ -1413,9 +1774,33 @@ export class Battle3D {
   resize(): void {
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
+    const dpr = Math.min(2, window.devicePixelRatio);
     this.renderer.setSize(w, h, false);
-    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+    this.renderer.setPixelRatio(dpr);
+    this.composer.setPixelRatio(dpr);
+    this.composer.setSize(w, h);
     this.frameOrtho();
+  }
+
+  /**
+   * Choose which side sits at the bottom of the screen. The host views as
+   * "player" (default); an online guest views as "enemy" so they too look at
+   * their own towers from below. Call before a match builds its entities.
+   */
+  setViewpoint(side: Side): void {
+    viewSide = side;
+    this.camera.position.set(CAM_HOME.x, CAM_HOME.y, cameraZForView());
+    this.camera.lookAt(0, 0, 0);
+    const m = side === "player" ? 1 : -1;
+    this.zonePlane.position.z = m * (ARENA_HEIGHT / 4 + 0.5);
+    // Enemy half (opposite side); left lane at -x, right lane at +x.
+    const ez = -m * (ARENA_HEIGHT / 4 - 0.5); // dark overlay centre
+    const bz = -m * (ARENA_HEIGHT / 4 + 0.5); // blue strip centre (off the river)
+    const lx = ARENA_WIDTH / 4;
+    this.enemyDarkL.position.set(-lx, 0.026, ez);
+    this.enemyDarkR.position.set(lx, 0.026, ez);
+    this.laneBlueL.position.set(-lx, 0.027, bz);
+    this.laneBlueR.position.set(lx, 0.027, bz);
   }
 
   /** Convert a pointer event to arena tile coordinates, if on the field. */
@@ -1489,8 +1874,22 @@ export class Battle3D {
   }
 
   setZoneVisible(visible: boolean): void {
-    this.zonePlane.visible = visible;
-    this.enemyZonePlane.visible = visible;
+    this.zoneShown = visible;
+    this.applyDeployZone();
+  }
+
+  /**
+   * Show the deploy overlay: own half blue; each enemy-half lane is dark
+   * (forbidden) until its tower falls, then it lights up blue (deployable).
+   */
+  private applyDeployZone(): void {
+    const v = this.zoneShown;
+    const open = this.lastOpen;
+    this.zonePlane.visible = v;
+    this.laneBlueL.visible = v && open.left;
+    this.laneBlueR.visible = v && open.right;
+    this.enemyDarkL.visible = v && !open.left;
+    this.enemyDarkR.visible = v && !open.right;
   }
 
   private addEffect(
@@ -1565,17 +1964,17 @@ export class Battle3D {
   }
 
   /** A small arrow-shaped missile oriented along its flight path. */
-  private makeArrow(color: number, length = 0.5): THREE.Group {
+  private makeArrow(color: number, length = 0.7): THREE.Group {
     const g = new THREE.Group();
     const shaft = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.02, 0.02, length, 6),
+      new THREE.CylinderGeometry(0.05, 0.05, length, 8),
       new THREE.MeshBasicMaterial({ color }),
     );
     shaft.rotation.x = Math.PI / 2;
     g.add(shaft);
     const tip = new THREE.Mesh(
-      new THREE.ConeGeometry(0.05, 0.12, 6),
-      new THREE.MeshBasicMaterial({ color: 0x9aa3ad }),
+      new THREE.ConeGeometry(0.11, 0.24, 8),
+      new THREE.MeshBasicMaterial({ color: 0x37474f }),
     );
     tip.rotation.x = Math.PI / 2;
     tip.position.z = length / 2;
@@ -1590,12 +1989,13 @@ export class Battle3D {
     if (!style.muzzleFlash) return;
     const from = toWorld(ev.x, ev.y);
     const flash = new THREE.Mesh(
-      new THREE.SphereGeometry(0.14, 8, 6),
-      new THREE.MeshBasicMaterial({ color: 0xfff3c4, transparent: true }),
+      new THREE.SphereGeometry(0.24, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffb300, transparent: true }),
     );
+    (flash.material as THREE.MeshBasicMaterial).toneMapped = false; // stays hot
     flash.position.set(from.x, ev.kind === "troop" ? 0.9 : 1.6, from.z);
-    this.addEffect(flash, 0.08, (frac) => {
-      flash.scale.setScalar(1 + (1 - frac) * 1.6);
+    this.addEffect(flash, 0.1, (frac) => {
+      flash.scale.setScalar(1 + (1 - frac) * 1.8);
       (flash.material as THREE.MeshBasicMaterial).opacity = frac;
     });
   }
@@ -1655,6 +2055,11 @@ export class Battle3D {
     }
     for (const [id, view] of this.projViews) {
       if (!seen.has(id)) {
+        // Spark where the shot landed (or fizzled) for a crisp impact.
+        this.sparks.emit({
+          x: view.position.x, y: view.position.y, z: view.position.z,
+          count: 5, speed: 3, spread: 1.4, life: 0.4, size: 0.09, color: 0xfff1c4,
+        });
         this.scene.remove(view);
         disposeDeep(view);
         this.projViews.delete(id);
@@ -1809,7 +2214,7 @@ export class Battle3D {
       const ox = Math.cos(angle) * r;
       const oz = Math.sin(angle) * r;
       const w = toWorld(ax, ay);
-      const arrow = this.makeArrow(0xd7ccc8, 0.45);
+      const arrow = this.makeArrow(0x4e342e, 0.6);
       const x = w.x + ox;
       const z = w.z + oz;
       const y0 = 6 + (i % 4) * 0.5;
@@ -1896,9 +2301,25 @@ export class Battle3D {
     this.addShake(0.35);
   }
 
-  /** Kick the camera; intensity stacks but is clamped. */
+  /** Kick the camera; trauma stacks but is clamped. */
   private addShake(amount: number): void {
-    this.shake = Math.min(1, this.shake + amount);
+    this.shakeCtl.add(amount);
+  }
+
+  /** Throw a burst of glowing sparks at an arena point. */
+  private emitSparks(
+    ax: number,
+    ay: number,
+    height: number,
+    count: number,
+    speed: number,
+    spread: number,
+    color: number,
+    size: number,
+    life = 0.45,
+  ): void {
+    const w = toWorld(ax, ay);
+    this.sparks.emit({ x: w.x, y: height, z: w.z, count, speed, spread, life, size, color });
   }
 
   /** Dark necromantic disc that summoned skeletons rise through. */
@@ -2113,7 +2534,15 @@ export class Battle3D {
         else this.arrowVolley(ev.x, ev.y, 4);
         break;
       case "attack":
-        if (ev.ranged) this.projectile(ev);
+        if (ev.ranged) {
+          this.projectile(ev);
+        } else {
+          // Melee landed: sparks fly off the struck target and a heavy
+          // bruiser kicks the camera. (Ranged hits spark when the shot lands.)
+          const s = impactStyle(ev.cardId);
+          this.emitSparks(ev.targetX, ev.targetY, 0.8, s.particles, s.speed, s.spread, s.color, s.size);
+          if (s.trauma > 0) this.addShake(s.trauma);
+        }
         break;
       case "death":
         if (ev.kind === "troop") {
@@ -2122,6 +2551,8 @@ export class Battle3D {
           else if (style.kind === "sparks") this.sparkBurst(ev.x, ev.y, style.color);
           else if (style.kind === "deflate") this.deflate(ev.x, ev.y, style.color);
           else this.puff(ev.x, ev.y, style.color, 0.5);
+          // A little extra crunch on every troop death.
+          this.emitSparks(ev.x, ev.y, 0.6, 6, 3.5, 1.5, style.color, 0.09, 0.5);
         } else {
           this.puff(ev.x, ev.y, 0x8b7c69, 1.6);
           if (ev.kind !== "building") {
@@ -2169,6 +2600,13 @@ export class Battle3D {
   /** Create/update/remove meshes to mirror the battle state. */
   sync(state: BattleState, dt: number): void {
     this.syncProjectiles(state);
+    // Keep the deploy overlay in step with opened lanes (a tower falling
+    // expands where you can deploy).
+    const open = openLanes(state, viewSide);
+    if (open.left !== this.lastOpen.left || open.right !== this.lastOpen.right) {
+      this.lastOpen = open;
+      this.applyDeployZone();
+    }
     const seen = new Set<number>();
     for (const e of state.entities) {
       seen.add(e.id);
@@ -2353,6 +2791,27 @@ export class Battle3D {
     }
   }
 
+  /** Advance the spark pool and mirror live particles into the mesh. */
+  private syncSparks(dt: number): void {
+    this.sparks.update(dt, SPARK_GRAVITY);
+    const mesh = this.sparkMesh;
+    let i = 0;
+    for (const p of this.sparks.particles) {
+      if (!p.active) continue;
+      const f = p.life / p.life0; // 1 → 0 as it dies
+      SPARK_POS.set(p.x, p.y, p.z);
+      SPARK_SCALE.setScalar(p.size * (0.35 + 0.65 * f)); // shrink while fading
+      SPARK_M.compose(SPARK_POS, SPARK_QUAT, SPARK_SCALE);
+      mesh.setMatrixAt(i, SPARK_M);
+      SPARK_COLOR.setHex(p.color);
+      mesh.setColorAt(i, SPARK_COLOR);
+      i++;
+    }
+    mesh.count = i;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }
+
   render(dt: number): void {
     // The river drifts sideways forever.
     if (this.waterTex) {
@@ -2397,18 +2856,23 @@ export class Battle3D {
       });
     }
 
-    // Camera shake: fast decaying jitter around the fixed viewpoint.
-    if (this.shake > 0) {
+    // Camera shake: trauma² jitter around the fixed viewpoint.
+    if (this.shakeCtl.active) {
       this.shakeTime += dt;
-      const s = this.shake * 0.35;
+      const s = this.shakeCtl.intensity * 0.7;
       this.camera.position.set(
         Math.sin(this.shakeTime * 53) * s,
         CAM_HOME.y + Math.sin(this.shakeTime * 61) * s * 0.6,
-        CAM_HOME.z + Math.cos(this.shakeTime * 47) * s,
+        cameraZForView() + Math.cos(this.shakeTime * 47) * s,
       );
-      this.shake = Math.max(0, this.shake - dt * 1.8);
-      if (this.shake === 0) this.camera.position.copy(CAM_HOME);
+      this.shakeCtl.update(dt, 1.8);
+      if (!this.shakeCtl.active) {
+        this.camera.position.set(0, CAM_HOME.y, cameraZForView());
+      }
     }
+
+    // Advance and draw the hit-spark pool through one InstancedMesh.
+    this.syncSparks(dt);
 
     this.effects = this.effects.filter((f) => {
       if (f.delay > 0) {
@@ -2441,7 +2905,7 @@ export class Battle3D {
       return true;
     });
 
-    this.renderer.render(this.scene, this.camera);
+    this.composer.render();
   }
 
   /** Remove every entity mesh (used on battle restart). */
@@ -2476,7 +2940,10 @@ export class Battle3D {
       disposeDeep(view);
     }
     this.projViews.clear();
-    this.shake = 0;
-    this.camera.position.copy(CAM_HOME);
+    this.shakeCtl.update(999, 1); // drain trauma to rest
+    for (const p of this.sparks.particles) p.active = false;
+    this.sparkMesh.count = 0;
+    this.camera.position.set(CAM_HOME.x, CAM_HOME.y, cameraZForView());
+    this.camera.lookAt(0, 0, 0);
   }
 }

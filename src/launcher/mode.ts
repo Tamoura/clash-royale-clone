@@ -1,12 +1,13 @@
 /**
  * Which build of the game the intro launches: the original in-browser
  * TypeScript + Three.js version ("native"), or the Unity WebGL build
- * ("unity"). The choice is persisted and toggled from the deck-picker.
+ * ("unity"). Named "edition" to avoid colliding with the native game-mode
+ * system (Classic / Triple Elixir / Mirror, etc.).
  */
-export type GameMode = "native" | "unity";
+export type Edition = "native" | "unity";
 
-export const MODE_KEY = "cr-clone-mode";
-export const DEFAULT_MODE: GameMode = "native";
+export const EDITION_KEY = "cr-clone-edition";
+export const DEFAULT_EDITION: Edition = "native";
 
 /** Minimal localStorage-compatible surface, injected so this stays testable. */
 export interface ModeStorage {
@@ -14,21 +15,21 @@ export interface ModeStorage {
   setItem(key: string, value: string): void;
 }
 
-export function isGameMode(value: unknown): value is GameMode {
+export function isEdition(value: unknown): value is Edition {
   return value === "native" || value === "unity";
 }
 
-export function loadMode(storage: ModeStorage): GameMode {
-  const saved = storage.getItem(MODE_KEY);
-  return isGameMode(saved) ? saved : DEFAULT_MODE;
+export function loadEdition(storage: ModeStorage): Edition {
+  const saved = storage.getItem(EDITION_KEY);
+  return isEdition(saved) ? saved : DEFAULT_EDITION;
 }
 
-export function saveMode(storage: ModeStorage, mode: GameMode): void {
-  storage.setItem(MODE_KEY, mode);
+export function saveEdition(storage: ModeStorage, edition: Edition): void {
+  storage.setItem(EDITION_KEY, edition);
 }
 
-export function otherMode(mode: GameMode): GameMode {
-  return mode === "native" ? "unity" : "native";
+export function otherEdition(edition: Edition): Edition {
+  return edition === "native" ? "unity" : "native";
 }
 
 /**

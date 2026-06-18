@@ -1,0 +1,48 @@
+name: Deploy to GitHub Pages
+
+# Builds the game and publishes the static site to GitHub Pages.
+# Runs on pushes to the current theme branch and on manual dispatch.
+# (Requires: repo public + Settings → Pages → Source: "GitHub Actions".)
+on:
+  push:
+    branches: [feature/arabesque-theme, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let one deploy finish before the next starts.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build
+        run: npm run build
+        env:
+          # Project Pages live under /<repo>/, so assets need that base.
+          VITE_BASE: /clash-royale-clone/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

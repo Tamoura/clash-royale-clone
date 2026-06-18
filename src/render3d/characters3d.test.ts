@@ -16,6 +16,15 @@ describe("3D troop rigs", () => {
     }
   });
 
+  it("builds rigs for the firecracker and magic archer", () => {
+    for (const id of ["firecracker", "magic-archer"] as const) {
+      const rig = buildTroop(id);
+      expect(rig.group.children.length).toBeGreaterThan(2);
+      expect(rig.height).toBeGreaterThan(0.5);
+      expect(rig.arm).not.toBeNull(); // both wield a weapon arm
+    }
+  });
+
   it("flying troops hover and have wings", () => {
     for (const id of ["baby-dragon", "gargoyles"] as const) {
       const rig = buildTroop(id);
@@ -129,6 +138,20 @@ describe("cel outlines", () => {
       });
       expect(outlines).toBeGreaterThan(3);
     }
+  });
+
+  it("outlines are bold — thick and near-black — for the CR cartoon look", () => {
+    let outline: THREE.Mesh | null = null;
+    buildTroop("knight").group.traverse((o) => {
+      if (o.name === "outline" && !outline) outline = o as THREE.Mesh;
+    });
+    expect(outline).not.toBeNull();
+    const o = outline as unknown as THREE.Mesh;
+    expect(o.scale.x).toBeGreaterThanOrEqual(1.08); // thicker than the old 1.06
+    const mat = o.material as THREE.MeshBasicMaterial;
+    expect(mat.color.r).toBeLessThan(0.08); // near-black, not navy
+    expect(mat.color.g).toBeLessThan(0.08);
+    expect(mat.color.b).toBeLessThan(0.08);
   });
 
   it("outlines are skipped for tiny detail meshes", () => {

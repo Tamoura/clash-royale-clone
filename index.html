@@ -2,7 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CR Clone" />
+    <meta name="theme-color" content="#14203a" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="icon" type="image/png" href="icon-192.png" />
     <title>Clash Royale Clone</title>
     <style>
       html,
@@ -16,11 +27,17 @@
           "Chalkboard SE", "Marker Felt", "Comic Sans MS",
           "Trebuchet MS", system-ui, sans-serif;
         user-select: none;
+        -webkit-user-select: none;
         overflow: hidden;
+        /* Mobile: no rubber-band scroll/pull-to-refresh, no tap flash. */
+        overscroll-behavior: none;
         -webkit-font-smoothing: antialiased;
+        -webkit-tap-highlight-color: transparent;
       }
       #app {
-        height: 100%;
+        /* Dynamic viewport height so mobile browser chrome can't clip it. */
+        height: 100vh;
+        height: 100dvh;
         display: flex;
         flex-direction: column;
         /* Portrait phone shape so the tall 9:16 arena fills the view. */
@@ -31,15 +48,16 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
-        padding: 8px 14px;
+        gap: 10px;
+        /* Slim, but clear of the notch / status bar at the top. */
+        padding: calc(4px + env(safe-area-inset-top)) 12px 4px;
         color: #e5e7eb;
         background: linear-gradient(180deg, #1d2a47 0%, #14203a 100%);
         border-bottom: 3px solid #2e4470;
       }
       #topbar .clock {
         font-weight: bold;
-        font-size: 20px;
+        font-size: 17px;
         text-align: center;
         color: #ffe082;
         text-shadow:
@@ -50,29 +68,21 @@
         background: linear-gradient(180deg, #2b3c63 0%, #1b2947 100%);
         border: 2px solid #d9a93f;
         border-radius: 9px;
-        padding: 1px 14px 4px;
+        padding: 0 12px 3px;
         margin: 0 auto;
         box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.12), 0 2px 5px rgba(0, 0, 0, 0.45);
       }
-      #topbar .clock::before {
-        content: "TIME LEFT";
-        display: block;
-        font-size: 9px;
-        letter-spacing: 0.18em;
-        color: #c8b270;
-        text-shadow: none;
-        margin-bottom: -3px;
-      }
+      /* (no "TIME LEFT" caption — just the ticking clock) */
       #topbar .clock.overtime {
         color: #f87171;
       }
       #topbar .crowns {
         display: flex;
         align-items: center;
-        gap: 8px;
-        font-size: 16px;
+        gap: 7px;
+        font-size: 14px;
         font-weight: bold;
-        padding: 4px 12px;
+        padding: 3px 10px;
         border-radius: 9px;
         box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.18), 0 2px 4px rgba(0, 0, 0, 0.4);
       }
@@ -118,6 +128,8 @@
         flex: 1;
         position: relative;
         min-height: 0;
+        /* Drag-to-deploy must not pan/zoom the page on touch devices. */
+        touch-action: none;
       }
       #stage canvas {
         position: absolute;
@@ -125,23 +137,26 @@
         width: 100% !important;
         height: 100% !important;
         cursor: crosshair;
+        touch-action: none;
       }
       #hud {
         background: linear-gradient(180deg, #1d2a47 0%, #14203a 100%);
         border-top: 3px solid #2e4470;
         box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.06);
-        padding: 8px 14px 12px;
+        /* Slim padding; trim most of the home-bar gap (keep a little so the
+           card bottoms stay tappable) to kill the empty space at the bottom. */
+        padding: 4px 12px calc(3px + env(safe-area-inset-bottom) * 0.4);
       }
       .elixir-row {
         display: flex;
         align-items: center;
-        gap: 10px;
-        margin-bottom: 8px;
+        gap: 9px;
+        margin-bottom: 5px;
       }
       .elixir-bar {
         position: relative;
         flex: 1;
-        height: 18px;
+        height: 13px;
         background: #0b0f17;
         border: 2px solid #2e4470;
         border-radius: 10px;
@@ -252,7 +267,25 @@
       }
       /* Unaffordable cards desaturate; the veil shows charge progress. */
       button.card.locked {
-        filter: grayscale(0.55) brightness(0.85);
+        filter: grayscale(0.85) brightness(0.72);
+      }
+      /* "+N more elixir" badge centered on a charging card. */
+      .card-need {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 3;
+        pointer-events: none;
+        font-size: 18px;
+        font-weight: bold;
+        color: #fff;
+        background: rgba(193, 24, 120, 0.9);
+        border: 2px solid #ff9ad4;
+        border-radius: 9px;
+        padding: 1px 8px;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
       }
       .key-chip {
         position: absolute;
@@ -317,7 +350,7 @@
       }
       .hand-row {
         display: flex;
-        gap: 10px;
+        gap: 7px;
         align-items: stretch;
         justify-content: center;
       }
@@ -341,16 +374,19 @@
       }
       button.card {
         position: relative;
-        width: 92px;
+        width: 76px;
         border: 3px solid #c98a2b;
-        border-radius: 12px;
-        background: linear-gradient(180deg, #4a6fa5 0%, #2c4a78 55%, #233c63 100%);
+        border-radius: 11px;
+        background: linear-gradient(180deg, #5c81bb 0%, #35578c 52%, #243d66 100%);
+        /* Layered bevel: gold inner hairline + top sheen + drop shadow. */
         box-shadow:
-          inset 0 2px 0 rgba(255, 255, 255, 0.25),
-          0 3px 6px rgba(0, 0, 0, 0.45);
+          inset 0 0 0 1.5px rgba(255, 233, 170, 0.35),
+          inset 0 3px 0 rgba(255, 255, 255, 0.28),
+          inset 0 -6px 10px rgba(0, 0, 0, 0.28),
+          0 3px 7px rgba(0, 0, 0, 0.5);
         color: #fff;
         cursor: pointer;
-        padding: 8px 4px 16px;
+        padding: 5px 4px 9px;
         transition: transform 0.08s ease;
       }
       button.card:hover {
@@ -375,13 +411,18 @@
       }
       /* (locked styling unified below with the elixir veil) */
       button.card canvas {
-        width: 68px;
-        height: 68px;
-        border-radius: 8px;
-        filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.4));
+        width: 60px;
+        height: 60px;
+        border-radius: 9px;
+        /* Framed "window": a recessed jewel backdrop behind the portrait. */
+        background: radial-gradient(circle at 50% 32%, #334a72 0%, #1a2740 100%);
+        border: 2px solid rgba(10, 16, 30, 0.55);
+        box-shadow:
+          inset 0 2px 7px rgba(0, 0, 0, 0.55),
+          0 1px 1px rgba(255, 255, 255, 0.12);
       }
       .card-name {
-        font-size: 11px;
+        font-size: 9.5px;
         font-weight: bold;
         text-shadow:
           -1px -1px 0 #14213a, 1px -1px 0 #14213a,
@@ -389,15 +430,15 @@
       }
       .card-cost {
         position: absolute;
-        left: -7px;
-        top: -4px;
+        left: -6px;
+        top: -5px;
         background: radial-gradient(circle at 35% 30%, #ff7ac6, #c01878 70%);
         border: 2px solid #f5d0fe;
         border-radius: 50%;
-        width: 24px;
-        height: 24px;
-        line-height: 22px;
-        font-size: 13px;
+        width: 20px;
+        height: 20px;
+        line-height: 18px;
+        font-size: 12px;
         font-weight: bold;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
         text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
@@ -485,10 +526,23 @@
         display: none;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
+        /* Top-align + scroll so tall content (deck grid, friend lobby) is
+           always reachable on small phone screens. */
+        justify-content: flex-start;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
         gap: 14px;
+        padding: max(18px, env(safe-area-inset-top)) 16px
+          max(24px, env(safe-area-inset-bottom));
+        box-sizing: border-box;
         background: rgba(10, 14, 22, 0.92);
         z-index: 20;
+      }
+      /* Center short content vertically, but let tall content scroll. */
+      #deckpicker::before,
+      #deckpicker::after {
+        content: "";
+        margin: auto;
       }
       #deckpicker.show {
         display: flex;
@@ -501,17 +555,20 @@
       }
       #deckpicker .deck-slots {
         display: grid;
-        grid-template-columns: repeat(4, 64px);
+        grid-template-columns: repeat(4, 1fr);
         gap: 8px;
         padding: 12px;
+        width: 100%;
+        max-width: 320px;
+        box-sizing: border-box;
         background: rgba(255, 255, 255, 0.06);
         border: 2px solid #d9a93f;
         border-radius: 12px;
       }
       #deckpicker .deck-slot {
         position: relative;
-        width: 64px;
-        height: 64px;
+        width: 100%;
+        aspect-ratio: 1 / 1;
         border-radius: 9px;
         border: 2px dashed #46587f;
         background: rgba(13, 19, 34, 0.6);
@@ -524,8 +581,9 @@
         cursor: pointer;
       }
       #deckpicker .deck-slot canvas {
-        width: 54px;
-        height: 54px;
+        width: 86%;
+        height: 86%;
+        margin: 7%;
       }
       #deckpicker .collect-label {
         color: #9fb3d9;
@@ -534,9 +592,11 @@
       }
       #deckpicker .picker-grid {
         display: grid;
-        grid-template-columns: repeat(6, 70px);
-        gap: 7px;
-        max-width: 700px;
+        /* Fluid columns so 6 cards always fit the phone width. */
+        grid-template-columns: repeat(6, 1fr);
+        gap: 6px;
+        width: 100%;
+        max-width: 460px;
       }
       #deckpicker .pick.chosen {
         opacity: 0.4;
@@ -553,8 +613,10 @@
         font-weight: bold;
       }
       #deckpicker .pick canvas {
-        width: 44px;
-        height: 44px;
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1 / 1;
+        display: block;
       }
       #deckpicker .pick.chosen {
         border-color: #ffe082;
@@ -596,6 +658,33 @@
         color: #ffe082;
         box-shadow: 0 0 8px rgba(255, 224, 130, 0.6);
       }
+      #deckpicker .mode-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+        max-width: 340px;
+      }
+      #deckpicker .mode-btn {
+        font-size: 13px;
+        font-weight: bold;
+        color: #dbe3f0;
+        background: linear-gradient(180deg, #3a2c5f, #241f44);
+        border: 2px solid #5a4a8a;
+        border-radius: 9px;
+        padding: 6px 14px;
+        cursor: pointer;
+      }
+      #deckpicker .mode-btn.chosen {
+        border-color: #c98bff;
+        color: #e9d4ff;
+        box-shadow: 0 0 8px rgba(201, 139, 255, 0.7);
+      }
+      #deckpicker .mode-blurb {
+        color: #b6a8d6;
+        font-size: 13px;
+        margin-top: -6px;
+      }
       #deckpicker .battle-btn {
         font-size: 22px;
         font-weight: bold;
@@ -609,6 +698,60 @@
       #deckpicker .battle-btn:disabled {
         filter: grayscale(0.8) brightness(0.6);
         cursor: default;
+      }
+      #deckpicker .battle-btn.friend {
+        background: linear-gradient(180deg, #5ab0f6, #2b78d9);
+        border-color: #145a8a;
+        color: #042036;
+        margin-top: 8px;
+      }
+      #deckpicker .battle-btn.join {
+        font-size: 18px;
+        padding: 8px 24px;
+      }
+      #deckpicker .lobby-hint {
+        color: #cdd7e5;
+        font-size: 14px;
+        margin: 2px 0 6px;
+      }
+      #deckpicker .lobby-status {
+        min-height: 44px;
+        color: #f3f6fb;
+        font-size: 16px;
+        line-height: 1.5;
+        margin: 6px 0;
+      }
+      #deckpicker .big-code {
+        font-size: 30px;
+        letter-spacing: 4px;
+        color: #ffd966;
+      }
+      #deckpicker .join-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-top: 10px;
+      }
+      #deckpicker .code-input {
+        font-size: 24px;
+        font-weight: bold;
+        letter-spacing: 6px;
+        text-align: center;
+        text-transform: uppercase;
+        width: 130px;
+        padding: 8px;
+        border-radius: 10px;
+        border: 3px solid #8a5a14;
+        background: #fdf3da;
+        color: #3b2403;
+      }
+      #deckpicker .back-btn {
+        margin-top: 16px;
+        background: none;
+        border: none;
+        color: #aebfd2;
+        font-size: 15px;
+        cursor: pointer;
       }
       #overlay {
         position: fixed;

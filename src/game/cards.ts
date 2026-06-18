@@ -1,6 +1,8 @@
 export type CardId =
   | "knight"
   | "archers"
+  | "firecracker"
+  | "magic-archer"
   | "giant"
   | "musketeer"
   | "mini-pekka"
@@ -16,6 +18,10 @@ export type CardId =
   | "balloon"
   | "baby-dragon"
   | "gargoyles"
+  | "bats"
+  | "minions"
+  | "skeleton-army"
+  | "executioner"
   | "valkyrie"
   | "prince"
   | "pekka"
@@ -56,6 +62,10 @@ export interface UnitStats {
   splashRadius: number;
   /** Tiles of uninterrupted approach to charge (0 = no charge). */
   chargeDistance: number;
+  /** Projectile pierces every enemy along its flight line (false = single hit). */
+  pierce: boolean;
+  /** Tiles the shooter hops backward (away from its target) after firing (0 = none). */
+  recoil: number;
   /** Damage dealt to nearby enemies when this unit dies (0 = none). */
   deathDamage: number;
   /** Radius of the death blast in tiles. */
@@ -129,6 +139,8 @@ function unit(stats: UnitOverrides): UnitStats {
     jumpsRiver: false,
     splashRadius: 0,
     chargeDistance: 0,
+    pierce: false,
+    recoil: 0,
     deathDamage: 0,
     deathRadius: 0,
     spawnUnitId: null,
@@ -170,6 +182,45 @@ export const CARDS: Record<CardId, Card> = {
       speed: "medium",
       targetsAir: true,
       radius: 0.4,
+    }),
+  },
+  firecracker: {
+    id: "firecracker",
+    name: "Firecracker",
+    rarity: "common",
+    kind: "troop",
+    cost: 3,
+    count: 1,
+    unit: unit({
+      maxHp: 140,
+      damage: 130,
+      hitSpeed: 3,
+      attackRange: 6,
+      sightRange: 6,
+      speed: "fast",
+      targetsAir: true,
+      splashRadius: 1.4, // firework bursts into a spread of sparks
+      recoil: 2, // kicks herself backward after every shot
+      radius: 0.4,
+    }),
+  },
+  "magic-archer": {
+    id: "magic-archer",
+    name: "Magic Archer",
+    rarity: "epic",
+    kind: "troop",
+    cost: 4,
+    count: 1,
+    unit: unit({
+      maxHp: 460,
+      damage: 110,
+      hitSpeed: 1.1,
+      attackRange: 7, // longest reach in the game
+      sightRange: 7,
+      speed: "medium",
+      targetsAir: true,
+      pierce: true, // one arrow damages everything in a line
+      radius: 0.45,
     }),
   },
   giant: {
@@ -353,6 +404,78 @@ export const CARDS: Record<CardId, Card> = {
       radius: 0.35,
     }),
   },
+  bats: {
+    id: "bats",
+    name: "Bats",
+    rarity: "common",
+    kind: "troop",
+    cost: 2,
+    count: 5,
+    unit: unit({
+      maxHp: 70,
+      damage: 70,
+      hitSpeed: 1.1,
+      attackRange: MELEE,
+      speed: "fast",
+      targetsAir: true,
+      flying: true,
+      radius: 0.28,
+    }),
+  },
+  minions: {
+    id: "minions",
+    name: "Minions",
+    rarity: "common",
+    kind: "troop",
+    cost: 3,
+    count: 3,
+    unit: unit({
+      maxHp: 190,
+      damage: 90,
+      hitSpeed: 1.0,
+      attackRange: 2, // short-range spit (distinguishes them from Gargoyles)
+      sightRange: 5.5,
+      speed: "fast",
+      targetsAir: true,
+      flying: true,
+      radius: 0.32,
+    }),
+  },
+  "skeleton-army": {
+    id: "skeleton-army",
+    name: "Skeleton Army",
+    rarity: "epic",
+    kind: "troop",
+    cost: 3,
+    count: 15,
+    unit: unit({
+      maxHp: 80,
+      damage: 80,
+      hitSpeed: 1.0,
+      attackRange: MELEE,
+      speed: "fast",
+      radius: 0.28,
+    }),
+  },
+  executioner: {
+    id: "executioner",
+    name: "Executioner",
+    rarity: "epic",
+    kind: "troop",
+    cost: 5,
+    count: 1,
+    unit: unit({
+      maxHp: 700,
+      damage: 180,
+      hitSpeed: 2.4,
+      attackRange: 4.5,
+      sightRange: 6,
+      speed: "medium",
+      targetsAir: true,
+      pierce: true, // the axe flies out in a line through everything it hits
+      radius: 0.55,
+    }),
+  },
   valkyrie: {
     id: "valkyrie",
     name: "Valkyrie",
@@ -519,6 +642,8 @@ export const CARDS: Record<CardId, Card> = {
 export const DECK: CardId[] = [
   "knight",
   "archers",
+  "firecracker",
+  "magic-archer",
   "giant",
   "fireball",
   "musketeer",
@@ -536,6 +661,10 @@ export const DECK: CardId[] = [
   "tombstone",
   "elixir-collector",
   "gargoyles",
+  "bats",
+  "minions",
+  "skeleton-army",
+  "executioner",
   "arrows",
   "zap",
   "rage",

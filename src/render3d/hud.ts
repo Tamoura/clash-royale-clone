@@ -1,7 +1,8 @@
 import type { BattleState } from "../game/battle";
+import type { Side } from "../game/arena";
 import { getCard, type CardId } from "../game/cards";
 import { ELIXIR_MAX } from "../game/elixir";
-import { BATTLE_DURATION, OVERTIME_DURATION, elixirMultiplier } from "../game/sim";
+import { BATTLE_DURATION, OVERTIME_DURATION, effectiveElixirMultiplier } from "../game/sim";
 import { drawCardArt } from "../render/characters";
 import { CARD_COLOR } from "../render/cardcolors";
 import { cardStatLines } from "../render/cardinfo";
@@ -9,6 +10,8 @@ import { cardPortrait } from "./cardportraits";
 
 export interface HudCallbacks {
   onSelectCard(id: CardId | null): void;
+  /** Release of a card-drag over the field — deploy at these page coords. */
+  onDeployAt(clientX: number, clientY: number): void;
   onRestart(): void;
   /** Returns the new muted state. */
   onToggleSound(): boolean;
@@ -55,6 +58,7 @@ export class Hud {
   private readonly clock: HTMLElement;
   private readonly playerCrowns: HTMLElement;
   private readonly enemyCrowns: HTMLElement;
+  private readonly opponentName: HTMLElement;
   private readonly muteBtn: HTMLButtonElement;
   private readonly elixirFill: HTMLElement;
   private readonly elixirNum: HTMLElement;
@@ -63,6 +67,7 @@ export class Hud {
   private readonly nextArt: HTMLElement;
   private readonly cardBtns: HTMLButtonElement[] = [];
   private readonly cardVeils: HTMLElement[] = [];
+  private readonly cardNeeds: HTMLElement[] = [];
   private readonly cardReady: boolean[] = [];
   private readonly overlay: HTMLElement;
   private readonly overlayTitle: HTMLElement;
@@ -86,8 +91,9 @@ export class Hud {
     this.clock = el("div", "clock", topbar);
     const right = el("div", "crowns enemy", topbar);
     right.innerHTML =
-      '<span>0</span> 👑 <span class="pname">Rival Bot</span><span class="level">9</span>';
+      '<span>0</span> 👑 <span class="pname">Bot</span><span class="level">9</span>';
     this.enemyCrowns = right.querySelector("span:first-child")!;
+    this.opponentName = right.querySelector(".pname")!;
     this.muteBtn = el("button", "mute", topbar);
     this.muteBtn.textContent = "🔊";
     this.muteBtn.addEventListener("click", () => {
@@ -126,26 +132,45 @@ export class Hud {
       tip.classList.add("show");
     };
 
+    // Stat tooltips are hover-only — they're useless and intrusive on touch,
+    // so only wire them up on devices with a real hovering pointer (desktop).
+    const canHover =
+      typeof window !== "undefined" && !!window.matchMedia?.("(hover: hover)").matches;
+
     for (let i = 0; i < 4; i++) {
       const btn = el("button", "card", handRow);
-      btn.addEventListener("mouseenter", () => showTip(btn));
-      btn.addEventListener("mouseleave", () => tip.classList.remove("show"));
-      // Select on pointerdown so a press can roll straight into a
-      // drag onto the field (release deploys there).
+      if (canHover) {
+        btn.addEventListener("mouseenter", () => showTip(btn));
+        btn.addEventListener("mouseleave", () => tip.classList.remove("show"));
+      }
+      // Select on pointerdown so the same press rolls straight into a drag
+      // onto the field. Keep the (implicit) pointer capture on the card so
+      // every pointermove/up of the gesture is delivered — they bubble to the
+      // window handlers that move the ghost and deploy on release.
+      let downX = 0;
+      let downY = 0;
       btn.addEventListener("pointerdown", (ev) => {
         const id = btn.dataset.card as CardId | undefined;
         if (!id) return;
-        // Touch implicitly captures the pointer; release it so the
-        // field receives the pointerup that completes a drag-deploy.
-        if (btn.hasPointerCapture(ev.pointerId)) {
-          btn.releasePointerCapture(ev.pointerId);
-        }
+        ev.preventDefault();
+        downX = ev.clientX;
+        downY = ev.clientY;
         this.cb.onSelectCard(this.selected === id ? null : id);
       });
-      // Radial elixir-charge veil: a dark conic overlay that retreats
-      // clockwise as elixir approaches this card's cost.
+      // The card keeps (implicit) pointer capture through a touch drag, so the
+      // release fires here rather than on the canvas. If the pointer actually
+      // travelled onto the field, treat it as a drag-to-deploy. A plain tap
+      // (no movement) just selects — the player then taps the field to place.
+      btn.addEventListener("pointerup", (ev) => {
+        const moved = Math.hypot(ev.clientX - downX, ev.clientY - downY);
+        if (moved > 16) this.cb.onDeployAt(ev.clientX, ev.clientY);
+      });
+      // Bottom-up elixir-charge fill that rises as the card nears playable.
       const veil = el("div", "elixir-veil", btn);
+      // "+N" badge: how much more elixir is needed (hidden once playable).
+      const need = el("div", "card-need", btn);
       this.cardVeils.push(veil);
+      this.cardNeeds.push(need);
       this.cardBtns.push(btn);
     }
 
@@ -180,7 +205,16 @@ export class Hud {
     target.classList.add("error-shake");
   }
 
-  update(state: BattleState): void {
+  /** Relabel the opponent banner (e.g. "Friend" for an online match). */
+  setOpponentName(name: string): void {
+    this.opponentName.textContent = name;
+  }
+
+  update(state: BattleState, mySide: Side = "player"): void {
+    // From the local player's perspective: "me" sits at the bottom.
+    const me = mySide === "player" ? state.player : state.enemy;
+    const foe = mySide === "player" ? state.enemy : state.player;
+
     // Clock.
     const total = state.overtime
       ? BATTLE_DURATION + OVERTIME_DURATION
@@ -190,22 +224,22 @@ export class Hud {
     this.clock.textContent = state.overtime ? `OVERTIME ${text}` : text;
     this.clock.classList.toggle("overtime", state.overtime);
 
-    this.playerCrowns.textContent = String(state.player.crowns);
-    this.enemyCrowns.textContent = String(state.enemy.crowns);
+    this.playerCrowns.textContent = String(me.crowns);
+    this.enemyCrowns.textContent = String(foe.crowns);
 
     // Elixir (the bar runs hot during double elixir).
-    const amount = state.player.elixir.amount;
+    const amount = me.elixir.amount;
     this.elixirFill.style.width = `${(amount / ELIXIR_MAX) * 100}%`;
     this.elixirNum.textContent = String(Math.floor(amount));
-    const mult = elixirMultiplier(state);
+    const mult = effectiveElixirMultiplier(state);
     this.elixirBar.classList.toggle("x2", mult >= 2 && !state.result);
-    this.x2Tag.textContent = mult === 3 ? "x3" : "x2";
+    this.x2Tag.textContent = `x${mult}`;
 
     // Hand (rebuild card art only when the hand changes).
-    const handKey = state.player.hand.cards.join(",");
+    const handKey = me.hand.cards.join(",");
     if (handKey !== this.handKey) {
       this.handKey = handKey;
-      state.player.hand.cards.forEach((id, i) => {
+      me.hand.cards.forEach((id, i) => {
         const btn = this.cardBtns[i];
         const isNewDraw = btn.dataset.card !== undefined && btn.dataset.card !== id;
         btn.dataset.card = id;
@@ -229,16 +263,20 @@ export class Hud {
         key.className = "key-chip";
         key.textContent = String(i + 1); // keyboard shortcut hint
         btn.appendChild(key);
-        const lvl = state.player.levels[id] ?? 1;
+        const lvl = me.levels[id] ?? 1;
         if (lvl > 1) {
           const chip = document.createElement("div");
           chip.className = "lvl-chip";
           chip.textContent = `Lv.${lvl}`;
           btn.appendChild(chip);
         }
+        // Re-attach the persistent charge overlay + "+N" badge, which the
+        // innerHTML reset above detaches.
+        btn.appendChild(this.cardVeils[i]);
+        btn.appendChild(this.cardNeeds[i]);
       });
     }
-    state.player.hand.cards.forEach((id, i) => {
+    me.hand.cards.forEach((id, i) => {
       const btn = this.cardBtns[i];
       btn.classList.toggle("selected", this.selected === id);
       const cost = getCard(id).cost;
@@ -248,8 +286,10 @@ export class Hud {
       // clearing downward as elixir rises toward the card's cost.
       const progress = Math.max(0, Math.min(1, amount / cost));
       const veil = this.cardVeils[i];
+      const need = this.cardNeeds[i];
       if (affordable) {
         veil.style.display = "none";
+        need.style.display = "none";
         // Pop once at the moment it becomes playable.
         if (this.cardReady[i] === false) {
           btn.classList.remove("ready-pop");
@@ -259,13 +299,23 @@ export class Hud {
         this.cardReady[i] = true;
       } else {
         veil.style.display = "block";
-        const pct = (progress * 100).toFixed(1);
+        // Bright elixir-pink fill rises from the bottom to the charge level,
+        // with a glowing edge; dark covers the part still to charge.
+        const pct = progress * 100;
+        const edge = Math.max(0, pct - 5);
         veil.style.background =
-          `linear-gradient(to top, rgba(8,12,22,0) ${pct}%, rgba(8,12,22,0.66) ${pct}%)`;
+          `linear-gradient(to top,` +
+          ` rgba(242,58,168,0.40) 0%,` +
+          ` rgba(242,58,168,0.40) ${edge.toFixed(1)}%,` +
+          ` rgba(255,190,235,0.95) ${pct.toFixed(1)}%,` +
+          ` rgba(8,12,22,0.74) ${pct.toFixed(1)}%,` +
+          ` rgba(8,12,22,0.74) 100%)`;
+        need.style.display = "block";
+        need.textContent = `+${Math.ceil(cost - amount)}`;
         this.cardReady[i] = false;
       }
     });
-    const nextId = state.player.hand.queue[0];
+    const nextId = me.hand.queue[0];
     if (nextId !== this.nextKey) {
       this.nextKey = nextId;
       this.nextArt.innerHTML = "";
@@ -275,12 +325,15 @@ export class Hud {
     // Result overlay.
     if (state.result) {
       const { winner, playerCrowns, enemyCrowns } = state.result;
+      const iWon = winner === mySide;
       this.overlayTitle.textContent =
-        winner === "player" ? "VICTORY! 🎉" : winner === "enemy" ? "DEFEAT" : "DRAW";
-      this.overlayTitle.dataset.kind = winner;
-      this.overlayScore.textContent = `👑 ${playerCrowns} — ${enemyCrowns} 👑`;
-      const p = state.player.stats;
-      const e = state.enemy.stats;
+        winner === "draw" ? "DRAW" : iWon ? "VICTORY! 🎉" : "DEFEAT";
+      this.overlayTitle.dataset.kind = winner === "draw" ? "draw" : iWon ? "player" : "enemy";
+      const myCrowns = mySide === "player" ? playerCrowns : enemyCrowns;
+      const foeCrowns = mySide === "player" ? enemyCrowns : playerCrowns;
+      this.overlayScore.textContent = `👑 ${myCrowns} — ${foeCrowns} 👑`;
+      const p = me.stats;
+      const e = foe.stats;
       this.overlayStats.innerHTML =
         `<div class="stat-row"><span>${Math.round(p.damageDealt)}</span>` +
         `<label>damage</label><span>${Math.round(e.damageDealt)}</span></div>` +

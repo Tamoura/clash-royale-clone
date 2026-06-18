@@ -8,7 +8,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview --port 3101 --strictPort",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "relay": "node server/relay.ts",
+    "play": "node scripts/play-lan.mjs"
   },
   "devDependencies": {
     "puppeteer-core": "^25.1.0",
@@ -18,6 +20,7 @@
   },
   "dependencies": {
     "@types/three": "^0.184.1",
-    "three": "^0.184.0"
+    "three": "^0.184.0",
+    "ws": "^8.21.0"
   }
 }
