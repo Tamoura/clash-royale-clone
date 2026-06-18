@@ -27,10 +27,11 @@ namespace ClashRoyale.Editor
             PlayerSettings.stripEngineCode = false;
             PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.WebGL, ManagedStrippingLevel.Minimal);
 
-            // The runtime colours GameObject.CreatePrimitive objects, whose default
-            // material uses the Standard shader. Nothing references it as an asset,
-            // so it would be stripped (everything renders magenta). Force-include it.
+            // Runtime-created materials reference these shaders; nothing references
+            // them as assets, so they would be stripped (magenta / no sky). Keep them.
             EnsureShaderIncluded("Standard");
+            EnsureShaderIncluded("CR/Outline");
+            EnsureShaderIncluded("Skybox/Procedural");
 
             var options = new BuildPlayerOptions
             {
