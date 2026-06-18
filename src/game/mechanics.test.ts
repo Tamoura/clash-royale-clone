@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BRIDGE_XS, RIVER_Y } from "./arena";
+import { ARENA_HEIGHT, ARENA_WIDTH, BRIDGE_XS, RIVER_Y } from "./arena";
 import { createBattle, deployCard, spawnUnits, type BattleState } from "./battle";
 import { createHand } from "./hand";
 import { isRaged, moveGoal, tick } from "./sim";
@@ -523,5 +523,18 @@ describe("recoil", () => {
     const startY = fc.y;
     run(b, 1.5); // one shot fires (hit speed is slow)
     expect(fc.y).toBeGreaterThan(startY + 1); // kicked away from the foe
+  });
+
+  it("recoil never kicks a unit off the edge of the arena", () => {
+    const b = createBattle();
+    // Firecracker pinned against the left wall, foe to its right: each shot
+    // recoils her left, toward (and past) x=0 if recoil is unclamped.
+    const [fc] = spawnUnits(b, "player", "firecracker", 0.2, 20);
+    spawnUnits(b, "enemy", "knight", 6, 20);
+    run(b, 6); // several shots
+    expect(fc.x).toBeGreaterThanOrEqual(0);
+    expect(fc.x).toBeLessThanOrEqual(ARENA_WIDTH);
+    expect(fc.y).toBeGreaterThanOrEqual(0);
+    expect(fc.y).toBeLessThanOrEqual(ARENA_HEIGHT);
   });
 });

@@ -1,4 +1,6 @@
 import {
+  ARENA_HEIGHT,
+  ARENA_WIDTH,
   BRIDGE_HALF_WIDTH,
   RIVER_HALF_WIDTH,
   RIVER_Y,
@@ -431,6 +433,19 @@ function resolveCollisions(state: BattleState): void {
   }
 }
 
+/**
+ * The arena has walls: movement, recoil, and collision shoves can never
+ * carry a troop's body off the field. Towers/buildings are placed in
+ * bounds and never move, so only troops need penning in.
+ */
+function clampToArena(state: BattleState): void {
+  for (const e of state.entities) {
+    if (e.kind !== "troop") continue;
+    e.x = Math.min(ARENA_WIDTH - e.radius, Math.max(e.radius, e.x));
+    e.y = Math.min(ARENA_HEIGHT - e.radius, Math.max(e.radius, e.y));
+  }
+}
+
 function processDeaths(state: BattleState): void {
   for (const e of state.entities) {
     if (e.hp > 0) continue;
@@ -501,6 +516,7 @@ export function tick(state: BattleState, dt: number): void {
   }
   tickProjectiles(state, dt);
   resolveCollisions(state);
+  clampToArena(state);
   wakeDamagedKings(state);
   processDeaths(state);
   checkClock(state);
