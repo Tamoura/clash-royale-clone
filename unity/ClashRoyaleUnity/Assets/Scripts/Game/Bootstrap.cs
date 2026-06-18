@@ -105,13 +105,22 @@ namespace ClashRoyale.Game
                 return;
             }
 
+            // Intersect the camera ray with the board plane (y = 0) directly,
+            // so deploys don't depend on physics colliders being present.
             Ray ray = view.Camera.ScreenPointToRay(Input.mousePosition);
-            if (!Physics.Raycast(ray, out RaycastHit hit, 500f))
+            if (Mathf.Abs(ray.direction.y) < 1e-5f)
             {
                 return;
             }
 
-            Vector2 sim = GameView.SimFromWorld(hit.point);
+            float t = -ray.origin.y / ray.direction.y;
+            if (t < 0f)
+            {
+                return;
+            }
+
+            Vector3 hitPoint = ray.origin + ray.direction * t;
+            Vector2 sim = GameView.SimFromWorld(hitPoint);
             CardId card = state.Player.Hand.Cards[hud.SelectedIndex];
             if (Battle.DeployCard(state, Side.Player, card, sim.x, sim.y))
             {
