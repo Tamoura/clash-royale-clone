@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { CARDS, DECK, getCard } from "./cards";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  CARDS,
+  DECK,
+  crazyCards,
+  getCard,
+  setCardOverrides,
+  type CardId,
+} from "./cards";
 
 describe("cards", () => {
   it("defines the 29-card deck", () => {
@@ -267,5 +274,57 @@ describe("card balance tweaks", () => {
     const balloon = getCard("balloon");
     if (balloon.kind !== "troop") throw new Error("balloon troop");
     expect(balloon.unit.deathDamage).toBe(balloon.unit.damage / 2);
+  });
+});
+
+describe("crazy mode card overrides", () => {
+  afterEach(() => setCardOverrides(null));
+
+  it("getCard returns overrides when set, base otherwise", () => {
+    expect(getCard("archers")).toBe(CARDS.archers);
+    const crazy = crazyCards();
+    setCardOverrides(crazy);
+    expect(getCard("archers")).toBe(crazy.archers);
+    setCardOverrides(null);
+    expect(getCard("archers")).toBe(CARDS.archers);
+  });
+
+  it("scrambles every troop into a swarm without mutating the base cards", () => {
+    for (let run = 0; run < 30; run++) {
+      const crazy = crazyCards();
+      for (const id of Object.keys(crazy) as CardId[]) {
+        const card = crazy[id];
+        if (card.kind === "troop") {
+          expect(card.count).toBeGreaterThanOrEqual(3);
+          expect(card.count).toBeLessThanOrEqual(12);
+        }
+      }
+    }
+    // Base archers untouched (count still 2).
+    const archers = CARDS.archers;
+    if (archers.kind !== "troop") throw new Error("archers troop");
+    expect(archers.count).toBe(2);
+  });
+
+  it("existing spawners get a summon from the pure pool (Witch can spawn Mini P.E.K.K.A)", () => {
+    const pool = new Set(["skeletons", "archers", "gargoyles", "mini-pekka"]);
+    const seen = new Set<string>();
+    for (let run = 0; run < 60; run++) {
+      const witch = crazyCards().witch;
+      if (witch.kind !== "troop") throw new Error("witch troop");
+      expect(witch.unit.spawnUnitId).not.toBeNull();
+      expect(pool.has(witch.unit.spawnUnitId!)).toBe(true);
+      if (witch.unit.spawnUnitId) seen.add(witch.unit.spawnUnitId);
+    }
+    // Over many rolls the Witch summons more than one kind of unit.
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it("summonable pool units never spawn (chains stay one level deep)", () => {
+    const crazy = crazyCards();
+    for (const id of ["skeletons", "archers", "gargoyles", "mini-pekka"] as CardId[]) {
+      const card = crazy[id];
+      if (card.kind === "troop") expect(card.unit.spawnUnitId).toBeNull();
+    }
   });
 });

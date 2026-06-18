@@ -8,7 +8,14 @@ import {
   type CardLevels,
 } from "./game/battle";
 import { createBot, tickBot, type BotProfile, type BotState } from "./game/bot";
-import { DECK, DEFAULT_DECK, getCard, type CardId } from "./game/cards";
+import {
+  DECK,
+  DEFAULT_DECK,
+  crazyCards,
+  getCard,
+  setCardOverrides,
+  type CardId,
+} from "./game/cards";
 import type { Side } from "./game/arena";
 import { drawCardArt } from "./render/characters";
 import { CARD_COLOR } from "./render/cardcolors";
@@ -103,6 +110,7 @@ const GAME_MODES: GameMode[] = [
   { id: "triple", name: "Triple Elixir ⚡3", blurb: "3× elixir the whole match", elixirRate: 3, mirror: false },
   { id: "mega", name: "Mega Elixir ⚡7", blurb: "7× elixir — total chaos", elixirRate: 7, mirror: false },
   { id: "mirror", name: "Mirror Match", blurb: "Both get the same random deck", elixirRate: 1, mirror: true },
+  { id: "crazy", name: "Crazy 🎲", blurb: "Every card scrambled — counts, spawns & stats go wild", elixirRate: 1, mirror: false },
 ];
 
 const MODE_KEY = "cr-clone-mode";
@@ -206,6 +214,8 @@ function selectCard(id: CardId | null): void {
 function restart(): void {
   mode = "solo";
   online = null;
+  // Crazy mode rerolls a scrambled card set each match; other modes use stock.
+  setCardOverrides(gameMode.id === "crazy" ? crazyCards() : null);
   // Mirror mode: player and bot share one random deck for a pure-skill match.
   const shared = gameMode.mirror ? botDeck() : null;
   battle = createBattle(
@@ -245,7 +255,9 @@ function startOnlineMatch(
   online = session;
   // Identical canonical battle on both peers: host=player, guest=enemy.
   // No card levels online — a fair, fully-deterministic match. Mirror mode
-  // has both sides battle the host's deck.
+  // has both sides battle the host's deck. Never crazy (it uses Math.random,
+  // which would desync the lockstep).
+  setCardOverrides(null);
   const enemyDeck = matchMode.mirror ? hostDeck : guestDeck;
   battle = createBattle(hostDeck, enemyDeck, {}, matchMode.elixirRate);
   selectCard(null);

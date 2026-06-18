@@ -671,8 +671,65 @@ export const DECK: CardId[] = [
   "freeze",
 ];
 
+/**
+ * Per-match card overrides (e.g. the Crazy game mode). When set, getCard
+ * returns the scrambled variant so the sim, bot, HUD and renderer all agree.
+ */
+let cardOverrides: Record<CardId, Card> | null = null;
+
+export function setCardOverrides(overrides: Record<CardId, Card> | null): void {
+  cardOverrides = overrides;
+}
+
 export function getCard(id: CardId): Card {
-  return CARDS[id];
+  return cardOverrides ? cardOverrides[id] : CARDS[id];
+}
+
+const ri = (lo: number, hi: number): number => lo + Math.floor(Math.random() * (hi - lo + 1));
+const rf = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
+const pick = <T>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)];
+
+/**
+ * "Crazy" mode: scramble every card — huge spawn counts, surprise spawners
+ * (a Witch summoning Mini P.E.K.K.As), and randomised stats. Summoned units are
+ * drawn from a pure pool (no further spawners) so spawn chains stay bounded.
+ */
+export function crazyCards(): Record<CardId, Card> {
+  const out = structuredClone(CARDS) as Record<CardId, Card>;
+  const spawnPool: CardId[] = ["skeletons", "archers", "gargoyles", "mini-pekka"];
+
+  for (const id of Object.keys(out) as CardId[]) {
+    const card = out[id];
+    if (card.kind === "spell") {
+      card.damage = Math.round(card.damage * rf(1, 2.2));
+      card.radius = card.radius * rf(1, 1.6);
+      continue;
+    }
+
+    const u = card.unit;
+    u.damage = Math.max(10, Math.round(u.damage * rf(0.7, 1.9)));
+    u.maxHp = Math.max(40, Math.round(u.maxHp * rf(0.7, 1.7)));
+    if (Math.random() < 0.3) u.splashRadius = Math.max(u.splashRadius, rf(0.9, 1.7));
+
+    if (card.kind === "troop") {
+      // Everything swarms: even a lone Giant arrives as a pack.
+      card.count = ri(3, 12);
+    }
+
+    const alreadySpawner = u.spawnUnitId !== null;
+    if (spawnPool.includes(id)) {
+      // Summonable units don't summon (keeps spawn chains one level deep).
+      u.spawnUnitId = null;
+      u.spawnInterval = 0;
+    } else if (card.kind === "building" || alreadySpawner || Math.random() < 0.45) {
+      // Buildings + existing spawners always get scrambled; ~45% of other
+      // troops gain a surprise spawner (a Witch summoning Mini P.E.K.K.As).
+      u.spawnUnitId = pick(spawnPool);
+      u.spawnInterval = rf(3, 6);
+    }
+  }
+
+  return out;
 }
 
 /**
