@@ -26,6 +26,7 @@ namespace ClashRoyale.Game
 
         private readonly Dictionary<int, EntityView> views = new();
         private Transform entityRoot;
+        private GameObject deployZone;
         public Camera Camera { get; private set; }
 
         public void Build()
@@ -34,9 +35,35 @@ namespace ClashRoyale.Game
             BuildLighting();
             BuildBoard();
             BuildRiverAndBridges();
+            BuildDeployZone();
 
             entityRoot = new GameObject("Entities").transform;
             entityRoot.SetParent(transform, false);
+        }
+
+        /// <summary>Translucent overlay on the player's half, shown while a card is selected.</summary>
+        private void BuildDeployZone()
+        {
+            deployZone = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            deployZone.name = "DeployZone";
+            Object.Destroy(deployZone.GetComponent<Collider>());
+            deployZone.transform.SetParent(transform, false);
+            // Player half is y in (RiverY, ArenaHeight] -> world z in [-H/2, 0).
+            float zCenter = H / 2f - (float)((Arena.RiverY + Arena.ArenaHeight) / 2.0);
+            float zLen = (float)(Arena.ArenaHeight - Arena.RiverY) - 1f;
+            deployZone.transform.position = new Vector3(0f, 0.06f, zCenter);
+            deployZone.transform.localScale = new Vector3(W - 0.5f, 0.04f, zLen);
+            deployZone.GetComponent<Renderer>().sharedMaterial =
+                Visuals.Transparent(new Color(0.35f, 0.7f, 1f, 0.16f));
+            deployZone.SetActive(false);
+        }
+
+        public void SetDeployZone(bool visible)
+        {
+            if (deployZone != null)
+            {
+                deployZone.SetActive(visible);
+            }
         }
 
         private void BuildCamera()
@@ -50,11 +77,11 @@ namespace ClashRoyale.Game
 
             Camera.clearFlags = CameraClearFlags.Skybox;
             Camera.orthographic = false;
-            Camera.fieldOfView = 40f;
-            // Closer 3/4 action framing: troops read clearly, both tower lines and
-            // the river stay in view, near (player) towers clear the bottom HUD.
-            Camera.transform.position = new Vector3(0f, 25f, -26f);
-            Camera.transform.LookAt(new Vector3(0f, 0.5f, -2.5f));
+            Camera.fieldOfView = 44f;
+            // Near-top-down portrait framing to mirror the web view: the tall
+            // 18x32 board fills a centred column, player end toward the bottom.
+            Camera.transform.position = new Vector3(0f, 42f, -12f);
+            Camera.transform.LookAt(new Vector3(0f, 0f, 3f));
             Camera.allowHDR = true;
         }
 

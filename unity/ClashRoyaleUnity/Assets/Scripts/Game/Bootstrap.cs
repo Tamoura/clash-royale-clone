@@ -151,12 +151,13 @@ namespace ClashRoyale.Game
 
             state.Events.Clear();
             view.Sync(state);
+            view.SetDeployZone(state.Result == null && hud.SelectedIndex >= 0);
             hud.UpdateHud(state);
 
             if (state.Result != null && !finished)
             {
                 finished = true;
-                hud.ShowResult(state.Result);
+                hud.ShowResult(state);
             }
         }
 

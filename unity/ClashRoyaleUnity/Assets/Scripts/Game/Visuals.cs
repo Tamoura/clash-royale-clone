@@ -34,6 +34,27 @@ namespace ClashRoyale.Game
             return m;
         }
 
+        /// <summary>A transparent (alpha-blended) Standard material, e.g. for the deploy zone.</summary>
+        public static Material Transparent(Color color)
+        {
+            if (standardShader == null)
+            {
+                standardShader = Shader.Find("Standard");
+            }
+
+            var m = new Material(standardShader);
+            m.SetFloat("_Mode", 3f);
+            m.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+            m.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
+            m.SetInt("_ZWrite", 0);
+            m.DisableKeyword("_ALPHATEST_ON");
+            m.EnableKeyword("_ALPHABLEND_ON");
+            m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            m.renderQueue = 3000;
+            m.color = color;
+            return m;
+        }
+
         private static Material OutlineMaterial(float width)
         {
             if (outlineShader == null)
@@ -130,6 +151,74 @@ namespace ClashRoyale.Game
             int h = x * 374761393 + y * 668265263;
             h = (h ^ (h >> 13)) * 1274126177;
             return ((h ^ (h >> 16)) & 0xffff) / 65535f;
+        }
+
+        // ---- uGUI sprites -------------------------------------------------
+
+        private static Sprite roundedCache;
+
+        /// <summary>A white rounded-rect sprite (9-slice) for clean uGUI panels/cards.</summary>
+        public static Sprite RoundedSprite()
+        {
+            if (roundedCache != null)
+            {
+                return roundedCache;
+            }
+
+            const int n = 32;
+            const int r = 9;
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
+            for (int y = 0; y < n; y++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    tex.SetPixel(x, y, InRounded(x, y, n, r) ? Color.white : Color.clear);
+                }
+            }
+
+            tex.filterMode = FilterMode.Bilinear;
+            tex.wrapMode = TextureWrapMode.Clamp;
+            tex.Apply();
+            roundedCache = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f,
+                0, SpriteMeshType.FullRect, new Vector4(r, r, r, r));
+            return roundedCache;
+        }
+
+        private static bool InRounded(int x, int y, int n, int r)
+        {
+            int cx = Mathf.Clamp(x, r, n - 1 - r);
+            int cy = Mathf.Clamp(y, r, n - 1 - r);
+            float dx = x - cx;
+            float dy = y - cy;
+            return dx * dx + dy * dy <= (r + 0.5f) * (r + 0.5f);
+        }
+
+        private static Sprite circleCache;
+
+        /// <summary>A white solid-circle sprite for cost gems / dots.</summary>
+        public static Sprite CircleSprite()
+        {
+            if (circleCache != null)
+            {
+                return circleCache;
+            }
+
+            const int n = 48;
+            float c = (n - 1) / 2f;
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
+            for (int y = 0; y < n; y++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
+                    tex.SetPixel(x, y, d <= c - 0.5f ? Color.white : Color.clear);
+                }
+            }
+
+            tex.filterMode = FilterMode.Bilinear;
+            tex.Apply();
+            circleCache = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f);
+            return circleCache;
         }
     }
 }

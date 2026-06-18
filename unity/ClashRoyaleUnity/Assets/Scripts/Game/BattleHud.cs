@@ -6,24 +6,42 @@ using UnityEngine.UI;
 namespace ClashRoyale.Game
 {
     /// <summary>
-    /// Minimal screen-space HUD: match timer, crown counts, an elixir bar, the
-    /// four-card hand, and a result banner. Built entirely in code so the scene
-    /// can stay empty.
+    /// Screen-space HUD mirroring the web build: a top bar (crowns + clock), an
+    /// elixir bar with x2 tag, a four-card hand of rounded tiles with cost gems,
+    /// a "next" preview, and a result overlay with per-side stats.
     /// </summary>
     public sealed class BattleHud : MonoBehaviour
     {
+        private sealed class CardSlot
+        {
+            public RectTransform Root;
+            public Image Tile;
+            public Image Glyph;
+            public Text GlyphLetter;
+            public Image Veil;
+            public Image Selected;
+            public Text CostText;
+            public Text NameText;
+        }
+
         private Font font;
-        private Text timerText;
-        private Text crownText;
-        private Text elixirText;
+        private Text clockText;
+        private Text playerCrowns;
+        private Text enemyCrowns;
         private Image elixirFill;
-        private readonly Button[] cardButtons = new Button[HandState.HandSize];
-        private readonly Image[] cardSwatches = new Image[HandState.HandSize];
-        private readonly Text[] cardLabels = new Text[HandState.HandSize];
+        private Text elixirNum;
+        private Text x2Tag;
+        private readonly CardSlot[] slots = new CardSlot[HandState.HandSize];
+        private CardSlot nextSlot;
         private GameObject resultPanel;
         private Text resultText;
+        private Text resultStats;
 
-        /// <summary>Hand index the player has selected to deploy (-1 = none).</summary>
+        private static readonly Color Pink = new Color(0.85f, 0.2f, 0.75f);
+        private static readonly Color PinkHot = new Color(1f, 0.45f, 0.2f);
+        private static readonly Color PlayerBlue = new Color(0.3f, 0.6f, 1f);
+        private static readonly Color EnemyRed = new Color(1f, 0.4f, 0.4f);
+
         public int SelectedIndex { get; private set; } = -1;
 
         public void Build(Action onRestart)
@@ -36,76 +54,128 @@ namespace ClashRoyale.Game
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             var scaler = canvasGo.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(900, 1600);
+            scaler.referenceResolution = new Vector2(1080, 1920);
+            scaler.matchWidthOrHeight = 0.6f;
             canvasGo.AddComponent<GraphicRaycaster>();
+            Transform root = canvas.transform;
 
-            timerText = Label(canvas.transform, "Timer", new Vector2(0.5f, 1f), new Vector2(0, -40), 36, TextAnchor.MiddleCenter);
-            crownText = Label(canvas.transform, "Crowns", new Vector2(0.5f, 1f), new Vector2(0, -90), 28, TextAnchor.MiddleCenter);
-
-            BuildElixirBar(canvas.transform);
-            BuildHand(canvas.transform);
-            BuildResult(canvas.transform, onRestart);
+            BuildTopBar(root);
+            BuildElixir(root);
+            BuildHand(root);
+            BuildResult(root, onRestart);
         }
 
-        private void BuildElixirBar(Transform parent)
-        {
-            Image bg = Panel(parent, "ElixirBg", new Color(0.10f, 0.06f, 0.16f, 0.9f));
-            Anchor(bg.rectTransform, new Vector2(0.5f, 0f), new Vector2(620, 26), new Vector2(0, 250));
+        // ---- top bar ------------------------------------------------------
 
-            // A left-anchored panel whose right edge we slide to show the fill.
-            // (Width-driven rather than Image.fillAmount, which needs a sprite.)
-            elixirFill = Panel(bg.transform, "ElixirFill", new Color(0.85f, 0.25f, 0.9f));
+        private void BuildTopBar(Transform root)
+        {
+            Image bar = Panel(root, new Color(0.08f, 0.10f, 0.16f, 0.82f));
+            Anchor(bar.rectTransform, new Vector2(0.5f, 1f), new Vector2(720, 96), new Vector2(0, -58));
+
+            playerCrowns = Label(bar.transform, new Vector2(0f, 0.5f), new Vector2(150, -0), 40, TextAnchor.MiddleLeft);
+            playerCrowns.rectTransform.anchoredPosition = new Vector2(40, 0);
+            playerCrowns.color = PlayerBlue;
+            playerCrowns.text = "♛ 0";
+
+            clockText = Label(bar.transform, new Vector2(0.5f, 0.5f), Vector2.zero, 44, TextAnchor.MiddleCenter);
+            clockText.text = "3:00";
+
+            enemyCrowns = Label(bar.transform, new Vector2(1f, 0.5f), new Vector2(-40, 0), 40, TextAnchor.MiddleRight);
+            enemyCrowns.color = EnemyRed;
+            enemyCrowns.text = "0 ♛";
+        }
+
+        // ---- elixir -------------------------------------------------------
+
+        private void BuildElixir(Transform root)
+        {
+            Image num = Panel(root, Pink, Visuals.CircleSprite());
+            Anchor(num.rectTransform, new Vector2(0.5f, 0f), new Vector2(64, 64), new Vector2(-330, 300));
+            elixirNum = Label(num.transform, new Vector2(0.5f, 0.5f), Vector2.zero, 34, TextAnchor.MiddleCenter);
+            elixirNum.text = "5";
+
+            Image bg = Panel(root, new Color(0.12f, 0.06f, 0.16f, 0.95f));
+            Anchor(bg.rectTransform, new Vector2(0.5f, 0f), new Vector2(600, 40), new Vector2(20, 300));
+
+            elixirFill = Panel(bg.transform, Pink);
             elixirFill.rectTransform.anchorMin = new Vector2(0f, 0f);
             elixirFill.rectTransform.anchorMax = new Vector2(1f, 1f);
             elixirFill.rectTransform.pivot = new Vector2(0f, 0.5f);
-            elixirFill.rectTransform.offsetMin = Vector2.zero;
-            elixirFill.rectTransform.offsetMax = Vector2.zero;
+            elixirFill.rectTransform.offsetMin = new Vector2(4, 4);
+            elixirFill.rectTransform.offsetMax = new Vector2(-4, -4);
 
-            elixirText = Label(bg.transform, "ElixirNum", new Vector2(0.5f, 0.5f), Vector2.zero, 18, TextAnchor.MiddleCenter);
+            x2Tag = Label(bg.transform, new Vector2(1f, 0.5f), new Vector2(-26, 0), 26, TextAnchor.MiddleRight);
+            x2Tag.text = "";
+            x2Tag.color = new Color(1f, 0.9f, 0.3f);
         }
 
-        private void BuildHand(Transform parent)
+        // ---- hand ---------------------------------------------------------
+
+        private void BuildHand(Transform root)
         {
-            const float width = 150f;
-            const float gap = 12f;
-            float total = HandState.HandSize * width + (HandState.HandSize - 1) * gap;
-            float start = -total / 2f + width / 2f;
+            const float w = 168f;
+            const float h = 200f;
+            const float gap = 16f;
+            float total = HandState.HandSize * w + (HandState.HandSize - 1) * gap;
+            float start = -total / 2f + w / 2f + 70f; // shift right, leaving room for "next"
 
             for (int i = 0; i < HandState.HandSize; i++)
             {
-                int index = i;
-                Image swatch = Panel(parent, $"Card{i}", Color.gray);
-                Anchor(swatch.rectTransform, new Vector2(0.5f, 0f), new Vector2(width, 110), new Vector2(start + i * (width + gap), 120));
-                cardSwatches[i] = swatch;
-
-                var button = swatch.gameObject.AddComponent<Button>();
-                button.onClick.AddListener(() => Select(index));
-                cardButtons[i] = button;
-
-                cardLabels[i] = Label(swatch.transform, "Label", new Vector2(0.5f, 0.5f), Vector2.zero, 16, TextAnchor.MiddleCenter);
+                slots[i] = MakeCard(root, new Vector2(start + i * (w + gap), 150), new Vector2(w, h), true, i);
             }
+
+            // "next" preview, smaller, far left
+            Label(root, new Vector2(0.5f, 0f), new Vector2(start - w + 6, 230), 24, TextAnchor.MiddleCenter).text = "next";
+            nextSlot = MakeCard(root, new Vector2(start - w - 4, 140), new Vector2(108, 130), false, -1);
         }
 
-        private void BuildResult(Transform parent, Action onRestart)
+        private CardSlot MakeCard(Transform root, Vector2 pos, Vector2 size, bool interactive, int index)
         {
-            Image panel = Panel(parent, "Result", new Color(0f, 0f, 0f, 0.82f));
-            panel.rectTransform.anchorMin = Vector2.zero;
-            panel.rectTransform.anchorMax = Vector2.one;
-            panel.rectTransform.offsetMin = Vector2.zero;
-            panel.rectTransform.offsetMax = Vector2.zero;
-            resultPanel = panel.gameObject;
+            var slot = new CardSlot();
 
-            resultText = Label(panel.transform, "ResultText", new Vector2(0.5f, 0.5f), new Vector2(0, 60), 48, TextAnchor.MiddleCenter);
+            // gold selection backing (slightly larger), hidden by default
+            Image sel = Panel(root, new Color(1f, 0.85f, 0.3f), Visuals.RoundedSprite());
+            Anchor(sel.rectTransform, new Vector2(0.5f, 0f), size + new Vector2(14, 14), pos);
+            sel.gameObject.SetActive(false);
+            slot.Selected = sel;
 
-            Image restart = Panel(panel.transform, "Restart", new Color(0.95f, 0.76f, 0.30f));
-            Anchor(restart.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(260, 80), new Vector2(0, -60));
-            var btn = restart.gameObject.AddComponent<Button>();
-            btn.onClick.AddListener(() => onRestart());
-            Text label = Label(restart.transform, "RestartLabel", new Vector2(0.5f, 0.5f), Vector2.zero, 28, TextAnchor.MiddleCenter);
-            label.text = "Battle Again";
-            label.color = new Color(0.23f, 0.14f, 0.01f);
+            Image tile = Panel(root, Color.gray, Visuals.RoundedSprite());
+            Anchor(tile.rectTransform, new Vector2(0.5f, 0f), size, pos);
+            slot.Tile = tile;
+            slot.Root = tile.rectTransform;
 
-            resultPanel.SetActive(false);
+            // glyph disc with the card initial
+            Image glyph = Panel(tile.transform, Color.white, Visuals.CircleSprite());
+            Anchor(glyph.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(size.x * 0.5f, size.x * 0.5f), new Vector2(0, size.y * 0.08f));
+            slot.Glyph = glyph;
+            slot.GlyphLetter = Label(glyph.transform, new Vector2(0.5f, 0.5f), Vector2.zero, Mathf.RoundToInt(size.x * 0.34f), TextAnchor.MiddleCenter);
+            slot.GlyphLetter.color = new Color(0.1f, 0.12f, 0.18f);
+
+            slot.NameText = Label(tile.transform, new Vector2(0.5f, 0f), new Vector2(0, 20), Mathf.RoundToInt(size.x * 0.12f), TextAnchor.MiddleCenter);
+            slot.NameText.rectTransform.sizeDelta = new Vector2(size.x, 36);
+
+            // cost gem
+            Image gem = Panel(tile.transform, Pink, Visuals.CircleSprite());
+            Anchor(gem.rectTransform, new Vector2(0f, 1f), new Vector2(46, 46), new Vector2(24, -24));
+            slot.CostText = Label(gem.transform, new Vector2(0.5f, 0.5f), Vector2.zero, 26, TextAnchor.MiddleCenter);
+
+            // unaffordable veil
+            Image veil = Panel(tile.transform, new Color(0.02f, 0.02f, 0.05f, 0.6f), Visuals.RoundedSprite());
+            veil.rectTransform.anchorMin = Vector2.zero;
+            veil.rectTransform.anchorMax = Vector2.one;
+            veil.rectTransform.offsetMin = Vector2.zero;
+            veil.rectTransform.offsetMax = Vector2.zero;
+            veil.gameObject.SetActive(false);
+            slot.Veil = veil;
+
+            if (interactive)
+            {
+                var btn = tile.gameObject.AddComponent<Button>();
+                int idx = index;
+                btn.onClick.AddListener(() => Select(idx));
+            }
+
+            return slot;
         }
 
         private void Select(int index)
@@ -118,28 +188,90 @@ namespace ClashRoyale.Game
             SelectedIndex = -1;
         }
 
+        // ---- result -------------------------------------------------------
+
+        private void BuildResult(Transform root, Action onRestart)
+        {
+            Image panel = Panel(root, new Color(0f, 0f, 0f, 0.82f));
+            panel.rectTransform.anchorMin = Vector2.zero;
+            panel.rectTransform.anchorMax = Vector2.one;
+            panel.rectTransform.offsetMin = Vector2.zero;
+            panel.rectTransform.offsetMax = Vector2.zero;
+            resultPanel = panel.gameObject;
+
+            resultText = Label(panel.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 200), 90, TextAnchor.MiddleCenter);
+            resultStats = Label(panel.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 20), 34, TextAnchor.MiddleCenter);
+            resultStats.rectTransform.sizeDelta = new Vector2(800, 300);
+
+            Image btn = Panel(panel.transform, new Color(0.95f, 0.76f, 0.3f), Visuals.RoundedSprite());
+            Anchor(btn.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(320, 96), new Vector2(0, -200));
+            btn.gameObject.AddComponent<Button>().onClick.AddListener(() => onRestart());
+            Text label = Label(btn.transform, new Vector2(0.5f, 0.5f), Vector2.zero, 34, TextAnchor.MiddleCenter);
+            label.text = "Play Again";
+            label.color = new Color(0.2f, 0.12f, 0.01f);
+
+            resultPanel.SetActive(false);
+        }
+
+        // ---- update -------------------------------------------------------
+
         public void UpdateHud(BattleState state)
         {
             double remaining = Math.Max(0, RemainingSeconds(state));
             int mins = (int)(remaining / 60);
             int secs = (int)(remaining % 60);
-            timerText.text = (state.Overtime ? "OT " : "") + $"{mins}:{secs:00}";
-            crownText.text = $"You {state.Player.Crowns}  —  {state.Enemy.Crowns} Bot";
+            clockText.text = (state.Overtime ? "OT " : "") + $"{mins}:{secs:00}";
+            playerCrowns.text = $"♛ {state.Player.Crowns}";
+            enemyCrowns.text = $"{state.Enemy.Crowns} ♛";
 
             float elixir = (float)state.Player.Elixir.Amount;
             float frac = Mathf.Clamp01(elixir / (float)Elixir.ElixirMax);
             elixirFill.rectTransform.anchorMax = new Vector2(frac, 1f);
-            elixirText.text = $"{Mathf.FloorToInt(elixir)}/10";
+            elixirNum.text = $"{Mathf.FloorToInt(elixir)}";
+            int mult = Simulation.ElixirMultiplier(state);
+            bool dbl = mult >= 2 && state.Result == null;
+            elixirFill.color = dbl ? PinkHot : Pink;
+            x2Tag.text = mult == 3 ? "x3" : (mult == 2 ? "x2" : "");
 
             for (int i = 0; i < HandState.HandSize; i++)
             {
-                CardId id = state.Player.Hand.Cards[i];
-                Card card = Cards.Get(id);
-                bool affordable = card.Cost <= state.Player.Elixir.Amount;
-                Color color = CardVisual.ForCard(id);
-                cardSwatches[i].color = SelectedIndex == i ? Color.Lerp(color, Color.white, 0.5f) : color;
-                cardLabels[i].text = $"{card.Name}\n{card.Cost}";
-                cardLabels[i].color = affordable ? Color.white : new Color(1f, 1f, 1f, 0.45f);
+                Paint(slots[i], state.Player.Hand.Cards[i], elixir, i == SelectedIndex);
+            }
+
+            CardId next = state.Player.Hand.Queue.Count > 0 ? state.Player.Hand.Queue[0] : state.Player.Hand.Cards[0];
+            Paint(nextSlot, next, elixir, false);
+        }
+
+        private void Paint(CardSlot slot, CardId id, float elixir, bool selected)
+        {
+            Card card = Cards.Get(id);
+            Color color = CardVisual.ForCard(id);
+            slot.Tile.color = color;
+            slot.Glyph.color = Color.Lerp(color, Color.white, 0.65f);
+            if (slot.GlyphLetter != null)
+            {
+                slot.GlyphLetter.text = card.Name.Substring(0, 1);
+            }
+
+            if (slot.NameText != null)
+            {
+                slot.NameText.text = card.Name;
+            }
+
+            if (slot.CostText != null)
+            {
+                slot.CostText.text = card.Cost.ToString();
+            }
+
+            bool affordable = card.Cost <= elixir;
+            if (slot.Veil != null)
+            {
+                slot.Veil.gameObject.SetActive(!affordable);
+            }
+
+            if (slot.Selected != null)
+            {
+                slot.Selected.gameObject.SetActive(selected);
             }
         }
 
@@ -150,21 +282,26 @@ namespace ClashRoyale.Game
                 : Simulation.BattleDuration - state.Time;
         }
 
-        public void ShowResult(BattleResult result)
+        public void ShowResult(BattleState state)
         {
             resultPanel.SetActive(true);
-            resultText.text = result.Winner switch
+            BattleResult r = state.Result;
+            resultText.text = r.Winner switch
             {
                 BattleWinner.Player => "Victory!",
                 BattleWinner.Enemy => "Defeat",
                 _ => "Draw",
             };
-            resultText.color = result.Winner switch
+            resultText.color = r.Winner switch
             {
                 BattleWinner.Player => new Color(0.5f, 0.9f, 1f),
                 BattleWinner.Enemy => new Color(1f, 0.5f, 0.5f),
                 _ => Color.white,
             };
+            resultStats.text =
+                $"You {r.PlayerCrowns}  –  {r.EnemyCrowns} Bot\n\n" +
+                $"Damage dealt   {Mathf.RoundToInt((float)state.Player.Stats.DamageDealt)}  vs  {Mathf.RoundToInt((float)state.Enemy.Stats.DamageDealt)}\n" +
+                $"Elixir spent   {Mathf.RoundToInt((float)state.Player.Stats.ElixirSpent)}  vs  {Mathf.RoundToInt((float)state.Enemy.Stats.ElixirSpent)}";
         }
 
         public void HideResult()
@@ -172,11 +309,26 @@ namespace ClashRoyale.Game
             resultPanel.SetActive(false);
         }
 
-        // ---- tiny uGUI builders -------------------------------------------
+        // ---- builders -----------------------------------------------------
 
-        private Text Label(Transform parent, string name, Vector2 anchor, Vector2 pos, int size, TextAnchor align)
+        private static Image Panel(Transform parent, Color color, Sprite sprite = null)
         {
-            var go = new GameObject(name);
+            var go = new GameObject("panel");
+            go.transform.SetParent(parent, false);
+            var img = go.AddComponent<Image>();
+            img.color = color;
+            if (sprite != null)
+            {
+                img.sprite = sprite;
+                img.type = Image.Type.Sliced;
+            }
+
+            return img;
+        }
+
+        private Text Label(Transform parent, Vector2 anchor, Vector2 pos, int size, TextAnchor align)
+        {
+            var go = new GameObject("label");
             go.transform.SetParent(parent, false);
             var text = go.AddComponent<Text>();
             text.font = font;
@@ -189,18 +341,9 @@ namespace ClashRoyale.Game
             rt.anchorMin = anchor;
             rt.anchorMax = anchor;
             rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(400, 80);
+            rt.sizeDelta = new Vector2(360, 80);
             rt.anchoredPosition = pos;
             return text;
-        }
-
-        private static Image Panel(Transform parent, string name, Color color)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            var image = go.AddComponent<Image>();
-            image.color = color;
-            return image;
         }
 
         private static void Anchor(RectTransform rt, Vector2 anchor, Vector2 size, Vector2 pos)
