@@ -31,6 +31,13 @@ import {
   toon,
   type TroopRig,
 } from "./characters3d";
+import {
+  hasGlbModel,
+  makeGlbUnit,
+  playGlbAction,
+  preloadGlbModels,
+  type GlbUnit,
+} from "./glbModels";
 
 /** Arena tiles → world units: x centered, arena y becomes world z. */
 function toWorld(ax: number, ay: number): { x: number; z: number } {
@@ -141,6 +148,8 @@ interface EntityView {
   dustT?: number;
   /** How this troop enters the field. */
   spawnStyle?: "rise" | "pop";
+  /** Real glTF model (KayKit) + animation mixer, when this card uses one. */
+  glb?: GlbUnit & { current?: string };
 }
 
 interface DyingView {
@@ -913,14 +922,24 @@ function buildBuildingMesh(e: Entity): EntityView {
 }
 
 function buildTroopMesh(e: Entity): EntityView {
-  const rig = buildTroop(e.cardId!);
   const root = new THREE.Group();
-  // CR proportions: troops read big against the field, with tanks
-  // visibly towering over swarm units.
-  // Modest size: towers stay the prominent 1.5x landmarks.
-  const scale = (e.cardId === "giant" || e.cardId === "pekka" ? 1.35 : 1.25) * 0.95;
-  rig.group.scale.setScalar(scale);
-  root.add(rig.group);
+
+  // Real glTF model (KayKit) when this card has one; else the primitive rig.
+  const glbUnit = hasGlbModel(e.cardId!) ? makeGlbUnit(e.cardId!) : null;
+  let rig: TroopRig | null = null;
+  let lift: number;
+  if (glbUnit) {
+    root.add(glbUnit.group);
+    lift = glbUnit.height;
+  } else {
+    rig = buildTroop(e.cardId!);
+    // CR proportions: troops read big against the field, with tanks
+    // visibly towering over swarm units.
+    const scale = (e.cardId === "giant" || e.cardId === "pekka" ? 1.35 : 1.25) * 0.95;
+    rig.group.scale.setScalar(scale);
+    root.add(rig.group);
+    lift = (rig.hover ?? 0) + rig.height * scale;
+  }
 
   // Team ring on the ground.
   const ring = new THREE.Mesh(
@@ -938,7 +957,7 @@ function buildTroopMesh(e: Entity): EntityView {
 
   // Flyers get a soft blob shadow tying them to the ground.
   let blobShadow: THREE.Mesh | undefined;
-  if (rig.hover) {
+  if (rig?.hover) {
     blobShadow = new THREE.Mesh(
       new THREE.CircleGeometry(e.radius * 0.8, 20),
       new THREE.MeshBasicMaterial({ color: 0x0a0e16, transparent: true, opacity: 0.3 }),
@@ -948,7 +967,6 @@ function buildTroopMesh(e: Entity): EntityView {
     root.add(blobShadow);
   }
 
-  const lift = (rig.hover ?? 0) + rig.height * scale;
   const bar = makeHpBar(0.9, HP_COLOR[e.side], lift + 0.25);
   bar.group.visible = false; // shown once damaged
   root.add(bar.group);
@@ -969,6 +987,7 @@ function buildTroopMesh(e: Entity): EntityView {
     isTroop: true,
     blobShadow,
     spawnStyle: spawnStyle(e.cardId),
+    glb: glbUnit ? { ...glbUnit, current: "idle" } : undefined,
   };
 }
 
@@ -1018,6 +1037,7 @@ export class Battle3D {
 
   constructor(container: HTMLElement) {
     this.container = container;
+    preloadGlbModels(); // start fetching real character models (KayKit)
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -2764,6 +2784,41 @@ export class Battle3D {
         }
         // Face the attack target, or the spot being walked toward —
         // turning smoothly rather than snapping.
+        let targetYaw: number | null = null;
+        if (target) {
+          const goal = inRange ? target : moveGoal(e, target);
+          const gw = toWorld(goal.x, goal.y);
+          if (Math.hypot(gw.x - w.x, gw.z - w.z) > 1e-3) {
+            targetYaw = Math.atan2(gw.x - w.x, gw.z - w.z);
+          }
+        } else {
+          targetYaw = e.side === "player" ? Math.PI : 0;
+        }
+        if (targetYaw !== null) {
+          const cur = view.root.rotation.y;
+          let delta = targetYaw - cur;
+          while (delta > Math.PI) delta -= Math.PI * 2;
+          while (delta < -Math.PI) delta += Math.PI * 2;
+          view.root.rotation.y = cur + delta * Math.min(1, dt * 10);
+        }
+      } else if (view.glb) {
+        // Real glTF model: drive its mixer + clip from the same combat state.
+        const target = state.entities.find((o) => o.id === e.targetId);
+        const inRange =
+          !!target &&
+          distance(e, target) - e.radius - target.radius <= e.attackRange + 0.05;
+        const moving = !inRange && e.deployTimer <= 0;
+        playGlbAction(view.glb, inRange ? "attack" : moving ? "walk" : "idle");
+        view.glb.mixer.update(dt);
+
+        if (moving && e.stunTimer <= 0) {
+          view.dustT = (view.dustT ?? Math.random() * DUST_INTERVAL) - dt;
+          if (view.dustT <= 0) {
+            view.dustT = DUST_INTERVAL;
+            this.puff(e.x, e.y, 0xcfc4b2, 0.16);
+          }
+        }
+
         let targetYaw: number | null = null;
         if (target) {
           const goal = inRange ? target : moveGoal(e, target);
