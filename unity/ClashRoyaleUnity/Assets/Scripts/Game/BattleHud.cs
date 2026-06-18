@@ -18,6 +18,7 @@ namespace ClashRoyale.Game
             public Image Tile;
             public Image Glyph;
             public Text GlyphLetter;
+            public RawImage Portrait;
             public Image Veil;
             public Image Selected;
             public Text CostText;
@@ -151,6 +152,13 @@ namespace ClashRoyale.Game
             slot.GlyphLetter = Label(glyph.transform, new Vector2(0.5f, 0.5f), Vector2.zero, Mathf.RoundToInt(size.x * 0.34f), TextAnchor.MiddleCenter);
             slot.GlyphLetter.color = new Color(0.1f, 0.12f, 0.18f);
 
+            // Rendered 3D card art on top of the glyph disc (falls back to the letter).
+            var portraitGo = new GameObject("portrait");
+            portraitGo.transform.SetParent(tile.transform, false);
+            var portrait = portraitGo.AddComponent<RawImage>();
+            Anchor(portrait.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(size.x * 0.92f, size.y * 0.78f), new Vector2(0, size.y * 0.08f));
+            slot.Portrait = portrait;
+
             slot.NameText = Label(tile.transform, new Vector2(0.5f, 0f), new Vector2(0, 20), Mathf.RoundToInt(size.x * 0.12f), TextAnchor.MiddleCenter);
             slot.NameText.rectTransform.sizeDelta = new Vector2(size.x, 36);
 
@@ -248,9 +256,17 @@ namespace ClashRoyale.Game
             Color color = CardVisual.ForCard(id);
             slot.Tile.color = color;
             slot.Glyph.color = Color.Lerp(color, Color.white, 0.65f);
+
+            Texture portrait = CardPortrait.Get(id);
+            if (slot.Portrait != null)
+            {
+                slot.Portrait.texture = portrait;
+                slot.Portrait.enabled = portrait != null;
+            }
+
             if (slot.GlyphLetter != null)
             {
-                slot.GlyphLetter.text = card.Name.Substring(0, 1);
+                slot.GlyphLetter.text = portrait != null ? "" : card.Name.Substring(0, 1);
             }
 
             if (slot.NameText != null)

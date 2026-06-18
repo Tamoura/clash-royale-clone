@@ -40,6 +40,8 @@ namespace ClashRoyale.Game
             view = gameObject.AddComponent<GameView>();
             view.Build();
 
+            CardPortrait.Init(view.Camera);
+
             hud = gameObject.AddComponent<BattleHud>();
             hud.Build(Restart);
 
