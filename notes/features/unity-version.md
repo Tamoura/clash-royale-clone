@@ -64,6 +64,29 @@ Unity isn't installed locally, so the C# was verified out-of-band with the
   written against stable 2022.3 APIs and reviewed (note: class `Sim` was
   renamed `Simulation` to avoid a namespace/type collision in `ClashRoyale.Game`).
 
+## Built & verified in Unity (2026-06-18)
+
+Unity 2022.3.62f3 + WebGL module were installed (Hub via Homebrew; free
+Personal license activated). The project was imported, compiled, tested, and
+WebGL-built **in the real editor**, then verified in-browser:
+
+- Import/compile clean — Game/ MonoBehaviours compile against UnityEngine.
+- **24/24 EditMode tests pass inside Unity** (NUnit 3.5).
+- WebGL build runs end-to-end via the intro's Native/Unity toggle: 3D arena,
+  towers, river/bridges, HUD (timer/crowns/elixir/hand), bot — **0 console errors**.
+
+WebGL build gotchas fixed (in `Assets/Editor/WebGLBuilder.cs`):
+- Default engine-code stripping dropped `BoxCollider` (CreatePrimitive needs it)
+  and, with a link.xml, `MonoScript` → set `stripEngineCode=false` +
+  `ManagedStrippingLevel.Minimal`.
+- The `Standard` shader was stripped (primitives rendered magenta) → the build
+  script adds it to Always-Included Shaders.
+- Deploy input switched from `Physics.Raycast` to a camera-ray/board-plane
+  intersection (no collider dependency).
+
+The build output goes to `public/unity/` (gitignored except README); rebuild
+with the WebGLBuilder via the command in unity/README.md.
+
 ## Status
 
 - [x] Web mode module + tests (green)
@@ -71,4 +94,5 @@ Unity isn't installed locally, so the C# was verified out-of-band with the
 - [x] C# sim port (verified bit-identical to TS)
 - [x] Unity scene + driver + HUD
 - [x] Unity project files + EditMode tests + README
-- [ ] PR
+- [x] Built + verified in Unity editor; WebGL build runs via the toggle
+- [x] PR #96 (pushed)

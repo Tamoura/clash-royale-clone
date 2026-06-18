@@ -59,6 +59,32 @@ sim determinism, and the mulberry32 PRNG matching the JS reference values).
 > Tip: WebGL builds must be served over HTTP (not opened as a `file://`
 > path). Running through Vite handles this automatically.
 
+### One-command headless build
+
+The repo ships an Editor build script (`Assets/Editor/WebGLBuilder.cs`) so you
+can build straight into the web project's serve slot without the GUI:
+
+```sh
+UNITY="/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/MacOS/Unity"
+CR_WEBGL_OUT="$(pwd)/../../public/unity" \
+"$UNITY" -batchmode -nographics -quit \
+  -projectPath "$(pwd)" -buildTarget WebGL \
+  -executeMethod ClashRoyale.Editor.WebGLBuilder.Build \
+  -logFile /tmp/unity-webgl.log
+```
+
+(Run from `unity/ClashRoyaleUnity`. The script disables aggressive code
+stripping and force-includes the Standard shader, which a default WebGL build
+would otherwise strip — primitives would render magenta and `BoxCollider`
+would be missing.)
+
+Run the EditMode tests headlessly the same way:
+
+```sh
+"$UNITY" -batchmode -nographics -projectPath "$(pwd)" \
+  -runTests -testPlatform EditMode -testResults /tmp/results.xml
+```
+
 ## Why a port instead of sharing code?
 
 The TypeScript sim can't run inside Unity's C# runtime, so the simulation
