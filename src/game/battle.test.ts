@@ -201,4 +201,20 @@ describe("deploy zone expands when a tower falls", () => {
     const right = ARENA_WIDTH_T / 2 + 4.5;
     expect(checkDeploy(b, "player", "knight", right, 8)).toBe("bad-spot");
   });
+
+  it("keeps a buffer from the enemy king even after a lane opens", () => {
+    const b = createBattle();
+    // Open the left lane by destroying the left enemy princess tower.
+    const leftTower = b.entities.find(
+      (e) =>
+        e.side === "enemy" &&
+        e.kind === "princess-tower" &&
+        e.x < ARENA_WIDTH_T / 2,
+    )!;
+    b.entities = b.entities.filter((e) => e !== leftTower);
+    // Right on top of the enemy king (9, 2.5) is in the open lane but blocked.
+    expect(checkDeploy(b, "player", "knight", 7, 3)).toBe("bad-spot");
+    // Deeper in the lane, clear of the king, is fine.
+    expect(checkDeploy(b, "player", "knight", 4.5, 10)).toBe("ok");
+  });
 });

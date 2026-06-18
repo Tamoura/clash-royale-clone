@@ -1,5 +1,6 @@
 import {
   ARENA_WIDTH,
+  RIVER_Y,
   canDeployTroopAt,
   inArena,
   towerSpots,
@@ -520,6 +521,28 @@ export function openLanes(state: BattleState, side: Side): OpenLanes {
   return { left: !has(true), right: !has(false) };
 }
 
+/**
+ * Clearance (tiles, from tower centre) a troop deploy must keep from a
+ * surviving enemy tower. The king needs a wide buffer so opening a lane
+ * doesn't let you drop units straight onto it.
+ */
+const KING_DEPLOY_BUFFER = 4.5;
+const PRINCESS_DEPLOY_BUFFER = 3;
+
+/** Is (x, y) too close to a surviving enemy tower to deploy a troop? */
+function nearEnemyTower(state: BattleState, side: Side, x: number, y: number): boolean {
+  // Only enemy territory is restricted; your own half always has its clearance.
+  const inEnemyHalf = side === "player" ? y < RIVER_Y : y > RIVER_Y;
+  if (!inEnemyHalf) return false;
+  const opp = side === "player" ? "enemy" : "player";
+  return state.entities.some((e) => {
+    if (e.side !== opp) return false;
+    if (e.kind === "king-tower") return distance(e, { x, y }) < KING_DEPLOY_BUFFER;
+    if (e.kind === "princess-tower") return distance(e, { x, y }) < PRINCESS_DEPLOY_BUFFER;
+    return false;
+  });
+}
+
 /** Dry-run of deployCard, used for UI validity feedback. */
 export function checkDeploy(
   state: BattleState,
@@ -537,6 +560,9 @@ export function checkDeploy(
       ? inArena(x, y)
       : canDeployTroopAt(side, x, y, openLanes(state, side));
   if (!validSpot) return "bad-spot";
+  // Even once a lane opens, troops can't be dropped right on the enemy's
+  // towers — push-ins need a buffer (especially around the king tower).
+  if (card.kind !== "spell" && nearEnemyTower(state, side, x, y)) return "bad-spot";
   if (!trySpend(me.elixir, card.cost)) return "no-elixir";
   return "ok";
 }
