@@ -314,9 +314,9 @@ function buildDeckPicker(): void {
 
   // Edition toggle: the original in-browser build, or the Unity WebGL build.
   const editionRow = document.createElement("div");
-  editionRow.className = "mode-row";
+  editionRow.className = "edition-row";
   const editionNote = document.createElement("div");
-  editionNote.className = "mode-note";
+  editionNote.className = "edition-note";
   const EDITION_LABEL: Record<Edition, string> = {
     native: "Native (Three.js)",
     unity: "Unity (WebGL)",
@@ -327,7 +327,7 @@ function buildDeckPicker(): void {
   };
   for (const ed of ["native", "unity"] as Edition[]) {
     const btn = document.createElement("button");
-    btn.className = "mode-btn";
+    btn.className = "edition-btn";
     btn.textContent = EDITION_LABEL[ed];
     btn.classList.toggle("chosen", ed === edition);
     btn.addEventListener("click", () => {
