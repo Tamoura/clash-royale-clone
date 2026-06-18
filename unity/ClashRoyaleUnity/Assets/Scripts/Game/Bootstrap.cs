@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using ClashRoyale.Sim;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 namespace ClashRoyale.Game
 {
@@ -32,6 +34,8 @@ namespace ClashRoyale.Game
 
         private void Awake()
         {
+            EnsureEventSystem();
+
             view = gameObject.AddComponent<GameView>();
             view.Build();
 
@@ -41,9 +45,23 @@ namespace ClashRoyale.Game
             StartBattle();
         }
 
+        /// <summary>uGUI buttons need an EventSystem to receive clicks.</summary>
+        private static void EnsureEventSystem()
+        {
+            if (EventSystem.current != null)
+            {
+                return;
+            }
+
+            var es = new GameObject("EventSystem");
+            es.AddComponent<EventSystem>();
+            es.AddComponent<StandaloneInputModule>();
+            DontDestroyOnLoad(es);
+        }
+
         private void StartBattle()
         {
-            state = Battle.CreateBattle(Cards.DefaultDeck, RandomDeck());
+            state = Battle.CreateBattle(PlayerDeck(), RandomDeck());
             bot = Bot.CreateBot(unchecked((uint)Environment.TickCount));
             accumulator = 0;
             finished = false;
@@ -56,10 +74,59 @@ namespace ClashRoyale.Game
             StartBattle();
         }
 
-        /// <summary>The bot drafts a random legal 8-card deck, like the web build.</summary>
-        private static System.Collections.Generic.List<CardId> RandomDeck()
+        /// <summary>
+        /// The player's deck, taken from a <c>?deck=knight,archers,...</c> URL
+        /// param the web build passes through (so the Unity edition uses the same
+        /// 8 cards you picked); falls back to the default deck.
+        /// </summary>
+        private static List<CardId> PlayerDeck()
         {
-            var pool = new System.Collections.Generic.List<CardId>(Cards.Deck);
+            string slugs = QueryParam("deck");
+            if (!string.IsNullOrEmpty(slugs))
+            {
+                var deck = new List<CardId>();
+                foreach (string slug in slugs.Split(','))
+                {
+                    if (Cards.FromSlug(slug.Trim(), out CardId id))
+                    {
+                        deck.Add(id);
+                    }
+                }
+
+                if (Battle.IsValidDeck(deck))
+                {
+                    return deck;
+                }
+            }
+
+            return Cards.DefaultDeck;
+        }
+
+        private static string QueryParam(string key)
+        {
+            string url = Application.absoluteURL;
+            if (string.IsNullOrEmpty(url) || !url.Contains("?"))
+            {
+                return null;
+            }
+
+            string query = url.Substring(url.IndexOf('?') + 1);
+            foreach (string pair in query.Split('&'))
+            {
+                int eq = pair.IndexOf('=');
+                if (eq > 0 && pair.Substring(0, eq) == key)
+                {
+                    return Uri.UnescapeDataString(pair.Substring(eq + 1));
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>The bot drafts a random legal 8-card deck, like the web build.</summary>
+        private static List<CardId> RandomDeck()
+        {
+            var pool = new List<CardId>(Cards.Deck);
             var rng = new Mulberry32(unchecked((uint)(Environment.TickCount * 2654435761)));
             for (int i = pool.Count - 1; i > 0; i--)
             {
@@ -101,6 +168,12 @@ namespace ClashRoyale.Game
             }
 
             if (!Input.GetMouseButtonDown(0))
+            {
+                return;
+            }
+
+            // Don't treat a tap on the card row / HUD as a board deploy.
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
             {
                 return;
             }

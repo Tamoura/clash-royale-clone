@@ -8,6 +8,7 @@ import { checkUnityBuild, unityBuildUrl } from "./mode";
 export async function launchUnity(
   host: HTMLElement,
   onBack: () => void,
+  deck?: readonly string[],
 ): Promise<void> {
   host.innerHTML = "";
   host.classList.add("show");
@@ -28,7 +29,7 @@ export async function launchUnity(
   if (available) {
     const frame = document.createElement("iframe");
     frame.className = "unity-frame";
-    frame.src = unityBuildUrl();
+    frame.src = unityBuildUrl("", deck);
     frame.title = "Clash Royale — Unity edition";
     host.appendChild(frame);
   } else {

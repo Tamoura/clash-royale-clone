@@ -132,6 +132,24 @@ namespace ClashRoyale.Sim
             return All[id];
         }
 
+        /// <summary>Web-style kebab-case card ids (e.g. "mini-pekka") &lt;-&gt; enum.</summary>
+        private static readonly Dictionary<string, CardId> BySlug = new()
+        {
+            { "knight", CardId.Knight }, { "archers", CardId.Archers }, { "giant", CardId.Giant },
+            { "musketeer", CardId.Musketeer }, { "mini-pekka", CardId.MiniPekka }, { "skeletons", CardId.Skeletons },
+            { "fireball", CardId.Fireball }, { "arrows", CardId.Arrows }, { "zap", CardId.Zap },
+            { "rage", CardId.Rage }, { "freeze", CardId.Freeze }, { "wizard", CardId.Wizard },
+            { "witch", CardId.Witch }, { "hog-rider", CardId.HogRider }, { "balloon", CardId.Balloon },
+            { "baby-dragon", CardId.BabyDragon }, { "gargoyles", CardId.Gargoyles }, { "valkyrie", CardId.Valkyrie },
+            { "prince", CardId.Prince }, { "pekka", CardId.Pekka }, { "cannon", CardId.Cannon },
+            { "tombstone", CardId.Tombstone }, { "elixir-collector", CardId.ElixirCollector },
+        };
+
+        public static bool FromSlug(string slug, out CardId id)
+        {
+            return BySlug.TryGetValue(slug, out id);
+        }
+
         /// <summary>
         /// Deck order doubles as the starting draw: the first 4 are the opening hand.
         /// </summary>

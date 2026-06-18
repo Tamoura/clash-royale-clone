@@ -37,8 +37,9 @@ export function otherMode(mode: GameMode): GameMode {
  */
 export const UNITY_BUILD_URL = "unity/index.html";
 
-export function unityBuildUrl(base = ""): string {
-  return `${base}${UNITY_BUILD_URL}`;
+export function unityBuildUrl(base = "", deck?: readonly string[]): string {
+  const query = deck && deck.length > 0 ? `?deck=${deck.join(",")}` : "";
+  return `${base}${UNITY_BUILD_URL}${query}`;
 }
 
 /**

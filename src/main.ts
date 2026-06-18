@@ -314,7 +314,7 @@ function buildDeckPicker(): void {
     localStorage.setItem(DECK_KEY, JSON.stringify(playerDeck));
     pickerRoot.classList.remove("show");
     if (gameMode === "unity") {
-      void launchUnity(unityStage, openDeckPicker);
+      void launchUnity(unityStage, openDeckPicker, playerDeck);
     } else {
       restart();
     }

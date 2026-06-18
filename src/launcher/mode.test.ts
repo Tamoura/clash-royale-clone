@@ -56,6 +56,13 @@ describe("unity build url", () => {
     expect(unityBuildUrl("/")).toBe("/unity/index.html");
   });
 
+  it("passes the chosen deck as a query param when given", () => {
+    expect(unityBuildUrl("", ["knight", "mini-pekka"])).toBe(
+      "unity/index.html?deck=knight,mini-pekka",
+    );
+    expect(unityBuildUrl("", [])).toBe("unity/index.html");
+  });
+
   it("reports the build present only on a successful fetch", async () => {
     const ok = await checkUnityBuild(async () => ({ ok: true }) as Response);
     expect(ok).toBe(true);
