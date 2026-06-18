@@ -465,3 +465,48 @@ describe("nearest-target acquisition", () => {
     expect(knight.targetId).toBe(foe.id);
   });
 });
+
+describe("target persistence", () => {
+  it("an engaged attacker keeps its target when a nearer enemy is deployed", () => {
+    const b = createBattle();
+    const tower = b.entities.find(
+      (e) => e.side === "enemy" && e.kind === "princess-tower",
+    )!;
+    // A musketeer already within range of (engaged with) the tower.
+    const [musk] = spawnUnits(b, "player", "musketeer", tower.x, tower.y + 5);
+    tick(b, TICK);
+    expect(musk.targetId).toBe(tower.id);
+    // A fresh enemy troop appears much closer than the tower...
+    spawnUnits(b, "enemy", "knight", tower.x, tower.y + 3.2);
+    tick(b, TICK);
+    // ...but the musketeer stays locked onto the tower it's engaged with.
+    expect(musk.targetId).toBe(tower.id);
+  });
+});
+
+describe("piercing shots", () => {
+  it("the magic archer's shot pierces every enemy in its line", () => {
+    const b = createBattle();
+    const col = 14.5; // a bridge column: troops here path straight, no detour
+    spawnUnits(b, "player", "magic-archer", col, 12);
+    const [near] = spawnUnits(b, "enemy", "knight", col, 9);
+    const [far] = spawnUnits(b, "enemy", "knight", col, 7);
+    const [offLine] = spawnUnits(b, "enemy", "knight", col - 4, 9);
+    run(b, 1.8); // long enough for one shot to fly the full line
+    expect(near.hp).toBeLessThan(near.maxHp);
+    expect(far.hp).toBeLessThan(far.maxHp); // pierced through the near foe
+    expect(offLine.hp).toBe(offLine.maxHp); // a line, not a splash
+  });
+});
+
+describe("recoil", () => {
+  it("the firecracker hops backward after firing", () => {
+    const b = createBattle();
+    const col = 14.5;
+    const [fc] = spawnUnits(b, "player", "firecracker", col, 12);
+    spawnUnits(b, "enemy", "knight", col, 8); // foe ahead, toward lower y
+    const startY = fc.y;
+    run(b, 1.5); // one shot fires (hit speed is slow)
+    expect(fc.y).toBeGreaterThan(startY + 1); // kicked away from the foe
+  });
+});

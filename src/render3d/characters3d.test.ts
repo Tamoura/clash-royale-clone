@@ -16,6 +16,15 @@ describe("3D troop rigs", () => {
     }
   });
 
+  it("builds rigs for the firecracker and magic archer", () => {
+    for (const id of ["firecracker", "magic-archer"] as const) {
+      const rig = buildTroop(id);
+      expect(rig.group.children.length).toBeGreaterThan(2);
+      expect(rig.height).toBeGreaterThan(0.5);
+      expect(rig.arm).not.toBeNull(); // both wield a weapon arm
+    }
+  });
+
   it("flying troops hover and have wings", () => {
     for (const id of ["baby-dragon", "gargoyles"] as const) {
       const rig = buildTroop(id);

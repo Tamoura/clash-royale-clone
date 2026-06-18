@@ -15,10 +15,11 @@ no Supercell assets are used.
   HP readout and collapse into rubble with a camera shake when they
   fall.
 - Elixir regenerates over time (max 10, double-elixir in the last 60s).
-- 23-card deck, 4-card rotating hand: Knight, Archers, Giant,
-  Musketeer, Mini P.E.K.K.A, Skeletons, Wizard, Witch, Hog Rider,
-  Balloon, Baby Dragon, Gargoyles, Valkyrie, Prince, P.E.K.K.A,
-  Cannon, Tombstone, Elixir Collector, Fireball, Arrows, Zap, Rage, Freeze.
+- 25-card deck, 4-card rotating hand: Knight, Archers, Firecracker,
+  Magic Archer, Giant, Musketeer, Mini P.E.K.K.A, Skeletons, Wizard,
+  Witch, Hog Rider, Balloon, Baby Dragon, Gargoyles, Valkyrie, Prince,
+  P.E.K.K.A, Cannon, Tombstone, Elixir Collector, Fireball, Arrows,
+  Zap, Rage, Freeze.
 - CR-style mechanics: flying units (straight paths, only
   air-targeters can hit them), splash damage, the Prince's charge
   (2x damage after a run-up), deployable buildings that decay and
@@ -26,8 +27,12 @@ no Supercell assets are used.
   Witch summons skeleton waves), river-jumpers (the Hog Rider skips
   the bridges), death bombs (the Balloon blasts its killers), stuns
   (Zap roots everything it hits), rage zones (friendly troops move
-  and attack faster), and spells dealing reduced damage to crown
-  towers.
+  and attack faster), piercing shots (the Magic Archer's arrow
+  damages everything in a line), recoil (the Firecracker kicks
+  herself backward after each shot), target persistence (an engaged
+  attacker keeps hammering its current foe instead of chasing a
+  newly deployed nearer one), and spells dealing reduced damage to
+  crown towers.
 - Destroy the enemy king tower for an instant win, otherwise most crowns
   when the clock runs out (sudden-death overtime on a tie, then a
   lowest-tower-HP tiebreak like CR). The

@@ -1,6 +1,8 @@
 export type CardId =
   | "knight"
   | "archers"
+  | "firecracker"
+  | "magic-archer"
   | "giant"
   | "musketeer"
   | "mini-pekka"
@@ -56,6 +58,10 @@ export interface UnitStats {
   splashRadius: number;
   /** Tiles of uninterrupted approach to charge (0 = no charge). */
   chargeDistance: number;
+  /** Projectile pierces every enemy along its flight line (false = single hit). */
+  pierce: boolean;
+  /** Tiles the shooter hops backward (away from its target) after firing (0 = none). */
+  recoil: number;
   /** Damage dealt to nearby enemies when this unit dies (0 = none). */
   deathDamage: number;
   /** Radius of the death blast in tiles. */
@@ -129,6 +135,8 @@ function unit(stats: UnitOverrides): UnitStats {
     jumpsRiver: false,
     splashRadius: 0,
     chargeDistance: 0,
+    pierce: false,
+    recoil: 0,
     deathDamage: 0,
     deathRadius: 0,
     spawnUnitId: null,
@@ -170,6 +178,45 @@ export const CARDS: Record<CardId, Card> = {
       speed: "medium",
       targetsAir: true,
       radius: 0.4,
+    }),
+  },
+  firecracker: {
+    id: "firecracker",
+    name: "Firecracker",
+    rarity: "common",
+    kind: "troop",
+    cost: 3,
+    count: 1,
+    unit: unit({
+      maxHp: 140,
+      damage: 130,
+      hitSpeed: 3,
+      attackRange: 6,
+      sightRange: 6,
+      speed: "fast",
+      targetsAir: true,
+      splashRadius: 1.4, // firework bursts into a spread of sparks
+      recoil: 2, // kicks herself backward after every shot
+      radius: 0.4,
+    }),
+  },
+  "magic-archer": {
+    id: "magic-archer",
+    name: "Magic Archer",
+    rarity: "epic",
+    kind: "troop",
+    cost: 4,
+    count: 1,
+    unit: unit({
+      maxHp: 460,
+      damage: 110,
+      hitSpeed: 1.1,
+      attackRange: 7, // longest reach in the game
+      sightRange: 7,
+      speed: "medium",
+      targetsAir: true,
+      pierce: true, // one arrow damages everything in a line
+      radius: 0.45,
     }),
   },
   giant: {
@@ -519,6 +566,8 @@ export const CARDS: Record<CardId, Card> = {
 export const DECK: CardId[] = [
   "knight",
   "archers",
+  "firecracker",
+  "magic-archer",
   "giant",
   "fireball",
   "musketeer",

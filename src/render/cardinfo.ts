@@ -30,6 +30,8 @@ export function cardStatLines(id: CardId): string[] {
   if (u.targetsAir) traits.push("hits air");
   if (u.targetsBuildingsOnly) traits.push("targets buildings");
   if (u.splashRadius > 0) traits.push("splash");
+  if (u.pierce) traits.push("pierces");
+  if (u.recoil > 0) traits.push("recoil kick");
   if (u.chargeDistance > 0) traits.push("charges (2x)");
   if (u.jumpsRiver) traits.push("jumps the river");
   if (traits.length) lines.push(traits.join(" · "));

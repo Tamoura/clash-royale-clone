@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { CARDS, DECK, getCard } from "./cards";
 
 describe("cards", () => {
-  it("defines the 23-card deck", () => {
+  it("defines the 25-card deck", () => {
     expect(DECK).toEqual([
       "knight",
       "archers",
+      "firecracker",
+      "magic-archer",
       "giant",
       "fireball",
       "musketeer",
@@ -147,6 +149,26 @@ describe("cards", () => {
     if (cannon.kind !== "building") return;
     expect(cannon.lifetime).toBeGreaterThan(0);
     expect(cannon.unit.targetsAir).toBe(false);
+  });
+
+  it("the firecracker is a squishy splash kiter that recoils", () => {
+    const fc = getCard("firecracker");
+    if (fc.kind !== "troop") throw new Error("firecracker should be a troop");
+    expect(fc.unit.attackRange).toBeGreaterThan(1); // ranged
+    expect(fc.unit.targetsAir).toBe(true);
+    expect(fc.unit.splashRadius).toBeGreaterThan(0); // spread sparks
+    expect(fc.unit.recoil).toBeGreaterThan(0); // hops back after firing
+    expect(fc.unit.maxHp).toBeLessThan(300); // very squishy
+    expect(fc.unit.pierce).toBe(false);
+  });
+
+  it("the magic archer fires a piercing line shot", () => {
+    const ma = getCard("magic-archer");
+    if (ma.kind !== "troop") throw new Error("magic-archer should be a troop");
+    expect(ma.unit.pierce).toBe(true);
+    expect(ma.unit.targetsAir).toBe(true);
+    expect(ma.unit.attackRange).toBeGreaterThan(6); // longest reach in the game
+    expect(ma.unit.recoil).toBe(0);
   });
 
   it("every card has a positive elixir cost", () => {

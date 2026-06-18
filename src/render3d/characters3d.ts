@@ -1074,9 +1074,90 @@ export function buildTowerKing(): TroopRig {
   return { group: g, arm, armRest: -0.4, swingAmp: 1.2, height: 1.55, offArm };
 }
 
+function buildFirecracker(): TroopRig {
+  const g = new THREE.Group();
+  const legs = [makeLeg(0x4a2c1a, -0.11, 0.26, 0.13), makeLeg(0x4a2c1a, 0.11, 0.26, 0.13)];
+  g.add(...legs);
+  g.add(cyl(0.23, 0.3, 0.4, 0xe2542b, 0, 0.46, 0)); // orange tunic
+  g.add(cyl(0.31, 0.31, 0.07, 0xb23a18, 0, 0.3, 0)); // belt
+  const head = sphere(0.27, SKIN, 0, 0.92, 0);
+  addEyes(head, 0.27, 0.38, 0.1, "brave");
+  g.add(head);
+  // Tied-up hair with two stubby pigtails.
+  const hair = sphere(0.28, 0x3a2a1c, 0, 1.0, -0.02);
+  hair.scale.set(1, 0.6, 1);
+  g.add(hair);
+  for (const s of [-1, 1]) g.add(sphere(0.1, 0x3a2a1c, s * 0.26, 1.04, -0.12));
+  g.add(cone(0.16, 0.2, 0xf2c14e, 0, 1.26, 0)); // little party hat
+
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.3, 0.62, 0);
+  offArm.add(box(0.11, 0.26, 0.11, SKIN, 0, -0.13, 0));
+  g.add(offArm);
+
+  // A fat firework launcher tube held forward on the shoulder.
+  const arm = new THREE.Group();
+  arm.position.set(0.32, 0.66, 0.05);
+  arm.add(box(0.11, 0.26, 0.11, SKIN, 0, -0.13, 0));
+  const tube = cyl(0.13, 0.13, 0.6, 0xd64027, 0, -0.24, 0.28);
+  tube.rotation.x = Math.PI / 2;
+  arm.add(tube);
+  arm.add(cyl(0.15, 0.15, 0.06, 0xf2c14e, 0, -0.24, 0.56).rotateX(Math.PI / 2)); // muzzle band
+  arm.add(sphere(0.07, 0xffd54f, 0, -0.24, 0.62)); // packed firework
+  const fuse = cyl(0.012, 0.012, 0.12, 0x4a4a4a, 0.0, -0.1, 0.3);
+  fuse.rotation.z = 0.5;
+  arm.add(fuse);
+  g.add(arm);
+  return { group: g, arm, armRest: -0.2, swingAmp: 0.5, height: 1.3, legs, offArm };
+}
+
+function buildMagicArcher(): TroopRig {
+  const g = new THREE.Group();
+  const legs = [makeLeg(0x2a1f44, -0.12, 0.3, 0.14), makeLeg(0x2a1f44, 0.12, 0.3, 0.14)];
+  g.add(...legs);
+  g.add(cyl(0.24, 0.36, 0.56, 0x5e3aa6, 0, 0.56, 0)); // long mystic robe
+  g.add(cyl(0.3, 0.32, 0.07, 0x3c2470, 0, 0.42, 0)); // sash
+  const head = sphere(0.28, SKIN, 0, 1.06, 0);
+  addEyes(head, 0.28, 0.36, 0.08, "calm");
+  g.add(head);
+  // Pointed hood draped over the head.
+  const hood = sphere(0.32, 0x4a2d8f, 0, 1.12, -0.04);
+  hood.scale.set(1, 0.9, 1);
+  g.add(hood);
+  g.add(cone(0.2, 0.4, 0x4a2d8f, 0, 1.42, -0.06)); // hood point
+
+  const offArm = new THREE.Group();
+  offArm.position.set(0.32, 0.76, 0);
+  offArm.add(box(0.11, 0.28, 0.11, 0x5e3aa6, 0, -0.14, 0));
+  g.add(offArm);
+
+  // Bow arm out front, holding a glowing nocked arrow.
+  const arm = new THREE.Group();
+  arm.position.set(-0.32, 0.78, 0.05);
+  arm.add(box(0.11, 0.28, 0.11, 0x5e3aa6, 0, -0.14, 0));
+  const bow = new THREE.Mesh(
+    new THREE.TorusGeometry(0.36, 0.035, 8, 16, Math.PI),
+    toon(0x37206b),
+  );
+  bow.castShadow = true;
+  bow.position.set(0, -0.28, 0.16);
+  bow.rotation.set(0, -Math.PI / 2, 0);
+  arm.add(bow);
+  arm.add(box(0.015, 0.7, 0.015, 0xb39ddb, 0, -0.28, 0.16)); // string
+  const glowArrow = cyl(0.03, 0.03, 0.56, 0x9d6bff, 0, -0.28, 0.3);
+  glowArrow.rotation.x = Math.PI / 2;
+  glowArrow.material = glow(0xb98bff);
+  arm.add(glowArrow);
+  arm.add(sphere(0.06, 0xd7b3ff, 0, -0.28, 0.56)); // arrow's magic tip
+  g.add(arm);
+  return { group: g, arm, armRest: -1.0, swingAmp: 0.7, height: 1.5, legs, offArm };
+}
+
 const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   knight: buildKnight,
   archers: buildArcher,
+  firecracker: buildFirecracker,
+  "magic-archer": buildMagicArcher,
   giant: buildGiant,
   musketeer: buildMusketeer,
   "mini-pekka": buildMiniPekka,

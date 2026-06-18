@@ -7,6 +7,8 @@ import type { CardId } from "../game/cards";
 export const CARD_COLOR: Record<CardId, string> = {
   knight: "#5b6c80",
   archers: "#2e7d32",
+  firecracker: "#c14a2e",
+  "magic-archer": "#5e3aa6",
   giant: "#b07238",
   musketeer: "#36459c",
   "mini-pekka": "#27364e",
