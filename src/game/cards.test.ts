@@ -9,7 +9,7 @@ import {
 } from "./cards";
 
 describe("cards", () => {
-  it("defines the 29-card deck", () => {
+  it("defines the 34-card deck", () => {
     expect(DECK).toEqual([
       "knight",
       "archers",
@@ -36,6 +36,11 @@ describe("cards", () => {
       "minions",
       "skeleton-army",
       "executioner",
+      "electro-wizard",
+      "ice-wizard",
+      "princess",
+      "mega-knight",
+      "royal-giant",
       "arrows",
       "zap",
       "rage",
@@ -295,8 +300,8 @@ describe("crazy mode card overrides", () => {
       for (const id of Object.keys(crazy) as CardId[]) {
         const card = crazy[id];
         if (card.kind === "troop") {
-          expect(card.count).toBeGreaterThanOrEqual(3);
-          expect(card.count).toBeLessThanOrEqual(12);
+          expect(card.count).toBeGreaterThanOrEqual(1);
+          expect(card.count).toBeLessThanOrEqual(16);
         }
       }
     }
@@ -307,7 +312,7 @@ describe("crazy mode card overrides", () => {
   });
 
   it("existing spawners get a summon from the pure pool (Witch can spawn Mini P.E.K.K.A)", () => {
-    const pool = new Set(["skeletons", "archers", "gargoyles", "mini-pekka"]);
+    const pool = new Set(["skeletons", "gargoyles", "bats", "mini-pekka"]);
     const seen = new Set<string>();
     for (let run = 0; run < 60; run++) {
       const witch = crazyCards().witch;
@@ -322,7 +327,7 @@ describe("crazy mode card overrides", () => {
 
   it("summonable pool units never spawn (chains stay one level deep)", () => {
     const crazy = crazyCards();
-    for (const id of ["skeletons", "archers", "gargoyles", "mini-pekka"] as CardId[]) {
+    for (const id of ["skeletons", "gargoyles", "bats", "mini-pekka"] as CardId[]) {
       const card = crazy[id];
       if (card.kind === "troop") expect(card.unit.spawnUnitId).toBeNull();
     }

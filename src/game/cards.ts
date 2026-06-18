@@ -22,6 +22,11 @@ export type CardId =
   | "minions"
   | "skeleton-army"
   | "executioner"
+  | "electro-wizard"
+  | "ice-wizard"
+  | "princess"
+  | "mega-knight"
+  | "royal-giant"
   | "valkyrie"
   | "prince"
   | "pekka"
@@ -476,6 +481,98 @@ export const CARDS: Record<CardId, Card> = {
       radius: 0.55,
     }),
   },
+  "electro-wizard": {
+    id: "electro-wizard",
+    name: "Electro Wizard",
+    rarity: "epic",
+    kind: "troop",
+    cost: 4,
+    count: 1,
+    unit: unit({
+      maxHp: 600,
+      damage: 150,
+      hitSpeed: 1.8,
+      attackRange: 5,
+      sightRange: 5.5,
+      speed: "medium",
+      targetsAir: true,
+      splashRadius: 0.7, // forked lightning zaps a small cluster
+    }),
+  },
+  "ice-wizard": {
+    id: "ice-wizard",
+    name: "Ice Wizard",
+    rarity: "epic",
+    kind: "troop",
+    cost: 3,
+    count: 1,
+    unit: unit({
+      maxHp: 600,
+      damage: 75, // low damage, big splash control
+      hitSpeed: 1.5,
+      attackRange: 5.5,
+      sightRange: 6,
+      speed: "medium",
+      targetsAir: true,
+      splashRadius: 1.0,
+    }),
+  },
+  princess: {
+    id: "princess",
+    name: "Princess",
+    rarity: "epic",
+    kind: "troop",
+    cost: 3,
+    count: 1,
+    unit: unit({
+      maxHp: 220, // glass cannon
+      damage: 140,
+      hitSpeed: 3,
+      attackRange: 9, // sniper range — fires from across the river
+      sightRange: 9,
+      speed: "medium",
+      targetsAir: true,
+      splashRadius: 1.2,
+      radius: 0.4,
+    }),
+  },
+  "mega-knight": {
+    id: "mega-knight",
+    name: "Mega Knight",
+    rarity: "epic",
+    kind: "troop",
+    cost: 7,
+    count: 1,
+    unit: unit({
+      maxHp: 3400,
+      damage: 240,
+      hitSpeed: 1.7,
+      attackRange: MELEE,
+      sightRange: 6,
+      speed: "medium",
+      splashRadius: 1.6, // area slam
+      chargeDistance: 3, // leaps in for double damage
+      radius: 0.8,
+    }),
+  },
+  "royal-giant": {
+    id: "royal-giant",
+    name: "Royal Giant",
+    rarity: "rare",
+    kind: "troop",
+    cost: 6,
+    count: 1,
+    unit: unit({
+      maxHp: 2400,
+      damage: 200,
+      hitSpeed: 1.7,
+      attackRange: 5, // shoots buildings from range
+      sightRange: 7.5,
+      speed: "slow",
+      targetsBuildingsOnly: true,
+      radius: 0.75,
+    }),
+  },
   valkyrie: {
     id: "valkyrie",
     name: "Valkyrie",
@@ -665,6 +762,11 @@ export const DECK: CardId[] = [
   "minions",
   "skeleton-army",
   "executioner",
+  "electro-wizard",
+  "ice-wizard",
+  "princess",
+  "mega-knight",
+  "royal-giant",
   "arrows",
   "zap",
   "rage",
@@ -696,7 +798,9 @@ const pick = <T>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.len
  */
 export function crazyCards(): Record<CardId, Card> {
   const out = structuredClone(CARDS) as Record<CardId, Card>;
-  const spawnPool: CardId[] = ["skeletons", "archers", "gargoyles", "mini-pekka"];
+  // Units that can be summoned. They come in small numbers and never summon
+  // themselves, so spawn chains stay one level deep and bounded.
+  const spawnPool: CardId[] = ["skeletons", "gargoyles", "bats", "mini-pekka"];
 
   for (const id of Object.keys(out) as CardId[]) {
     const card = out[id];
@@ -711,21 +815,24 @@ export function crazyCards(): Record<CardId, Card> {
     u.maxHp = Math.max(40, Math.round(u.maxHp * rf(0.7, 1.7)));
     if (Math.random() < 0.3) u.splashRadius = Math.max(u.splashRadius, rf(0.9, 1.7));
 
+    const inPool = spawnPool.includes(id);
     if (card.kind === "troop") {
-      // Everything swarms: even a lone Giant arrives as a pack.
-      card.count = ri(3, 12);
+      // Cheaper cards swarm harder; summonable units stay small so spawners
+      // (a Witch) don't flood the field. Archers (cost 3) come ~6-10.
+      card.count = inPool
+        ? ri(1, 3)
+        : Math.min(16, ri(Math.max(2, Math.round(16 / card.cost)), Math.max(3, Math.round(30 / card.cost))));
     }
 
     const alreadySpawner = u.spawnUnitId !== null;
-    if (spawnPool.includes(id)) {
-      // Summonable units don't summon (keeps spawn chains one level deep).
+    if (inPool) {
       u.spawnUnitId = null;
       u.spawnInterval = 0;
-    } else if (card.kind === "building" || alreadySpawner || Math.random() < 0.45) {
-      // Buildings + existing spawners always get scrambled; ~45% of other
-      // troops gain a surprise spawner (a Witch summoning Mini P.E.K.K.As).
+    } else if (card.kind === "building" || alreadySpawner || Math.random() < 0.3) {
+      // Buildings + existing spawners always get a scrambled summon; ~30% of
+      // other troops gain a surprise one (a Witch summoning Mini P.E.K.K.As).
       u.spawnUnitId = pick(spawnPool);
-      u.spawnInterval = rf(3, 6);
+      u.spawnInterval = rf(5, 9);
     }
   }
 

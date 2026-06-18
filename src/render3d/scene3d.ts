@@ -57,6 +57,10 @@ function cameraZForView(): number {
   return viewSide === "player" ? CAM_HOME.z : -CAM_HOME.z;
 }
 
+// Matches KING_DEPLOY_BUFFER in battle.ts: troops can't be deployed this close
+// to the enemy king even after a lane opens.
+const KING_NO_DEPLOY_RADIUS = 4.5;
+
 /** Per-theme scenery palette (theme flag lives in theme.ts). */
 const arabic = ARABIC;
 const ARENA_PALETTE = {
@@ -935,7 +939,12 @@ function buildTroopMesh(e: Entity): EntityView {
     rig = buildTroop(e.cardId!);
     // CR proportions: troops read big against the field, with tanks
     // visibly towering over swarm units.
-    const scale = (e.cardId === "giant" || e.cardId === "pekka" ? 1.35 : 1.25) * 0.95;
+    const big =
+      e.cardId === "giant" ||
+      e.cardId === "pekka" ||
+      e.cardId === "mega-knight" ||
+      e.cardId === "royal-giant";
+    const scale = (big ? 1.35 : 1.25) * 0.95;
     rig.group.scale.setScalar(scale);
     root.add(rig.group);
     lift = (rig.hover ?? 0) + rig.height * scale;
@@ -1031,6 +1040,8 @@ export class Battle3D {
   private readonly enemyDarkR: THREE.Mesh;
   private readonly laneBlueL: THREE.Mesh;
   private readonly laneBlueR: THREE.Mesh;
+  // Red "keep clear" disc around the enemy king (matches the deploy buffer).
+  private readonly kingNoDeploy: THREE.Mesh;
   private zoneShown = false;
   private lastOpen: OpenLanes = { left: false, right: false };
   private readonly container: HTMLElement;
@@ -1110,6 +1121,23 @@ export class Battle3D {
     this.enemyDarkR = zoneStrip(0x1a0b10, 0.38, ARENA_HEIGHT / 2 + 1);
     this.laneBlueL = zoneStrip(0x3b82f6, 0.16, ARENA_HEIGHT / 2 - 1);
     this.laneBlueR = zoneStrip(0x3b82f6, 0.16, ARENA_HEIGHT / 2 - 1);
+
+    // "Keep clear" disc around the enemy king (radius = the deploy buffer).
+    this.kingNoDeploy = new THREE.Mesh(
+      new THREE.CircleGeometry(KING_NO_DEPLOY_RADIUS, 40),
+      new THREE.MeshBasicMaterial({
+        color: 0xff3b3b,
+        transparent: true,
+        opacity: 0.2,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    this.kingNoDeploy.rotation.x = -Math.PI / 2;
+    this.kingNoDeploy.visible = false;
+    const k0 = toWorld(ARENA_WIDTH / 2, 2.5);
+    this.kingNoDeploy.position.set(k0.x, 0.028, k0.z);
+    this.scene.add(this.kingNoDeploy);
 
     // Bloom pipeline: only bright pixels (the unlit "glow" materials —
     // lanterns, spell FX, hit-sparks) bloom, so it stays subtle and cheap.
@@ -1821,6 +1849,9 @@ export class Battle3D {
     this.enemyDarkR.position.set(lx, 0.026, ez);
     this.laneBlueL.position.set(-lx, 0.027, bz);
     this.laneBlueR.position.set(lx, 0.027, bz);
+    // Enemy king sits at arena y=2.5 (or mirrored for the guest viewpoint).
+    const kingW = toWorld(ARENA_WIDTH / 2, side === "player" ? 2.5 : ARENA_HEIGHT - 2.5);
+    this.kingNoDeploy.position.set(kingW.x, 0.028, kingW.z);
   }
 
   /** Convert a pointer event to arena tile coordinates, if on the field. */
@@ -1908,6 +1939,8 @@ export class Battle3D {
     this.zonePlane.visible = v;
     this.laneBlueL.visible = v && open.left;
     this.laneBlueR.visible = v && open.right;
+    // The king buffer only matters once a lane is open into enemy territory.
+    this.kingNoDeploy.visible = v && (open.left || open.right);
     this.enemyDarkL.visible = v && !open.left;
     this.enemyDarkR.visible = v && !open.right;
   }

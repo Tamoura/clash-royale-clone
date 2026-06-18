@@ -1433,6 +1433,12 @@ const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   valkyrie: buildValkyrie,
   prince: buildPrince,
   pekka: buildPekka,
+  // New cards reuse the closest archetype rig (distinct card colours + stats).
+  "electro-wizard": buildWizard,
+  "ice-wizard": buildWizard,
+  princess: buildArcher,
+  "mega-knight": buildKnight,
+  "royal-giant": buildGiant,
 };
 
 /**
