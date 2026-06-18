@@ -21,6 +21,7 @@ namespace ClashRoyale.Game
         private BotState bot;
         private GameView view;
         private BattleHud hud;
+        private SoundEngine sound;
         private double accumulator;
         private bool finished;
 
@@ -41,6 +42,9 @@ namespace ClashRoyale.Game
 
             hud = gameObject.AddComponent<BattleHud>();
             hud.Build(Restart);
+
+            sound = gameObject.AddComponent<SoundEngine>();
+            sound.Init();
 
             StartBattle();
         }
@@ -149,10 +153,11 @@ namespace ClashRoyale.Game
                 accumulator -= FixedDt;
             }
 
-            state.Events.Clear();
             view.Sync(state);
             view.SetDeployZone(state.Result == null && hud.SelectedIndex >= 0);
             hud.UpdateHud(state);
+            sound.Handle(state.Events);
+            state.Events.Clear();
 
             if (state.Result != null && !finished)
             {
