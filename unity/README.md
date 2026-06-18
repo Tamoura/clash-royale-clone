@@ -26,6 +26,24 @@ ClashRoyaleUnity/
   ProjectSettings/ProjectVersion.txt
 ```
 
+### Character models (CC0 — fetch first)
+
+Troops use real rigged + animated **KayKit** character models (CC0, by Kay
+Lousberg). The `.fbx` files (~20 MB each, they embed 76 animations) are **not
+committed**; pull them before building:
+
+```sh
+bash unity/fetch-assets.sh
+```
+
+This downloads the KayKit Adventurers + Skeletons packs from GitHub into
+`Assets/Resources/KayKit/`. Cards map to models in
+`Assets/Scripts/Game/KayKitModels.cs` (Knight, Mage, Rogue, Barbarian,
+Skeleton); flyers/buildings still use the primitive `CharacterFactory`. The
+runtime loads the model + its animation clips from Resources and drives
+idle/walk via `CharacterAnim` (a small PlayableGraph — no AnimatorController
+asset needed).
+
 ### How it runs
 
 `Bootstrap` uses `[RuntimeInitializeOnLoadMethod]`, so the whole game

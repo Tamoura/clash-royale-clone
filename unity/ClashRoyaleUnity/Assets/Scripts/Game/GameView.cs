@@ -22,6 +22,9 @@ namespace ClashRoyale.Game
             public Transform HpFill;
             public Renderer HpRenderer;
             public float TopY;
+            public CharacterAnim Anim;
+            public Vector3 LastPos;
+            public bool HasLast;
         }
 
         private readonly Dictionary<int, EntityView> views = new();
@@ -77,11 +80,11 @@ namespace ClashRoyale.Game
 
             Camera.clearFlags = CameraClearFlags.Skybox;
             Camera.orthographic = false;
-            Camera.fieldOfView = 44f;
-            // Near-top-down portrait framing to mirror the web view: the tall
-            // 18x32 board fills a centred column, player end toward the bottom.
-            Camera.transform.position = new Vector3(0f, 42f, -12f);
-            Camera.transform.LookAt(new Vector3(0f, 0f, 3f));
+            Camera.fieldOfView = 46f;
+            // Angled portrait framing: top-down enough to read the board, tilted
+            // enough that the real character models have presence.
+            Camera.transform.position = new Vector3(0f, 33f, -19f);
+            Camera.transform.LookAt(new Vector3(0f, 0f, -0.5f));
             Camera.allowHDR = true;
         }
 
@@ -227,17 +230,26 @@ namespace ClashRoyale.Game
                 }
 
                 float elevation = e.Flying ? 1.7f : 0f;
-                view.Root.transform.position = WorldPos(e.X, e.Y, elevation);
+                Vector3 pos = WorldPos(e.X, e.Y, elevation);
+                Vector3 prev = view.HasLast ? view.LastPos : pos;
+                view.Root.transform.position = pos;
 
-                // Face travel direction roughly (toward enemy end).
                 if (e.Kind == EntityKind.Troop)
                 {
-                    float face = e.Side == Side.Player ? 1f : -1f;
+                    Vector3 delta = pos - prev;
+                    delta.y = 0f;
+                    bool moving = delta.sqrMagnitude > 0.0000004f; // ~moved this frame
+                    Vector3 faceDir = moving
+                        ? delta.normalized
+                        : new Vector3(0, 0, e.Side == Side.Player ? 1f : -1f);
                     view.Root.transform.rotation = Quaternion.Slerp(
-                        view.Root.transform.rotation,
-                        Quaternion.LookRotation(new Vector3(0, 0, face)), 0.2f);
+                        view.Root.transform.rotation, Quaternion.LookRotation(faceDir), 0.25f);
+
+                    view.Anim?.Play(moving ? "Walking_A" : "Idle");
                 }
 
+                view.LastPos = pos;
+                view.HasLast = true;
                 UpdateHpBar(view, e, elevation);
             }
 
@@ -266,11 +278,18 @@ namespace ClashRoyale.Game
         {
             GameObject root;
             float topY;
+            CharacterAnim anim = null;
 
             if (e.Kind == EntityKind.PrincessTower || e.Kind == EntityKind.KingTower)
             {
                 root = TowerFactory.Build(e.Kind, e.Side, (float)e.Radius);
                 topY = e.Kind == EntityKind.KingTower ? 3.6f : 2.8f;
+            }
+            else if (e.Kind == EntityKind.Troop &&
+                     KayKitModels.TryBuild(e.CardId.Value, e.Side, (float)e.Radius, out GameObject model, out anim))
+            {
+                root = model;
+                topY = 2.2f * Mathf.Max(0.7f, (float)e.Radius / 0.5f);
             }
             else
             {
@@ -280,7 +299,7 @@ namespace ClashRoyale.Game
 
             root.transform.SetParent(entityRoot, false);
 
-            EntityView view = new EntityView { Root = root, TopY = topY };
+            EntityView view = new EntityView { Root = root, TopY = topY, Anim = anim };
             BuildHpBar(view, e);
             return view;
         }

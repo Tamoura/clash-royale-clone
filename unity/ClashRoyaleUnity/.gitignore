@@ -26,3 +26,7 @@
 *.aab
 *.unitypackage
 crashlytics-build.properties
+
+# Large CC0 character FBX (fetch with unity/fetch-assets.sh)
+Assets/Resources/KayKit/*.fbx
+Assets/Resources/KayKit/*.fbx.meta
