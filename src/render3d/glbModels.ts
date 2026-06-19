@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
+import { ARABIC } from "./theme";
 
 /**
  * Real rigged character models (CC0 KayKit) shared with the Unity edition,
@@ -76,6 +77,10 @@ function url(file: string): string {
  * so several cards can share one base model without re-parsing it.
  */
 export function preloadGlbModels(): void {
+  // The western KayKit models clash with the Arabic (crescent) art direction,
+  // which dresses the hand-built rigs in turbans. Only load them in the normal
+  // theme; the Arabic theme keeps its themed primitive rigs.
+  if (ARABIC) return;
   const loader = new GLTFLoader();
   for (const file of new Set(Object.values(MODEL_FILE))) {
     if (!file || loaded.has(file) || loading.has(file)) continue;
@@ -93,6 +98,7 @@ export function preloadGlbModels(): void {
 }
 
 export function hasGlbModel(cardId: string): boolean {
+  if (ARABIC) return false; // Arabic theme uses the turbaned primitive rigs
   const file = MODEL_FILE[cardId];
   return !!file && loaded.has(file);
 }
