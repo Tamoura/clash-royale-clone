@@ -26,6 +26,7 @@ const MODEL_FILE: Partial<Record<string, string>> = {
   "skeleton-army": "Skeleton_Minion.glb",
   pekka: "Skeleton_Warrior.glb",
   prince: "Knight.glb",
+  musketeer: "Rogue_Hooded.glb",
 };
 
 /**
@@ -41,6 +42,7 @@ const MODEL_SCALE: Partial<Record<string, number>> = {
   "skeleton-army": 0.55,
   pekka: 1.5,
   prince: 1.05,
+  musketeer: 0.92,
 };
 
 /**
@@ -109,11 +111,13 @@ const ATTACK_CLIP: Record<string, string> = {
   "skeleton-army": "1H_Melee_Attack_Chop",
   pekka: "2H_Melee_Attack_Chop", // heavy two-handed sword swing
   prince: "1H_Melee_Attack_Stab", // a lance-like thrust
+  musketeer: "2H_Ranged_Shoot", // shoulders and fires the musket
 };
 
 /** Cards that get a weapon prop attached to a hand slot of their model. */
-const MODEL_WEAPON: Partial<Record<string, "lance">> = {
+const MODEL_WEAPON: Partial<Record<string, "lance" | "musket">> = {
   prince: "lance",
+  musketeer: "musket",
 };
 
 /** A striped jousting/tournament lance, built from primitives. */
@@ -145,20 +149,55 @@ function buildLance(): THREE.Group {
   return g;
 }
 
+/** A flintlock musket, built from primitives. Extends along +Y from the grip. */
+function buildMusket(): THREE.Group {
+  const g = new THREE.Group();
+  const wood = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 0.7 });
+  const steel = new THREE.MeshStandardMaterial({ color: 0x2b2f36, metalness: 0.5, roughness: 0.4 });
+  const brass = new THREE.MeshStandardMaterial({ color: 0xc9a23a, metalness: 0.5, roughness: 0.4 });
+  // Stock butt behind the grip, body around it, barrel reaching forward.
+  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.16), wood);
+  stock.position.y = -0.28;
+  g.add(stock);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.42, 0.14), wood);
+  body.position.y = 0.1;
+  g.add(body);
+  const hammer = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.12, 0.06), brass);
+  hammer.position.set(0, 0.18, 0.11);
+  g.add(hammer);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.045, 1.2, 12), steel);
+  barrel.position.y = 0.9;
+  g.add(barrel);
+  const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.1, 12), steel);
+  muzzle.position.y = 1.5;
+  g.add(muzzle);
+  g.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh) m.castShadow = true;
+  });
+  return g;
+}
+
 /** Attach a card's weapon prop to its model's right-hand slot, if any. */
 export function attachWeapon(group: THREE.Object3D, cardId: string): void {
-  if (MODEL_WEAPON[cardId] !== "lance") return;
+  const weapon = MODEL_WEAPON[cardId];
+  if (!weapon) return;
   // GLTFLoader strips dots from node names: "handslot.r" -> "handslotr".
   const slot =
     group.getObjectByName("handslotr") ?? group.getObjectByName("handslot.r");
   if (!slot) return;
-  // Hide the model's baked-in hand weapons so the lance stands alone.
+  // Hide the model's baked-in hand weapons so the prop stands alone.
   for (const c of [...slot.children]) c.visible = false;
-  const lance = buildLance();
-  // The hand bone's local +Y points groundward; flip + tilt so the lance
-  // rises forward like a couched tournament lance.
-  lance.rotation.x = Math.PI - 0.5;
-  slot.add(lance);
+  // A two-handed musket also clears the off-hand (a stray dagger/shield).
+  if (weapon === "musket") {
+    const off = group.getObjectByName("handslotl") ?? group.getObjectByName("handslot.l");
+    if (off) for (const c of [...off.children]) c.visible = false;
+  }
+  const prop = weapon === "lance" ? buildLance() : buildMusket();
+  // The hand bone's local +Y points groundward; flip so the prop reaches
+  // forward — a couched lance, or a levelled musket.
+  prop.rotation.x = weapon === "lance" ? Math.PI - 0.5 : Math.PI - 0.95;
+  slot.add(prop);
 }
 
 /** Instantiate an animated clone of a card's model, or null if not loaded. */

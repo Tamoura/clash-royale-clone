@@ -33,11 +33,11 @@ scene.add(floor);
 const mixers: THREE.AnimationMixer[] = [];
 const loader = new GLTFLoader();
 
-// file, label, scale, x, tint (0xffffff = none) — final Batch 2 wiring
+// file, label, scale, x, tint (0xffffff = none)
 const ROW: Array<[string, string, number, number, number]> = [
-  ["Knight.glb", "Knight", 0.95, -4.6, 0xffffff],
-  ["Skeleton_Warrior.glb", "P.E.K.K.A", 1.5, -1.2, 0x33384a],
-  ["Knight.glb", "Prince", 1.05, 3.6, 0x7088e0],
+  ["Knight.glb", "Knight", 0.95, -4.2, 0xffffff],
+  ["Knight.glb", "Prince", 1.05, -1.0, 0x7088e0],
+  ["Rogue_Hooded.glb", "Musketeer", 0.92, 3.0, 0xffffff],
 ];
 
 const labels = document.getElementById("labels")!;
@@ -60,10 +60,8 @@ ROW.forEach(([file, label, scale, x, tint]) => {
         }
       }
     });
-    if (label === "Prince") {
-      attachWeapon(g, "prince");
-      (window as unknown as { __prince: THREE.Object3D }).__prince = g;
-    }
+    if (label === "Prince") attachWeapon(g, "prince");
+    if (label === "Musketeer") attachWeapon(g, "musketeer");
     scene.add(g);
     const mixer = new THREE.AnimationMixer(g);
     const idle = gltf.animations.find((a) => a.name === "Idle");
