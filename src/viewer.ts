@@ -1,9 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { buildTroop, outlineRig } from "./render3d/characters3d";
 
-// Tiny standalone viewer to eyeball characters side by side:
-// primitive Wizard (old) | Mage GLB (new Wizard) | Knight GLB.
+// Standalone viewer to eyeball textured GLB characters at their in-game scales.
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
@@ -14,8 +12,8 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xcdb487);
 
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
-camera.position.set(0, 2.2, 7.5);
-camera.lookAt(0, 1.1, 0);
+camera.position.set(0, 2.4, 11);
+camera.lookAt(0, 1.0, 0);
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7a55, 1.1));
 const sun = new THREE.DirectionalLight(0xfff2d6, 1.5);
@@ -24,7 +22,7 @@ sun.castShadow = true;
 scene.add(sun);
 
 const floor = new THREE.Mesh(
-  new THREE.CircleGeometry(8, 48),
+  new THREE.CircleGeometry(10, 48),
   new THREE.MeshStandardMaterial({ color: 0xbfa074 }),
 );
 floor.rotation.x = -Math.PI / 2;
@@ -32,30 +30,29 @@ floor.receiveShadow = true;
 scene.add(floor);
 
 const mixers: THREE.AnimationMixer[] = [];
-
-// 1) Primitive wizard rig (the look the other wizards still use).
-const rig = buildTroop("wizard");
-const rigScale = 1.25 * 0.95;
-rig.group.scale.setScalar(rigScale);
-rig.group.position.set(-2.4, 0, 0);
-rig.group.rotation.y = 0;
-outlineRig(rig.group);
-scene.add(rig.group);
-
-// 2 + 3) GLB models.
 const loader = new GLTFLoader();
-function addGlb(file: string, x: number): void {
+
+// file, label, in-game scale, x position
+const ROW: Array<[string, string, number, number]> = [
+  ["Knight.glb", "Knight", 0.95, -4.2],
+  ["Mage.glb", "Wizard", 0.95, -2.1],
+  ["Barbarian.glb", "Valkyrie", 0.9, 0],
+  ["Rogue.glb", "Mini P.E.K.K.A", 0.8, 2.1],
+  ["Skeleton_Minion.glb", "Skeleton", 0.62, 4.2],
+];
+
+const labels = document.getElementById("labels")!;
+// Expose label positions (as screen-width %) so a screenshot can bake them in.
+(window as unknown as { __labelData: Array<{ l: string; pct: number }> }).__labelData =
+  ROW.map(([, label, , x]) => ({ l: label, pct: 50 + (x / 5.6) * 42 }));
+ROW.forEach(([file, label, scale, x]) => {
   loader.load(`/models/kaykit/${file}`, (gltf) => {
     const g = gltf.scene;
-    g.scale.setScalar(0.95);
+    g.scale.setScalar(scale);
     g.position.set(x, 0, 0);
-    g.rotation.y = 0;
     g.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (m.isMesh) {
-        m.castShadow = true;
-        m.receiveShadow = true;
-      }
+      if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; }
     });
     scene.add(g);
     const mixer = new THREE.AnimationMixer(g);
@@ -63,9 +60,13 @@ function addGlb(file: string, x: number): void {
     if (idle) mixer.clipAction(idle).play();
     mixers.push(mixer);
   });
-}
-addGlb("Mage.glb", 0);
-addGlb("Knight.glb", 2.4);
+  const d = document.createElement("div");
+  d.className = "lbl";
+  d.textContent = label;
+  // map world x (-4.2..4.2) to screen % roughly
+  d.style.left = `${50 + (x / 5.6) * 42}%`;
+  labels.appendChild(d);
+});
 
 function resize(): void {
   const w = window.innerWidth, h = window.innerHeight;
@@ -80,7 +81,6 @@ const clock = new THREE.Clock();
 function tick(): void {
   const dt = clock.getDelta();
   for (const m of mixers) m.update(dt);
-  rig.extras?.(clock.elapsedTime, 0);
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }

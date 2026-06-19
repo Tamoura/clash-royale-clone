@@ -7,17 +7,12 @@
     <style>
       html, body { margin: 0; height: 100%; background: #cdb487; overflow: hidden; font-family: system-ui, sans-serif; }
       #c { display: block; width: 100vw; height: 100vh; }
-      .lbl { position: fixed; bottom: 18px; color: #1b1300; font-weight: 700; font-size: 20px; text-shadow: 0 1px 0 #f4e3bf; }
-      #l1 { left: 22%; transform: translateX(-50%); }
-      #l2 { left: 50%; transform: translateX(-50%); }
-      #l3 { left: 78%; transform: translateX(-50%); }
+      #labels .lbl { position: fixed; bottom: 16px; transform: translateX(-50%); color: #1b1300; font-weight: 700; font-size: 17px; text-shadow: 0 1px 0 #f4e3bf; white-space: nowrap; }
     </style>
   </head>
   <body>
     <canvas id="c"></canvas>
-    <div class="lbl" id="l1">Primitive Wizard (old)</div>
-    <div class="lbl" id="l2">Mage GLB — new Wizard</div>
-    <div class="lbl" id="l3">Knight GLB (existing)</div>
+    <div id="labels"></div>
     <script type="module" src="/src/viewer.ts"></script>
   </body>
 </html>

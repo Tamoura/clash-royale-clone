@@ -20,6 +20,23 @@ const loading = new Set<string>();
 const MODEL_FILE: Partial<Record<string, string>> = {
   knight: "Knight.glb",
   wizard: "Mage.glb",
+  valkyrie: "Barbarian.glb",
+  "mini-pekka": "Rogue.glb",
+  skeletons: "Skeleton_Minion.glb",
+  "skeleton-army": "Skeleton_Minion.glb",
+};
+
+/**
+ * Per-card model scale. KayKit characters are all human-sized, so swarm and
+ * "mini" units need shrinking to read right against the bigger troops.
+ */
+const MODEL_SCALE: Partial<Record<string, number>> = {
+  knight: 0.95,
+  wizard: 0.95,
+  valkyrie: 0.9,
+  "mini-pekka": 0.8,
+  skeletons: 0.62,
+  "skeleton-army": 0.55,
 };
 
 function url(file: string): string {
@@ -59,6 +76,10 @@ export interface GlbUnit {
 const ATTACK_CLIP: Record<string, string> = {
   knight: "1H_Melee_Attack_Slice_Diagonal",
   wizard: "Spellcast_Shoot", // the Mage's casting throw, for the fire-orb attack
+  valkyrie: "2H_Melee_Attack_Spinning", // her signature spin
+  "mini-pekka": "Dualwield_Melee_Attack_Slice", // the Rogue's twin-blade flurry
+  skeletons: "1H_Melee_Attack_Chop",
+  "skeleton-army": "1H_Melee_Attack_Chop",
 };
 
 /** Instantiate an animated clone of a card's model, or null if not loaded. */
@@ -67,7 +88,7 @@ export function makeGlbUnit(cardId: string): GlbUnit | null {
   if (!src) return null;
 
   const group = cloneSkinned(src.scene) as THREE.Group;
-  const scale = 0.95;
+  const scale = MODEL_SCALE[cardId] ?? 0.95;
   group.scale.setScalar(scale);
   group.traverse((o) => {
     const mesh = o as THREE.Mesh;
