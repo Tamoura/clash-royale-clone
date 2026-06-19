@@ -64,12 +64,18 @@ export interface Entity {
   recoil: number;
   /** Seconds this entity's hits stun the target (0 = none). */
   stunOnHit: number;
+  /** Seconds this entity's hits slow the target (0 = none). */
+  slowOnHit: number;
+  /** Number of enemies a single attack strikes at once (1 = normal). */
+  chainCount: number;
   /** Multiplier on splash damage to non-primary targets (1 = full). */
   splashDamageFactor: number;
   /** Seconds of post-deployment freeze remaining. */
   deployTimer: number;
   /** Seconds of stun remaining (no moving or attacking). */
   stunTimer: number;
+  /** Seconds of slow remaining (half move + attack speed). */
+  slowTimer: number;
   /** HP lost per second (deployable buildings decay; 0 otherwise). */
   decayPerSec: number;
   /** Damage dealt to nearby enemies on death (0 = none). */
@@ -151,6 +157,8 @@ export interface Projectile {
   hitIds: number[];
   /** Seconds the impact stuns (0 = none) — the Electro Wizard zap. */
   stunOnHit: number;
+  /** Seconds the impact slows (0 = none) — the Ice Wizard chill. */
+  slowOnHit: number;
   /** Multiplier on splash damage to non-primary targets (1 = full). */
   splashDamageFactor: number;
 }
@@ -259,9 +267,12 @@ function makeTower(state: BattleState, side: Side, kind: TowerKind, x: number, y
     pierce: false,
     recoil: 0,
     stunOnHit: 0,
+    slowOnHit: 0,
+    chainCount: 1,
     splashDamageFactor: 1,
     deployTimer: 0,
     stunTimer: 0,
+    slowTimer: 0,
     decayPerSec: 0,
     deathDamage: 0,
     deathRadius: 0,
@@ -420,9 +431,12 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       pierce: card.unit.pierce,
       recoil: card.unit.recoil,
       stunOnHit: card.unit.stunOnHit,
+      slowOnHit: card.unit.slowOnHit,
+      chainCount: card.unit.chainCount,
       splashDamageFactor: card.unit.splashDamageFactor,
       deployTimer: DEPLOY_DELAY,
       stunTimer: 0,
+      slowTimer: 0,
       radius: card.unit.radius,
       decayPerSec: 0,
       deathDamage: card.unit.deathDamage * mult,
@@ -468,9 +482,12 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
     pierce: false,
     recoil: 0,
     stunOnHit: 0,
+    slowOnHit: 0,
+    chainCount: 1,
     splashDamageFactor: 1,
     deployTimer: DEPLOY_DELAY,
     stunTimer: 0,
+    slowTimer: 0,
     decayPerSec: (u.maxHp * mult) / card.lifetime,
     deathDamage: u.deathDamage,
     deathRadius: u.deathRadius,
@@ -627,6 +644,12 @@ export function deployCard(
     if (cardId === "electro-wizard") {
       state.events.push({ type: "spell", side, cardId: "zap", x, y });
       applySpell(state, side, "zap", x, y, 50, 2.5, 0.5);
+    }
+    // The Mega Knight drops from the sky and slams: AoE damage that shoves
+    // surrounding enemy troops outward in every direction.
+    if (cardId === "mega-knight") {
+      state.events.push({ type: "spell", side, cardId: "mega-knight", x, y });
+      applySpell(state, side, "mega-knight", x, y, 140, 3, 0, 1.8);
     }
   }
   return true;

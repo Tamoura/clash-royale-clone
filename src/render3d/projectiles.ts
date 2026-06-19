@@ -55,6 +55,18 @@ export function projectileStyle(
     case "firecracker":
       // A spitting firework spark with a bright muzzle flash.
       return { ...ORB_DEFAULTS, color: 0xff7a18, size: 0.22, glow: true, arc: 0.4, muzzleFlash: true };
+    case "electro-wizard":
+      // Crackling blue-white bolt, flat and fast.
+      return { ...ORB_DEFAULTS, color: 0x5ad1ff, size: 0.2, glow: true, arc: 0.1, duration: 0.1, muzzleFlash: true };
+    case "ice-wizard":
+      // Pale icy shard.
+      return { ...ORB_DEFAULTS, color: 0xbfeaff, size: 0.22, glow: true, arc: 0.2 };
+    case "princess":
+      // A long, high flaming arrow lobbed across the arena.
+      return { ...ORB_DEFAULTS, form: "arrow", color: 0xff7043, glow: true, arc: 1.1, duration: 0.34 };
+    case "royal-giant":
+      // Heavy dark cannonball.
+      return { ...ORB_DEFAULTS, color: 0x20262b, size: 0.3, arc: 0.5, duration: 0.2 };
     default:
       return { ...ORB_DEFAULTS, color: 0x263238 };
   }

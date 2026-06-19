@@ -81,6 +81,19 @@ function canHit(e: Entity, o: Entity): boolean {
   return !o.flying || e.targetsAir;
 }
 
+/**
+ * The set of enemies a single attack strikes. Normally just the primary
+ * target; a chaining attacker (Electro Wizard, chainCount > 1) also picks the
+ * next nearest in-range enemies so its bolt arcs to several foes at once.
+ */
+function chainTargets(state: BattleState, e: Entity, primary: Entity): Entity[] {
+  if (e.chainCount <= 1) return [primary];
+  const others = livingEnemiesOf(state, e)
+    .filter((o) => o !== primary && canHit(e, o) && gap(e, o) <= e.attackRange + 0.5)
+    .sort((a, b) => distance(e, a) - distance(e, b));
+  return [primary, ...others].slice(0, e.chainCount);
+}
+
 function acquireTarget(state: BattleState, e: Entity): Entity | null {
   const enemies = livingEnemiesOf(state, e);
   if (isBuilding(e)) {
@@ -161,46 +174,56 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
   const charged = e.chargeDistance > 0 && e.chargeProgress >= e.chargeDistance;
   const damage = e.damage * (charged ? 2 : 1);
   const ranged = e.attackRange > 1;
+  // A chaining attacker (Electro Wizard) splits its shot across the nearest
+  // few enemies; everyone else strikes the single primary target.
+  const targets = chainTargets(state, e, target);
   if (ranged) {
     // The shot must fly there first; damage lands on arrival.
-    const d = Math.max(1e-6, distance(e, target));
-    state.projectiles.push({
-      id: state.nextEntityId++,
-      side: e.side,
-      cardId: e.cardId,
-      sourceKind: e.kind,
-      sx: e.x,
-      sy: e.y,
-      x: e.x,
-      y: e.y,
-      targetId: target.id,
-      speed: PROJECTILE_SPEED,
-      damage,
-      splashRadius: e.splashRadius,
-      targetsAir: e.targetsAir,
-      pierce: e.pierce,
-      // A pierce shot flies straight along the firing line for its full
-      // range, damaging everything it passes; a normal shot homes in.
-      dirX: (target.x - e.x) / d,
-      dirY: (target.y - e.y) / d,
-      range: e.attackRange,
-      hitIds: [],
-      stunOnHit: e.stunOnHit,
-      splashDamageFactor: e.splashDamageFactor,
-    });
+    for (const t of targets) {
+      const d = Math.max(1e-6, distance(e, t));
+      state.projectiles.push({
+        id: state.nextEntityId++,
+        side: e.side,
+        cardId: e.cardId,
+        sourceKind: e.kind,
+        sx: e.x,
+        sy: e.y,
+        x: e.x,
+        y: e.y,
+        targetId: t.id,
+        speed: PROJECTILE_SPEED,
+        damage,
+        splashRadius: e.splashRadius,
+        targetsAir: e.targetsAir,
+        pierce: e.pierce,
+        // A pierce shot flies straight along the firing line for its full
+        // range, damaging everything it passes; a normal shot homes in.
+        dirX: (t.x - e.x) / d,
+        dirY: (t.y - e.y) / d,
+        range: e.attackRange,
+        hitIds: [],
+        stunOnHit: e.stunOnHit,
+        slowOnHit: e.slowOnHit,
+        splashDamageFactor: e.splashDamageFactor,
+      });
+    }
   } else {
     const myStats = sideState(state, e.side).stats;
-    target.hp -= damage;
-    myStats.damageDealt += damage;
-    if (e.stunOnHit > 0) target.stunTimer = Math.max(target.stunTimer, e.stunOnHit);
+    for (const t of targets) {
+      t.hp -= damage;
+      myStats.damageDealt += damage;
+      if (e.stunOnHit > 0) t.stunTimer = Math.max(t.stunTimer, e.stunOnHit);
+      if (e.slowOnHit > 0) t.slowTimer = Math.max(t.slowTimer, e.slowOnHit);
+    }
     if (e.splashRadius > 0) {
       for (const o of livingEnemiesOf(state, e)) {
-        if (o === target || !canHit(e, o)) continue;
+        if (targets.includes(o) || !canHit(e, o)) continue;
         if (distance(o, target) <= e.splashRadius + o.radius) {
           const splashDmg = damage * e.splashDamageFactor;
           o.hp -= splashDmg;
           myStats.damageDealt += splashDmg;
           if (e.stunOnHit > 0) o.stunTimer = Math.max(o.stunTimer, e.stunOnHit);
+          if (e.slowOnHit > 0) o.slowTimer = Math.max(o.slowTimer, e.slowOnHit);
         }
       }
     }
@@ -284,6 +307,7 @@ function tickProjectiles(state: BattleState, dt: number): void {
       target.hp -= p.damage;
       myStats.damageDealt += p.damage;
       if (p.stunOnHit > 0) target.stunTimer = Math.max(target.stunTimer, p.stunOnHit);
+      if (p.slowOnHit > 0) target.slowTimer = Math.max(target.slowTimer, p.slowOnHit);
       if (p.splashRadius > 0) {
         for (const o of state.entities) {
           if (o.side === p.side || o.hp <= 0 || o === target) continue;
@@ -293,6 +317,7 @@ function tickProjectiles(state: BattleState, dt: number): void {
             o.hp -= splashDmg;
             myStats.damageDealt += splashDmg;
             if (p.stunOnHit > 0) o.stunTimer = Math.max(o.stunTimer, p.stunOnHit);
+            if (p.slowOnHit > 0) o.slowTimer = Math.max(o.slowTimer, p.slowOnHit);
           }
         }
       }
@@ -341,8 +366,11 @@ function tickCollector(state: BattleState, e: Entity, dt: number): void {
 }
 
 function actEntity(state: BattleState, e: Entity, dt: number): void {
+  // Chilled units (Ice Wizard) crawl and swing at half speed until it wears off.
+  if (e.slowTimer > 0) e.slowTimer -= dt;
+  const slowFactor = e.slowTimer > 0 ? 0.5 : 1;
   // Raged units recover from attacks and cover ground faster.
-  const boostedDt = dt * rageBoost(state, e);
+  const boostedDt = dt * rageBoost(state, e) * slowFactor;
   e.cooldown = Math.max(0, e.cooldown - boostedDt);
   if (!e.active) return;
 

@@ -73,6 +73,10 @@ export interface UnitStats {
   recoil: number;
   /** Seconds this unit's hits stun the target (0 = none) — the Electro Wizard zap. */
   stunOnHit: number;
+  /** Seconds this unit's hits slow the target's move + attack speed (0 = none). */
+  slowOnHit: number;
+  /** Number of enemies a single attack strikes at once (1 = normal). */
+  chainCount: number;
   /** Multiplier on splash damage to non-primary targets (1 = full). */
   splashDamageFactor: number;
   /** Damage dealt to nearby enemies when this unit dies (0 = none). */
@@ -151,6 +155,8 @@ function unit(stats: UnitOverrides): UnitStats {
     pierce: false,
     recoil: 0,
     stunOnHit: 0,
+    slowOnHit: 0,
+    chainCount: 1,
     splashDamageFactor: 1,
     deathDamage: 0,
     deathRadius: 0,
@@ -503,7 +509,8 @@ export const CARDS: Record<CardId, Card> = {
       speed: "medium",
       targetsAir: true,
       splashRadius: 0.7, // forked lightning zaps a small cluster
-      stunOnHit: 0.6, // every shot is a mini-zap that stuns
+      stunOnHit: 1, // every bolt stops its targets for ~a second
+      chainCount: 2, // forks to two enemies at once
     }),
   },
   "ice-wizard": {
@@ -522,6 +529,7 @@ export const CARDS: Record<CardId, Card> = {
       speed: "medium",
       targetsAir: true,
       splashRadius: 1.0,
+      slowOnHit: 2, // chills targets: slower movement and attacks
     }),
   },
   princess: {
