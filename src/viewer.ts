@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
-// Standalone viewer to eyeball textured GLB characters at their in-game scales.
+// Standalone viewer to eyeball textured GLB characters at chosen scales + tints.
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
@@ -12,17 +12,17 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xcdb487);
 
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
-camera.position.set(0, 2.4, 11);
-camera.lookAt(0, 1.0, 0);
+camera.position.set(0, 3.0, 13);
+camera.lookAt(0, 1.4, 0);
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7a55, 1.1));
 const sun = new THREE.DirectionalLight(0xfff2d6, 1.5);
-sun.position.set(4, 8, 5);
+sun.position.set(4, 9, 5);
 sun.castShadow = true;
 scene.add(sun);
 
 const floor = new THREE.Mesh(
-  new THREE.CircleGeometry(10, 48),
+  new THREE.CircleGeometry(12, 48),
   new THREE.MeshStandardMaterial({ color: 0xbfa074 }),
 );
 floor.rotation.x = -Math.PI / 2;
@@ -32,27 +32,32 @@ scene.add(floor);
 const mixers: THREE.AnimationMixer[] = [];
 const loader = new GLTFLoader();
 
-// file, label, in-game scale, x position
-const ROW: Array<[string, string, number, number]> = [
-  ["Knight.glb", "Knight", 0.95, -4.2],
-  ["Mage.glb", "Wizard", 0.95, -2.1],
-  ["Barbarian.glb", "Valkyrie", 0.9, 0],
-  ["Rogue.glb", "Mini P.E.K.K.A", 0.8, 2.1],
-  ["Skeleton_Minion.glb", "Skeleton", 0.62, 4.2],
+// file, label, scale, x, tint (0xffffff = none) — final Batch 2 wiring
+const ROW: Array<[string, string, number, number, number]> = [
+  ["Knight.glb", "Knight", 0.95, -4.6, 0xffffff],
+  ["Skeleton_Warrior.glb", "P.E.K.K.A", 1.5, -1.2, 0x33384a],
+  ["Knight.glb", "Prince", 1.05, 3.6, 0x7088e0],
 ];
 
 const labels = document.getElementById("labels")!;
-// Expose label positions (as screen-width %) so a screenshot can bake them in.
 (window as unknown as { __labelData: Array<{ l: string; pct: number }> }).__labelData =
-  ROW.map(([, label, , x]) => ({ l: label, pct: 50 + (x / 5.6) * 42 }));
-ROW.forEach(([file, label, scale, x]) => {
+  ROW.map(([, label, , x]) => ({ l: label, pct: 50 + (x / 6.4) * 42 }));
+ROW.forEach(([file, label, scale, x, tint]) => {
   loader.load(`/models/kaykit/${file}`, (gltf) => {
     const g = gltf.scene;
     g.scale.setScalar(scale);
     g.position.set(x, 0, 0);
     g.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; }
+      if (m.isMesh) {
+        m.castShadow = true;
+        m.receiveShadow = true;
+        if (tint !== 0xffffff) {
+          const mat = (m.material as THREE.MeshStandardMaterial).clone();
+          mat.color.multiplyScalar(1).setHex(tint);
+          m.material = mat;
+        }
+      }
     });
     scene.add(g);
     const mixer = new THREE.AnimationMixer(g);
@@ -63,8 +68,7 @@ ROW.forEach(([file, label, scale, x]) => {
   const d = document.createElement("div");
   d.className = "lbl";
   d.textContent = label;
-  // map world x (-4.2..4.2) to screen % roughly
-  d.style.left = `${50 + (x / 5.6) * 42}%`;
+  d.style.left = `${50 + (x / 6.4) * 42}%`;
   labels.appendChild(d);
 });
 

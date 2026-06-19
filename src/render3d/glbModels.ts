@@ -24,6 +24,8 @@ const MODEL_FILE: Partial<Record<string, string>> = {
   "mini-pekka": "Rogue.glb",
   skeletons: "Skeleton_Minion.glb",
   "skeleton-army": "Skeleton_Minion.glb",
+  pekka: "Skeleton_Warrior.glb",
+  prince: "Knight.glb",
 };
 
 /**
@@ -37,6 +39,18 @@ const MODEL_SCALE: Partial<Record<string, number>> = {
   "mini-pekka": 0.8,
   skeletons: 0.62,
   "skeleton-army": 0.55,
+  pekka: 1.5,
+  prince: 1.05,
+};
+
+/**
+ * Optional colour multiply applied to a model's textures at load time, so one
+ * base model can stand in for several cards: a near-black steel P.E.K.K.A from
+ * the Skeleton Warrior, a royal-blue Prince from the Knight.
+ */
+const MODEL_TINT: Partial<Record<string, number>> = {
+  pekka: 0x33384a, // dark robotic steel
+  prince: 0x7088e0, // royal blue
 };
 
 function url(file: string): string {
@@ -52,6 +66,19 @@ export function preloadGlbModels(): void {
     loader.load(
       url(file!),
       (gltf) => {
+        const tint = MODEL_TINT[card];
+        if (tint !== undefined) {
+          // Tint the shared source materials once; every clone inherits it.
+          gltf.scene.traverse((o) => {
+            const mesh = o as THREE.Mesh;
+            if (!mesh.isMesh) return;
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            for (const m of mats) {
+              const sm = m as THREE.MeshStandardMaterial;
+              if (sm && sm.color) sm.color.setHex(tint);
+            }
+          });
+        }
         loaded.set(card, { scene: gltf.scene as THREE.Group, animations: gltf.animations });
         loading.delete(card);
       },
@@ -80,6 +107,8 @@ const ATTACK_CLIP: Record<string, string> = {
   "mini-pekka": "Dualwield_Melee_Attack_Slice", // the Rogue's twin-blade flurry
   skeletons: "1H_Melee_Attack_Chop",
   "skeleton-army": "1H_Melee_Attack_Chop",
+  pekka: "2H_Melee_Attack_Chop", // heavy two-handed sword swing
+  prince: "1H_Melee_Attack_Stab", // a lance-like thrust
 };
 
 /** Instantiate an animated clone of a card's model, or null if not loaded. */
