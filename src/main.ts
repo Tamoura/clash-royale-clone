@@ -19,6 +19,7 @@ import {
 import type { Side } from "./game/arena";
 import { drawCardArt } from "./render/characters";
 import { CARD_COLOR } from "./render/cardcolors";
+import { cardDisplayName } from "./render/cardNames";
 import { isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
 import { Battle3D } from "./render3d/scene3d";
@@ -28,8 +29,11 @@ import { RoomClient, type NetSocket } from "./net/roomClient";
 import { Lockstep } from "./net/lockstep";
 import { sideForRole, type Role, type MatchMode } from "./net/protocol";
 import { stateChecksum } from "./net/checksum";
-import { loadEdition, saveEdition, type Edition } from "./launcher/mode";
-import { launchUnity } from "./launcher/unityPanel";
+import {
+  loadMode as loadVariant,
+  saveMode as saveVariant,
+  type GameMode as GameVariant,
+} from "./launcher/mode";
 
 const stage = document.getElementById("stage")!;
 
@@ -122,10 +126,10 @@ function loadMode(): GameMode {
 
 let gameMode = loadMode();
 
-// ---- Native vs Unity edition (chosen on the intro) ----------------------
-
-const unityStage = document.getElementById("unity-stage")!;
-let edition: Edition = loadEdition(localStorage);
+// ---- Game variant (Clash Royale clone vs Islamic version) ---------------
+// The variant is the arena theme under the hood; switching reloads the page.
+// (Named "variant" to avoid colliding with the in-match GameMode rulesets.)
+const variant: GameVariant = loadVariant(localStorage);
 
 // ---- Trophies + card levels (persisted progression) --------------------
 
@@ -324,37 +328,34 @@ function cardTileCanvas(id: CardId): HTMLCanvasElement {
 function buildDeckPicker(): void {
   pickerRoot.innerHTML = "";
 
-  // Edition toggle: the original in-browser build, or the Unity WebGL build.
+  // Game mode: the Clash Royale clone, or the Islamic Golden Age version.
+  // Switching writes the theme and reloads so art + names rebuild.
   const editionRow = document.createElement("div");
   editionRow.className = "edition-row";
   const editionNote = document.createElement("div");
   editionNote.className = "edition-note";
-  const EDITION_LABEL: Record<Edition, string> = {
-    native: "Native (Three.js)",
-    unity: "Unity (WebGL)",
+  const MODE_LABEL: Record<GameVariant, string> = {
+    clash: "⚔️ Clash Royale",
+    islamic: "🌙 Islamic",
   };
-  const EDITION_HELP: Record<Edition, string> = {
-    native: "The original TypeScript + Three.js game runs right here.",
-    unity: "Launches the Unity WebGL build served from /unity/.",
+  const MODE_HELP: Record<GameVariant, string> = {
+    clash: "The classic clone — Western knights, wizards, P.E.K.K.A.",
+    islamic: "Islamic Golden Age — Faris, camels, war elephants & crescents.",
   };
-  for (const ed of ["native", "unity"] as Edition[]) {
+  for (const v of ["clash", "islamic"] as GameVariant[]) {
     const btn = document.createElement("button");
     btn.className = "edition-btn";
-    btn.textContent = EDITION_LABEL[ed];
-    btn.classList.toggle("chosen", ed === edition);
+    btn.textContent = MODE_LABEL[v];
+    btn.classList.toggle("chosen", v === variant);
     btn.addEventListener("click", () => {
-      edition = ed;
-      saveEdition(localStorage, ed);
-      editionRow
-        .querySelectorAll("button")
-        .forEach((b) => b.classList.toggle("chosen", b === btn));
-      editionNote.textContent = EDITION_HELP[ed];
-      startBtn.textContent = ed === "unity" ? "Launch Unity" : "Battle the Bot";
+      if (v === variant) return;
+      saveVariant(localStorage, v);
+      location.reload(); // theme, art, and names are all read at load
     });
     editionRow.appendChild(btn);
   }
   pickerRoot.appendChild(editionRow);
-  editionNote.textContent = EDITION_HELP[edition];
+  editionNote.textContent = MODE_HELP[variant];
   pickerRoot.appendChild(editionNote);
 
   const title = document.createElement("h2");
@@ -428,7 +429,7 @@ function buildDeckPicker(): void {
 
   const startBtn = document.createElement("button");
   startBtn.className = "battle-btn";
-  startBtn.textContent = edition === "unity" ? "Launch Unity" : "Battle the Bot";
+  startBtn.textContent = "Battle the Bot";
   pickerRoot.appendChild(startBtn);
 
   const friendBtn = document.createElement("button");
@@ -460,7 +461,7 @@ function buildDeckPicker(): void {
         cost.className = "pcost";
         cost.textContent = String(getCard(id).cost);
         slot.appendChild(cost);
-        slot.title = `Remove ${getCard(id).name}`;
+        slot.title = `Remove ${cardDisplayName(id)}`;
         slot.addEventListener("click", () => remove(id));
       }
       deckRow.appendChild(slot);
@@ -484,7 +485,7 @@ function buildDeckPicker(): void {
     btn.dataset.card = id;
     btn.appendChild(cardTileCanvas(id));
     const name = document.createElement("div");
-    name.textContent = card.name;
+    name.textContent = cardDisplayName(id);
     btn.appendChild(name);
     const cost = document.createElement("div");
     cost.className = "pcost";
@@ -502,12 +503,8 @@ function buildDeckPicker(): void {
 
   startBtn.addEventListener("click", () => {
     saveDeck();
-    pickerRoot.classList.remove("show");
-    if (edition === "unity") {
-      void launchUnity(unityStage, openDeckPicker, playerDeck);
-    } else {
-      restart();
-    }
+    closeDeckPicker();
+    restart();
   });
 
   friendBtn.addEventListener("click", () => {
@@ -571,7 +568,7 @@ function openFriendLobby(deck: CardId[]): void {
         `Your code: <b class="big-code">${code}</b><br/>Tell your friend, then wait…`;
     };
     c.onStart = (p) => {
-      pickerRoot.classList.remove("show");
+      closeDeckPicker();
       startOnlineMatch(c, p.role, p.hostDeck, p.guestDeck, p.mode);
     };
     c.onError = (reason) => {
@@ -621,6 +618,14 @@ function openFriendLobby(deck: CardId[]): void {
 function openDeckPicker(): void {
   buildDeckPicker();
   pickerRoot.classList.add("show");
+  // Hide the in-battle score bar so it can't overlap the picker's mode toggle.
+  topbar.style.display = "none";
+}
+
+/** Restore the in-battle HUD bar when leaving the deck picker. */
+function closeDeckPicker(): void {
+  pickerRoot.classList.remove("show");
+  topbar.style.display = "";
 }
 
 const hud = new Hud(topbar, hudRoot, overlay, {
@@ -662,7 +667,7 @@ function applyMatchResult(winner: "player" | "enemy" | "draw"): void {
       const i = Math.floor(Math.random() * upgradable.length);
       const id = upgradable.splice(i, 1)[0];
       cardLevels[id] = (cardLevels[id] ?? 1) + 1;
-      reward += ` · ${getCard(id).name} ↑ Lv.${cardLevels[id]}`;
+      reward += ` · ${cardDisplayName(id)} ↑ Lv.${cardLevels[id]}`;
     }
   } else if (winner === "enemy") {
     trophies = Math.max(0, trophies - 20);

@@ -1,4 +1,5 @@
 import { getCard, type CardId } from "../game/cards";
+import { cardDisplayName } from "./cardNames";
 
 const cap = (s: string): string => s[0].toUpperCase() + s.slice(1);
 
@@ -36,7 +37,7 @@ export function cardStatLines(id: CardId): string[] {
   if (u.jumpsRiver) traits.push("jumps the river");
   if (traits.length) lines.push(traits.join(" · "));
   const powers: string[] = [];
-  if (u.spawnUnitId) powers.push(`summons ${getCard(u.spawnUnitId).name}s`);
+  if (u.spawnUnitId) powers.push(`summons ${cardDisplayName(u.spawnUnitId)}s`);
   if (u.deathDamage > 0) powers.push("death bomb");
   if (u.elixirInterval > 0) powers.push(`+1 elixir / ${u.elixirInterval}s`);
   if (card.kind === "building") powers.push(`${card.lifetime}s lifetime`);

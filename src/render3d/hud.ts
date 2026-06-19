@@ -6,6 +6,7 @@ import { BATTLE_DURATION, OVERTIME_DURATION, effectiveElixirMultiplier } from ".
 import { drawCardArt } from "../render/characters";
 import { CARD_COLOR } from "../render/cardcolors";
 import { cardStatLines } from "../render/cardinfo";
+import { cardDisplayName } from "../render/cardNames";
 import { cardPortrait } from "./cardportraits";
 
 export interface HudCallbacks {
@@ -119,7 +120,7 @@ export class Hud {
       if (!id) return;
       tip.innerHTML = "";
       const title = document.createElement("b");
-      title.textContent = `${getCard(id).name} · ${getCard(id).cost} elixir`;
+      title.textContent = `${cardDisplayName(id)} · ${getCard(id).cost} elixir`;
       tip.appendChild(title);
       for (const line of cardStatLines(id)) {
         const div = document.createElement("div");
@@ -253,7 +254,7 @@ export class Hud {
         btn.appendChild(cardCanvas(id));
         const name = document.createElement("div");
         name.className = "card-name";
-        name.textContent = getCard(id).name;
+        name.textContent = cardDisplayName(id);
         btn.appendChild(name);
         const cost = document.createElement("div");
         cost.className = "card-cost";
