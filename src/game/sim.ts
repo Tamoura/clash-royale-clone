@@ -185,17 +185,22 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
       dirY: (target.y - e.y) / d,
       range: e.attackRange,
       hitIds: [],
+      stunOnHit: e.stunOnHit,
+      splashDamageFactor: e.splashDamageFactor,
     });
   } else {
     const myStats = sideState(state, e.side).stats;
     target.hp -= damage;
     myStats.damageDealt += damage;
+    if (e.stunOnHit > 0) target.stunTimer = Math.max(target.stunTimer, e.stunOnHit);
     if (e.splashRadius > 0) {
       for (const o of livingEnemiesOf(state, e)) {
         if (o === target || !canHit(e, o)) continue;
         if (distance(o, target) <= e.splashRadius + o.radius) {
-          o.hp -= damage;
-          myStats.damageDealt += damage;
+          const splashDmg = damage * e.splashDamageFactor;
+          o.hp -= splashDmg;
+          myStats.damageDealt += splashDmg;
+          if (e.stunOnHit > 0) o.stunTimer = Math.max(o.stunTimer, e.stunOnHit);
         }
       }
     }
@@ -278,13 +283,16 @@ function tickProjectiles(state: BattleState, dt: number): void {
       const myStats = sideState(state, p.side).stats;
       target.hp -= p.damage;
       myStats.damageDealt += p.damage;
+      if (p.stunOnHit > 0) target.stunTimer = Math.max(target.stunTimer, p.stunOnHit);
       if (p.splashRadius > 0) {
         for (const o of state.entities) {
           if (o.side === p.side || o.hp <= 0 || o === target) continue;
           if (o.flying && !p.targetsAir) continue;
           if (distance(o, target) <= p.splashRadius + o.radius) {
-            o.hp -= p.damage;
-            myStats.damageDealt += p.damage;
+            const splashDmg = p.damage * p.splashDamageFactor;
+            o.hp -= splashDmg;
+            myStats.damageDealt += splashDmg;
+            if (p.stunOnHit > 0) o.stunTimer = Math.max(o.stunTimer, p.stunOnHit);
           }
         }
       }

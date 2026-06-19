@@ -944,7 +944,8 @@ function buildTroopMesh(e: Entity): EntityView {
       e.cardId === "pekka" ||
       e.cardId === "mega-knight" ||
       e.cardId === "royal-giant";
-    const scale = (big ? 1.35 : 1.25) * 0.95;
+    // Mega Knight towers over even the other tanks.
+    const scale = (e.cardId === "mega-knight" ? 1.6 : big ? 1.35 : 1.25) * 0.95;
     rig.group.scale.setScalar(scale);
     root.add(rig.group);
     lift = (rig.hover ?? 0) + rig.height * scale;

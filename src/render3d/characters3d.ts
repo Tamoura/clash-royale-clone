@@ -1411,6 +1411,65 @@ function buildExecutioner(): TroopRig {
   return { group: g, arm, armRest: -0.2, swingAmp: 0.9, height: 1.55, legs, offArm };
 }
 
+function buildMegaKnight(): TroopRig {
+  const g = new THREE.Group();
+  const DARK = 0x2c2748,
+    STEEL = 0x9aa6b5,
+    DARKSTEEL = 0x3b3a55,
+    GOLD = 0xe8b84b,
+    SPIKE = 0xd7dee8;
+
+  // Bulky legs.
+  const legs = [makeLeg(DARK, -0.22, 0.34, 0.24), makeLeg(DARK, 0.22, 0.34, 0.24)];
+  g.add(...legs);
+
+  // Massive armoured torso.
+  g.add(box(0.8, 0.6, 0.58, DARK, 0, 0.66, 0));
+  g.add(box(0.62, 0.44, 0.5, STEEL, 0, 0.7, 0.05)); // chest plate
+  g.add(diamond(0.13, GOLD, 0, 0.8, 0.31)); // chest gem
+  g.add(cyl(0.46, 0.52, 0.14, DARKSTEEL, 0, 0.32, 0)); // skirt
+
+  // Spiked pauldrons.
+  for (const sx of [-1, 1]) {
+    g.add(sphere(0.27, DARKSTEEL, sx * 0.52, 0.96, 0));
+    for (const a of [-1, 0, 1]) {
+      const sp = cone(0.08, 0.28, SPIKE, sx * 0.52, 1.14, a * 0.14);
+      sp.rotation.z = -sx * 0.35;
+      g.add(sp);
+    }
+  }
+
+  // Horned helm + fierce eyes.
+  const head = sphere(0.34, DARKSTEEL, 0, 1.22, 0);
+  addEyes(head, 0.34, 0.3, 0.06, "angry");
+  g.add(head);
+  g.add(cyl(0.37, 0.4, 0.16, DARK, 0, 1.36, 0));
+  for (const sx of [-1, 1]) {
+    const horn = cone(0.08, 0.34, GOLD, sx * 0.24, 1.5, 0);
+    horn.rotation.z = sx * 0.55;
+    g.add(horn);
+  }
+
+  // Spiked fists — the knuckle spikes the player asked for.
+  const makeFist = (mx: number): THREE.Group => {
+    const a = new THREE.Group();
+    a.position.set(mx * 0.52, 0.78, 0.05);
+    a.add(box(0.22, 0.36, 0.22, DARK, 0, -0.15, 0)); // forearm
+    a.add(sphere(0.22, STEEL, 0, -0.36, 0.04)); // gauntlet fist
+    for (const dx of [-0.13, 0, 0.13]) {
+      const sp = cone(0.06, 0.24, SPIKE, dx, -0.36, 0.24);
+      sp.rotation.x = Math.PI / 2; // point forward off the knuckles
+      a.add(sp);
+    }
+    return a;
+  };
+  const arm = makeFist(1);
+  const offArm = makeFist(-1);
+  g.add(arm, offArm);
+
+  return { group: g, arm, armRest: -0.4, swingAmp: 1.8, height: 1.75, legs, offArm };
+}
+
 const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   knight: buildKnight,
   archers: buildArcher,
@@ -1437,7 +1496,7 @@ const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   "electro-wizard": buildWizard,
   "ice-wizard": buildWizard,
   princess: buildArcher,
-  "mega-knight": buildKnight,
+  "mega-knight": buildMegaKnight,
   "royal-giant": buildGiant,
 };
 

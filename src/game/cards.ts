@@ -71,6 +71,10 @@ export interface UnitStats {
   pierce: boolean;
   /** Tiles the shooter hops backward (away from its target) after firing (0 = none). */
   recoil: number;
+  /** Seconds this unit's hits stun the target (0 = none) — the Electro Wizard zap. */
+  stunOnHit: number;
+  /** Multiplier on splash damage to non-primary targets (1 = full). */
+  splashDamageFactor: number;
   /** Damage dealt to nearby enemies when this unit dies (0 = none). */
   deathDamage: number;
   /** Radius of the death blast in tiles. */
@@ -146,6 +150,8 @@ function unit(stats: UnitOverrides): UnitStats {
     chargeDistance: 0,
     pierce: false,
     recoil: 0,
+    stunOnHit: 0,
+    splashDamageFactor: 1,
     deathDamage: 0,
     deathRadius: 0,
     spawnUnitId: null,
@@ -497,6 +503,7 @@ export const CARDS: Record<CardId, Card> = {
       speed: "medium",
       targetsAir: true,
       splashRadius: 0.7, // forked lightning zaps a small cluster
+      stunOnHit: 0.6, // every shot is a mini-zap that stuns
     }),
   },
   "ice-wizard": {
@@ -551,6 +558,7 @@ export const CARDS: Record<CardId, Card> = {
       sightRange: 6,
       speed: "medium",
       splashRadius: 1.6, // area slam
+      splashDamageFactor: 0.5, // surrounding enemies take half a hit
       chargeDistance: 3, // leaps in for double damage
       radius: 0.8,
     }),

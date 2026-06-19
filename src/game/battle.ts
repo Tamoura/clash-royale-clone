@@ -62,6 +62,10 @@ export interface Entity {
   pierce: boolean;
   /** Tiles this entity hops backward (away from its target) after firing. */
   recoil: number;
+  /** Seconds this entity's hits stun the target (0 = none). */
+  stunOnHit: number;
+  /** Multiplier on splash damage to non-primary targets (1 = full). */
+  splashDamageFactor: number;
   /** Seconds of post-deployment freeze remaining. */
   deployTimer: number;
   /** Seconds of stun remaining (no moving or attacking). */
@@ -145,6 +149,10 @@ export interface Projectile {
   range: number;
   /** Ids of entities a pierce shot has already damaged (hit each once). */
   hitIds: number[];
+  /** Seconds the impact stuns (0 = none) — the Electro Wizard zap. */
+  stunOnHit: number;
+  /** Multiplier on splash damage to non-primary targets (1 = full). */
+  splashDamageFactor: number;
 }
 
 /** A lingering area that boosts one side's troops (Rage). */
@@ -250,6 +258,8 @@ function makeTower(state: BattleState, side: Side, kind: TowerKind, x: number, y
     chargeProgress: 0,
     pierce: false,
     recoil: 0,
+    stunOnHit: 0,
+    splashDamageFactor: 1,
     deployTimer: 0,
     stunTimer: 0,
     decayPerSec: 0,
@@ -409,6 +419,8 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       chargeProgress: 0,
       pierce: card.unit.pierce,
       recoil: card.unit.recoil,
+      stunOnHit: card.unit.stunOnHit,
+      splashDamageFactor: card.unit.splashDamageFactor,
       deployTimer: DEPLOY_DELAY,
       stunTimer: 0,
       radius: card.unit.radius,
@@ -455,6 +467,8 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
     chargeProgress: 0,
     pierce: false,
     recoil: 0,
+    stunOnHit: 0,
+    splashDamageFactor: 1,
     deployTimer: DEPLOY_DELAY,
     stunTimer: 0,
     decayPerSec: (u.maxHp * mult) / card.lifetime,
@@ -609,6 +623,11 @@ export function deployCard(
   } else {
     state.events.push({ type: "deploy", side, cardId });
     spawnTroops(state, side, card, x, y);
+    // The Electro Wizard lands with a zap that stuns nearby enemies.
+    if (cardId === "electro-wizard") {
+      state.events.push({ type: "spell", side, cardId: "zap", x, y });
+      applySpell(state, side, "zap", x, y, 50, 2.5, 0.5);
+    }
   }
   return true;
 }
