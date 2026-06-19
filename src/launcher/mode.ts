@@ -1,13 +1,16 @@
 /**
- * Which build of the game the intro launches: the original in-browser
- * TypeScript + Three.js version ("native"), or the Unity WebGL build
- * ("unity"). Named "edition" to avoid colliding with the native game-mode
- * system (Classic / Triple Elixir / Mirror, etc.).
+ * Which game the intro launches: the Clash Royale clone ("clash", Western art)
+ * or the Islamic Golden Age version ("islamic", turbaned warriors + crescents).
+ *
+ * A mode IS an arena theme under the hood — clash = "normal", islamic = "arabic"
+ * — so we persist it under the same key the renderer reads (theme.ts), keeping a
+ * single source of truth. Switching modes reloads the page so the theme, art,
+ * and names are all rebuilt from scratch.
  */
-export type Edition = "native" | "unity";
+import { ARENA_THEME_KEY, type ArenaTheme } from "../render3d/theme";
 
-export const EDITION_KEY = "cr-clone-edition";
-export const DEFAULT_EDITION: Edition = "native";
+export type GameMode = "clash" | "islamic";
+export const DEFAULT_MODE: GameMode = "islamic";
 
 /** Minimal localStorage-compatible surface, injected so this stays testable. */
 export interface ModeStorage {
@@ -15,47 +18,28 @@ export interface ModeStorage {
   setItem(key: string, value: string): void;
 }
 
-export function isEdition(value: unknown): value is Edition {
-  return value === "native" || value === "unity";
+export function isGameMode(value: unknown): value is GameMode {
+  return value === "clash" || value === "islamic";
 }
 
-export function loadEdition(storage: ModeStorage): Edition {
-  const saved = storage.getItem(EDITION_KEY);
-  return isEdition(saved) ? saved : DEFAULT_EDITION;
+export function modeToTheme(mode: GameMode): ArenaTheme {
+  return mode === "islamic" ? "arabic" : "normal";
 }
 
-export function saveEdition(storage: ModeStorage, edition: Edition): void {
-  storage.setItem(EDITION_KEY, edition);
+export function themeToMode(theme: string | null): GameMode {
+  // Anything other than the explicit "normal" theme means the Islamic version,
+  // matching theme.ts's own default-to-arabic behaviour.
+  return theme === "normal" ? "clash" : "islamic";
 }
 
-export function otherEdition(edition: Edition): Edition {
-  return edition === "native" ? "unity" : "native";
+export function loadMode(storage: ModeStorage): GameMode {
+  return themeToMode(storage.getItem(ARENA_THEME_KEY));
 }
 
-/**
- * Path to the Unity WebGL build's loader page. The build is dropped into
- * `public/unity/` so Vite serves it alongside the native app at `/unity/`.
- */
-export const UNITY_BUILD_URL = "unity/index.html";
-
-export function unityBuildUrl(base = "", deck?: readonly string[]): string {
-  const query = deck && deck.length > 0 ? `?deck=${deck.join(",")}` : "";
-  return `${base}${UNITY_BUILD_URL}${query}`;
+export function saveMode(storage: ModeStorage, mode: GameMode): void {
+  storage.setItem(ARENA_THEME_KEY, modeToTheme(mode));
 }
 
-/**
- * Probe whether the Unity build has actually been dropped in. Any non-OK
- * response or fetch error means "not built yet" rather than a thrown
- * rejection, so callers can show a friendly placeholder.
- */
-export async function checkUnityBuild(
-  fetchFn: (url: string) => Promise<{ ok: boolean }>,
-  base = "",
-): Promise<boolean> {
-  try {
-    const res = await fetchFn(unityBuildUrl(base));
-    return res.ok;
-  } catch {
-    return false;
-  }
+export function otherMode(mode: GameMode): GameMode {
+  return mode === "clash" ? "islamic" : "clash";
 }

@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_EDITION,
-  EDITION_KEY,
-  checkUnityBuild,
-  isEdition,
-  loadEdition,
-  otherEdition,
-  saveEdition,
-  unityBuildUrl,
+  DEFAULT_MODE,
+  isGameMode,
+  loadMode,
+  modeToTheme,
+  otherMode,
+  saveMode,
+  themeToMode,
   type ModeStorage,
 } from "./mode";
+import { ARENA_THEME_KEY } from "../render3d/theme";
 
 /** A tiny in-memory localStorage stand-in for the node test env. */
 function fakeStorage(seed: Record<string, string> = {}): ModeStorage {
@@ -20,59 +20,40 @@ function fakeStorage(seed: Record<string, string> = {}): ModeStorage {
   };
 }
 
-describe("edition", () => {
-  it("defaults to the native version when nothing is stored", () => {
-    expect(loadEdition(fakeStorage())).toBe(DEFAULT_EDITION);
-    expect(DEFAULT_EDITION).toBe("native");
+describe("game mode", () => {
+  it("defaults to the Islamic version when nothing is stored", () => {
+    expect(loadMode(fakeStorage())).toBe(DEFAULT_MODE);
+    expect(DEFAULT_MODE).toBe("islamic");
   });
 
-  it("round-trips a saved edition through storage", () => {
+  it("round-trips a saved mode through the shared theme key", () => {
     const storage = fakeStorage();
-    saveEdition(storage, "unity");
-    expect(storage.getItem(EDITION_KEY)).toBe("unity");
-    expect(loadEdition(storage)).toBe("unity");
+    saveMode(storage, "clash");
+    expect(storage.getItem(ARENA_THEME_KEY)).toBe("normal");
+    expect(loadMode(storage)).toBe("clash");
+
+    saveMode(storage, "islamic");
+    expect(storage.getItem(ARENA_THEME_KEY)).toBe("arabic");
+    expect(loadMode(storage)).toBe("islamic");
   });
 
-  it("ignores a corrupt stored value and falls back to the default", () => {
-    expect(loadEdition(fakeStorage({ [EDITION_KEY]: "nintendo" }))).toBe(DEFAULT_EDITION);
+  it("maps modes to arena themes both ways", () => {
+    expect(modeToTheme("clash")).toBe("normal");
+    expect(modeToTheme("islamic")).toBe("arabic");
+    expect(themeToMode("normal")).toBe("clash");
+    expect(themeToMode("arabic")).toBe("islamic");
+    expect(themeToMode(null)).toBe("islamic"); // default
   });
 
-  it("recognises only the two real editions", () => {
-    expect(isEdition("native")).toBe(true);
-    expect(isEdition("unity")).toBe(true);
-    expect(isEdition("xbox")).toBe(false);
-    expect(isEdition(null)).toBe(false);
+  it("recognises only the two real modes", () => {
+    expect(isGameMode("clash")).toBe(true);
+    expect(isGameMode("islamic")).toBe(true);
+    expect(isGameMode("unity")).toBe(false);
+    expect(isGameMode(null)).toBe(false);
   });
 
-  it("toggles between the two editions", () => {
-    expect(otherEdition("native")).toBe("unity");
-    expect(otherEdition("unity")).toBe("native");
-  });
-});
-
-describe("unity build url", () => {
-  it("points at the served WebGL build loader", () => {
-    expect(unityBuildUrl()).toBe("unity/index.html");
-    expect(unityBuildUrl("/")).toBe("/unity/index.html");
-  });
-
-  it("passes the chosen deck as a query param when given", () => {
-    expect(unityBuildUrl("", ["knight", "mini-pekka"])).toBe(
-      "unity/index.html?deck=knight,mini-pekka",
-    );
-    expect(unityBuildUrl("", [])).toBe("unity/index.html");
-  });
-
-  it("reports the build present only on a successful fetch", async () => {
-    const ok = await checkUnityBuild(async () => ({ ok: true }) as Response);
-    expect(ok).toBe(true);
-
-    const missing = await checkUnityBuild(async () => ({ ok: false }) as Response);
-    expect(missing).toBe(false);
-
-    const errored = await checkUnityBuild(async () => {
-      throw new Error("not found");
-    });
-    expect(errored).toBe(false);
+  it("toggles between the two modes", () => {
+    expect(otherMode("clash")).toBe("islamic");
+    expect(otherMode("islamic")).toBe("clash");
   });
 });

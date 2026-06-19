@@ -17,7 +17,8 @@ describe("card stat lines", () => {
   });
 
   it("mentions special powers", () => {
-    expect(cardStatLines("witch").join(" ")).toMatch(/skeleton/i);
+    // Summon text uses the active mode's name (Skeletons / Militia).
+    expect(cardStatLines("witch").join(" ")).toMatch(/skeleton|militia/i);
     expect(cardStatLines("balloon").join(" ")).toMatch(/death/i);
     expect(cardStatLines("elixir-collector").join(" ")).toMatch(/elixir/i);
   });
