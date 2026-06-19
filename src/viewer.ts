@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { attachWeapon } from "./render3d/glbModels";
 
 // Standalone viewer to eyeball textured GLB characters at chosen scales + tints.
 
@@ -59,6 +60,10 @@ ROW.forEach(([file, label, scale, x, tint]) => {
         }
       }
     });
+    if (label === "Prince") {
+      attachWeapon(g, "prince");
+      (window as unknown as { __prince: THREE.Object3D }).__prince = g;
+    }
     scene.add(g);
     const mixer = new THREE.AnimationMixer(g);
     const idle = gltf.animations.find((a) => a.name === "Idle");

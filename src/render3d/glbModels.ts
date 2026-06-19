@@ -111,6 +111,56 @@ const ATTACK_CLIP: Record<string, string> = {
   prince: "1H_Melee_Attack_Stab", // a lance-like thrust
 };
 
+/** Cards that get a weapon prop attached to a hand slot of their model. */
+const MODEL_WEAPON: Partial<Record<string, "lance">> = {
+  prince: "lance",
+};
+
+/** A striped jousting/tournament lance, built from primitives. */
+function buildLance(): THREE.Group {
+  const g = new THREE.Group();
+  const LEN = 2.7, R = 0.05;
+  const white = new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 0.6 });
+  const red = new THREE.MeshStandardMaterial({ color: 0xc62828, roughness: 0.6 });
+  const steel = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, metalness: 0.4, roughness: 0.5 });
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(R, R * 0.7, LEN, 12), white);
+  shaft.position.y = LEN / 2;
+  g.add(shaft);
+  for (let i = 0; i < 4; i++) {
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.08, R * 1.0, 0.16, 12), red);
+    band.position.y = 0.55 + i * 0.55;
+    g.add(band);
+  }
+  const vamplate = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.32, 12), steel);
+  vamplate.position.y = 0.36;
+  vamplate.rotation.x = Math.PI; // flared guard cupping the hand
+  g.add(vamplate);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.34, 12), steel);
+  tip.position.y = LEN + 0.14;
+  g.add(tip);
+  g.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh) m.castShadow = true;
+  });
+  return g;
+}
+
+/** Attach a card's weapon prop to its model's right-hand slot, if any. */
+export function attachWeapon(group: THREE.Object3D, cardId: string): void {
+  if (MODEL_WEAPON[cardId] !== "lance") return;
+  // GLTFLoader strips dots from node names: "handslot.r" -> "handslotr".
+  const slot =
+    group.getObjectByName("handslotr") ?? group.getObjectByName("handslot.r");
+  if (!slot) return;
+  // Hide the model's baked-in hand weapons so the lance stands alone.
+  for (const c of [...slot.children]) c.visible = false;
+  const lance = buildLance();
+  // The hand bone's local +Y points groundward; flip + tilt so the lance
+  // rises forward like a couched tournament lance.
+  lance.rotation.x = Math.PI - 0.5;
+  slot.add(lance);
+}
+
 /** Instantiate an animated clone of a card's model, or null if not loaded. */
 export function makeGlbUnit(cardId: string): GlbUnit | null {
   const src = loaded.get(cardId);
@@ -132,6 +182,7 @@ export function makeGlbUnit(cardId: string): GlbUnit | null {
       else if (mat) mat.userData.shared = true;
     }
   });
+  attachWeapon(group, cardId);
 
   const mixer = new THREE.AnimationMixer(group);
   const clip = (name: string): THREE.AnimationAction | undefined => {
