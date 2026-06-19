@@ -550,6 +550,78 @@ function buildGiant(): TroopRig {
   return { group: g, arm, armRest: -0.35, swingAmp: 1.4, height: 2.1, legs, offArm };
 }
 
+function buildRoyalGiant(): TroopRig {
+  // A royal-armoured giant who hoists an enormous cannon and lobs
+  // cannonballs at the enemy's towers.
+  const ARMOR = 0x2e4a8a, ARMORDK = 0x1c2f5e, GOLD = 0xf2c14e, IRON = 0x59626e, IRONDK = 0x2b3138;
+  const g = new THREE.Group();
+  const legs = [makeLeg(ARMORDK, -0.26, 0.34, 0.26), makeLeg(ARMORDK, 0.26, 0.34, 0.26)];
+  g.add(...legs);
+  const belly = sphere(0.62, 0xc98850, 0, 0.95, 0); // bare-bellied bruiser
+  belly.scale.set(1, 0.95, 0.82);
+  g.add(belly);
+  g.add(box(0.42, 0.72, 0.1, ARMOR, 0, 0.96, 0.49)); // royal tabard
+  g.add(box(0.12, 0.72, 0.02, GOLD, 0, 0.96, 0.55)); // gold stripe
+  g.add(cyl(0.63, 0.63, 0.12, GOLD, 0, 0.55, 0)); // gold belt
+  g.add(sphere(0.11, 0xff5252, 0, 0.55, 0.6)); // ruby buckle
+  g.add(cyl(0.5, 0.6, 0.34, ARMORDK, 0, 0.4, 0)); // armoured skirt
+  for (const s of [-1, 1]) g.add(sphere(0.26, IRON, s * 0.6, 1.34, 0)); // pauldrons
+  const head = sphere(0.42, SKIN, 0, 1.72, 0);
+  addEyes(head, 0.42, 0.34, 0.18, "brave");
+  g.add(head);
+  const beard = sphere(0.4, 0xb08038, 0, 1.56, 0.14); // golden beard
+  beard.scale.set(1, 0.62, 0.85);
+  g.add(beard);
+  g.add(box(0.5, 0.07, 0.06, 0x5d3d22, 0, 1.92, 0.36)); // heavy brow
+  g.add(sphere(0.09, SKIN, 0, 1.74, 0.42)); // nose
+  if (ARABIC) {
+    const t = turban(0.42, ARMOR, GOLD);
+    t.position.y = 1.78;
+    g.add(t);
+  } else {
+    // Golden royal crown ringed with points and a ruby.
+    g.add(cyl(0.4, 0.44, 0.16, GOLD, 0, 2.06, 0));
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      g.add(cone(0.06, 0.18, GOLD, Math.cos(a) * 0.34, 2.22, Math.sin(a) * 0.34));
+    }
+    g.add(sphere(0.06, 0xff5252, 0, 2.14, 0.4)); // crown ruby
+  }
+
+  // Off arm braces the cannon's underside.
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.46, 1.0, 0.24);
+  offArm.add(box(0.24, 0.46, 0.24, SKIN, 0, -0.2, 0));
+  offArm.add(sphere(0.2, SKIN, 0, -0.42, 0.08));
+  offArm.rotation.x = -0.55;
+  g.add(offArm);
+
+  // Main arm hoists a huge forward-pointing cannon (the attack).
+  const arm = new THREE.Group();
+  arm.position.set(0.62, 1.2, 0);
+  arm.add(box(0.24, 0.46, 0.24, SKIN, 0, -0.24, 0)); // upper arm
+  arm.add(sphere(0.2, SKIN, 0, -0.46, 0.12)); // fist
+  const cannon = new THREE.Group();
+  cannon.position.set(-0.12, -0.42, 0.2);
+  const barrel = cyl(0.2, 0.24, 1.1, IRON, 0, 0, 0);
+  barrel.rotation.x = Math.PI / 2;
+  barrel.position.z = 0.55;
+  cannon.add(barrel);
+  const breech = sphere(0.26, IRONDK, 0, 0, -0.04);
+  cannon.add(breech);
+  const band = cyl(0.27, 0.27, 0.12, GOLD, 0, 0, 0);
+  band.rotation.x = Math.PI / 2;
+  band.position.z = 0.7;
+  cannon.add(band);
+  const muzzle = cyl(0.28, 0.28, 0.12, GOLD, 0, 0, 0);
+  muzzle.rotation.x = Math.PI / 2;
+  muzzle.position.z = 1.12;
+  cannon.add(muzzle);
+  arm.add(cannon);
+  g.add(arm);
+  return { group: g, arm, armRest: -0.08, swingAmp: 0.4, height: 2.1, legs, offArm };
+}
+
 function buildMusketeer(): TroopRig {
   const g = new THREE.Group();
   const legs = [makeLeg(0x283593, -0.12, 0.28, 0.14), makeLeg(0x283593, 0.12, 0.28, 0.14)];
@@ -1642,7 +1714,7 @@ const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   "ice-wizard": buildIceWizard,
   princess: buildPrincess,
   "mega-knight": buildMegaKnight,
-  "royal-giant": buildGiant,
+  "royal-giant": buildRoyalGiant,
 };
 
 /**
