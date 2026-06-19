@@ -194,9 +194,10 @@ export function attachWeapon(group: THREE.Object3D, cardId: string): void {
     if (off) for (const c of [...off.children]) c.visible = false;
   }
   const prop = weapon === "lance" ? buildLance() : buildMusket();
-  // The hand bone's local +Y points groundward; flip so the prop reaches
-  // forward — a couched lance, or a levelled musket.
-  prop.rotation.x = weapon === "lance" ? Math.PI - 0.5 : Math.PI - 0.95;
+  // The hand bone's local +Y points groundward; tilt so the prop reaches
+  // forward (the direction the unit faces), angled slightly down — a couched
+  // lance, or a levelled musket.
+  prop.rotation.x = weapon === "lance" ? Math.PI + 0.5 : Math.PI + 0.95;
   slot.add(prop);
 }
 
