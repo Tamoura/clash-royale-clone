@@ -19,6 +19,7 @@ const loading = new Set<string>();
 /** Card -> GLB filename (under public/models/kaykit/). Extend as models land. */
 const MODEL_FILE: Partial<Record<string, string>> = {
   knight: "Knight.glb",
+  wizard: "Mage.glb",
 };
 
 function url(file: string): string {
@@ -57,6 +58,7 @@ export interface GlbUnit {
 
 const ATTACK_CLIP: Record<string, string> = {
   knight: "1H_Melee_Attack_Slice_Diagonal",
+  wizard: "Spellcast_Shoot", // the Mage's casting throw, for the fire-orb attack
 };
 
 /** Instantiate an animated clone of a card's model, or null if not loaded. */
