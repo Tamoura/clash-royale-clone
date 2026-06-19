@@ -13,8 +13,8 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xcdb487);
 
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
-camera.position.set(0, 3.0, 13);
-camera.lookAt(0, 1.4, 0);
+camera.position.set(0, 3.0, 15);
+camera.lookAt(0, 1.2, 0);
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7a55, 1.1));
 const sun = new THREE.DirectionalLight(0xfff2d6, 1.5);
@@ -33,16 +33,18 @@ scene.add(floor);
 const mixers: THREE.AnimationMixer[] = [];
 const loader = new GLTFLoader();
 
-// file, label, scale, x, tint (0xffffff = none)
+// file, label, scale, x, tint (0xffffff = none) — quick-reuse batch
 const ROW: Array<[string, string, number, number, number]> = [
-  ["Knight.glb", "Knight", 0.95, -4.2, 0xffffff],
-  ["Knight.glb", "Prince", 1.05, -1.0, 0x7088e0],
-  ["Rogue_Hooded.glb", "Musketeer", 0.92, 3.0, 0xffffff],
+  ["Mage.glb", "Wizard", 0.95, -6.0, 0xffffff],
+  ["Mage.glb", "Electro Wiz", 0.95, -3.0, 0x6fd0ff],
+  ["Mage.glb", "Ice Wiz", 0.95, 0, 0xbfe6ff],
+  ["Mage.glb", "Witch", 0.95, 3.0, 0x7a4aa8],
+  ["Rogue.glb", "Archers", 0.85, 6.0, 0xffffff],
 ];
 
 const labels = document.getElementById("labels")!;
 (window as unknown as { __labelData: Array<{ l: string; pct: number }> }).__labelData =
-  ROW.map(([, label, , x]) => ({ l: label, pct: 50 + (x / 6.4) * 42 }));
+  ROW.map(([, label, , x]) => ({ l: label, pct: 50 + (x / 7.2) * 42 }));
 ROW.forEach(([file, label, scale, x, tint]) => {
   loader.load(`/models/kaykit/${file}`, (gltf) => {
     const g = gltf.scene;
@@ -60,8 +62,10 @@ ROW.forEach(([file, label, scale, x, tint]) => {
         }
       }
     });
-    if (label === "Prince") attachWeapon(g, "prince");
-    if (label === "Musketeer") attachWeapon(g, "musketeer");
+    if (label === "Archers") {
+      attachWeapon(g, "archers");
+      (window as unknown as { __archers: THREE.Object3D }).__archers = g;
+    }
     scene.add(g);
     const mixer = new THREE.AnimationMixer(g);
     const idle = gltf.animations.find((a) => a.name === "Idle");
@@ -71,7 +75,7 @@ ROW.forEach(([file, label, scale, x, tint]) => {
   const d = document.createElement("div");
   d.className = "lbl";
   d.textContent = label;
-  d.style.left = `${50 + (x / 6.4) * 42}%`;
+  d.style.left = `${50 + (x / 7.2) * 42}%`;
   labels.appendChild(d);
 });
 

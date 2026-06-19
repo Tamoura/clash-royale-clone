@@ -27,6 +27,10 @@ const MODEL_FILE: Partial<Record<string, string>> = {
   pekka: "Skeleton_Warrior.glb",
   prince: "Knight.glb",
   musketeer: "Rogue_Hooded.glb",
+  "electro-wizard": "Mage.glb",
+  "ice-wizard": "Mage.glb",
+  witch: "Mage.glb",
+  archers: "Rogue.glb",
 };
 
 /**
@@ -43,55 +47,54 @@ const MODEL_SCALE: Partial<Record<string, number>> = {
   pekka: 1.5,
   prince: 1.05,
   musketeer: 0.92,
+  "electro-wizard": 0.95,
+  "ice-wizard": 0.95,
+  witch: 0.95,
+  archers: 0.85,
 };
 
 /**
- * Optional colour multiply applied to a model's textures at load time, so one
+ * Optional colour multiply applied to a model's textures (per clone), so one
  * base model can stand in for several cards: a near-black steel P.E.K.K.A from
- * the Skeleton Warrior, a royal-blue Prince from the Knight.
+ * the Skeleton Warrior, a royal-blue Prince and a cyan Electro Wizard, etc.
+ * Note: a multiply can only deepen existing hues, not invent new ones.
  */
 const MODEL_TINT: Partial<Record<string, number>> = {
   pekka: 0x33384a, // dark robotic steel
   prince: 0x7088e0, // royal blue
+  "electro-wizard": 0x6fd0ff, // electric blue (from the Mage's purple)
+  "ice-wizard": 0xbfe6ff, // pale frost
+  witch: 0x7a4aa8, // deep witch purple
 };
 
 function url(file: string): string {
   return `${import.meta.env.BASE_URL}models/kaykit/${file}`;
 }
 
-/** Kick off loading the models we have; safe to call repeatedly. */
+/**
+ * Kick off loading the models we have; safe to call repeatedly. Keyed by file
+ * so several cards can share one base model without re-parsing it.
+ */
 export function preloadGlbModels(): void {
   const loader = new GLTFLoader();
-  for (const [card, file] of Object.entries(MODEL_FILE)) {
-    if (loaded.has(card) || loading.has(card)) continue;
-    loading.add(card);
+  for (const file of new Set(Object.values(MODEL_FILE))) {
+    if (!file || loaded.has(file) || loading.has(file)) continue;
+    loading.add(file);
     loader.load(
-      url(file!),
+      url(file),
       (gltf) => {
-        const tint = MODEL_TINT[card];
-        if (tint !== undefined) {
-          // Tint the shared source materials once; every clone inherits it.
-          gltf.scene.traverse((o) => {
-            const mesh = o as THREE.Mesh;
-            if (!mesh.isMesh) return;
-            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-            for (const m of mats) {
-              const sm = m as THREE.MeshStandardMaterial;
-              if (sm && sm.color) sm.color.setHex(tint);
-            }
-          });
-        }
-        loaded.set(card, { scene: gltf.scene as THREE.Group, animations: gltf.animations });
-        loading.delete(card);
+        loaded.set(file, { scene: gltf.scene as THREE.Group, animations: gltf.animations });
+        loading.delete(file);
       },
       undefined,
-      () => loading.delete(card), // on error, fall back to the primitive rig
+      () => loading.delete(file), // on error, fall back to the primitive rig
     );
   }
 }
 
 export function hasGlbModel(cardId: string): boolean {
-  return loaded.has(cardId);
+  const file = MODEL_FILE[cardId];
+  return !!file && loaded.has(file);
 }
 
 export interface GlbUnit {
@@ -112,12 +115,24 @@ const ATTACK_CLIP: Record<string, string> = {
   pekka: "2H_Melee_Attack_Chop", // heavy two-handed sword swing
   prince: "1H_Melee_Attack_Stab", // a lance-like thrust
   musketeer: "2H_Ranged_Shoot", // shoulders and fires the musket
+  "electro-wizard": "Spellcast_Shoot",
+  "ice-wizard": "Spellcast_Shoot",
+  witch: "Spellcast_Shoot",
+  archers: "1H_Ranged_Shoot", // looses a bolt
 };
 
-/** Cards that get a weapon prop attached to a hand slot of their model. */
+/** Cards that get a custom weapon prop built and attached to a hand slot. */
 const MODEL_WEAPON: Partial<Record<string, "lance" | "musket">> = {
   prince: "lance",
   musketeer: "musket",
+};
+
+/**
+ * Cards that instead reveal one of the model's *baked-in* hand weapons (by node
+ * name) and hide the rest — e.g. the Rogue ships with a crossbow already posed.
+ */
+const MODEL_KEEP_WEAPON: Partial<Record<string, string>> = {
+  archers: "1H_Crossbow",
 };
 
 /** A striped jousting/tournament lance, built from primitives. */
@@ -178,15 +193,30 @@ function buildMusket(): THREE.Group {
   return g;
 }
 
-/** Attach a card's weapon prop to its model's right-hand slot, if any. */
+/** Both hand-slot nodes of a KayKit rig (dots are stripped by GLTFLoader). */
+function handSlots(group: THREE.Object3D): THREE.Object3D[] {
+  return [
+    group.getObjectByName("handslotr") ?? group.getObjectByName("handslot.r"),
+    group.getObjectByName("handslotl") ?? group.getObjectByName("handslot.l"),
+  ].filter(Boolean) as THREE.Object3D[];
+}
+
+/** Attach/select a card's hand weapon, if any. */
 export function attachWeapon(group: THREE.Object3D, cardId: string): void {
+  // Reveal-a-baked-weapon path: show only the named mesh, hide other props.
+  const keep = MODEL_KEEP_WEAPON[cardId];
+  if (keep) {
+    for (const slot of handSlots(group)) {
+      for (const c of slot.children) c.visible = c.name === keep;
+    }
+    return;
+  }
+
   const weapon = MODEL_WEAPON[cardId];
   if (!weapon) return;
-  // GLTFLoader strips dots from node names: "handslot.r" -> "handslotr".
-  const slot =
-    group.getObjectByName("handslotr") ?? group.getObjectByName("handslot.r");
+  const slot = handSlots(group)[0];
   if (!slot) return;
-  // Hide the model's baked-in hand weapons so the prop stands alone.
+  // Hide the model's baked-in hand weapons so the custom prop stands alone.
   for (const c of [...slot.children]) c.visible = false;
   // A two-handed musket also clears the off-hand (a stray dagger/shield).
   if (weapon === "musket") {
@@ -195,32 +225,42 @@ export function attachWeapon(group: THREE.Object3D, cardId: string): void {
   }
   const prop = weapon === "lance" ? buildLance() : buildMusket();
   // The hand bone's local +Y points groundward; tilt so the prop reaches
-  // forward (the direction the unit faces), angled slightly down — a couched
-  // lance, or a levelled musket.
+  // forward (the direction the unit faces), angled slightly down.
   prop.rotation.x = weapon === "lance" ? Math.PI + 0.5 : Math.PI + 0.95;
   slot.add(prop);
 }
 
 /** Instantiate an animated clone of a card's model, or null if not loaded. */
 export function makeGlbUnit(cardId: string): GlbUnit | null {
-  const src = loaded.get(cardId);
+  const file = MODEL_FILE[cardId];
+  const src = file ? loaded.get(file) : undefined;
   if (!src) return null;
 
   const group = cloneSkinned(src.scene) as THREE.Group;
   const scale = MODEL_SCALE[cardId] ?? 0.95;
   group.scale.setScalar(scale);
+  const tint = MODEL_TINT[cardId];
   group.traverse((o) => {
     const mesh = o as THREE.Mesh;
-    if (mesh.isMesh) {
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      // Clones share geometry/material; flag them so disposeDeep won't free
-      // resources still used by other clones of the same model.
-      if (mesh.geometry) mesh.geometry.userData.shared = true;
-      const mat = mesh.material as THREE.Material | THREE.Material[];
-      if (Array.isArray(mat)) mat.forEach((m) => (m.userData.shared = true));
-      else if (mat) mat.userData.shared = true;
-    }
+    if (!mesh.isMesh) return;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    // Geometry is always shared across clones; flag it so disposeDeep keeps it.
+    if (mesh.geometry) mesh.geometry.userData.shared = true;
+    const orig = mesh.material as THREE.Material | THREE.Material[];
+    const list = Array.isArray(orig) ? orig : [orig];
+    const out = list.map((m) => {
+      if (tint !== undefined) {
+        // Tinted cards clone the shared material so the colour is per-card.
+        const c = (m as THREE.MeshStandardMaterial).clone();
+        if (c.color) c.color.setHex(tint);
+        c.userData.shared = false;
+        return c;
+      }
+      m.userData.shared = true;
+      return m;
+    });
+    mesh.material = Array.isArray(orig) ? out : out[0];
   });
   attachWeapon(group, cardId);
 
