@@ -443,6 +443,69 @@ function buildArcher(): TroopRig {
   return { group: g, arm, armRest: -1.05, swingAmp: 0.7, height: 1.25, legs, offArm };
 }
 
+function buildPrincess(): TroopRig {
+  // A regal archer: long cream-and-rose gown, golden crown, and a
+  // golden longbow that looses a flaming arrow.
+  const GOWN = 0xf6e7ef, GOWNDK = 0xe39ec4, GOLD = 0xf2c14e, HAIR = 0xffe082;
+  const g = new THREE.Group();
+  g.add(cyl(0.18, 0.46, 0.9, GOWN, 0, 0.46, 0)); // flowing gown
+  g.add(cyl(0.46, 0.48, 0.1, GOWNDK, 0, 0.05, 0)); // rose hem
+  g.add(cyl(0.27, 0.3, 0.36, GOWNDK, 0, 0.78, 0)); // rose bodice
+  g.add(cyl(0.3, 0.3, 0.06, GOLD, 0, 0.62, 0)); // golden belt
+  const head = sphere(0.27, SKIN, 0, 1.12, 0);
+  addEyes(head, 0.27, 0.36, 0.1, "calm");
+  g.add(head);
+  // Long blonde hair flowing down her back.
+  const hair = sphere(0.29, HAIR, 0, 1.18, -0.04);
+  hair.scale.set(1, 0.7, 1);
+  g.add(hair);
+  const braid = cyl(0.09, 0.05, 0.6, HAIR, 0, 0.92, -0.2);
+  g.add(braid);
+  if (ARABIC) {
+    const t = turban(0.27, 0xc2185b, GOLD);
+    t.position.y = 1.12;
+    g.add(t);
+  } else {
+    // Golden three-point crown.
+    g.add(cyl(0.28, 0.3, 0.1, GOLD, 0, 1.34, 0));
+    for (const dx of [-0.18, 0, 0.18]) g.add(cone(0.05, 0.16, GOLD, dx, 1.46, 0));
+    g.add(sphere(0.05, 0xff4081, 0, 1.4, 0.26)); // pink gem
+  }
+
+  const offArm = new THREE.Group();
+  offArm.position.set(0.3, 0.78, 0);
+  offArm.add(box(0.1, 0.26, 0.1, SKIN, 0, -0.13, 0));
+  g.add(offArm);
+
+  // Bow arm with a golden longbow and a glowing flaming arrow.
+  const arm = new THREE.Group();
+  arm.position.set(-0.3, 0.82, 0.05);
+  arm.add(box(0.1, 0.26, 0.1, SKIN, 0, -0.13, 0));
+  const bow = new THREE.Mesh(
+    new THREE.TorusGeometry(0.4, 0.035, 8, 16, Math.PI),
+    toon(GOLD),
+  );
+  bow.castShadow = true;
+  bow.position.set(0, -0.26, 0.18);
+  bow.rotation.set(0, -Math.PI / 2, 0);
+  arm.add(bow);
+  arm.add(box(0.015, 0.78, 0.015, 0xfff3c4, 0, -0.26, 0.18)); // string
+  const nocked = new THREE.Group();
+  nocked.position.set(0, -0.26, 0.2);
+  const shaft = cyl(0.018, 0.018, 0.55, 0x6d4c41, 0, 0, 0);
+  shaft.rotation.x = Math.PI / 2;
+  nocked.add(shaft);
+  const flame = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), glow(0xff7043, 2));
+  flame.position.set(0, 0, 0.32);
+  nocked.add(flame);
+  arm.add(nocked);
+  g.add(arm);
+  const flicker = (t: number, phase: number) => {
+    flame.scale.setScalar(1 + Math.sin(t * 13 + phase) * 0.2);
+  };
+  return { group: g, arm, armRest: -1.05, swingAmp: 0.7, height: 1.35, offArm, extras: flicker };
+}
+
 function buildGiant(): TroopRig {
   const g = new THREE.Group();
   const legs = [
@@ -603,10 +666,38 @@ function buildSkeleton(): TroopRig {
   return { group: g, arm, armRest: -0.55, swingAmp: 1.6, height: 0.95, legs, offArm };
 }
 
-function buildWizard(): TroopRig {
-  // Premium classic wizard: flared star-trimmed robe, pointed hat,
-  // glowing crystal staff, and the fire-orb casting hand.
-  const ROBE = 0x2456c8, ROBEDK = 0x18337e, TRIM = 0xf2c14e, HAIR = 0xeef3fa;
+type EyeMood = "brave" | "angry" | "calm" | "cute" | "wicked";
+
+interface WizardTheme {
+  robe: number;
+  robeDk: number;
+  trim: number;
+  hair: number;
+  beard: number;
+  orb: number; // casting orb / attack element
+  crystal: number; // staff crystal
+  tip: number; // headgear accent glow
+  mood: EyeMood;
+  headgear: "hat" | "electro" | "ice";
+}
+
+const CLASSIC_WIZARD: WizardTheme = {
+  robe: 0x2456c8,
+  robeDk: 0x18337e,
+  trim: 0xf2c14e,
+  hair: 0xeef3fa,
+  beard: 0xeef3fa,
+  orb: 0xff7a00,
+  crystal: 0x59c8ff,
+  tip: 0xfff1a8,
+  mood: "brave",
+  headgear: "hat",
+};
+
+function buildWizard(theme: WizardTheme = CLASSIC_WIZARD): TroopRig {
+  // Premium classic wizard: flared star-trimmed robe, glowing crystal staff,
+  // and a casting orb. Themed variants (electro/ice) reskin the same rig.
+  const ROBE = theme.robe, ROBEDK = theme.robeDk, TRIM = theme.trim, HAIR = theme.hair;
   const g = new THREE.Group();
   g.add(cyl(0.26, 0.52, 0.92, ROBE, 0, 0.47, 0)); // flared robe
   g.add(cyl(0.52, 0.54, 0.1, ROBEDK, 0, 0.05, 0)); // hem
@@ -614,24 +705,47 @@ function buildWizard(): TroopRig {
   g.add(box(0.1, 0.1, 0.05, TRIM, 0, 0.76, 0.42)); // buckle
   for (let i = 0; i < 3; i++) g.add(sphere(0.045, TRIM, 0, 0.62 - i * 0.17, 0.4)); // star buttons
   const head = sphere(0.32, SKIN, 0, 1.12, 0);
-  addEyes(head, 0.32, 0.32, 0.08, "brave");
+  addEyes(head, 0.32, 0.32, 0.08, theme.mood);
   g.add(head);
-  // White hair tufts + short beard, kept clear of the lit face.
+  // Hair tufts + short beard, kept clear of the lit face.
   for (const s of [-1, 1]) g.add(sphere(0.12, HAIR, s * 0.28, 1.02, 0.04));
-  const beard = cone(0.2, 0.42, HAIR, 0, 0.84, 0.12);
+  const beard = cone(0.2, 0.42, theme.beard, 0, 0.84, 0.12);
   beard.rotation.x = Math.PI;
   g.add(beard);
+  let antennae: THREE.Object3D | null = null;
   if (ARABIC) {
     const t = turban(0.32, 0x2f6f6b, 0x76ff03); // teal turban, green mage jewel
     t.position.y = 1.12;
     g.add(t);
+  } else if (theme.headgear === "electro") {
+    // No hat: a wild electric mohawk and a crackling bolt antenna.
+    for (let i = 0; i < 5; i++) {
+      const spike = cone(0.06, 0.34 - Math.abs(i - 2) * 0.05, HAIR, (i - 2) * 0.1, 1.36, -0.02);
+      g.add(spike);
+    }
+    antennae = new THREE.Group();
+    const bolt = new THREE.Mesh(new THREE.OctahedronGeometry(0.09), glow(theme.tip, 2.2));
+    bolt.position.set(0, 1.66, -0.02);
+    antennae.add(bolt);
+    g.add(antennae);
+  } else if (theme.headgear === "ice") {
+    // A jagged frozen crown of pale crystal shards.
+    g.add(cyl(0.36, 0.4, 0.12, ROBEDK, 0, 1.32, 0)); // icy circlet
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const shard = cone(0.05, 0.26, theme.tip, Math.cos(a) * 0.3, 1.5, Math.sin(a) * 0.3);
+      g.add(shard);
+    }
+    const crownTip = new THREE.Mesh(new THREE.OctahedronGeometry(0.1), glow(theme.tip, 1.6));
+    crownTip.position.set(0, 1.62, 0);
+    g.add(crownTip);
   } else {
     // Pointed hat with brim band + glowing tip star.
     const hat = cone(0.44, 1.0, ROBEDK, 0, 1.66, -0.05);
     hat.rotation.x = -0.1;
     g.add(hat);
     g.add(cyl(0.46, 0.46, 0.1, ROBE, 0, 1.26, 0)); // brim band
-    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 10), glow(0xfff1a8, 1.8));
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 10), glow(theme.tip, 1.8));
     tip.position.set(0.08, 2.12, -0.16);
     g.add(tip);
   }
@@ -641,16 +755,16 @@ function buildWizard(): TroopRig {
   offArm.position.set(-0.4, 0.78, 0);
   offArm.add(box(0.11, 0.26, 0.11, ROBE, 0, -0.13, 0));
   offArm.add(cyl(0.032, 0.038, 1.15, 0x6d4c41, 0, -0.12, 0.08)); // shaft
-  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.13), glow(0x59c8ff, 1.8));
+  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.13), glow(theme.crystal, 1.8));
   crystal.position.set(0, 0.5, 0.08);
   offArm.add(crystal);
   g.add(offArm);
 
-  // Casting hand with fire orb (the attack).
+  // Casting hand with the elemental orb (the attack).
   const arm = new THREE.Group();
   arm.position.set(0.4, 0.8, 0);
   arm.add(box(0.11, 0.26, 0.11, ROBE, 0, -0.13, 0));
-  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), glow(0xff7a00, 1.8));
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), glow(theme.orb, 1.8));
   orb.position.set(0, -0.34, 0.1);
   arm.add(orb);
   g.add(arm);
@@ -658,8 +772,39 @@ function buildWizard(): TroopRig {
     const s = 1 + Math.sin(t * 11 + phase) * 0.12 + Math.sin(t * 23 + phase * 2) * 0.05;
     orb.scale.setScalar(s);
     crystal.rotation.y = t * 1.5;
+    if (antennae) antennae.rotation.y = t * 4;
   };
   return { group: g, arm, armRest: -0.9, swingAmp: 1.1, height: 1.7, offArm, extras: flicker };
+}
+
+function buildElectroWizard(): TroopRig {
+  return buildWizard({
+    robe: 0xf4f8ff,
+    robeDk: 0x2a6fb0,
+    trim: 0x4fd2ff,
+    hair: 0x6fe3ff,
+    beard: 0xeaf6ff,
+    orb: 0x5ad1ff,
+    crystal: 0x9bf0ff,
+    tip: 0xb8f3ff,
+    mood: "angry",
+    headgear: "electro",
+  });
+}
+
+function buildIceWizard(): TroopRig {
+  return buildWizard({
+    robe: 0x7ec8f0,
+    robeDk: 0x2e6fa0,
+    trim: 0xeafaff,
+    hair: 0xeafaff,
+    beard: 0xd6f2ff,
+    orb: 0xbfeaff,
+    crystal: 0xdff6ff,
+    tip: 0xeafaff,
+    mood: "calm",
+    headgear: "ice",
+  });
 }
 
 function buildWitch(): TroopRig {
@@ -1492,10 +1637,10 @@ const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   valkyrie: buildValkyrie,
   prince: buildPrince,
   pekka: buildPekka,
-  // New cards reuse the closest archetype rig (distinct card colours + stats).
-  "electro-wizard": buildWizard,
-  "ice-wizard": buildWizard,
-  princess: buildArcher,
+  // New cards: distinct themed rigs built on the closest archetype.
+  "electro-wizard": buildElectroWizard,
+  "ice-wizard": buildIceWizard,
+  princess: buildPrincess,
   "mega-knight": buildMegaKnight,
   "royal-giant": buildGiant,
 };

@@ -6,6 +6,10 @@ describe("spawn styles", () => {
     expect(spawnStyle("skeletons")).toBe("rise");
   });
 
+  it("the Mega Knight slams down from the sky", () => {
+    expect(spawnStyle("mega-knight")).toBe("slam");
+  });
+
   it("everyone else pops in", () => {
     expect(spawnStyle("knight")).toBe("pop");
     expect(spawnStyle("balloon")).toBe("pop");

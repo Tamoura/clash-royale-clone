@@ -151,7 +151,7 @@ interface EntityView {
   /** Seconds until the next footstep dust puff. */
   dustT?: number;
   /** How this troop enters the field. */
-  spawnStyle?: "rise" | "pop";
+  spawnStyle?: "rise" | "pop" | "slam";
   /** Real glTF model (KayKit) + animation mixer, when this card uses one. */
   glb?: GlbUnit & { current?: string };
 }
@@ -2260,6 +2260,61 @@ export class Battle3D {
     }
   }
 
+  /**
+   * Mega Knight sky-slam: a heavy dust shockwave that radiates outward,
+   * with debris flung in every direction and a hard camera kick — timed
+   * to land as he hits the ground.
+   */
+  private megaSlam(ax: number, ay: number): void {
+    const LAND = 0.26; // sync with the fall in the spawn animation
+    const w = toWorld(ax, ay);
+    this.blast(ax, ay, 3.2, 0xb9a888, LAND);
+    // A low crater ring that snaps outward on impact.
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.6, 0.95, 40),
+      new THREE.MeshBasicMaterial({
+        color: 0x7a6b50,
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide,
+      }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(w.x, 0.05, w.z);
+    this.addEffect(
+      ring,
+      0.5,
+      (frac) => {
+        ring.scale.setScalar(0.3 + (1 - frac) * 4.5);
+        (ring.material as THREE.MeshBasicMaterial).opacity = 0.8 * frac;
+      },
+      LAND,
+    );
+    // Debris chunks hurled outward in every direction (the "trampling" push).
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const chunk = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, 0.18, 0.18),
+        new THREE.MeshToonMaterial({ color: 0x8d7a5c, transparent: true }),
+      );
+      chunk.position.set(w.x, 0.2, w.z);
+      this.addEffect(
+        chunk,
+        0.5,
+        (frac) => {
+          const t = 1 - frac;
+          const r = t * 3;
+          chunk.position.set(w.x + Math.cos(a) * r, 0.2 + Math.sin(t * Math.PI) * 1.2, w.z + Math.sin(a) * r);
+          chunk.rotation.set(t * 6, t * 5, 0);
+          (chunk.material as THREE.MeshToonMaterial).opacity = frac;
+        },
+        LAND,
+      );
+    }
+    this.puff(ax, ay, 0xcdbd9c, 1.8);
+    this.addShake(0.85);
+  }
+
   /** Arrows: a volley rains down across the radius, then a ring pop. */
   private arrowVolley(ax: number, ay: number, radius: number): void {
     for (let i = 0; i < 10; i++) {
@@ -2585,7 +2640,10 @@ export class Battle3D {
         else if (ev.cardId === "zap") this.zapStrike(ev.x, ev.y, 2);
         else if (ev.cardId === "rage") this.rageZone(ev.x, ev.y, 2.5, 6);
         else if (ev.cardId === "freeze") this.freezeBlast(ev.x, ev.y, 3, 4);
-        else this.arrowVolley(ev.x, ev.y, 4);
+        // Mega Knight's slam shockwave is fired from his sky-drop spawn entry.
+        else if (ev.cardId === "mega-knight") {
+          /* handled on spawn */
+        } else this.arrowVolley(ev.x, ev.y, 4);
         break;
       case "attack":
         if (ev.ranged) {
@@ -2674,8 +2732,10 @@ export class Battle3D {
               : buildTowerMesh(e);
         this.views.set(e.id, view);
         this.scene.add(view.root);
-        // Entry flourish: a dark portal for risers, dust for poppers.
+        // Entry flourish: a dark portal for risers, a sky-slam shockwave for
+        // the Mega Knight, dust for everyone else.
         if (view.spawnStyle === "rise") this.summonPortal(e.x, e.y);
+        else if (view.spawnStyle === "slam") this.megaSlam(e.x, e.y);
         else if (view.isTroop) this.puff(e.x, e.y, 0xd9cdb8, 0.45);
       }
       const w = toWorld(e.x, e.y);
@@ -2689,6 +2749,10 @@ export class Battle3D {
         const f = Math.min(1, view.spawnT / SPAWN_POP_TIME);
         if (view.spawnStyle === "rise") {
           view.root.position.y = -1.0 * (1 - f) * (1 - f);
+          view.root.scale.setScalar(baseScale);
+        } else if (view.spawnStyle === "slam") {
+          // Plummet from the sky, accelerating into a ground-shaking landing.
+          view.root.position.y = 8 * (1 - f * f);
           view.root.scale.setScalar(baseScale);
         } else {
           view.root.scale.setScalar(Math.max(0.05, easeOutBack(f) * baseScale));
