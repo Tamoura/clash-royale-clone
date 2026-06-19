@@ -42,3 +42,18 @@ describe("Electro Wizard chain", () => {
     expect(peakStun).toBeGreaterThan(0.5);
   });
 });
+
+describe("Mega Knight leap", () => {
+  it("jumps onto a far target and slams it", () => {
+    const b = createBattle();
+    const [mk] = spawnUnits(b, "player", "mega-knight", 9, 12);
+    const [victim] = spawnUnits(b, "enemy", "knight", 9, 16.5);
+    let jumped = false;
+    for (let i = 0; i < Math.round(3 / TICK); i++) {
+      tick(b, TICK);
+      if (mk.jumpCooldown > 0) jumped = true;
+    }
+    expect(jumped).toBe(true);
+    expect(victim.hp).toBeLessThan(victim.maxHp);
+  });
+});

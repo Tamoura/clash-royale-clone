@@ -7,6 +7,7 @@ import {
   nearestBridgeX,
 } from "./arena";
 import {
+  applySpell,
   distance,
   isBuilding,
   sideState,
@@ -390,14 +391,47 @@ function actEntity(state: BattleState, e: Entity, dt: number): void {
   }
   tickSpawner(state, e, dt);
   tickCollector(state, e, dt);
+  if (e.jumpCooldown > 0) e.jumpCooldown -= dt;
   if (!target) return;
 
   if (gap(e, target) <= e.attackRange) {
     if (e.cooldown === 0) dealDamage(state, e, target);
   } else if (e.kind === "troop") {
-    const step = moveToward(e, moveGoal(e, target), boostedDt);
-    if (e.chargeDistance > 0) e.chargeProgress += step;
+    // Leapers (Mega Knight) bound onto a far target and slam on landing
+    // instead of plodding the whole way; otherwise they walk closer.
+    if (canJump(e, target)) {
+      jumpToTarget(state, e, target);
+    } else {
+      const step = moveToward(e, moveGoal(e, target), boostedDt);
+      if (e.chargeDistance > 0) e.chargeProgress += step;
+    }
   }
+}
+
+/** Closest a leaper bothers to jump — adjacent targets it just hits. */
+const JUMP_MIN_GAP = 2.2;
+/** Seconds a leaper must recover before it can jump again. */
+const JUMP_COOLDOWN = 3.5;
+
+function canJump(e: Entity, target: Entity): boolean {
+  if (e.jumpRange <= 0 || e.jumpCooldown > 0) return false;
+  const g = gap(e, target);
+  return g > JUMP_MIN_GAP && g <= e.jumpRange;
+}
+
+/**
+ * Bound onto the target, landing in melee range, and slam the ground:
+ * area damage that shoves surrounding enemy troops outward.
+ */
+function jumpToTarget(state: BattleState, e: Entity, target: Entity): void {
+  const d = Math.max(1e-6, distance(e, target));
+  const land = target.radius + e.radius + e.attackRange * 0.5;
+  e.x = target.x - ((target.x - e.x) / d) * land;
+  e.y = target.y - ((target.y - e.y) / d) * land;
+  applySpell(state, e.side, "mega-knight", e.x, e.y, e.damage, e.splashRadius + 1, 0, 1.4);
+  e.jumpCooldown = JUMP_COOLDOWN;
+  e.cooldown = e.hitSpeed; // recover before the first swing after landing
+  e.chargeProgress = 0;
 }
 
 /** Death-bomb units (e.g. the Balloon) blast nearby enemies as they die. */

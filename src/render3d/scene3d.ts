@@ -114,6 +114,7 @@ const SPARK_COLOR = new THREE.Color();
 const TROOP_DEATH_TIME = 0.5;
 const TOWER_DEATH_TIME = 0.8;
 const SPAWN_POP_TIME = 0.35;
+const HOP_TIME = 0.34; // Mega Knight leap arc duration
 const FLASH_TIME = 0.12;
 
 interface EntityView {
@@ -152,6 +153,11 @@ interface EntityView {
   dustT?: number;
   /** How this troop enters the field. */
   spawnStyle?: "rise" | "pop" | "slam";
+  /** Seconds left in a leap arc (Mega Knight jump), 0/undefined = grounded. */
+  hopT?: number;
+  /** World position the current leap launched from. */
+  hopFromX?: number;
+  hopFromZ?: number;
   /** Real glTF model (KayKit) + animation mixer, when this card uses one. */
   glb?: GlbUnit & { current?: string };
 }
@@ -2739,6 +2745,18 @@ export class Battle3D {
         else if (view.isTroop) this.puff(e.x, e.y, 0xd9cdb8, 0.45);
       }
       const w = toWorld(e.x, e.y);
+      // A leaper that teleported a long way this frame (Mega Knight jump):
+      // arc it through the air and slam the ground where it lands.
+      if (
+        e.cardId === "mega-knight" &&
+        view.spawnT >= SPAWN_POP_TIME &&
+        Math.hypot(w.x - view.root.position.x, w.z - view.root.position.z) > 1.4
+      ) {
+        view.hopT = HOP_TIME;
+        view.hopFromX = view.root.position.x;
+        view.hopFromZ = view.root.position.z;
+        this.megaSlam(e.x, e.y);
+      }
       view.root.position.x = w.x;
       view.root.position.z = w.z;
 
@@ -2760,6 +2778,15 @@ export class Battle3D {
       } else if (view.root.scale.x !== baseScale || view.root.position.y !== 0) {
         view.root.scale.setScalar(baseScale);
         view.root.position.y = 0;
+      }
+
+      // Leap arc: sail from the launch point to the landing on a parabola.
+      if (view.hopT && view.hopT > 0) {
+        view.hopT -= dt;
+        const f = Math.min(1, 1 - Math.max(0, view.hopT) / HOP_TIME);
+        view.root.position.x = (view.hopFromX ?? w.x) + (w.x - (view.hopFromX ?? w.x)) * f;
+        view.root.position.z = (view.hopFromZ ?? w.z) + (w.z - (view.hopFromZ ?? w.z)) * f;
+        view.root.position.y = Math.sin(f * Math.PI) * 2.4;
       }
 
       // Emissive glow chain: damage flash > rage pink > charge gold.

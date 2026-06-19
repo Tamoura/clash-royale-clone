@@ -79,6 +79,11 @@ export interface UnitStats {
   chainCount: number;
   /** Multiplier on splash damage to non-primary targets (1 = full). */
   splashDamageFactor: number;
+  /**
+   * Tiles within which this unit leaps onto a far target, slamming for area
+   * damage on landing instead of plodding over (0 = no jump). The Mega Knight.
+   */
+  jumpRange: number;
   /** Damage dealt to nearby enemies when this unit dies (0 = none). */
   deathDamage: number;
   /** Radius of the death blast in tiles. */
@@ -158,6 +163,7 @@ function unit(stats: UnitOverrides): UnitStats {
     slowOnHit: 0,
     chainCount: 1,
     splashDamageFactor: 1,
+    jumpRange: 0,
     deathDamage: 0,
     deathRadius: 0,
     spawnUnitId: null,
@@ -568,6 +574,7 @@ export const CARDS: Record<CardId, Card> = {
       splashRadius: 1.6, // area slam
       splashDamageFactor: 0.5, // surrounding enemies take half a hit
       chargeDistance: 3, // leaps in for double damage
+      jumpRange: 4.5, // leaps onto far troops and buildings, slamming on landing
       radius: 0.8,
     }),
   },

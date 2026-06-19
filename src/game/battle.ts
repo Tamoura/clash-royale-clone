@@ -70,6 +70,10 @@ export interface Entity {
   chainCount: number;
   /** Multiplier on splash damage to non-primary targets (1 = full). */
   splashDamageFactor: number;
+  /** Tiles within which this unit leaps onto a far target (0 = no jump). */
+  jumpRange: number;
+  /** Seconds until this unit can leap again. */
+  jumpCooldown: number;
   /** Seconds of post-deployment freeze remaining. */
   deployTimer: number;
   /** Seconds of stun remaining (no moving or attacking). */
@@ -270,6 +274,8 @@ function makeTower(state: BattleState, side: Side, kind: TowerKind, x: number, y
     slowOnHit: 0,
     chainCount: 1,
     splashDamageFactor: 1,
+    jumpRange: 0,
+    jumpCooldown: 0,
     deployTimer: 0,
     stunTimer: 0,
     slowTimer: 0,
@@ -434,6 +440,8 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       slowOnHit: card.unit.slowOnHit,
       chainCount: card.unit.chainCount,
       splashDamageFactor: card.unit.splashDamageFactor,
+      jumpRange: card.unit.jumpRange,
+      jumpCooldown: 0,
       deployTimer: DEPLOY_DELAY,
       stunTimer: 0,
       slowTimer: 0,
@@ -485,6 +493,8 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
     slowOnHit: 0,
     chainCount: 1,
     splashDamageFactor: 1,
+    jumpRange: 0,
+    jumpCooldown: 0,
     deployTimer: DEPLOY_DELAY,
     stunTimer: 0,
     slowTimer: 0,
