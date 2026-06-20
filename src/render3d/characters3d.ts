@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import type { CardId } from "../game/cards";
-import { ARABIC } from "./theme";
+import { ARABIC, THEME } from "./theme";
 
 /**
  * Chunky cel-shaded characters built from primitives — big heads,
@@ -548,6 +548,162 @@ function buildGiant(): TroopRig {
   arm.add(sphere(0.23, SKIN, 0, -0.64, 0));
   g.add(arm);
   return { group: g, arm, armRest: -0.35, swingAmp: 1.4, height: 2.1, legs, offArm };
+}
+
+/**
+ * Islamic mode's Giant: a caparisoned WAR ELEPHANT carrying a turbaned rider
+ * (mahout) in a domed howdah. Same role/stats as the Giant — a slow, towering
+ * tank that walks past troops to smash the tower — but a wholly new silhouette.
+ * The rider's spear is the rig's attack arm; the trunk and ears sway in idle.
+ */
+function buildWarElephant(): TroopRig {
+  const g = new THREE.Group();
+  const GRAY = 0x8d8f96, GRAYDK = 0x6d6f77, IVORY = 0xf1e7cf;
+  const GOLD = THEME.goldLight, CLOTH = THEME.terracotta, CLOTH2 = THEME.deepBlue;
+
+  // Four heavy pillar legs (front pair, back pair) for a quadruped gait.
+  const legs = [
+    makeLeg(GRAYDK, -0.42, 0.78, 0.34, 0.5),
+    makeLeg(GRAYDK, 0.42, 0.78, 0.34, 0.5),
+    makeLeg(GRAYDK, -0.42, 0.78, 0.34, -0.55),
+    makeLeg(GRAYDK, 0.42, 0.78, 0.34, -0.55),
+  ];
+  g.add(...legs);
+
+  // Barrel body.
+  const body = sphere(0.82, GRAY, 0, 1.28, -0.05);
+  body.scale.set(1.05, 0.95, 1.55);
+  g.add(body);
+  const rump = sphere(0.66, GRAY, 0, 1.28, -0.9);
+  g.add(rump);
+  const tail = cyl(0.05, 0.04, 0.5, GRAYDK, 0, 1.05, -1.5);
+  tail.rotation.x = 0.35;
+  g.add(tail);
+
+  // Head + flapping ears at the front.
+  const head = sphere(0.52, GRAY, 0, 1.42, 1.0);
+  head.scale.set(1, 1.02, 0.95);
+  g.add(head);
+  g.add(box(0.5, 0.07, 0.06, 0x55575e, 0, 1.78, 1.28)); // brow ridge
+  for (const s of [-1, 1]) {
+    g.add(sphere(0.07, 0x1f2430, s * 0.22, 1.5, 1.36)); // small eye
+    const ear = new THREE.Group();
+    ear.name = "ear";
+    ear.position.set(s * 0.5, 1.55, 0.85);
+    const flap = sphere(0.4, GRAYDK, s * 0.18, 0, 0);
+    flap.scale.set(0.28, 1.05, 1.1);
+    ear.add(flap);
+    g.add(ear);
+  }
+
+  // Curved downward trunk (a pivoted group so it can sway in idle).
+  const trunk = new THREE.Group();
+  trunk.position.set(0, 1.42, 1.32);
+  const t1 = cyl(0.16, 0.13, 0.46, GRAY, 0, -0.2, 0.06);
+  t1.name = "trunk"; t1.rotation.x = 0.5;
+  trunk.add(t1);
+  const t2 = cyl(0.13, 0.1, 0.42, GRAY, 0, -0.56, 0.2);
+  t2.name = "trunk"; t2.rotation.x = 0.9;
+  trunk.add(t2);
+  const t3 = cyl(0.1, 0.07, 0.34, GRAYDK, 0, -0.82, 0.42);
+  t3.name = "trunk"; t3.rotation.x = 1.25;
+  trunk.add(t3);
+  g.add(trunk);
+
+  // Tusks: ivory cones sweeping forward.
+  for (const s of [-1, 1]) {
+    const tusk = cone(0.07, 0.6, IVORY, s * 0.24, 1.18, 1.34);
+    tusk.name = "tusk";
+    tusk.rotation.set(1.15, 0, -s * 0.18);
+    g.add(tusk);
+  }
+
+  // Caparison: jewel-toned cloth draped over the body with a gold hem and
+  // hanging tassels — Moorish parade barding.
+  const drape = box(1.55, 0.7, 1.7, CLOTH, 0, 1.2, -0.05);
+  g.add(drape);
+  g.add(box(1.6, 0.12, 1.75, GOLD, 0, 0.9, -0.05)); // gold hem
+  for (let i = 0; i < 4; i++) {
+    const x = -0.6 + i * 0.4;
+    for (const s of [-1, 1]) {
+      g.add(cone(0.07, 0.18, GOLD, x, 0.78, s * 0.85)); // hem tassels
+    }
+  }
+  g.add(box(0.5, 0.4, 0.04, CLOTH2, 0, 1.5, 1.32)); // brow medallion cloth
+  g.add(diamond(0.1, GOLD, 0, 1.5, 1.36)); // forehead jewel
+
+  // Domed howdah (the carriage) seated on the back.
+  const howdah = box(1.0, 0.16, 1.0, 0x7a5230, 0, 1.85, -0.15); // floor
+  g.add(howdah);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    g.add(cyl(0.05, 0.05, 0.55, GOLD, sx * 0.42, 2.18, -0.15 + sz * 0.42)); // posts
+  }
+  g.add(box(0.92, 0.22, 0.92, CLOTH, 0, 2.06, -0.15)); // side panels
+  const dome = sphere(0.5, CLOTH2, 0, 2.5, -0.15); // canopy dome
+  dome.scale.set(1.1, 0.7, 1.1);
+  g.add(dome);
+  g.add(cyl(0.52, 0.52, 0.08, GOLD, 0, 2.34, -0.15)); // canopy rim
+  // Crescent finial crowning the canopy (Islamic motif).
+  const finial = new THREE.Mesh(
+    cachedGeo("crescent:0.16", () => {
+      const shape = new THREE.Shape();
+      shape.absarc(0, 0, 0.16, 0, Math.PI * 2, false);
+      const hole = new THREE.Path();
+      hole.absarc(0.07, 0, 0.13, 0, Math.PI * 2, true);
+      shape.holes.push(hole);
+      return new THREE.ExtrudeGeometry(shape, { depth: 0.04, bevelEnabled: false });
+    }),
+    toon(GOLD),
+  );
+  finial.position.set(0, 2.86, -0.15);
+  finial.castShadow = true;
+  g.add(finial);
+
+  // Turbaned rider seated in the howdah.
+  g.add(cyl(0.22, 0.28, 0.42, THEME.cream, 0, 2.18, 0.18)); // robe
+  g.add(cyl(0.29, 0.29, 0.07, GOLD, 0, 1.98, 0.18)); // sash
+  const rhead = sphere(0.26, SKIN, 0, 2.56, 0.2);
+  addEyes(rhead, 0.26, 0.38, 0.1, "brave");
+  const beard = sphere(0.2, 0x4a3526, 0, -0.16, 0.16);
+  beard.scale.set(0.95, 0.8, 0.7);
+  rhead.add(beard);
+  g.add(rhead);
+  const t = turban(0.27, THEME.emerald, GOLD);
+  t.position.set(0, 2.56, 0.2);
+  g.add(t);
+
+  // Off hand braces on the howdah rail.
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.28, 2.34, 0.18);
+  offArm.add(box(0.12, 0.34, 0.12, THEME.cream, 0, -0.17, 0));
+  offArm.add(sphere(0.1, SKIN, 0, -0.36, 0.04));
+  g.add(offArm);
+
+  // Spear arm — the elephant's "attack": the rider thrusts forward.
+  const arm = new THREE.Group();
+  arm.position.set(0.3, 2.42, 0.18);
+  arm.add(box(0.12, 0.34, 0.12, THEME.cream, 0, -0.17, 0));
+  arm.add(sphere(0.1, SKIN, 0, -0.36, 0.06));
+  const spear = cyl(0.035, 0.035, 1.7, 0x6d4c41, 0, -0.3, 0.85);
+  spear.rotation.x = Math.PI / 2;
+  arm.add(spear);
+  const spearTip = cone(0.07, 0.26, 0xdde4ec, 0, -0.3, 1.78);
+  spearTip.rotation.x = Math.PI / 2;
+  arm.add(spearTip);
+  g.add(arm);
+
+  // Idle life: the trunk curls and the ears flap gently.
+  const ears = g.children.filter((c) => c.name === "ear");
+  const rig: TroopRig = {
+    group: g, arm, armRest: -0.25, swingAmp: 1.0, height: 2.9, legs, offArm,
+    extras: (time, phase) => {
+      trunk.rotation.x = Math.sin(time * 2 + phase) * 0.18;
+      for (let i = 0; i < ears.length; i++) {
+        ears[i].rotation.y = Math.sin(time * 3 + phase + i) * 0.22 * (i === 0 ? 1 : -1);
+      }
+    },
+  };
+  return rig;
 }
 
 function buildRoyalGiant(): TroopRig {
@@ -1718,6 +1874,16 @@ const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
 };
 
 /**
+ * Islamic-mode silhouette swaps. When the Arabic theme is active, these take
+ * precedence over BUILDERS so a card can become a wholly different shape (the
+ * Giant → a war elephant), not just gain a turban. Cards that only need light
+ * theming keep their single inline-themed builder and stay out of this map.
+ */
+const ISLAMIC_BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
+  giant: buildWarElephant,
+};
+
+/**
  * Add inverted-hull silhouette outlines to a rig's larger meshes.
  * One black material per rig so death-fade can't bleed across units.
  */
@@ -1811,7 +1977,7 @@ function round2(v: number): number {
 }
 
 export function buildTroop(cardId: CardId): TroopRig {
-  const builder = BUILDERS[cardId];
+  const builder = (ARABIC && ISLAMIC_BUILDERS[cardId]) || BUILDERS[cardId];
   if (!builder) throw new Error(`No 3D builder for ${cardId}`);
   const rig = builder();
   if (rig.arm) rig.arm.rotation.x = rig.armRest;

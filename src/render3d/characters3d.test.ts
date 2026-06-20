@@ -285,6 +285,23 @@ describe("animation principles", () => {
   });
 });
 
+describe("islamic reskins (ARABIC mode)", () => {
+  // The test env has no localStorage, so theme.ts defaults ARABIC to true:
+  // buildTroop() routes through the Islamic builders here.
+  it("the giant is a war elephant: four legs, tusks, and a turbaned rider", () => {
+    const rig = buildTroop("giant");
+    expect(rig.legs?.length).toBe(4); // a quadruped, not the 2-legged strongman
+    const counts = { tusk: 0, trunk: 0, brow: 0 };
+    rig.group.traverse((o) => {
+      if (o.name in counts) counts[o.name as keyof typeof counts]++;
+    });
+    expect(counts.tusk).toBeGreaterThanOrEqual(2);
+    expect(counts.trunk).toBeGreaterThanOrEqual(1);
+    expect(counts.brow).toBeGreaterThanOrEqual(2); // a human rider sits on top
+    expect(rig.height).toBeGreaterThan(2); // reads as a towering tank
+  });
+});
+
 describe("surface texturing (3d-texturing skill)", () => {
   it("toon materials carry a shared grain detail map", () => {
     const a = toon(0x4e342e);
