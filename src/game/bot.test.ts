@@ -176,6 +176,25 @@ describe("piloting", () => {
     botThink(b, createBot(42));
     expect(buildingsOf(b).some((x) => x.cardId === "cannon")).toBe(true);
   });
+
+  it("rages its own win-condition push when flush with elixir", () => {
+    const b = createBattle();
+    spawnUnits(b, "enemy", "giant", 3.5, RIVER_Y - 2);
+    spawnUnits(b, "enemy", "musketeer", 3.8, RIVER_Y - 3);
+    giveBotHand(b, ["rage", "knight", "archers", "skeletons"]);
+    botThink(b, createBot(42));
+    expect(b.effects.some((e) => e.cardId === "rage")).toBe(true);
+  });
+
+  it("freezes a dense cluster of invaders on its half", () => {
+    const b = createBattle();
+    spawnUnits(b, "player", "knight", 9, RIVER_Y - 3);
+    spawnUnits(b, "player", "knight", 9.4, RIVER_Y - 3.2);
+    spawnUnits(b, "player", "knight", 8.6, RIVER_Y - 2.8);
+    giveBotHand(b, ["freeze", "knight", "archers", "skeletons"]);
+    botThink(b, createBot(42));
+    expect(b.effects.some((e) => e.cardId === "freeze")).toBe(true);
+  });
 });
 
 describe("difficulty", () => {
