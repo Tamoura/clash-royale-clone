@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createBattle } from "./battle";
-import { effectiveElixirMultiplier, tick } from "./sim";
+import { createBattle, deployCard } from "./battle";
+import { ELIXIR_MAX } from "./elixir";
+import { SANDBOX_ELIXIR_RATE, effectiveElixirMultiplier, tick } from "./sim";
 
 describe("elixir-rate game modes", () => {
   it("defaults to a 1x rate", () => {
@@ -26,5 +27,27 @@ describe("elixir-rate game modes", () => {
     const normalGain = normal.player.elixir.amount - before;
     const megaGain = mega.player.elixir.amount - before;
     expect(megaGain).toBeGreaterThan(normalGain * 3);
+  });
+});
+
+describe("sandbox mode", () => {
+  it("refills both bars to max within one tick, even after a deploy", () => {
+    const b = createBattle(undefined, undefined, {}, SANDBOX_ELIXIR_RATE);
+    tick(b, 1 / 30);
+    expect(b.player.elixir.amount).toBe(ELIXIR_MAX);
+    expect(b.enemy.elixir.amount).toBe(ELIXIR_MAX);
+
+    const card = b.player.hand.cards[0];
+    expect(deployCard(b, "player", card, 9, 24)).toBe(true);
+    expect(b.player.elixir.amount).toBeLessThan(ELIXIR_MAX);
+    tick(b, 1 / 30);
+    expect(b.player.elixir.amount).toBe(ELIXIR_MAX);
+  });
+
+  it("keeps elixir finite (no NaN from the sandbox rate)", () => {
+    const b = createBattle(undefined, undefined, {}, SANDBOX_ELIXIR_RATE);
+    for (let i = 0; i < 60; i++) tick(b, 1 / 30);
+    expect(Number.isFinite(b.player.elixir.amount)).toBe(true);
+    expect(effectiveElixirMultiplier(b)).toBe(SANDBOX_ELIXIR_RATE);
   });
 });

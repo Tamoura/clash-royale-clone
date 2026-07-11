@@ -2,7 +2,12 @@ import type { BattleState } from "../game/battle";
 import type { Side } from "../game/arena";
 import { getCard, type CardId } from "../game/cards";
 import { ELIXIR_MAX } from "../game/elixir";
-import { BATTLE_DURATION, OVERTIME_DURATION, effectiveElixirMultiplier } from "../game/sim";
+import {
+  BATTLE_DURATION,
+  OVERTIME_DURATION,
+  SANDBOX_ELIXIR_RATE,
+  effectiveElixirMultiplier,
+} from "../game/sim";
 import { cardStatLines } from "../render/cardinfo";
 import { cardDisplayName } from "../render/cardNames";
 import { makeCardCanvas } from "../ui/cardFrame";
@@ -14,6 +19,8 @@ export interface HudCallbacks {
   onRestart(): void;
   /** Returns the new muted state. */
   onToggleSound(): boolean;
+  /** Fired once when elixir hits the leak threshold (10). */
+  onElixirLeak?(): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -55,6 +62,12 @@ export class Hud {
   private handKey = "";
   private nextKey = "";
   private selected: CardId | null = null;
+  private prevPlayerCrowns = 0;
+  private prevEnemyCrowns = 0;
+  private leaking = false;
+  private overlayShown = false;
+  private readonly playerCrownsWrap: HTMLElement;
+  private readonly enemyCrownsWrap: HTMLElement;
 
   constructor(
     topbar: HTMLElement,
@@ -66,16 +79,18 @@ export class Hud {
     const left = el("div", "crowns player", topbar);
     left.setAttribute("aria-label", "Your crowns");
     left.innerHTML =
-      '<span class="level" aria-hidden="true">9</span><span class="pname">You</span> 👑 <span>0</span>';
-    this.playerCrowns = left.querySelector("span:last-child")!;
+      '<span class="level" aria-hidden="true">9</span><span class="pname">You</span> 👑 <span class="crown-count">0</span>';
+    this.playerCrownsWrap = left;
+    this.playerCrowns = left.querySelector(".crown-count")!;
     this.clock = el("div", "clock", topbar);
     this.clock.setAttribute("role", "timer");
     this.clock.setAttribute("aria-label", "Time remaining");
     const right = el("div", "crowns enemy", topbar);
     right.setAttribute("aria-label", "Opponent crowns");
     right.innerHTML =
-      '<span>0</span> 👑 <span class="pname">Bot</span><span class="level" aria-hidden="true">9</span>';
-    this.enemyCrowns = right.querySelector("span:first-child")!;
+      '<span class="crown-count">0</span> 👑 <span class="pname">Bot</span><span class="level" aria-hidden="true">9</span>';
+    this.enemyCrownsWrap = right;
+    this.enemyCrowns = right.querySelector(".crown-count")!;
     this.opponentName = right.querySelector(".pname")!;
     this.muteBtn = el("button", "mute", topbar);
     this.muteBtn.textContent = "🔊";
@@ -154,16 +169,17 @@ export class Hud {
         ev.preventDefault();
         downX = ev.clientX;
         downY = ev.clientY;
-        this.cb.onSelectCard(this.selected === id ? null : id);
+        const selecting = this.selected !== id;
+        this.cb.onSelectCard(selecting ? id : null);
+        if (selecting) btn.classList.add("dragging");
       });
-      // The card keeps (implicit) pointer capture through a touch drag, so the
-      // release fires here rather than on the canvas. If the pointer actually
-      // travelled onto the field, treat it as a drag-to-deploy. A plain tap
-      // (no movement) just selects — the player then taps the field to place.
-      btn.addEventListener("pointerup", (ev) => {
+      const endDrag = (ev: PointerEvent): void => {
+        btn.classList.remove("dragging");
         const moved = Math.hypot(ev.clientX - downX, ev.clientY - downY);
         if (moved > 16) this.cb.onDeployAt(ev.clientX, ev.clientY);
-      });
+      };
+      btn.addEventListener("pointerup", endDrag);
+      btn.addEventListener("pointercancel", () => btn.classList.remove("dragging"));
       // Bottom-up elixir-charge fill that rises as the card nears playable.
       const veil = el("div", "elixir-veil", btn);
       // "+N" badge: how much more elixir is needed (hidden once playable).
@@ -188,6 +204,20 @@ export class Hud {
 
   setSelected(id: CardId | null): void {
     this.selected = id;
+    if (!id) {
+      for (const btn of this.cardBtns) btn.classList.remove("dragging");
+    }
+  }
+
+  /** Pop the crown counter for a side (tower just fell). */
+  popCrowns(side: "player" | "enemy"): void {
+    const wrap = side === "player" ? this.playerCrownsWrap : this.enemyCrownsWrap;
+    const count = side === "player" ? this.playerCrowns : this.enemyCrowns;
+    wrap.classList.remove("crown-pop");
+    count.classList.remove("crown-pop");
+    void wrap.offsetWidth;
+    wrap.classList.add("crown-pop");
+    count.classList.add("crown-pop");
   }
 
   /** Trophy/level-up summary shown on the result overlay. */
@@ -227,6 +257,11 @@ export class Hud {
     this.clock.textContent = state.overtime ? `OVERTIME ${text}` : text;
     this.clock.classList.toggle("overtime", state.overtime);
 
+    // Crown counters — pop when a tower falls (CR scoreboard feel).
+    if (me.crowns > this.prevPlayerCrowns) this.popCrowns("player");
+    if (foe.crowns > this.prevEnemyCrowns) this.popCrowns("enemy");
+    this.prevPlayerCrowns = me.crowns;
+    this.prevEnemyCrowns = foe.crowns;
     this.playerCrowns.textContent = String(me.crowns);
     this.enemyCrowns.textContent = String(foe.crowns);
 
@@ -238,7 +273,19 @@ export class Hud {
     this.elixirBar.setAttribute("aria-valuenow", String(amountInt));
     const mult = effectiveElixirMultiplier(state);
     this.elixirBar.classList.toggle("x2", mult >= 2 && !state.result);
-    this.x2Tag.textContent = `x${mult}`;
+    // Sandbox's huge flat rate reads as "infinite", not a real multiplier.
+    this.x2Tag.textContent = mult >= SANDBOX_ELIXIR_RATE ? "∞" : `x${mult}`;
+
+    // Elixir leak warning at max — pulse the bar until the player spends.
+    const atMax = amount >= ELIXIR_MAX && !state.result;
+    this.elixirBar.classList.toggle("leak", atMax);
+    this.elixirNum.classList.toggle("leak", atMax);
+    if (atMax && !this.leaking) {
+      this.leaking = true;
+      this.cb.onElixirLeak?.();
+    } else if (!atMax) {
+      this.leaking = false;
+    }
 
     // Hand (rebuild card art only when the hand changes).
     const handKey = me.hand.cards.join(",");
@@ -326,6 +373,9 @@ export class Hud {
       this.nextKey = nextId;
       this.nextArt.innerHTML = "";
       this.nextArt.appendChild(cardCanvas(nextId));
+      this.nextArt.classList.remove("slide-in");
+      void this.nextArt.offsetWidth;
+      this.nextArt.classList.add("slide-in");
     }
 
     // Result overlay.
@@ -335,9 +385,27 @@ export class Hud {
       this.overlayTitle.textContent =
         winner === "draw" ? "DRAW" : iWon ? "VICTORY! 🎉" : "DEFEAT";
       this.overlayTitle.dataset.kind = winner === "draw" ? "draw" : iWon ? "player" : "enemy";
+      this.overlay.dataset.kind = this.overlayTitle.dataset.kind;
       const myCrowns = mySide === "player" ? playerCrowns : enemyCrowns;
       const foeCrowns = mySide === "player" ? enemyCrowns : playerCrowns;
-      this.overlayScore.textContent = `👑 ${myCrowns} — ${foeCrowns} 👑`;
+      // Staggered crown tally on first show.
+      if (!this.overlayShown) {
+        this.overlayShown = true;
+        this.overlayScore.textContent = "👑 0 — 0 👑";
+        let step = 0;
+        const targetMy = myCrowns;
+        const targetFoe = foeCrowns;
+        const tick = (): void => {
+          step++;
+          const a = Math.min(targetMy, step);
+          const b = Math.min(targetFoe, step);
+          this.overlayScore.textContent = `👑 ${a} — ${b} 👑`;
+          if (a < targetMy || b < targetFoe) window.setTimeout(tick, 180);
+        };
+        window.setTimeout(tick, 220);
+      } else {
+        this.overlayScore.textContent = `👑 ${myCrowns} — ${foeCrowns} 👑`;
+      }
       const p = me.stats;
       const e = foe.stats;
       this.overlayStats.innerHTML =
@@ -348,7 +416,9 @@ export class Hud {
         (this.reward ? `<div class="reward-line">${this.reward}</div>` : "");
       this.overlay.classList.add("show");
     } else {
+      this.overlayShown = false;
       this.overlay.classList.remove("show");
+      delete this.overlay.dataset.kind;
     }
   }
 }

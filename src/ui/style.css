@@ -240,6 +240,23 @@ body {
   display: block;
 }
 
+/* Elixir leak — flash when sitting at 10 unused */
+.elixir-bar.leak {
+  animation: elixirLeak 0.7s ease-in-out infinite;
+  border-color: #ff8fd0;
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.5),
+    0 0 14px rgba(242, 58, 168, 0.75);
+}
+.elixir-num.leak {
+  animation: elixirLeak 0.7s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(255, 143, 208, 0.9);
+}
+@keyframes elixirLeak {
+  0%, 100% { filter: brightness(1); }
+  50%       { filter: brightness(1.45); }
+}
+
 /* Ten-segment tick marks */
 .elixir-bar::after {
   content: "";
@@ -292,6 +309,32 @@ body {
   margin-top: 2px;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
+.next-art.slide-in {
+  animation: nextSlide 0.35s ease-out;
+}
+@keyframes nextSlide {
+  0%   { opacity: 0; transform: translateX(-10px) scale(0.85); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+/* Crown scoreboard pop when a tower falls */
+#topbar .crowns.crown-pop {
+  animation: crownBannerPop 0.55s ease-out;
+}
+#topbar .crown-count.crown-pop {
+  display: inline-block;
+  animation: crownNumPop 0.55s ease-out;
+}
+@keyframes crownBannerPop {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.18); filter: brightness(1.35); }
+  100% { transform: scale(1); }
+}
+@keyframes crownNumPop {
+  0%   { transform: scale(1); }
+  25%  { transform: scale(1.7); color: #ffe082; }
+  100% { transform: scale(1); }
+}
 
 /* ── Card buttons ── */
 button.card {
@@ -321,6 +364,15 @@ button.card.selected {
   border-color: var(--cr-gold);
   box-shadow: var(--cr-selected-shadow);
   transform: translateY(-4px);
+}
+
+button.card.dragging {
+  transform: translateY(-14px) scale(1.12) rotate(-3deg);
+  border-color: var(--cr-gold);
+  box-shadow:
+    var(--cr-selected-shadow),
+    0 12px 28px rgba(0, 0, 0, 0.55);
+  z-index: 5;
 }
 
 button.card.locked {
@@ -523,6 +575,27 @@ button.card.ready-pop {
   100% { opacity: 0; transform: scale(1.05) translateY(-14px); }
 }
 
+/* ══ Sandbox reset ══ */
+.sandbox-reset {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 4;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: #e5e7eb;
+  border: none;
+  border-radius: 10px;
+  background: rgba(20, 26, 38, 0.78);
+  cursor: pointer;
+  transition: transform 0.08s ease;
+}
+.sandbox-reset:hover {
+  transform: scale(1.08);
+}
+
 /* ══ Emote bar ══ */
 .emote-bar {
   position: absolute;
@@ -641,22 +714,47 @@ button.card.ready-pop {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
 }
 #deckpicker .edition-btn {
+  flex: 1 1 0;
   font-family: var(--cr-font);
   font-size: 14px;
   font-weight: bold;
   color: #8fa3c2;
   background: linear-gradient(180deg, #1a2540, #10182e);
   border: none;
-  padding: 10px 24px;
+  padding: 12px 18px;
   line-height: 1.3;
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease;
+}
+#deckpicker .edition-btn:hover {
+  color: #c5d4ef;
+  background: linear-gradient(180deg, #243456, #162040);
 }
 #deckpicker .edition-btn.chosen {
   color: #06101e;
   background: linear-gradient(180deg, #a8ddff, #3ab0f0);
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.3);
 }
+:root[data-edition="arabic"] #deckpicker .edition-btn.chosen {
+  background: linear-gradient(180deg, #7ee8e0, #1aa3a0);
+}
+:root[data-edition="unset"] #deckpicker .edition-btn {
+  min-height: 48px;
+}
+#deckpicker .edition-gate {
+  margin-top: 28px;
+  padding: 18px 22px;
+  max-width: 320px;
+  text-align: center;
+  color: var(--cr-text-mid);
+  font-size: clamp(14px, 2.4vh, 16px);
+  line-height: 1.45;
+  background: rgba(20, 28, 48, 0.65);
+  border: 1.5px solid var(--cr-border);
+  border-radius: var(--cr-r-lg);
+  box-shadow: var(--cr-panel-shadow);
+}
+
 #deckpicker .edition-note {
   color: #9fb0c9;
   font-size: 12px;
@@ -979,6 +1077,156 @@ button.card.ready-pop {
   color: var(--cr-text);
 }
 
+/* ── Home / arena ladder ── */
+#deckpicker .home-arena {
+  width: min(420px, 92vw);
+  text-align: center;
+  padding: 12px 14px;
+  border: 2px solid var(--cr-gold-border);
+  border-radius: var(--cr-r-lg);
+  background: linear-gradient(180deg, var(--cr-panel-mid), var(--cr-panel-dark));
+  box-shadow: var(--cr-panel-shadow);
+}
+#deckpicker .home-arena-name {
+  font-size: clamp(18px, 4.5vw, 24px);
+  font-weight: bold;
+  color: var(--cr-text-gold);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.55);
+}
+#deckpicker .home-trophy-row {
+  margin-top: 4px;
+  color: var(--cr-text-mid);
+  font-size: 15px;
+}
+#deckpicker .home-trophy-bar {
+  margin-top: 10px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--cr-slot-deep);
+  border: 1px solid var(--cr-border);
+  overflow: hidden;
+}
+#deckpicker .home-trophy-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--cr-gold-dark), var(--cr-gold));
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+#deckpicker .home-arena-next {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--cr-text-dim);
+}
+#deckpicker .home-currency {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+#deckpicker .home-currency .chip {
+  font-size: 15px;
+  font-weight: bold;
+  padding: 6px 12px;
+  border-radius: var(--cr-r-md);
+  border: 1.5px solid var(--cr-gold-border);
+  background: var(--cr-slot-bg);
+  color: var(--cr-text-gold);
+}
+#deckpicker .home-currency .chip.gems {
+  border-color: #5b8def;
+  color: #b7d0ff;
+}
+#deckpicker .home-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(360px, 90vw);
+}
+#deckpicker .home-nav .battle-btn {
+  width: 100%;
+}
+
+/* ── Collection extras ── */
+#deckpicker .pick.locked {
+  opacity: 0.55;
+  filter: grayscale(0.7);
+  cursor: default;
+}
+#deckpicker .pick-silhouette {
+  font-size: 36px;
+  line-height: 64px;
+  height: 64px;
+}
+#deckpicker .shard-bar {
+  font-size: 10px;
+  color: var(--cr-text-dim);
+  margin-top: 2px;
+}
+#deckpicker .collect-detail {
+  min-height: 1.4em;
+  color: var(--cr-text-gold);
+  font-size: 14px;
+  text-align: center;
+}
+
+/* ── Chest slots ── */
+#deckpicker .chest-slots {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: min(420px, 92vw);
+}
+#deckpicker .chest-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px;
+  border-radius: var(--cr-r-lg);
+  border: 2px solid var(--cr-gold-border);
+  background: var(--cr-panel);
+  min-height: 110px;
+  box-shadow: var(--cr-panel-shadow);
+}
+#deckpicker .chest-slot.empty {
+  opacity: 0.45;
+  justify-content: center;
+  color: var(--cr-text-dim);
+  font-size: 13px;
+}
+#deckpicker .chest-rarity {
+  font-weight: bold;
+  color: var(--cr-text-gold);
+}
+#deckpicker .chest-timer {
+  font-size: 13px;
+  color: var(--cr-text-mid);
+}
+#deckpicker .chest-open-btn {
+  font-family: var(--cr-font);
+  font-size: 13px;
+  font-weight: bold;
+  padding: 6px 12px;
+  border-radius: var(--cr-r-sm);
+  border: 2px solid var(--cr-gold-border);
+  background: linear-gradient(180deg, var(--cr-gold), var(--cr-gold-dark));
+  color: var(--cr-navy);
+  cursor: pointer;
+}
+#deckpicker .chest-reveal {
+  min-height: 1.4em;
+  text-align: center;
+  color: var(--cr-text-gold);
+  font-weight: bold;
+  font-size: 14px;
+  max-width: 92vw;
+}
+
+.meta-chip {
+  font-size: 12px !important;
+  gap: 2px;
+}
+
 /* ══ Result overlay ══ */
 #overlay {
   position: fixed;
@@ -994,6 +1242,35 @@ button.card.ready-pop {
 #overlay.show {
   display: flex;
   animation: overlayReveal 0.35s ease-out both;
+}
+#overlay.show[data-kind="player"] {
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 40%, rgba(250, 204, 21, 0.28) 0%, transparent 65%),
+    rgba(10, 14, 22, 0.82);
+}
+#overlay.show[data-kind="enemy"] {
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 40%, rgba(248, 113, 113, 0.28) 0%, transparent 65%),
+    rgba(10, 14, 22, 0.82);
+}
+
+/* Impact flash vignette (tower falls / heavy hits) */
+#impact-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 8;
+  opacity: 0;
+  background:
+    radial-gradient(ellipse at center, rgba(255, 255, 255, 0.55) 0%, transparent 55%),
+    rgba(255, 240, 200, 0.12);
+}
+#impact-flash.show {
+  animation: impactFlash 0.28s ease-out forwards;
+}
+@keyframes impactFlash {
+  0%   { opacity: 0.85; }
+  100% { opacity: 0; }
 }
 
 @keyframes overlayReveal {

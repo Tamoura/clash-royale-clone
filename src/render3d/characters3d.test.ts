@@ -301,6 +301,149 @@ describe("islamic reskins (ARABIC mode)", () => {
     expect(counts.brow).toBeGreaterThanOrEqual(2); // a human rider sits on top
     expect(rig.height).toBeGreaterThan(2); // reads as a towering tank
   });
+
+  it("the hog rider is a camel raider: four legs, a bobbing neck, a turbaned rider", () => {
+    const rig = buildTroop("hog-rider");
+    expect(rig.legs?.length).toBe(4); // a quadruped camel, not the hog
+    const names = new Set<string>();
+    rig.group.traverse((o) => names.add(o.name));
+    expect(names.has("neck")).toBe(true);
+    expect(names.has("brow")).toBe(true); // human rider face
+    expect(rig.extras).toBeDefined(); // neck bob + tail flick idle
+    expect(rig.arm).not.toBeNull(); // raised scimitar attack arm
+  });
+
+  it("the balloon is a fire-kite: a hovering canopy with fluttering tails", () => {
+    const rig = buildTroop("balloon");
+    expect(rig.hover).toBeGreaterThan(0); // still a flyer
+    let tails = 0;
+    rig.group.traverse((o) => {
+      if (o.name === "kite-tail") tails++;
+    });
+    expect(tails).toBeGreaterThanOrEqual(3);
+    expect(rig.extras).toBeDefined(); // tail flutter + flame flicker
+    expect(rig.arm).not.toBeNull(); // fire-pot dropping arm
+  });
+
+  it("the musketeer is a janissary with a tall börk hat", () => {
+    const names = new Set<string>();
+    buildTroop("musketeer").group.traverse((o) => names.add(o.name));
+    expect(names.has("bork")).toBe(true);
+    expect(names.has("musket")).toBe(true);
+  });
+
+  it("the mini-pekka is a duelist with a buckler and scimitar", () => {
+    const names = new Set<string>();
+    const rig = buildTroop("mini-pekka");
+    rig.group.traverse((o) => names.add(o.name));
+    expect(names.has("buckler")).toBe(true);
+    expect(rig.arm).not.toBeNull();
+    expect(rig.height).toBeLessThan(2); // lean swordsman, not a robot tank
+  });
+
+  it("the witch is a war drummer with a copper drum and mallet", () => {
+    const names = new Set<string>();
+    const rig = buildTroop("witch");
+    rig.group.traverse((o) => names.add(o.name));
+    expect(names.has("drum")).toBe(true);
+    expect(names.has("mallet")).toBe(true);
+    expect(rig.extras).toBeDefined();
+  });
+
+  it("the wizard is an alchemist with an alembic and elixir orb", () => {
+    const names = new Set<string>();
+    buildTroop("wizard").group.traverse((o) => names.add(o.name));
+    expect(names.has("alembic")).toBe(true);
+    expect(names.has("elixir")).toBe(true);
+  });
+
+  it("the pekka is a cataphract: four legs, nasal helm, kontos lance", () => {
+    const rig = buildTroop("pekka");
+    expect(rig.legs?.length).toBe(4);
+    const names = new Set<string>();
+    rig.group.traverse((o) => names.add(o.name));
+    expect(names.has("nasal-helm")).toBe(true);
+    expect(names.has("kontos")).toBe(true);
+    expect(rig.height).toBeGreaterThan(2);
+  });
+
+  it("the mega-knight is a mamluk amir with a fluted helm", () => {
+    const names = new Set<string>();
+    buildTroop("mega-knight").group.traverse((o) => names.add(o.name));
+    expect(names.has("mamluk-helm")).toBe(true);
+  });
+
+  it("the baby dragon is a roc hatchling with beak and feathered wings", () => {
+    const rig = buildTroop("baby-dragon");
+    expect(rig.hover).toBeGreaterThan(0);
+    expect(rig.wings?.length).toBe(2);
+    const names = new Set<string>();
+    rig.group.traverse((o) => names.add(o.name));
+    expect(names.has("beak")).toBe(true);
+    expect(names.has("roc-wing")).toBe(true);
+  });
+
+  it("gargoyles and minions are war falcons with hoods", () => {
+    for (const id of ["gargoyles", "minions"] as const) {
+      const rig = buildTroop(id);
+      expect(rig.hover).toBeGreaterThan(0);
+      expect(rig.wings?.length).toBe(2);
+      const names = new Set<string>();
+      rig.group.traverse((o) => names.add(o.name));
+      expect(names.has("falcon-hood")).toBe(true);
+      expect(names.has("beak")).toBe(true);
+    }
+  });
+
+  it("skeletons are militia spearmen with turbans", () => {
+    const names = new Set<string>();
+    const rig = buildTroop("skeletons");
+    rig.group.traverse((o) => names.add(o.name));
+    expect(names.has("spear")).toBe(true);
+    expect(names.has("brow")).toBe(true); // human face, not a bare skull
+    expect(rig.height).toBeLessThan(1.2);
+  });
+
+  it("the royal giant is a bombardier with a bronze bombard", () => {
+    const names = new Set<string>();
+    buildTroop("royal-giant").group.traverse((o) => names.add(o.name));
+    expect(names.has("bombard")).toBe(true);
+  });
+});
+
+describe("clash design cues (named signature props)", () => {
+  // These cues are authored on Clash builders; Islamic overrides replace some
+  // cards entirely, so we only assert cues that survive on shared Clash paths
+  // or on cards without an Islamic silhouette swap.
+  it("firecracker carries a launcher tube and blue headband", () => {
+    // Firecracker has no Islamic override — cues always present.
+    const names = new Set<string>();
+    buildTroop("firecracker").group.traverse((o) => names.add(o.name));
+    expect(names.has("launcher")).toBe(true);
+    expect(names.has("headband")).toBe(true);
+    expect(names.has("ponytail")).toBe(true);
+  });
+
+  it("magic archer has cyan eye glow", () => {
+    let glowEyes = 0;
+    buildTroop("magic-archer").group.traverse((o) => {
+      if (o.name === "eyeglow") glowEyes++;
+    });
+    expect(glowEyes).toBeGreaterThanOrEqual(2);
+  });
+
+  it("tower king and princess keep chunky heads and weapon arms", () => {
+    return Promise.all([
+      import("./characters3d").then(({ buildTowerKing, buildTowerPrincess }) => {
+        const king = buildTowerKing();
+        const princess = buildTowerPrincess();
+        expect(king.height).toBeGreaterThan(1.4);
+        expect(princess.height).toBeGreaterThan(1.0);
+        expect(king.arm).not.toBeNull();
+        expect(princess.arm).not.toBeNull();
+      }),
+    ]);
+  });
 });
 
 describe("surface texturing (3d-texturing skill)", () => {

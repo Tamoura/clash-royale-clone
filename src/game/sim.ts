@@ -26,6 +26,13 @@ export const DOUBLE_ELIXIR_AT = 120;
 export const OVERTIME_DURATION = 120;
 
 /**
+ * Sandbox/practice flat rate: high enough to refill an empty bar in a
+ * single 30Hz tick (needs ≥ ELIXIR_MAX × SECONDS_PER_ELIXIR × 30 = 840).
+ * Finite on purpose — Infinity would produce NaN on a zero-dt tick.
+ */
+export const SANDBOX_ELIXIR_RATE = 1000;
+
+/**
  * CR's elixir curve: 1x for the first two minutes, 2x for the last
  * regular minute and the first overtime minute, 3x after that.
  */

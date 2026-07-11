@@ -98,6 +98,22 @@
     0 0 60px rgba(26, 163, 160, 0.30);
 }
 
+/* ── Neutral lobby (no edition chosen yet) ── */
+:root[data-edition="unset"] {
+  --cr-gold-border: #5b6b8c;
+  --cr-lobby-glow:  rgba(120, 140, 180, 0.18);
+  --cr-lobby-glow-b: rgba(80, 100, 140, 0.10);
+  --cr-lobby-top:   rgba(15, 22, 36, 0.92);
+  --cr-crest-glow:  rgba(180, 200, 230, 0.35);
+  --cr-hud-border:  #5b6b8c;
+  --cr-topbar-border: #5b6b8c;
+  --cr-btn-glow-b:
+    inset 0 3px 0 rgba(255, 255, 255, 0.25),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.15),
+    0 6px 24px rgba(120, 140, 180, 0.45),
+    0 0 40px rgba(120, 140, 180, 0.2);
+}
+
 /* ── Keyboard focus ring — visible only during keyboard navigation ── */
 :focus-visible {
   outline: 2.5px solid var(--cr-gold);

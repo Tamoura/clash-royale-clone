@@ -165,6 +165,62 @@ function trySpellCluster(state: BattleState): boolean {
   return false;
 }
 
+/**
+ * Cast freeze on a dense player cluster threatening a tower (3+ troops).
+ * Prefer clusters already past the river onto our half.
+ */
+function tryFreeze(state: BattleState): boolean {
+  if (!state.enemy.hand.cards.includes("freeze")) return false;
+  const card = getCard("freeze");
+  if (card.kind !== "spell" || card.cost > state.enemy.elixir.amount) return false;
+  const invaders = playerTroops(state).filter((e) => e.y < RIVER_Y + 2);
+  if (invaders.length < 3) return false;
+  const cluster = findCluster(state, card.radius, 3, card.cost * 0.6);
+  if (!cluster) return false;
+  // Prefer freezing clusters that are already on our half.
+  if (cluster.y > RIVER_Y + 1.5) return false;
+  return deployCard(state, "enemy", "freeze", cluster.x, cluster.y);
+}
+
+/**
+ * Cast rage on our own push when a win-con/tank is advancing with support.
+ */
+function tryRage(state: BattleState): boolean {
+  if (!state.enemy.hand.cards.includes("rage")) return false;
+  const card = getCard("rage");
+  if (card.kind !== "spell" || card.cost > state.enemy.elixir.amount) return false;
+  if (state.enemy.elixir.amount < 8) return false;
+  const ours = state.entities.filter((e) => e.side === "enemy" && e.kind === "troop");
+  if (ours.length < 2) return false;
+  const hasWinCon = ours.some((e) => e.cardId !== null && isWinCondition(e.cardId));
+  if (!hasWinCon) return false;
+  // Center the rage on the furthest-advanced friendly troop.
+  const lead = ours.reduce((a, b) => (a.y > b.y ? a : b));
+  const nearby = ours.filter((t) => distance(lead, t) <= card.radius);
+  if (nearby.length < 2) return false;
+  return deployCard(state, "enemy", "rage", lead.x, lead.y);
+}
+
+/**
+ * When ahead on elixir with no threat, cycle a cheap card in the back
+ * rather than leaking at 10.
+ */
+function tryCycle(state: BattleState): boolean {
+  const advantage = state.enemy.elixir.amount - state.player.elixir.amount;
+  if (advantage < 5) return false;
+  if (playerTroops(state).some((e) => e.y < RIVER_Y + 1)) return false;
+  if (state.enemy.elixir.amount < 9) return false;
+  const cheap = state.enemy.hand.cards
+    .filter((id) => {
+      const c = getCard(id);
+      return (c.kind === "troop" || c.kind === "building") && c.cost <= 3 && c.cost <= state.enemy.elixir.amount;
+    })
+    .sort(byCostAsc);
+  if (cheap.length === 0) return false;
+  // Drop deep on our side, not at the bridge.
+  return deployCard(state, "enemy", cheap[0], ARENA_WIDTH / 2, 4.5);
+}
+
 /** Heavy ground threats (Giant, P.E.K.K.A…) a building can kite and stall. */
 function isHeavyGroundThreat(threat: Entity): boolean {
   return !threat.flying && (threat.targetsBuildingsOnly || threat.maxHp >= 2000);
@@ -213,15 +269,20 @@ function tryPush(state: BattleState, bot: BotState): boolean {
   const affordable = affordableTroops(state);
   if (affordable.length === 0) return false;
 
-  // Already have a tank out front? Feed the cheapest support into its lane
-  // so the push arrives together instead of dribbling in piecemeal.
+  // Already have a tank out front? Feed support into its lane so the push
+  // arrives together instead of dribbling in piecemeal. A flying win-con
+  // (Balloon) is the prime escort — it rides the tank's aggro to the tower.
   const tanks = botTanks(state);
   if (tanks.length > 0) {
     const lead = tanks.reduce((a, b) => (a.y > b.y ? a : b)); // furthest advanced
+    const flyer = affordable.find((id) => {
+      const c = getCard(id);
+      return c.kind === "troop" && c.unit.targetsBuildingsOnly && c.unit.flying;
+    });
     const support = affordable
       .filter((id) => getCard(id).kind === "troop" && !isWinCondition(id))
       .sort(byCostAsc);
-    const pick = support[0] ?? affordable[0];
+    const pick = flyer ?? support[0] ?? affordable[0];
     return deployCard(state, "enemy", pick, nearestBridgeX(lead.x), RIVER_Y - 4);
   }
 
@@ -230,7 +291,9 @@ function tryPush(state: BattleState, bot: BotState): boolean {
   // expensive troop we can (a meaningful unit, never a stray skeleton).
   const wincons = affordable.filter(isWinCondition);
   if (wincons.length > 0) {
-    const pick = wincons.sort(byCostAsc)[wincons.length - 1];
+    // Random among win-cons: a fixed tie-break (e.g. always the priciest)
+    // left equal-cost cards rotting in hand for whole matches.
+    const pick = wincons[Math.floor(bot.rng() * wincons.length)];
     return deployCard(state, "enemy", pick, lane, RIVER_Y - 4);
   }
   const troops = affordable.filter((id) => getCard(id).kind === "troop");
@@ -242,10 +305,13 @@ function tryPush(state: BattleState, bot: BotState): boolean {
 /** Make at most one play right now. */
 export function botThink(state: BattleState, bot: BotState): void {
   if (state.result) return;
+  if (tryFreeze(state)) return;
   if (trySpellCluster(state)) return;
   if (tryDefend(state, bot)) return;
+  if (tryRage(state)) return;
   if (tryEconomy(state, bot)) return;
-  tryPush(state, bot);
+  if (tryPush(state, bot)) return;
+  tryCycle(state);
 }
 
 /** Throttled entry point: call every tick, thinks once per interval. */

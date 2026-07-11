@@ -280,6 +280,21 @@ describe("card balance tweaks", () => {
     if (balloon.kind !== "troop") throw new Error("balloon troop");
     expect(balloon.unit.deathDamage).toBe(balloon.unit.damage / 2);
   });
+
+  it("win-conditions are buffed toward parity (giant / hog / balloon)", () => {
+    const giant = getCard("giant");
+    const hog = getCard("hog-rider");
+    const balloon = getCard("balloon");
+    if (giant.kind !== "troop" || hog.kind !== "troop" || balloon.kind !== "troop") {
+      throw new Error("win-cons must be troops");
+    }
+    expect(giant.unit.maxHp).toBeGreaterThanOrEqual(3600);
+    expect(giant.unit.damage).toBeGreaterThanOrEqual(240);
+    expect(hog.unit.maxHp).toBeGreaterThanOrEqual(1650);
+    expect(hog.unit.damage).toBeGreaterThanOrEqual(280);
+    expect(balloon.unit.maxHp).toBeGreaterThanOrEqual(1700);
+    expect(balloon.unit.damage).toBeGreaterThanOrEqual(640);
+  });
 });
 
 describe("crazy mode card overrides", () => {

@@ -5,7 +5,6 @@ import {
   checkDeploy,
   createBattle,
   deployCard,
-  isValidDeck,
   type BattleState,
   type CardLevels,
 } from "./game/battle";
@@ -20,10 +19,16 @@ import {
 } from "./game/cards";
 import type { Side } from "./game/arena";
 import { cardDisplayName } from "./render/cardNames";
-import { isDoubleElixir, tick } from "./game/sim";
+import { SANDBOX_ELIXIR_RATE, isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
 import { Battle3D } from "./render3d/scene3d";
-import { ARENA_THEME_KEY, ARABIC, applyEditionTokens, ARENA_THEME } from "./render3d/theme";
+import {
+  ARENA_THEME_KEY,
+  ARABIC,
+  applyEditionTokens,
+  STORED_EDITION,
+  EDITION_CHOSEN,
+} from "./render3d/theme";
 import { RoomClient, type NetSocket } from "./net/roomClient";
 import { Lockstep } from "./net/lockstep";
 import { sideForRole, type Role, type MatchMode } from "./net/protocol";
@@ -34,9 +39,28 @@ import {
   type GameMode as GameVariant,
 } from "./launcher/mode";
 import { makeCardCanvas } from "./ui/cardFrame";
+import {
+  loadProfile,
+  saveProfile,
+  applyMatchResult as applyMetaMatchResult,
+  tryUpgradeCard,
+  tryOpenChest,
+  ownedSet,
+  isOwnedDeck,
+  MAX_CARD_LEVEL,
+  type PlayerProfile,
+} from "./meta/progress";
+import {
+  arenaNameForUnlock,
+  cardsAvailableAt,
+  trophyProgress,
+} from "./meta/arenas";
+import { canPutInDeck, isUnlockedAt } from "./meta/collection";
+import { isChestReady } from "./meta/chests";
+import { CHEST_SKIP_GEMS, upgradeCost } from "./meta/economy";
 
 // Apply edition-aware CSS variables before any DOM is rendered.
-applyEditionTokens(ARENA_THEME);
+applyEditionTokens(STORED_EDITION);
 
 const stage = document.getElementById("stage")!;
 
@@ -58,25 +82,31 @@ const overlay = document.getElementById("overlay")!;
 const bannerEl = document.getElementById("banner")!;
 const emoteBar = document.getElementById("emotes")!;
 
-// ---- Player deck (8 cards, persisted) -----------------------------------
+// Sandbox-only in-battle reset (wired to sandboxReset() further down,
+// after the battle state it restarts is declared).
+const sandboxResetBtn = document.createElement("button");
+sandboxResetBtn.className = "sandbox-reset";
+sandboxResetBtn.textContent = "↺ Reset";
+sandboxResetBtn.setAttribute("aria-label", "Reset the sandbox battle");
+sandboxResetBtn.style.display = "none";
+stage.appendChild(sandboxResetBtn);
 
-const DECK_KEY = "cr-clone-deck";
+// ---- Meta progression (gold/gems/owned/chests) --------------------------
 
-function loadDeck(): CardId[] {
-  try {
-    const saved = JSON.parse(localStorage.getItem(DECK_KEY) ?? "[]") as CardId[];
-    if (isValidDeck(saved)) return saved;
-  } catch {
-    // fall through to the starter deck
-  }
-  return [...DEFAULT_DECK];
+let profile: PlayerProfile = loadProfile(localStorage);
+let playerDeck: CardId[] = profile.deck;
+let cardLevels: CardLevels = profile.levels;
+
+function persistProfile(): void {
+  profile = { ...profile, deck: playerDeck, levels: cardLevels };
+  saveProfile(localStorage, profile);
+  refreshMetaChips();
 }
 
-let playerDeck: CardId[] = loadDeck();
-
-/** The bot drafts a random legal deck each match. */
+/** Bot drafts from cards unlocked at the player's arena (fair ladder). */
 function botDeck(): CardId[] {
-  const pool = [...DECK];
+  const available = cardsAvailableAt(profile.trophies);
+  const pool = available.length >= 8 ? [...available] : [...DEFAULT_DECK];
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
@@ -118,7 +148,17 @@ const GAME_MODES: GameMode[] = [
   { id: "mega", name: "Mega Elixir ⚡7", blurb: "7× elixir — total chaos", elixirRate: 7, mirror: false },
   { id: "mirror", name: "Mirror Match", blurb: "Both get the same random deck", elixirRate: 1, mirror: true },
   { id: "crazy", name: "Crazy 🎲", blurb: "Every card scrambled — counts, spawns & stats go wild", elixirRate: 1, mirror: false },
+  { id: "sandbox", name: "Sandbox 🛠️", blurb: "Practice: infinite elixir, sleeping bot, reset anytime — no rewards", elixirRate: SANDBOX_ELIXIR_RATE, mirror: false },
 ];
+
+function isSandbox(): boolean {
+  return gameMode.id === "sandbox";
+}
+
+/** Sandbox is a solo practice space; friend matches fall back to Classic. */
+function netGameMode(): GameMode {
+  return gameMode.id === "sandbox" ? GAME_MODES[0] : gameMode;
+}
 
 const MODE_KEY = "cr-clone-mode";
 
@@ -132,29 +172,12 @@ let gameMode = loadMode();
 // ---- Game variant (Clash Royale clone vs Islamic version) ---------------
 // The variant is the arena theme under the hood; switching reloads the page.
 // (Named "variant" to avoid colliding with the in-match GameMode rulesets.)
-const variant: GameVariant = loadVariant(localStorage);
-
-// ---- Trophies + card levels (persisted progression) --------------------
-
-const TROPHY_KEY = "cr-clone-trophies";
-const LEVELS_KEY = "cr-clone-levels";
-const MAX_LEVEL = 11;
-
-let trophies = parseInt(localStorage.getItem(TROPHY_KEY) ?? "0", 10) || 0;
-
-function loadLevels(): CardLevels {
-  try {
-    return JSON.parse(localStorage.getItem(LEVELS_KEY) ?? "{}") as CardLevels;
-  } catch {
-    return {};
-  }
-}
-
-let cardLevels: CardLevels = loadLevels();
+// Null until the player picks an edition in the lobby.
+const variant: GameVariant | null = loadVariant(localStorage);
 
 /** The bot levels up with your trophies, one level per 150. */
 function botLevels(): CardLevels {
-  const lvl = Math.min(MAX_LEVEL, 1 + Math.floor(trophies / 150));
+  const lvl = Math.min(MAX_CARD_LEVEL, 1 + Math.floor(profile.trophies / 150));
   const out: CardLevels = {};
   for (const id of DECK) out[id] = lvl;
   return out;
@@ -234,13 +257,25 @@ function restart(): void {
   bot = createBot(Date.now() & 0xffff, DIFFICULTIES[difficulty]);
   selectCard(null);
   hud.setReward(null);
-  hud.setOpponentName("Bot");
+  hud.setOpponentName(isSandbox() ? "Training dummy" : "Bot");
   scene.setViewpoint("player");
   scene.reset();
   audio.setIntensity(0);
   audio.restartMusic();
+  sandboxResetBtn.style.display = isSandbox() ? "" : "none";
   startCountdown();
 }
+
+/** Instant sandbox restart — no countdown between experiments. */
+function sandboxReset(): void {
+  restart();
+  phase = "playing";
+  showBanner("Reset!", true);
+}
+sandboxResetBtn.addEventListener("click", () => {
+  sandboxReset();
+  sandboxResetBtn.blur();
+});
 
 /** Begin a networked match once the relay pairs both players. */
 function startOnlineMatch(
@@ -252,6 +287,7 @@ function startOnlineMatch(
 ): void {
   const side = sideForRole(role);
   mode = "online";
+  sandboxResetBtn.style.display = "none";
   const session: OnlineSession = {
     client,
     ls: new Lockstep(side, INPUT_DELAY),
@@ -301,10 +337,10 @@ function endOnlineMatch(message: string): void {
   showBanner(message);
   scene.setViewpoint("player");
   hud.setOpponentName("Bot");
-  setTimeout(openDeckPicker, 1800);
+  setTimeout(openHome, 1800);
 }
 
-// ---- Deck picker ---------------------------------------------------------
+// ---- Meta chips (top bar) + home / collection / chests / deck ----------
 
 const pickerRoot = document.getElementById("deckpicker")!;
 
@@ -313,10 +349,308 @@ function cardTileCanvas(id: CardId): HTMLCanvasElement {
   return makeCardCanvas(id, { style: "tile", size: 128 });
 }
 
-function buildDeckPicker(): void {
+function formatRemain(ms: number): string {
+  if (ms <= 0) return "Ready!";
+  const s = Math.ceil(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+
+function appendEditionToggle(parent: HTMLElement): void {
+  const editionRow = document.createElement("div");
+  editionRow.className = "edition-row";
+  editionRow.setAttribute("role", "group");
+  editionRow.setAttribute("aria-label", "Choose edition");
+  const MODE_LABEL: Record<GameVariant, string> = {
+    clash: "⚔️ Clash Royale",
+    islamic: "🌙 Islamic",
+  };
+  for (const v of ["clash", "islamic"] as GameVariant[]) {
+    const btn = document.createElement("button");
+    btn.className = "edition-btn";
+    btn.textContent = MODE_LABEL[v];
+    const chosen = variant === v;
+    btn.setAttribute("aria-pressed", String(chosen));
+    btn.classList.toggle("chosen", chosen);
+    btn.addEventListener("click", () => {
+      if (v === variant) return;
+      saveVariant(localStorage, v);
+      location.reload();
+    });
+    editionRow.appendChild(btn);
+  }
+  parent.appendChild(editionRow);
+  const editionNote = document.createElement("div");
+  editionNote.className = "edition-note";
+  editionNote.textContent = variant
+    ? variant === "islamic"
+      ? "Islamic Golden Age — Faris, camels, war elephants & crescents."
+      : "The classic clone — Western knights, wizards, P.E.K.K.A."
+    : "Pick Clash Royale or Islamic Golden Age to begin.";
+  parent.appendChild(editionNote);
+}
+
+function buildHome(): void {
   pickerRoot.innerHTML = "";
 
-  // Edition crest — icon changes with the active theme.
+  const crest = document.createElement("div");
+  crest.className = "cr-crest";
+  crest.setAttribute("aria-hidden", "true");
+  crest.textContent = !EDITION_CHOSEN ? "⚔️" : ARABIC ? "🌙" : "👑";
+  pickerRoot.appendChild(crest);
+
+  const title = document.createElement("h2");
+  title.textContent = !EDITION_CHOSEN
+    ? "Choose your edition"
+    : ARABIC
+      ? "ساحة التدريب"
+      : "Home";
+  pickerRoot.appendChild(title);
+
+  appendEditionToggle(pickerRoot);
+
+  if (!EDITION_CHOSEN || !variant) {
+    const gate = document.createElement("div");
+    gate.className = "edition-gate";
+    gate.textContent = "Select an edition above to enter the arena.";
+    pickerRoot.appendChild(gate);
+    return;
+  }
+
+  const prog = trophyProgress(profile.trophies);
+  const arenaBlock = document.createElement("div");
+  arenaBlock.className = "home-arena";
+  arenaBlock.innerHTML =
+    `<div class="home-arena-name">${prog.current.name}</div>` +
+    `<div class="home-trophy-row">🏆 ${profile.trophies}` +
+    (prog.next ? ` / ${prog.next.trophies}` : " · Peak") +
+    `</div>`;
+  const bar = document.createElement("div");
+  bar.className = "home-trophy-bar";
+  const fill = document.createElement("div");
+  fill.className = "home-trophy-fill";
+  fill.style.width = `${Math.round(prog.ratio * 100)}%`;
+  bar.appendChild(fill);
+  arenaBlock.appendChild(bar);
+  if (prog.next) {
+    const hint = document.createElement("div");
+    hint.className = "home-arena-next";
+    hint.textContent = `Next: ${prog.next.name}`;
+    arenaBlock.appendChild(hint);
+  }
+  pickerRoot.appendChild(arenaBlock);
+
+  const currency = document.createElement("div");
+  currency.className = "home-currency";
+  currency.innerHTML =
+    `<span class="chip gold">🪙 ${profile.gold}</span>` +
+    `<span class="chip gems">💎 ${profile.gems}</span>`;
+  pickerRoot.appendChild(currency);
+
+  const nav = document.createElement("div");
+  nav.className = "home-nav";
+  const mk = (label: string, cls: string, fn: () => void): void => {
+    const btn = document.createElement("button");
+    btn.className = cls;
+    btn.textContent = label;
+    btn.addEventListener("click", fn);
+    nav.appendChild(btn);
+  };
+  mk("⚔️ Battle", "battle-btn", () => openDeckPicker({ mode: "battle" }));
+  mk("🃏 Deck", "battle-btn friend", () => openDeckPicker({ mode: "deck" }));
+  mk("📚 Collection", "battle-btn friend", () => openCollection());
+  mk("🎁 Chests", "battle-btn friend", () => openChests());
+  pickerRoot.appendChild(nav);
+}
+
+function buildCollection(): void {
+  pickerRoot.innerHTML = "";
+  const title = document.createElement("h2");
+  title.textContent = "Collection";
+  pickerRoot.appendChild(title);
+
+  const currency = document.createElement("div");
+  currency.className = "home-currency";
+  currency.innerHTML =
+    `<span class="chip gold">🪙 ${profile.gold}</span>` +
+    `<span class="chip gems">💎 ${profile.gems}</span>`;
+  pickerRoot.appendChild(currency);
+
+  const detail = document.createElement("div");
+  detail.className = "collect-detail";
+  detail.textContent = "Tap a card to upgrade";
+  pickerRoot.appendChild(detail);
+
+  const grid = document.createElement("div");
+  grid.className = "picker-grid collection-grid";
+  pickerRoot.appendChild(grid);
+
+  const owned = ownedSet(profile.owned);
+  for (const id of DECK) {
+    const card = getCard(id);
+    const have = owned.has(id);
+    const unlocked = isUnlockedAt(id, profile.trophies);
+    const btn = document.createElement("button");
+    btn.className = "pick" + (have ? "" : " locked");
+    btn.dataset.card = id;
+    btn.dataset.rarity = card.rarity;
+    const level = cardLevels[id] ?? 1;
+    const shards = profile.shards[id] ?? 0;
+    if (have) {
+      btn.appendChild(cardTileCanvas(id));
+      const name = document.createElement("div");
+      name.textContent = `${cardDisplayName(id)} · Lv.${level}`;
+      btn.appendChild(name);
+      const cost = document.createElement("div");
+      cost.className = "pcost";
+      cost.textContent = String(card.cost);
+      btn.appendChild(cost);
+      const shardBar = document.createElement("div");
+      shardBar.className = "shard-bar";
+      const upc = upgradeCost(card.rarity, level);
+      const need = upc?.shards ?? 0;
+      shardBar.textContent = upc ? `${shards}/${need} shards` : "MAX";
+      btn.appendChild(shardBar);
+      btn.addEventListener("click", () => {
+        const upc2 = upgradeCost(card.rarity, cardLevels[id] ?? 1);
+        if (!upc2) {
+          detail.textContent = `${cardDisplayName(id)} is max level.`;
+          return;
+        }
+        const result = tryUpgradeCard(
+          { ...profile, deck: playerDeck, levels: cardLevels },
+          id,
+        );
+        if (!result.ok) {
+          detail.textContent =
+            result.reason === "afford"
+              ? `Need ${upc2.gold} gold + ${upc2.shards} shards`
+              : "Can't upgrade";
+          return;
+        }
+        profile = result.profile;
+        cardLevels = profile.levels;
+        persistProfile();
+        buildCollection();
+      });
+    } else {
+      const sil = document.createElement("div");
+      sil.className = "pick-silhouette";
+      sil.textContent = "❔";
+      btn.appendChild(sil);
+      const name = document.createElement("div");
+      name.textContent = unlocked
+        ? cardDisplayName(id)
+        : `Unlock at ${arenaNameForUnlock(id)}`;
+      btn.appendChild(name);
+      btn.disabled = true;
+    }
+    grid.appendChild(btn);
+  }
+
+  const back = document.createElement("button");
+  back.className = "back-btn";
+  back.textContent = "← Home";
+  back.addEventListener("click", () => openHome());
+  pickerRoot.appendChild(back);
+}
+
+function buildChests(): void {
+  pickerRoot.innerHTML = "";
+  const title = document.createElement("h2");
+  title.textContent = "Chests";
+  pickerRoot.appendChild(title);
+
+  const currency = document.createElement("div");
+  currency.className = "home-currency";
+  currency.innerHTML =
+    `<span class="chip gold">🪙 ${profile.gold}</span>` +
+    `<span class="chip gems">💎 ${profile.gems}</span>`;
+  pickerRoot.appendChild(currency);
+
+  const note = document.createElement("div");
+  note.className = "collect-label";
+  note.textContent = `Win battles to fill slots · Skip timer for ${CHEST_SKIP_GEMS} 💎`;
+  pickerRoot.appendChild(note);
+
+  const reveal = document.createElement("div");
+  reveal.className = "chest-reveal";
+  pickerRoot.appendChild(reveal);
+
+  const row = document.createElement("div");
+  row.className = "chest-slots";
+  pickerRoot.appendChild(row);
+
+  const now = Date.now();
+  profile.chests.forEach((slot, i) => {
+    const cell = document.createElement("div");
+    cell.className = "chest-slot" + (slot ? "" : " empty");
+    if (!slot) {
+      cell.textContent = "Empty";
+      row.appendChild(cell);
+      return;
+    }
+    const ready = isChestReady(slot, now);
+    const label = document.createElement("div");
+    label.className = "chest-rarity";
+    label.textContent = slot.rarity === "rare" ? "🎁 Rare" : "📦 Free";
+    cell.appendChild(label);
+    const timer = document.createElement("div");
+    timer.className = "chest-timer";
+    timer.textContent = ready ? "Ready!" : formatRemain(slot.readyAt - now);
+    cell.appendChild(timer);
+    const openBtn = document.createElement("button");
+    openBtn.className = "chest-open-btn";
+    openBtn.textContent = ready ? "Open" : `Open (${CHEST_SKIP_GEMS}💎)`;
+    openBtn.addEventListener("click", () => {
+      const result = tryOpenChest(
+        { ...profile, deck: playerDeck, levels: cardLevels },
+        i,
+        Date.now(),
+        undefined,
+        { skipWithGems: !ready },
+      );
+      if (!result.ok || !result.rewards) {
+        reveal.textContent =
+          result.reason === "gems"
+            ? "Not enough gems"
+            : result.reason === "locked"
+              ? "Still locked"
+              : "Can't open";
+        return;
+      }
+      profile = result.profile;
+      persistProfile();
+      const r = result.rewards;
+      const bits: string[] = [`+${r.gold} 🪙`];
+      if (r.gems) bits.push(`+${r.gems} 💎`);
+      if (r.newCard) bits.push(`New: ${cardDisplayName(r.newCard)}!`);
+      const shardBits = Object.entries(r.shards)
+        .map(([id, n]) => `${cardDisplayName(id as CardId)} +${n}`)
+        .join(", ");
+      if (shardBits) bits.push(shardBits);
+      reveal.textContent = bits.join(" · ");
+      // Rebuild after a beat so the player can read the reveal.
+      window.setTimeout(() => buildChests(), 900);
+    });
+    cell.appendChild(openBtn);
+    row.appendChild(cell);
+  });
+
+  const back = document.createElement("button");
+  back.className = "back-btn";
+  back.textContent = "← Home";
+  back.addEventListener("click", () => openHome());
+  pickerRoot.appendChild(back);
+}
+
+function buildDeckPicker(opts: { mode: "battle" | "deck" }): void {
+  pickerRoot.innerHTML = "";
+
   const crest = document.createElement("div");
   crest.className = "cr-crest";
   crest.setAttribute("aria-hidden", "true");
@@ -324,44 +658,18 @@ function buildDeckPicker(): void {
   pickerRoot.appendChild(crest);
 
   const title = document.createElement("h2");
-  title.textContent = ARABIC ? "ابنِ سطحك الحربي" : "Build your battle deck";
+  title.textContent =
+    opts.mode === "battle"
+      ? ARABIC
+        ? "ابنِ سطحك الحربي"
+        : "Battle deck"
+      : ARABIC
+        ? "عدّل سطحك"
+        : "Edit deck";
   pickerRoot.appendChild(title);
 
-  // Game mode: the Clash Royale clone, or the Islamic Golden Age version.
-  // Switching writes the theme and reloads so art + names rebuild.
-  const editionRow = document.createElement("div");
-  editionRow.className = "edition-row";
-  editionRow.setAttribute("role", "group");
-  editionRow.setAttribute("aria-label", "Choose edition");
-  const editionNote = document.createElement("div");
-  editionNote.className = "edition-note";
-  const MODE_LABEL: Record<GameVariant, string> = {
-    clash: "⚔️ Clash Royale",
-    islamic: "🌙 Islamic",
-  };
-  const MODE_HELP: Record<GameVariant, string> = {
-    clash: "The classic clone — Western knights, wizards, P.E.K.K.A.",
-    islamic: "Islamic Golden Age — Faris, camels, war elephants & crescents.",
-  };
-  for (const v of ["clash", "islamic"] as GameVariant[]) {
-    const btn = document.createElement("button");
-    btn.className = "edition-btn";
-    btn.textContent = MODE_LABEL[v];
-    btn.setAttribute("aria-pressed", String(v === variant));
-    btn.classList.toggle("chosen", v === variant);
-    btn.addEventListener("click", () => {
-      if (v === variant) return;
-      saveVariant(localStorage, v);
-      location.reload(); // theme, art, and names are all read at load
-    });
-    editionRow.appendChild(btn);
-  }
-  pickerRoot.appendChild(editionRow);
-  editionNote.textContent = MODE_HELP[variant];
-  pickerRoot.appendChild(editionNote);
-
-  // Ordered deck of up to 8; slots fill as you pick, click to remove.
-  const deck: CardId[] = playerDeck.slice(0, 8);
+  const owned = ownedSet(profile.owned);
+  const deck: CardId[] = playerDeck.filter((id) => owned.has(id)).slice(0, 8);
 
   const deckRow = document.createElement("div");
   deckRow.className = "deck-slots";
@@ -373,69 +681,83 @@ function buildDeckPicker(): void {
 
   const collectLabel = document.createElement("div");
   collectLabel.className = "collect-label";
-  collectLabel.textContent = "Collection — tap to add";
+  collectLabel.textContent = "Owned cards — tap to add";
   pickerRoot.appendChild(collectLabel);
 
   const grid = document.createElement("div");
   grid.className = "picker-grid";
   pickerRoot.appendChild(grid);
 
-  const diffRow = document.createElement("div");
-  diffRow.className = "diff-row";
-  for (const level of Object.keys(DIFFICULTIES)) {
-    const btn = document.createElement("button");
-    btn.className = "diff-btn";
-    btn.textContent = level;
-    btn.classList.toggle("chosen", level === difficulty);
-    btn.addEventListener("click", () => {
-      difficulty = level;
-      localStorage.setItem(DIFF_KEY, level);
-      diffRow
-        .querySelectorAll("button")
-        .forEach((b) => b.classList.toggle("chosen", b === btn));
-    });
-    diffRow.appendChild(btn);
-  }
-  pickerRoot.appendChild(diffRow);
+  if (opts.mode === "battle") {
+    const diffRow = document.createElement("div");
+    diffRow.className = "diff-row";
+    for (const level of Object.keys(DIFFICULTIES)) {
+      const btn = document.createElement("button");
+      btn.className = "diff-btn";
+      btn.textContent = level;
+      btn.classList.toggle("chosen", level === difficulty);
+      btn.addEventListener("click", () => {
+        difficulty = level;
+        localStorage.setItem(DIFF_KEY, level);
+        diffRow
+          .querySelectorAll("button")
+          .forEach((b) => b.classList.toggle("chosen", b === btn));
+      });
+      diffRow.appendChild(btn);
+    }
+    pickerRoot.appendChild(diffRow);
 
-  // Game-mode selector (applies to Battle the Bot and, for the host, online).
-  const modeLabel = document.createElement("div");
-  modeLabel.className = "collect-label";
-  modeLabel.textContent = "Game mode";
-  pickerRoot.appendChild(modeLabel);
+    const modeLabel = document.createElement("div");
+    modeLabel.className = "collect-label";
+    modeLabel.textContent = "Game mode";
+    pickerRoot.appendChild(modeLabel);
 
-  const modeRow = document.createElement("div");
-  modeRow.className = "mode-row";
-  const modeBlurb = document.createElement("div");
-  modeBlurb.className = "mode-blurb";
-  for (const m of GAME_MODES) {
-    const btn = document.createElement("button");
-    btn.className = "mode-btn";
-    btn.textContent = m.name;
-    btn.classList.toggle("chosen", m.id === gameMode.id);
-    btn.addEventListener("click", () => {
-      gameMode = m;
-      localStorage.setItem(MODE_KEY, m.id);
-      modeRow.querySelectorAll("button").forEach((b) => b.classList.toggle("chosen", b === btn));
-      modeBlurb.textContent = m.blurb;
-    });
-    modeRow.appendChild(btn);
+    const modeRow = document.createElement("div");
+    modeRow.className = "mode-row";
+    const modeBlurb = document.createElement("div");
+    modeBlurb.className = "mode-blurb";
+    for (const m of GAME_MODES) {
+      const btn = document.createElement("button");
+      btn.className = "mode-btn";
+      btn.textContent = m.name;
+      btn.classList.toggle("chosen", m.id === gameMode.id);
+      btn.addEventListener("click", () => {
+        gameMode = m;
+        localStorage.setItem(MODE_KEY, m.id);
+        modeRow.querySelectorAll("button").forEach((b) => b.classList.toggle("chosen", b === btn));
+        modeBlurb.textContent = m.blurb;
+      });
+      modeRow.appendChild(btn);
+    }
+    modeBlurb.textContent = gameMode.blurb;
+    pickerRoot.appendChild(modeRow);
+    pickerRoot.appendChild(modeBlurb);
   }
-  modeBlurb.textContent = gameMode.blurb;
-  pickerRoot.appendChild(modeRow);
-  pickerRoot.appendChild(modeBlurb);
 
   const startBtn = document.createElement("button");
   startBtn.className = "battle-btn";
-  startBtn.textContent = "⚔️ Battle the Bot";
-  startBtn.setAttribute("aria-label", "Start a battle against the bot");
+  startBtn.textContent =
+    opts.mode === "battle" ? "⚔️ Battle the Bot" : "💾 Save deck";
+  startBtn.setAttribute(
+    "aria-label",
+    opts.mode === "battle" ? "Start a battle against the bot" : "Save deck",
+  );
   pickerRoot.appendChild(startBtn);
 
-  const friendBtn = document.createElement("button");
-  friendBtn.className = "battle-btn friend";
-  friendBtn.textContent = "🤝 Play a Friend";
-  friendBtn.setAttribute("aria-label", "Start an online match with a friend");
-  pickerRoot.appendChild(friendBtn);
+  let friendBtn: HTMLButtonElement | null = null;
+  if (opts.mode === "battle") {
+    friendBtn = document.createElement("button");
+    friendBtn.className = "battle-btn friend";
+    friendBtn.textContent = "🤝 Play a Friend";
+    friendBtn.setAttribute("aria-label", "Start an online match with a friend");
+    pickerRoot.appendChild(friendBtn);
+  }
+
+  const backBtn = document.createElement("button");
+  backBtn.className = "back-btn";
+  backBtn.textContent = "← Home";
+  backBtn.addEventListener("click", () => openHome());
+  pickerRoot.appendChild(backBtn);
 
   const remove = (id: CardId): void => {
     const i = deck.indexOf(id);
@@ -443,13 +765,13 @@ function buildDeckPicker(): void {
     sync();
   };
   const add = (id: CardId): void => {
+    if (!canPutInDeck(id, owned)) return;
     if (!deck.includes(id) && deck.length < 8) deck.push(id);
-    else if (deck.includes(id)) remove(id); // tapping an added card removes it
+    else if (deck.includes(id)) remove(id);
     sync();
   };
 
   function sync(): void {
-    // Rebuild the 8 deck slots (filled in pick order, then empties).
     deckRow.innerHTML = "";
     for (let i = 0; i < 8; i++) {
       const id = deck[i];
@@ -471,20 +793,25 @@ function buildDeckPicker(): void {
       ? (costs.reduce((s, c) => s + c, 0) / costs.length).toFixed(1)
       : "0.0";
     count.textContent = `${deck.length} / 8 cards · average ${avg} elixir`;
-    startBtn.disabled = deck.length !== 8;
-    friendBtn.disabled = deck.length !== 8;
+    const legal = isOwnedDeck(deck, owned);
+    startBtn.disabled = !legal;
+    if (friendBtn) friendBtn.disabled = !legal;
     grid.querySelectorAll<HTMLButtonElement>("button.pick").forEach((btn) => {
       btn.classList.toggle("chosen", deck.includes(btn.dataset.card as CardId));
     });
   }
 
   for (const id of DECK) {
+    if (!owned.has(id)) continue;
     const card = getCard(id);
     const btn = document.createElement("button");
     btn.className = "pick";
     btn.dataset.card = id;
     btn.dataset.rarity = card.rarity;
-    btn.setAttribute("aria-label", `${cardDisplayName(id)}, ${card.rarity}, ${card.cost} elixir`);
+    btn.setAttribute(
+      "aria-label",
+      `${cardDisplayName(id)}, ${card.rarity}, ${card.cost} elixir`,
+    );
     btn.appendChild(cardTileCanvas(id));
     const name = document.createElement("div");
     name.textContent = cardDisplayName(id);
@@ -499,19 +826,26 @@ function buildDeckPicker(): void {
   }
   sync();
 
-  function saveDeck(): void {
+  function commitDeck(): boolean {
+    if (!isOwnedDeck(deck, owned)) return false;
     playerDeck = deck.slice();
-    localStorage.setItem(DECK_KEY, JSON.stringify(playerDeck));
+    profile = { ...profile, deck: playerDeck };
+    persistProfile();
+    return true;
   }
 
   startBtn.addEventListener("click", () => {
-    saveDeck();
-    closeDeckPicker();
-    restart();
+    if (!commitDeck()) return;
+    if (opts.mode === "battle") {
+      closeDeckPicker();
+      restart();
+    } else {
+      openHome();
+    }
   });
 
-  friendBtn.addEventListener("click", () => {
-    saveDeck();
+  friendBtn?.addEventListener("click", () => {
+    if (!commitDeck()) return;
     openFriendLobby(deck.slice());
   });
 }
@@ -519,8 +853,6 @@ function buildDeckPicker(): void {
 // ---- Friend lobby (create / join a LAN room) ---------------------------
 
 function connectRoom(): RoomClient {
-  // The browser WebSocket satisfies NetSocket at runtime; its DOM event-handler
-  // typings differ only in the (ignored) event argument.
   const sock = new WebSocket(`ws://${location.hostname}:3110`) as unknown as NetSocket;
   return new RoomClient(sock);
 }
@@ -533,7 +865,7 @@ function openFriendLobby(deck: CardId[]): void {
 
   const hint = document.createElement("p");
   hint.className = "lobby-hint";
-  hint.innerHTML = `Mode: <b>${gameMode.name}</b><br/>You both need to be on the same Wi-Fi.`;
+  hint.innerHTML = `Mode: <b>${netGameMode().name}</b><br/>You both need to be on the same Wi-Fi.`;
   pickerRoot.appendChild(hint);
 
   const status = document.createElement("div");
@@ -597,9 +929,9 @@ function openFriendLobby(deck: CardId[]): void {
     createBtn.disabled = true;
     const c = connectRoom();
     wire(c);
-    // Mirror mode: the host supplies one random deck both players battle with.
-    const hostDeck = gameMode.mirror ? botDeck() : deck;
-    c.create(hostDeck, { elixirRate: gameMode.elixirRate, mirror: gameMode.mirror });
+    const netMode = netGameMode();
+    const hostDeck = netMode.mirror ? botDeck() : deck;
+    c.create(hostDeck, { elixirRate: netMode.elixirRate, mirror: netMode.mirror });
   });
   joinBtn.addEventListener("click", () => {
     const code = codeInput.value.trim().toUpperCase();
@@ -614,15 +946,34 @@ function openFriendLobby(deck: CardId[]): void {
   });
   backBtn.addEventListener("click", () => {
     client?.leave();
-    openDeckPicker();
+    openDeckPicker({ mode: "battle" });
   });
 }
 
-function openDeckPicker(): void {
-  buildDeckPicker();
+function showPicker(): void {
   pickerRoot.classList.add("show");
-  // Hide the in-battle score bar so it can't overlap the picker's mode toggle.
   topbar.style.display = "none";
+  sandboxResetBtn.style.display = "none";
+}
+
+function openHome(): void {
+  buildHome();
+  showPicker();
+}
+
+function openCollection(): void {
+  buildCollection();
+  showPicker();
+}
+
+function openChests(): void {
+  buildChests();
+  showPicker();
+}
+
+function openDeckPicker(opts: { mode: "battle" | "deck" } = { mode: "deck" }): void {
+  buildDeckPicker(opts);
+  showPicker();
 }
 
 /** Restore the in-battle HUD bar when leaving the deck picker. */
@@ -639,49 +990,51 @@ const hud = new Hud(topbar, hudRoot, overlay, {
     audio.setMuted(!audio.muted);
     return audio.muted;
   },
+  onElixirLeak: () => audio.elixirLeak(),
 });
 
 // Audio can only start from a user gesture.
 window.addEventListener("pointerdown", () => audio.resume(), { once: false });
 
-// Deck button in the top bar + pick-your-deck on first load.
+// Home / deck buttons in the top bar.
+const homeBtn = document.createElement("button");
+homeBtn.className = "mute";
+homeBtn.textContent = "🏠";
+homeBtn.title = "Home";
+homeBtn.addEventListener("click", openHome);
+topbar.appendChild(homeBtn);
+
 const deckBtn = document.createElement("button");
 deckBtn.className = "mute";
 deckBtn.textContent = "🃏";
 deckBtn.title = "Edit deck";
-deckBtn.addEventListener("click", openDeckPicker);
+deckBtn.addEventListener("click", () => openDeckPicker({ mode: "deck" }));
 topbar.appendChild(deckBtn);
-openDeckPicker();
+openHome();
 
-// Trophy counter in the top bar.
+// Trophy + currency chips in the top bar.
 const trophyChip = document.createElement("div");
-trophyChip.className = "crowns player";
-trophyChip.innerHTML = `🏆 <span>${trophies}</span>`;
+trophyChip.className = "crowns player meta-chip";
 topbar.appendChild(trophyChip);
 
+function refreshMetaChips(): void {
+  trophyChip.innerHTML =
+    `🏆 <span>${profile.trophies}</span>` +
+    ` · 🪙 <span>${profile.gold}</span>` +
+    ` · 💎 <span>${profile.gems}</span>`;
+}
+refreshMetaChips();
+
 function applyMatchResult(winner: "player" | "enemy" | "draw"): void {
-  let reward: string;
-  if (winner === "player") {
-    trophies += 30;
-    reward = "+30 🏆";
-    // Victory levels up two random deck cards.
-    const upgradable = playerDeck.filter((id) => (cardLevels[id] ?? 1) < MAX_LEVEL);
-    for (let n = 0; n < 2 && upgradable.length > 0; n++) {
-      const i = Math.floor(Math.random() * upgradable.length);
-      const id = upgradable.splice(i, 1)[0];
-      cardLevels[id] = (cardLevels[id] ?? 1) + 1;
-      reward += ` · ${cardDisplayName(id)} ↑ Lv.${cardLevels[id]}`;
-    }
-  } else if (winner === "enemy") {
-    trophies = Math.max(0, trophies - 20);
-    reward = "-20 🏆";
-  } else {
-    reward = "🏆 unchanged";
-  }
-  localStorage.setItem(TROPHY_KEY, String(trophies));
-  localStorage.setItem(LEVELS_KEY, JSON.stringify(cardLevels));
-  trophyChip.innerHTML = `🏆 <span>${trophies}</span>`;
-  hud.setReward(reward);
+  const { profile: next, summary } = applyMetaMatchResult(
+    { ...profile, deck: playerDeck, levels: cardLevels },
+    winner,
+  );
+  profile = next;
+  cardLevels = profile.levels;
+  playerDeck = profile.deck;
+  persistProfile();
+  hud.setReward(summary.rewardLine);
 }
 
 // ---- Banners & match phases -------------------------------------------
@@ -773,12 +1126,13 @@ function showPreview(clientX: number, clientY: number): void {
   const valid =
     pos !== null &&
     checkDeploy(battle, localSide(), selectedCard, pos.x, pos.y) === "ok";
-  scene.setHover(
-    pos,
-    card.kind === "spell" ? card.radius : 0.6,
-    card.kind === "spell",
-    valid,
-  );
+  const radius =
+    card.kind === "spell"
+      ? card.radius
+      : card.kind === "building"
+        ? Math.max(0.7, card.unit.radius)
+        : 0.55;
+  scene.setHover(pos, radius, card.kind === "spell", valid, selectedCard);
   scene.setGhost(card.kind === "spell" ? null : selectedCard, pos);
 }
 
@@ -792,11 +1146,13 @@ function tryDeployAt(clientX: number, clientY: number): void {
     if (online) {
       // Lockstep: schedule the deploy; both peers apply it at the same tick.
       online.ls.queue({ side, cardId: selectedCard, x: pos.x, y: pos.y });
+      scene.deployFlash(pos.x, pos.y);
       selectCard(null);
       clearPreview();
       return;
     }
     if (deployCard(battle, side, selectedCard, pos.x, pos.y)) {
+      scene.deployFlash(pos.x, pos.y);
       selectCard(null);
       clearPreview();
       return;
@@ -835,7 +1191,9 @@ window.addEventListener("keydown", (ev) => {
   if (n >= 1 && n <= 4) selectCard(mySideState().hand.cards[n - 1]);
   if (ev.key === "Escape") selectCard(null);
   // "T" switches the arena theme (Arabic ⇄ normal); reloads to rebuild.
+  // No-op until an edition has been chosen.
   if (ev.key === "t" || ev.key === "T") {
+    if (!EDITION_CHOSEN) return;
     const cur = localStorage.getItem(ARENA_THEME_KEY) === "normal" ? "normal" : "arabic";
     localStorage.setItem(ARENA_THEME_KEY, cur === "arabic" ? "normal" : "arabic");
     location.reload();
@@ -846,9 +1204,24 @@ const SIM_DT = 1 / 30;
 let last = performance.now();
 let acc = 0;
 
+const impactFlashEl = document.getElementById("impact-flash");
+
+function flashImpact(): void {
+  if (!impactFlashEl) return;
+  impactFlashEl.classList.remove("show");
+  void impactFlashEl.offsetWidth;
+  impactFlashEl.classList.add("show");
+}
+
 function frame(now: number): void {
   const dt = Math.min(0.25, (now - last) / 1000);
   last = now;
+
+  // Hit-stop drains on wall-clock time. Solo matches freeze presentation +
+  // sim accrual for juice; online lockstep never stalls the sim clock.
+  scene.hitStop.update(dt);
+  const frozen = scene.hitStop.active && mode === "solo";
+  const presentDt = scene.hitStop.active ? Math.min(dt, 0.008) : dt;
 
   // The world holds its breath while the deck picker is open.
   if (pickerRoot.classList.contains("show")) {
@@ -859,42 +1232,49 @@ function frame(now: number): void {
 
   if (phase === "countdown") {
     tickCountdown(dt);
-  } else if (mode === "online" && online) {
-    acc += dt;
-    while (acc >= SIM_DT) {
-      // Lockstep: advance only when the peer's frame for this tick is in hand.
-      if (!online.ls.ready()) break;
-      const { commands, outgoing } = online.ls.step();
-      for (const c of commands) deployCard(battle, c.side, c.cardId, c.x, c.y);
-      tick(battle, SIM_DT);
-      online.client.sendFrame(outgoing);
-      online.tick++;
-      if (online.tick % SYNC_EVERY === 0) {
-        const cs = stateChecksum(battle);
-        online.sums.set(online.tick, cs);
-        if (online.sums.size > 10) online.sums.delete([...online.sums.keys()][0]);
-        online.client.sendSync(online.tick, cs);
+  } else if (!frozen) {
+    if (mode === "online" && online) {
+      acc += dt;
+      while (acc >= SIM_DT) {
+        // Lockstep: advance only when the peer's frame for this tick is in hand.
+        if (!online.ls.ready()) break;
+        const { commands, outgoing } = online.ls.step();
+        for (const c of commands) deployCard(battle, c.side, c.cardId, c.x, c.y);
+        tick(battle, SIM_DT);
+        online.client.sendFrame(outgoing);
+        online.tick++;
+        if (online.tick % SYNC_EVERY === 0) {
+          const cs = stateChecksum(battle);
+          online.sums.set(online.tick, cs);
+          if (online.sums.size > 10) online.sums.delete([...online.sums.keys()][0]);
+          online.client.sendSync(online.tick, cs);
+        }
+        acc -= SIM_DT;
       }
-      acc -= SIM_DT;
-    }
-    // While stalled on the peer, don't bank a backlog that bursts on resume.
-    acc = Math.min(acc, SIM_DT * 3);
-  } else {
-    acc += dt;
-    while (acc >= SIM_DT) {
-      tick(battle, SIM_DT);
-      tickBot(battle, bot, SIM_DT);
-      acc -= SIM_DT;
+      // While stalled on the peer, don't bank a backlog that bursts on resume.
+      acc = Math.min(acc, SIM_DT * 3);
+    } else {
+      acc += dt;
+      while (acc >= SIM_DT) {
+        tick(battle, SIM_DT);
+        // Sandbox: the bot sleeps (towers still defend) — pure practice.
+        if (!isSandbox()) tickBot(battle, bot, SIM_DT);
+        acc -= SIM_DT;
+      }
     }
   }
   botEmoteCooldown = Math.max(0, botEmoteCooldown - dt);
   for (const ev of battle.events.splice(0)) {
     audio.onEvent(ev);
     scene.onEvent(ev);
+    if (ev.type === "death" && (ev.kind === "princess-tower" || ev.kind === "king-tower")) {
+      flashImpact();
+    }
     if (ev.type === "crown" && mode === "solo") botEmote(ev.winner === "enemy" ? "😂" : "😭");
     if (ev.type === "finish") {
-      // Online friendly matches don't touch trophies/levels.
-      if (mode === "solo") {
+      // Online friendly matches and sandbox practice don't touch
+      // trophies/levels — you can't farm the ladder from either.
+      if (mode === "solo" && !isSandbox()) {
         botEmote(ev.winner === "enemy" ? "🎉" : "😭");
         applyMatchResult(ev.winner);
       }
@@ -905,8 +1285,8 @@ function frame(now: number): void {
   if (!battle.result) {
     audio.setIntensity(battle.overtime ? 2 : isDoubleElixir(battle) ? 1 : 0);
   }
-  scene.sync(battle, dt);
-  scene.render(dt);
+  scene.sync(battle, presentDt);
+  scene.render(presentDt);
   hud.update(battle, localSide());
   requestAnimationFrame(frame);
 }

@@ -9,7 +9,8 @@
     "preview": "vite preview --port 3101 --strictPort",
     "test": "vitest run",
     "test:watch": "vitest",
-    "relay": "node server/relay.ts",
+    "balance": "vite-node scripts/balance.ts --",
+    "relay": "node --experimental-transform-types server/relay.ts",
     "play": "node scripts/play-lan.mjs"
   },
   "devDependencies": {
