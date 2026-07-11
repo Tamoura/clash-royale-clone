@@ -48,12 +48,24 @@ named meshes) so the `moods angle the brows` and shared-geo tests still pass.
 
 - [x] Architecture: ISLAMIC_BUILDERS registry + buildTroop dispatch
 - [x] giant → War Elephant + turbaned rider (flagship)
-- [ ] hog-rider → Camel Raider (camel mount)
-- [ ] balloon → Fire-Kite
-- [ ] remaining roster (batches)
+- [x] hog-rider → Camel Raider (dromedary mount, bobbing neck, scimitar rider)
+- [x] balloon → Fire-Kite (diamond paper kite, gold spars, brazier + fire pots)
+- [x] musketeer → Janissary (tall white börk, deep-blue coat, matchlock)
+- [x] mini-pekka → Duelist (turbaned swordsman, buckler + scimitar)
+- [x] witch → War Drummer (copper war-drum + mallets)
+- [x] wizard → Alchemist (emerald robe, alembic staff, green elixir)
+- [x] pekka → Cataphract (barded horse, nasal helm, kontos lance)
+- [x] mega-knight → Mamluk Amir (teal/gold plate, fluted helm, spiked maces)
+- [x] baby-dragon → Roc Hatchling (cream/gold chick, hooked beak, feather wings)
+- [x] gargoyles / minions → War Falcon (hooded falconry bird, talons)
+- [x] skeletons / skeleton-army → Militia (tiny turbaned spearmen)
+- [x] royal-giant → Bombardier (bronze bombard with gold bands)
+- [ ] remaining light-theme cards (knight, archers, prince, valkyrie, princess,
+      executioner, bats, electro/ice wizard) — still inline turban/scimitar cues
 
 ## Verification gotcha
 
 WebGL can't run in the MCP automation tab (no context). Visual check must
 happen in the user's own visible browser tab (`npm run dev`, port 3101).
 Headless coverage = the rig structural tests in `characters3d.test.ts`.
+Gallery: `?gallery=<cardId>` still works for every troop builder.

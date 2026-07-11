@@ -21,9 +21,9 @@ function fakeStorage(seed: Record<string, string> = {}): ModeStorage {
 }
 
 describe("game mode", () => {
-  it("defaults to the Islamic version when nothing is stored", () => {
-    expect(loadMode(fakeStorage())).toBe(DEFAULT_MODE);
-    expect(DEFAULT_MODE).toBe("islamic");
+  it("returns null when nothing is stored (no default bias)", () => {
+    expect(loadMode(fakeStorage())).toBeNull();
+    expect(DEFAULT_MODE).toBeNull();
   });
 
   it("round-trips a saved mode through the shared theme key", () => {
@@ -42,7 +42,8 @@ describe("game mode", () => {
     expect(modeToTheme("islamic")).toBe("arabic");
     expect(themeToMode("normal")).toBe("clash");
     expect(themeToMode("arabic")).toBe("islamic");
-    expect(themeToMode(null)).toBe("islamic"); // default
+    expect(themeToMode(null)).toBeNull();
+    expect(themeToMode("unset")).toBeNull();
   });
 
   it("recognises only the two real modes", () => {
