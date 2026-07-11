@@ -30,8 +30,16 @@ Branch `draft-challenge-modes`, stacked on `enhancement-wave-1` (PR #97).
 - Sandbox reset button stays sandbox-only.
 
 ## Status
-- [ ] draft.ts logic + tests
-- [ ] challenges.ts logic + tests
-- [ ] daily.ts logic + tests
-- [ ] UI wiring (home entries, draft picker screen, challenge list)
-- [ ] Browser verification
+- [x] draft.ts logic + tests
+- [x] challenges.ts logic + tests
+- [x] daily.ts logic + tests
+- [x] UI wiring (home entries, draft picker screen, challenge list,
+      battleKind dispatch: restart replays the same mode; only ladder
+      matches call applyMatchResult)
+- [x] Browser verification (draft flow live in Chrome; challenge waves +
+      lose-detection headless)
+
+Gotcha found while verifying: the game's rAF loop pauses when the Chrome
+window is hidden/occluded (browser behavior) — battles only run while the
+window is visible. Headless puppeteer keeps rAF alive, so use it for
+unattended battle verification.

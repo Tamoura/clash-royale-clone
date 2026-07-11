@@ -58,6 +58,20 @@ import {
 import { canPutInDeck, isUnlockedAt } from "./meta/collection";
 import { isChestReady } from "./meta/chests";
 import { CHEST_SKIP_GEMS, upgradeCost } from "./meta/economy";
+import {
+  DRAFT_ROUNDS,
+  createDraft,
+  isDraftComplete,
+  pickCard as pickDraftCard,
+  type DraftState,
+} from "./game/draft";
+import {
+  CHALLENGES,
+  applyWaves,
+  challengeStatus,
+  type Challenge,
+} from "./game/challenges";
+import { dailyDeck, dateKey } from "./game/daily";
 
 // Apply edition-aware CSS variables before any DOM is rendered.
 applyEditionTokens(STORED_EDITION);
@@ -155,6 +169,38 @@ function isSandbox(): boolean {
   return gameMode.id === "sandbox";
 }
 
+// ---- Special solo battles (draft / challenge / daily) --------------------
+// "ladder" is the normal bot match that moves trophies/chests; the special
+// kinds replay themselves on "Play again" and never touch the ladder.
+
+type BattleKind = "ladder" | "draft" | "challenge" | "daily";
+let battleKind: BattleKind = "ladder";
+let activeChallenge: Challenge | null = null;
+let waveCursor = { next: 0 };
+let draftState: DraftState | null = null;
+let draftDecks: { mine: CardId[]; bot: CardId[] } | null = null;
+
+const CHALLENGES_DONE_KEY = "cr-clone-challenges-done";
+const DAILY_DONE_KEY = "cr-clone-daily-done";
+
+function challengesDone(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(CHALLENGES_DONE_KEY) ?? "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+function markChallengeDone(id: string): void {
+  const done = challengesDone();
+  done.add(id);
+  localStorage.setItem(CHALLENGES_DONE_KEY, JSON.stringify([...done]));
+}
+
+function isDailyDone(): boolean {
+  return localStorage.getItem(DAILY_DONE_KEY) === dateKey(new Date());
+}
+
 /** Sandbox is a solo practice space; friend matches fall back to Classic. */
 function netGameMode(): GameMode {
   return gameMode.id === "sandbox" ? GAME_MODES[0] : gameMode;
@@ -241,7 +287,27 @@ function selectCard(id: CardId | null): void {
   scene.setZoneVisible(id !== null && getCard(id).kind === "troop");
 }
 
+/** Restart whatever we were just playing (ladder, draft, challenge, daily). */
 function restart(): void {
+  if (battleKind === "challenge" && activeChallenge) {
+    startChallenge(activeChallenge);
+    return;
+  }
+  if (battleKind === "daily") {
+    startDaily();
+    return;
+  }
+  if (battleKind === "draft" && draftDecks) {
+    startSpecialBattle("draft", draftDecks.mine, draftDecks.bot, "Draft Bot");
+    return;
+  }
+  startLadder();
+}
+
+/** A normal trophy/chest bot match with the saved deck + selected mode. */
+function startLadder(): void {
+  battleKind = "ladder";
+  activeChallenge = null;
   mode = "solo";
   online = null;
   // Crazy mode rerolls a scrambled card set each match; other modes use stock.
@@ -264,6 +330,44 @@ function restart(): void {
   audio.restartMusic();
   sandboxResetBtn.style.display = isSandbox() ? "" : "none";
   startCountdown();
+}
+
+/** Solo battle with explicit decks; never moves trophies/chests. */
+function startSpecialBattle(
+  kind: BattleKind,
+  mine: CardId[],
+  theirs: CardId[],
+  opponentName: string,
+): void {
+  battleKind = kind;
+  mode = "solo";
+  online = null;
+  setCardOverrides(null);
+  // Level playing field: no card levels in special modes.
+  battle = createBattle(mine, theirs, {});
+  bot = createBot(Date.now() & 0xffff, DIFFICULTIES[difficulty]);
+  selectCard(null);
+  hud.setReward(null);
+  hud.setOpponentName(opponentName);
+  scene.setViewpoint("player");
+  scene.reset();
+  audio.setIntensity(0);
+  audio.restartMusic();
+  sandboxResetBtn.style.display = "none";
+  closeDeckPicker();
+  startCountdown();
+}
+
+function startChallenge(ch: Challenge): void {
+  activeChallenge = ch;
+  waveCursor = { next: 0 };
+  startSpecialBattle("challenge", ch.deck, ch.deck, ch.name);
+}
+
+function startDaily(): void {
+  activeChallenge = null;
+  const deckOfDay = dailyDeck(dateKey(new Date()));
+  startSpecialBattle("daily", deckOfDay, deckOfDay, "Daily Bot");
 }
 
 /** Instant sandbox restart — no countdown between experiments. */
@@ -461,10 +565,123 @@ function buildHome(): void {
     nav.appendChild(btn);
   };
   mk("⚔️ Battle", "battle-btn", () => openDeckPicker({ mode: "battle" }));
+  mk("🎲 Draft", "battle-btn friend", () => openDraft());
+  mk("🧩 Challenges", "battle-btn friend", () => openChallenges());
+  mk(
+    isDailyDone() ? "📅 Daily ✓ (done today)" : "📅 Daily Battle",
+    "battle-btn friend",
+    () => startDaily(),
+  );
   mk("🃏 Deck", "battle-btn friend", () => openDeckPicker({ mode: "deck" }));
   mk("📚 Collection", "battle-btn friend", () => openCollection());
   mk("🎁 Chests", "battle-btn friend", () => openChests());
   pickerRoot.appendChild(nav);
+}
+
+// ---- Draft screen --------------------------------------------------------
+
+function openDraft(): void {
+  draftState = createDraft(Date.now() | 0);
+  buildDraft();
+  showPicker();
+}
+
+function buildDraft(): void {
+  const d = draftState;
+  if (!d) return;
+  pickerRoot.innerHTML = "";
+  const title = document.createElement("h2");
+  title.textContent = `Draft — pick ${d.picks.length + 1} of ${DRAFT_ROUNDS}`;
+  pickerRoot.appendChild(title);
+
+  const hint = document.createElement("div");
+  hint.className = "collect-label";
+  hint.textContent = "Keep one card — the bot grabs one of the others!";
+  pickerRoot.appendChild(hint);
+
+  const row = document.createElement("div");
+  row.className = "picker-grid draft-row";
+  for (const id of d.offers) {
+    const card = getCard(id);
+    const btn = document.createElement("button");
+    btn.className = "pick";
+    btn.dataset.rarity = card.rarity;
+    btn.setAttribute(
+      "aria-label",
+      `Keep ${cardDisplayName(id)}, ${card.cost} elixir`,
+    );
+    btn.appendChild(cardTileCanvas(id));
+    const name = document.createElement("div");
+    name.textContent = cardDisplayName(id);
+    btn.appendChild(name);
+    const cost = document.createElement("div");
+    cost.className = "pcost";
+    cost.setAttribute("aria-hidden", "true");
+    cost.textContent = String(card.cost);
+    btn.appendChild(cost);
+    btn.addEventListener("click", () => {
+      const next = pickDraftCard(d, id);
+      if (!next) return;
+      draftState = next;
+      if (isDraftComplete(next)) {
+        draftDecks = { mine: next.picks, bot: next.botPicks };
+        draftState = null;
+        startSpecialBattle("draft", next.picks, next.botPicks, "Draft Bot");
+      } else {
+        buildDraft();
+      }
+    });
+    row.appendChild(btn);
+  }
+  pickerRoot.appendChild(row);
+
+  if (d.picks.length > 0) {
+    const mine = document.createElement("div");
+    mine.className = "collect-label";
+    mine.textContent = `Your deck so far: ${d.picks.map(cardDisplayName).join(" · ")}`;
+    pickerRoot.appendChild(mine);
+  }
+
+  const back = document.createElement("button");
+  back.className = "battle-btn friend";
+  back.textContent = "← Home";
+  back.addEventListener("click", () => openHome());
+  pickerRoot.appendChild(back);
+}
+
+// ---- Challenges screen ---------------------------------------------------
+
+function openChallenges(): void {
+  pickerRoot.innerHTML = "";
+  const title = document.createElement("h2");
+  title.textContent = "Challenges";
+  pickerRoot.appendChild(title);
+
+  const done = challengesDone();
+  for (const ch of CHALLENGES) {
+    const row = document.createElement("div");
+    row.className = "challenge-row";
+    const info = document.createElement("div");
+    info.className = "challenge-info";
+    info.innerHTML =
+      `<div class="challenge-name">${done.has(ch.id) ? "✅ " : ""}${ch.name}</div>` +
+      `<div class="challenge-blurb">${ch.blurb}</div>`;
+    row.appendChild(info);
+    const play = document.createElement("button");
+    play.className = "battle-btn challenge-play";
+    play.textContent = done.has(ch.id) ? "Replay" : `Play · +${ch.goldReward} 🪙`;
+    play.setAttribute("aria-label", `Play challenge ${ch.name}`);
+    play.addEventListener("click", () => startChallenge(ch));
+    row.appendChild(play);
+    pickerRoot.appendChild(row);
+  }
+
+  const back = document.createElement("button");
+  back.className = "battle-btn friend";
+  back.textContent = "← Home";
+  back.addEventListener("click", () => openHome());
+  pickerRoot.appendChild(back);
+  showPicker();
 }
 
 function buildCollection(): void {
@@ -838,7 +1055,7 @@ function buildDeckPicker(opts: { mode: "battle" | "deck" }): void {
     if (!commitDeck()) return;
     if (opts.mode === "battle") {
       closeDeckPicker();
-      restart();
+      startLadder();
     } else {
       openHome();
     }
@@ -1024,6 +1241,23 @@ function refreshMetaChips(): void {
     ` · 💎 <span>${profile.gems}</span>`;
 }
 refreshMetaChips();
+
+/** First-time gold for beating a challenge / the daily (never trophies). */
+function applySpecialReward(): void {
+  if (battleKind === "challenge" && activeChallenge) {
+    if (challengesDone().has(activeChallenge.id)) return;
+    markChallengeDone(activeChallenge.id);
+    profile = { ...profile, gold: profile.gold + activeChallenge.goldReward };
+    persistProfile();
+    hud.setReward(`First clear! +${activeChallenge.goldReward} 🪙`);
+  } else if (battleKind === "daily") {
+    if (isDailyDone()) return;
+    localStorage.setItem(DAILY_DONE_KEY, dateKey(new Date()));
+    profile = { ...profile, gold: profile.gold + 100 };
+    persistProfile();
+    hud.setReward("Daily complete! +100 🪙");
+  }
+}
 
 function applyMatchResult(winner: "player" | "enemy" | "draw"): void {
   const { profile: next, summary } = applyMetaMatchResult(
@@ -1258,7 +1492,22 @@ function frame(now: number): void {
       while (acc >= SIM_DT) {
         tick(battle, SIM_DT);
         // Sandbox: the bot sleeps (towers still defend) — pure practice.
-        if (!isSandbox()) tickBot(battle, bot, SIM_DT);
+        // Challenges: the scripted waves ARE the opponent.
+        if (!isSandbox() && battleKind !== "challenge") {
+          tickBot(battle, bot, SIM_DT);
+        }
+        if (battleKind === "challenge" && activeChallenge && !battle.result) {
+          applyWaves(battle, activeChallenge, waveCursor);
+          const status = challengeStatus(battle, activeChallenge);
+          if (status !== "playing") {
+            battle.result = {
+              winner: status === "won" ? "player" : "enemy",
+              playerCrowns: battle.player.crowns,
+              enemyCrowns: battle.enemy.crowns,
+            };
+            battle.events.push({ type: "finish", winner: battle.result.winner });
+          }
+        }
         acc -= SIM_DT;
       }
     }
@@ -1272,11 +1521,13 @@ function frame(now: number): void {
     }
     if (ev.type === "crown" && mode === "solo") botEmote(ev.winner === "enemy" ? "😂" : "😭");
     if (ev.type === "finish") {
-      // Online friendly matches and sandbox practice don't touch
-      // trophies/levels — you can't farm the ladder from either.
-      if (mode === "solo" && !isSandbox()) {
+      // Only ladder matches move trophies/levels/chests — online friendlies,
+      // sandbox, and the special modes can't farm the ladder.
+      if (mode === "solo" && battleKind === "ladder" && !isSandbox()) {
         botEmote(ev.winner === "enemy" ? "🎉" : "😭");
         applyMatchResult(ev.winner);
+      } else if (mode === "solo" && ev.winner === "player") {
+        applySpecialReward();
       }
     }
   }
