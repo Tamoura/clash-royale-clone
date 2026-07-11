@@ -11,7 +11,8 @@ import { BATTLE_DURATION, OVERTIME_DURATION, tick } from "../src/game/sim";
 
 const TICK = 1 / 30;
 const MAX_T = BATTLE_DURATION + OVERTIME_DURATION + 2;
-const GAMES = 16;
+// Seed-pairs per candidate; each plays both orientations. `npm run balance -- 64`
+const GAMES = Number(process.argv[2]) > 0 ? Number(process.argv[2]) : 16;
 const CANDIDATES: CardId[] = ["giant", "hog-rider", "balloon", "royal-giant", "pekka"];
 
 function swapIn(deck: CardId[], slot: number, card: CardId): CardId[] {
@@ -69,7 +70,10 @@ function winRate(card: CardId, slot: number): { rate: number; games: number } {
 
 function main(): void {
   console.log("Balance lab — controlled card-swap (mirror check ≈ 50%)\n");
-  const slot = 0;
+  // Swap into the deck's win-con slot so every candidate is measured as THE
+  // win condition of an otherwise identical deck. (Swapping the knight slot
+  // instead built two-win-con decks — and a duplicate giant for the giant.)
+  const slot = DEFAULT_DECK.indexOf("giant");
   for (const card of CANDIDATES) {
     const { rate, games } = winRate(card, slot);
     const pct = (rate * 100).toFixed(1);
@@ -77,7 +81,8 @@ function main(): void {
     const bar = "#".repeat(filled) + "-".repeat(20 - filled);
     console.log(`${card.padEnd(14)} ${pct.padStart(5)}%  [${bar}]  n=${games}`);
   }
-  const mirrorCard = DEFAULT_DECK[0];
+  // True mirror: the slot card swapped for itself — must score exactly 50%.
+  const mirrorCard = DEFAULT_DECK[slot];
   const mirror = winRate(mirrorCard, slot);
   console.log(`\nmirror(${mirrorCard}) ${(mirror.rate * 100).toFixed(1)}%  (expect ~50%)`);
 }

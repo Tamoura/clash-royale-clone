@@ -195,6 +195,35 @@ describe("piloting", () => {
     botThink(b, createBot(42));
     expect(b.effects.some((e) => e.cardId === "freeze")).toBe(true);
   });
+
+  it("escorts a leading tank with a flying win-con (giant + balloon)", () => {
+    for (const seed of [1, 7, 42, 99]) {
+      const b = createBattle();
+      spawnUnits(b, "enemy", "giant", 3.5, RIVER_Y - 3); // tank already pushing
+      giveBotHand(b, ["balloon", "musketeer", "skeletons", "bats"]);
+      botThink(b, createBot(seed));
+      const balloons = troopsOf(b, "enemy").filter((e) => e.cardId === "balloon");
+      expect(balloons.length).toBe(1);
+      // It joins the tank's lane, not the other one.
+      for (const x of balloons) expect(Math.abs(x.x - 3.5)).toBeLessThan(2.5);
+    }
+  });
+
+  it("does not always break a win-con cost tie the same way", () => {
+    // Giant and balloon both cost 5. With both in hand, different seeds
+    // must sometimes lead with each — a fixed tie-break leaves one card
+    // rotting in hand for entire matches.
+    const leads = new Set<string>();
+    for (const seed of [1, 2, 3, 5, 7, 11, 42, 99]) {
+      const b = createBattle();
+      giveBotHand(b, ["balloon", "giant", "skeletons", "bats"]);
+      botThink(b, createBot(seed));
+      const t = troopsOf(b, "enemy")[0];
+      if (t?.cardId) leads.add(t.cardId);
+    }
+    expect(leads.has("giant")).toBe(true);
+    expect(leads.has("balloon")).toBe(true);
+  });
 });
 
 describe("difficulty", () => {

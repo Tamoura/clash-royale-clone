@@ -269,15 +269,20 @@ function tryPush(state: BattleState, bot: BotState): boolean {
   const affordable = affordableTroops(state);
   if (affordable.length === 0) return false;
 
-  // Already have a tank out front? Feed the cheapest support into its lane
-  // so the push arrives together instead of dribbling in piecemeal.
+  // Already have a tank out front? Feed support into its lane so the push
+  // arrives together instead of dribbling in piecemeal. A flying win-con
+  // (Balloon) is the prime escort — it rides the tank's aggro to the tower.
   const tanks = botTanks(state);
   if (tanks.length > 0) {
     const lead = tanks.reduce((a, b) => (a.y > b.y ? a : b)); // furthest advanced
+    const flyer = affordable.find((id) => {
+      const c = getCard(id);
+      return c.kind === "troop" && c.unit.targetsBuildingsOnly && c.unit.flying;
+    });
     const support = affordable
       .filter((id) => getCard(id).kind === "troop" && !isWinCondition(id))
       .sort(byCostAsc);
-    const pick = support[0] ?? affordable[0];
+    const pick = flyer ?? support[0] ?? affordable[0];
     return deployCard(state, "enemy", pick, nearestBridgeX(lead.x), RIVER_Y - 4);
   }
 
@@ -286,7 +291,9 @@ function tryPush(state: BattleState, bot: BotState): boolean {
   // expensive troop we can (a meaningful unit, never a stray skeleton).
   const wincons = affordable.filter(isWinCondition);
   if (wincons.length > 0) {
-    const pick = wincons.sort(byCostAsc)[wincons.length - 1];
+    // Random among win-cons: a fixed tie-break (e.g. always the priciest)
+    // left equal-cost cards rotting in hand for whole matches.
+    const pick = wincons[Math.floor(bot.rng() * wincons.length)];
     return deployCard(state, "enemy", pick, lane, RIVER_Y - 4);
   }
   const troops = affordable.filter((id) => getCard(id).kind === "troop");
