@@ -22,25 +22,25 @@ export interface ImpactStyle {
 
 const CRUSH: ImpactStyle = {
   kind: "crush",
-  particles: 16,
-  speed: 5.4,
-  spread: 1.45,
+  particles: 18,
+  speed: 5.8,
+  spread: 1.5,
   color: 0xfff1c4,
-  size: 0.13,
+  size: 0.14,
   accent: 0xf6c14e,
-  ringRadius: 1.05,
-  trauma: 0.32,
+  ringRadius: 1.15,
+  trauma: 0.4,
 };
 const MEDIUM: ImpactStyle = {
   kind: "cut",
-  particles: 9,
-  speed: 4.2,
+  particles: 10,
+  speed: 4.4,
   spread: 1.25,
   color: 0xffe7b0,
   size: 0.1,
   accent: 0xff9f43,
-  ringRadius: 0.55,
-  trauma: 0.14,
+  ringRadius: 0.6,
+  trauma: 0.18,
 };
 const LIGHT: ImpactStyle = {
   kind: "cut",
@@ -70,15 +70,16 @@ const ARCANE: ImpactStyle = {
 export function impactStyle(cardId: CardId | null): ImpactStyle {
   switch (cardId) {
     case "pekka":
-    case "mini-pekka":
-    case "prince":
     case "mega-knight":
       return CRUSH;
+    case "mini-pekka":
+    case "prince":
+    case "giant":
+      return { ...CRUSH, trauma: 0.28, particles: 14, ringRadius: 0.95 };
     case "witch":
       return ARCANE;
     case "knight":
     case "valkyrie":
-    case "giant":
     case "hog-rider":
     case "balloon":
       return MEDIUM;

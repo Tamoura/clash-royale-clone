@@ -280,6 +280,13 @@ export class SoundEngine {
     this.tone(120, 0.14, { type: "sawtooth", slideTo: 90, vol: 0.1, delay: 0.02 });
   }
 
+  /** Soft drip when elixir sits at max and starts leaking. */
+  elixirLeak(): void {
+    if (this.throttled("leak", 900)) return;
+    this.tone(880, 0.08, { type: "sine", slideTo: 440, vol: 0.08 });
+    this.tone(660, 0.1, { type: "sine", slideTo: 330, vol: 0.06, delay: 0.06 });
+  }
+
   /** Bubbly pop for emotes. */
   emotePop(): void {
     this.tone(700, 0.1, { type: "sine", slideTo: 1200, vol: 0.18 });

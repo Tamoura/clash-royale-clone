@@ -25,11 +25,12 @@ export function hexStr(n: number): string {
 /**
  * Apply edition-aware CSS custom-property overrides on the document root.
  * Must be called once before any UI is rendered so CSS selectors like
- * :root[data-edition="arabic"] take effect.
+ * :root[data-edition="arabic"] take effect. Pass "unset" for a neutral lobby.
  */
-export function applyEditionTokens(theme: ArenaTheme): void {
+export function applyEditionTokens(theme: StoredEdition): void {
   try {
-    document.documentElement.dataset.edition = theme === "arabic" ? "arabic" : "clash";
+    document.documentElement.dataset.edition =
+      theme === "arabic" ? "arabic" : theme === "normal" ? "clash" : "unset";
   } catch {
     // node / test environment — silently skip
   }
@@ -51,13 +52,29 @@ export function accentCss(): string {
  * Guarded so node tests (no localStorage) fall back safely.
  */
 export type ArenaTheme = "normal" | "arabic";
+/** Persisted choice — "unset" until the player picks an edition in the lobby. */
+export type StoredEdition = ArenaTheme | "unset";
 export const ARENA_THEME_KEY = "cr-clone-arena-theme";
-function readArenaTheme(): ArenaTheme {
+
+function readStoredEdition(): StoredEdition {
   try {
-    return localStorage.getItem(ARENA_THEME_KEY) === "normal" ? "normal" : "arabic";
+    const v = localStorage.getItem(ARENA_THEME_KEY);
+    if (v === "normal" || v === "arabic") return v;
+    // First visit / cleared storage: no edition bias.
+    return "unset";
   } catch {
+    // Node/test: no localStorage — default arabic so Islamic character
+    // tests (which rely on ARABIC=true) keep working without a mock.
     return "arabic";
   }
 }
-export const ARENA_THEME: ArenaTheme = readArenaTheme();
+
+export const STORED_EDITION: StoredEdition = readStoredEdition();
+/** True once the player has picked Clash or Islamic. */
+export const EDITION_CHOSEN = STORED_EDITION !== "unset";
+/**
+ * Resolved arena theme for 3D bootstrap. When unset, use Clash art so the
+ * scene can construct; battle stays gated until the player picks an edition.
+ */
+export const ARENA_THEME: ArenaTheme = STORED_EDITION === "arabic" ? "arabic" : "normal";
 export const ARABIC = ARENA_THEME === "arabic";

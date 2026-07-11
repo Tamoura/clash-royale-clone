@@ -15,6 +15,7 @@ import { deathStyle } from "./deathfx";
 import { DUST_INTERVAL, blobShadowScale } from "./ground";
 import { spawnRecipe } from "./spawnfx";
 import { ShakeController } from "./shake";
+import { HitStopController } from "./hitstop";
 import { ParticleField } from "./particles";
 import { impactStyle } from "./impactfx";
 import { THEME, ARABIC, ARENA_THEME } from "./theme";
@@ -48,6 +49,15 @@ function toWorld(ax: number, ay: number): { x: number; z: number } {
 const SIDE_COLOR: Record<Side, number> = { player: 0x3b82f6, enemy: 0xef4444 };
 /** HP-bar fill: CR convention — your units green, the enemy's red. */
 const HP_COLOR: Record<Side, number> = { player: 0x35d04a, enemy: 0xef4444 };
+
+/** CR-readable spell telegraph colours. */
+const SPELL_TINT: Partial<Record<CardId, number>> = {
+  fireball: 0xff8c1a,
+  zap: 0xffe566,
+  arrows: 0x6ee7a0,
+  rage: 0xff4db8,
+  freeze: 0x7dd3fc,
+};
 
 // Which side sits at the bottom of the screen. The host views as "player"
 // (default); an online guest views as "enemy", so the camera looks from the
@@ -603,8 +613,8 @@ function archGateway(): THREE.Group {
 function buildTowerMesh(e: Entity): EntityView {
   const root = new THREE.Group();
   const king = e.kind === "king-tower";
-  const radius = king ? 1.15 : 0.85;
-  const height = king ? 2.0 : 1.55;
+  const radius = king ? 1.28 : 0.95;
+  const height = king ? 2.35 : 1.85;
 
   // Two-step stone platform under the keep, gold-trimmed like CR.
   const platform = new THREE.Mesh(
@@ -649,16 +659,16 @@ function buildTowerMesh(e: Entity): EntityView {
   trim.castShadow = true;
   root.add(trim);
 
-  // Merlons along the four roof edges.
+  // Merlons along the four roof edges — taller CR battlements.
   const merlon = toon(0x9c8d74);
   for (const side of [-1, 1]) {
     for (let i = -1; i <= 1; i++) {
-      const a = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.26, 0.18), merlon);
-      a.position.set(i * radius * 0.7, height + 0.1, side * radius * 0.92);
+      const a = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.38, 0.2), merlon);
+      a.position.set(i * radius * 0.7, height + 0.16, side * radius * 0.92);
       a.castShadow = true;
       root.add(a);
-      const b = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.26, 0.3), merlon);
-      b.position.set(side * radius * 0.92, height + 0.1, i * radius * 0.7);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.38, 0.34), merlon);
+      b.position.set(side * radius * 0.92, height + 0.16, i * radius * 0.7);
       b.castShadow = true;
       root.add(b);
     }
@@ -1059,10 +1069,14 @@ export class Battle3D {
   private effects: EffectView[] = [];
   private dying: DyingView[] = [];
   private readonly hoverDisc: THREE.Mesh;
+  private readonly hoverRing: THREE.Mesh;
+  private hoverPulse = 0;
   private ghost: { id: CardId; rig: TroopRig } | null = null;
   /** Trauma-based camera shake; big impacts punch harder than small ones. */
   private readonly shakeCtl = new ShakeController();
   private shakeTime = 0;
+  /** Render-only hit-stop (does not touch the sim clock). */
+  readonly hitStop = new HitStopController();
   /** Pooled hit sparks / debris, mirrored into one InstancedMesh. */
   private readonly sparks = new ParticleField(PARTICLE_CAP);
   private sparkMesh!: THREE.InstancedMesh;
@@ -1143,12 +1157,28 @@ export class Battle3D {
 
     this.hoverDisc = new THREE.Mesh(
       new THREE.CircleGeometry(0.6, 32),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.28 }),
     );
     this.hoverDisc.rotation.x = -Math.PI / 2;
     this.hoverDisc.position.y = 0.03;
     this.hoverDisc.visible = false;
     this.scene.add(this.hoverDisc);
+
+    // Outer telegraph ring (spells / buildings / troop feet) — pulses in render().
+    this.hoverRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.52, 0.62, 48),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.85,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    this.hoverRing.rotation.x = -Math.PI / 2;
+    this.hoverRing.position.y = 0.04;
+    this.hoverRing.visible = false;
+    this.scene.add(this.hoverRing);
 
     this.zonePlane = new THREE.Mesh(
       new THREE.PlaneGeometry(ARENA_WIDTH, ARENA_HEIGHT / 2 - 1),
@@ -1736,33 +1766,36 @@ export class Battle3D {
     }
     this.decorate();
 
-    // CR-style golden dirt lanes from each bridge to the towers.
+    // CR-style golden dirt lanes from each bridge to the towers — wider wear.
     const laneCanvas = document.createElement("canvas");
-    laneCanvas.width = 32;
+    laneCanvas.width = 48;
     laneCanvas.height = 256;
     const lctx = laneCanvas.getContext("2d")!;
-    const grad = lctx.createLinearGradient(0, 0, 32, 0);
+    const grad = lctx.createLinearGradient(0, 0, 48, 0);
     grad.addColorStop(0, "rgba(214,178,94,0)");
-    grad.addColorStop(0.18, "rgba(214,178,94,0.9)");
-    grad.addColorStop(0.5, "rgba(222,189,108,0.95)");
-    grad.addColorStop(0.82, "rgba(214,178,94,0.9)");
+    grad.addColorStop(0.15, "rgba(214,178,94,0.75)");
+    grad.addColorStop(0.5, "rgba(230,198,120,0.95)");
+    grad.addColorStop(0.85, "rgba(214,178,94,0.75)");
     grad.addColorStop(1, "rgba(214,178,94,0)");
     lctx.fillStyle = grad;
-    lctx.fillRect(0, 0, 32, 256);
+    lctx.fillRect(0, 0, 48, 256);
     // Speckled wear so the path reads as trodden dirt.
-    lctx.fillStyle = "rgba(160,124,58,0.5)";
-    for (let i = 0; i < 90; i++) {
-      lctx.fillRect((i * 13) % 30, (i * 47) % 254, 2, 1.5);
+    lctx.fillStyle = "rgba(160,124,58,0.55)";
+    for (let i = 0; i < 120; i++) {
+      lctx.fillRect((i * 13) % 46, (i * 47) % 254, 2.5, 1.8);
     }
-    lctx.fillStyle = "rgba(255,236,170,0.35)";
-    for (let i = 0; i < 60; i++) {
-      lctx.fillRect((i * 19 + 5) % 30, (i * 31 + 9) % 254, 1.5, 1);
+    lctx.fillStyle = "rgba(255,236,170,0.4)";
+    for (let i = 0; i < 80; i++) {
+      lctx.fillRect((i * 19 + 5) % 46, (i * 31 + 9) % 254, 1.8, 1.2);
     }
+    // Center rut line for CR lane readability.
+    lctx.fillStyle = "rgba(140,100,40,0.25)";
+    lctx.fillRect(22, 0, 4, 256);
     const laneTex = new THREE.CanvasTexture(laneCanvas);
     laneTex.colorSpace = THREE.SRGBColorSpace;
     for (const bx of BRIDGE_XS) {
       const lane = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.9, ARENA_HEIGHT - 1.2),
+        new THREE.PlaneGeometry(2.35, ARENA_HEIGHT - 1.2),
         new THREE.MeshToonMaterial({ map: laneTex, transparent: true }),
       );
       lane.rotation.x = -Math.PI / 2;
@@ -1854,10 +1887,12 @@ export class Battle3D {
         }
       }
     } else {
-      // Classic edition: chunky golden timber decks with royal-blue braces.
+      // Classic edition: chunky golden timber decks with royal-blue braces
+      // and rope handrails that read clearly from the CR top-down camera.
       const WOOD = 0xc99032;
       const WOOD_LIGHT = 0xe0ad45;
       const BRACE = 0x315da8;
+      const ROPE = 0xd4a574;
       for (const bx of BRIDGE_XS) {
         const w = toWorld(bx, RIVER_Y);
         const deck = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.22, 2.6), toon(WOOD));
@@ -1880,14 +1915,33 @@ export class Battle3D {
           rail.position.set(w.x + side * 0.94, 0.34, 0);
           rail.castShadow = true;
           this.scene.add(rail);
+          // Rope cable between posts.
+          const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.4, 6), toon(ROPE));
+          rope.rotation.x = Math.PI / 2;
+          rope.position.set(w.x + side * 0.94, 0.58, 0);
+          this.scene.add(rope);
           for (const ez of [-1.0, -0.33, 0.33, 1.0]) {
-            const post = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.48, 0.22), toon(BRACE));
-            post.position.set(w.x + side * 0.94, 0.42, ez);
+            const post = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.55, 0.22), toon(BRACE));
+            post.position.set(w.x + side * 0.94, 0.46, ez);
             post.castShadow = true;
             this.scene.add(post);
           }
         }
       }
+    }
+
+    // Soft foam strips along the river banks (both editions).
+    const foamMat = new THREE.MeshBasicMaterial({
+      color: arabic ? 0xe8f4ff : 0xd8fff8,
+      transparent: true,
+      opacity: 0.45,
+      depthWrite: false,
+    });
+    for (const sz of [-1, 1]) {
+      const foam = new THREE.Mesh(new THREE.PlaneGeometry(ARENA_WIDTH + 0.4, 0.35), foamMat);
+      foam.rotation.x = -Math.PI / 2;
+      foam.position.set(0, 0.02, sz * 1.15);
+      this.scene.add(foam);
     }
   }
 
@@ -1964,18 +2018,56 @@ export class Battle3D {
     radiusTiles: number,
     spell: boolean,
     valid = true,
+    cardId: CardId | null = null,
   ): void {
     if (!pos) {
       this.hoverDisc.visible = false;
+      this.hoverRing.visible = false;
       return;
     }
     const w = toWorld(pos.x, pos.y);
     this.hoverDisc.visible = true;
+    this.hoverRing.visible = true;
     this.hoverDisc.position.set(w.x, 0.03, w.z);
-    this.hoverDisc.scale.setScalar(radiusTiles / 0.6);
-    (this.hoverDisc.material as THREE.MeshBasicMaterial).color.set(
-      !valid ? 0xef4444 : spell ? 0xff8c1a : 0x4ade80,
+    this.hoverRing.position.set(w.x, 0.04, w.z);
+    const scale = Math.max(0.35, radiusTiles / 0.6);
+    this.hoverDisc.scale.setScalar(scale);
+    this.hoverRing.scale.setScalar(scale);
+
+    let tint = !valid ? 0xef4444 : spell ? 0xff8c1a : 0x4ade80;
+    if (valid && spell && cardId && SPELL_TINT[cardId] !== undefined) {
+      tint = SPELL_TINT[cardId]!;
+    }
+    (this.hoverDisc.material as THREE.MeshBasicMaterial).color.set(tint);
+    (this.hoverRing.material as THREE.MeshBasicMaterial).color.set(tint);
+    (this.hoverDisc.material as THREE.MeshBasicMaterial).opacity = spell
+      ? valid
+        ? 0.22
+        : 0.32
+      : valid
+        ? 0.18
+        : 0.3;
+  }
+
+  /** Brief white flash at a deploy point (CR drop feedback). */
+  deployFlash(ax: number, ay: number): void {
+    const w = toWorld(ax, ay);
+    const flash = new THREE.Mesh(
+      new THREE.CircleGeometry(0.9, 28),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.7,
+        depthWrite: false,
+      }),
     );
+    flash.rotation.x = -Math.PI / 2;
+    flash.position.set(w.x, 0.05, w.z);
+    this.addEffect(flash, 0.28, (frac) => {
+      const t = 1 - frac;
+      flash.scale.setScalar(1 + t * 1.4);
+      (flash.material as THREE.MeshBasicMaterial).opacity = 0.7 * frac;
+    });
   }
 
   /**
@@ -2777,6 +2869,15 @@ export class Battle3D {
           this.emitSparks(ev.targetX, ev.targetY, 0.8, s.particles, s.speed, s.spread, s.color, s.size);
           this.contactRing(ev.targetX, ev.targetY, s.ringRadius, s.accent);
           if (s.trauma > 0) this.addShake(s.trauma);
+          // Render-only hit-stop for bruisers — never touches the sim clock.
+          if (
+            ev.cardId === "pekka" ||
+            ev.cardId === "mega-knight" ||
+            ev.cardId === "giant" ||
+            ev.cardId === "prince"
+          ) {
+            this.hitStop.punch(0.055);
+          }
         }
         break;
       case "death":
@@ -2816,11 +2917,13 @@ export class Battle3D {
             );
             this.contactRing(ev.x, ev.y, ev.kind === "king-tower" ? 2.8 : 2.1, 0xf6c14e);
             this.addShake(ev.kind === "king-tower" ? 0.9 : 0.55);
+            this.hitStop.punch(ev.kind === "king-tower" ? 0.1 : 0.07);
           }
         }
         break;
       case "king-wake":
         this.kingWakeBurst(ev.side);
+        this.hitStop.punch(0.06);
         break;
       default:
         break;
@@ -3209,6 +3312,16 @@ export class Battle3D {
       }
     }
 
+    // Spell / deploy telegraph ring pulse (dashed feel via opacity + scale).
+    if (this.hoverRing.visible) {
+      this.hoverPulse += dt;
+      const pulse = 0.92 + Math.sin(this.hoverPulse * 9) * 0.08;
+      const base = this.hoverDisc.scale.x;
+      this.hoverRing.scale.setScalar(base * pulse);
+      (this.hoverRing.material as THREE.MeshBasicMaterial).opacity =
+        0.55 + Math.sin(this.hoverPulse * 11) * 0.3;
+    }
+
     // Advance and draw the hit-spark pool through one InstancedMesh.
     this.syncSparks(dt);
 
@@ -3248,6 +3361,7 @@ export class Battle3D {
 
   /** Remove every entity mesh (used on battle restart). */
   reset(): void {
+    this.hitStop.reset();
     for (const view of this.views.values()) {
       this.scene.remove(view.root);
       disposeDeep(view.root);

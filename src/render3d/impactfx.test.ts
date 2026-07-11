@@ -15,9 +15,10 @@ describe("melee impact styles", () => {
     expect(impactStyle("skeletons").particles).toBeGreaterThan(0);
   });
 
-  it("the mini P.E.K.K.A and prince hit as hard as the P.E.K.K.A", () => {
-    expect(impactStyle("mini-pekka").trauma).toBe(impactStyle("pekka").trauma);
-    expect(impactStyle("prince").trauma).toBe(impactStyle("pekka").trauma);
+  it("the mini P.E.K.K.A and prince hit nearly as hard as the P.E.K.K.A", () => {
+    expect(impactStyle("mini-pekka").trauma).toBeGreaterThan(0.2);
+    expect(impactStyle("prince").trauma).toBeGreaterThan(0.2);
+    expect(impactStyle("pekka").trauma).toBeGreaterThanOrEqual(impactStyle("mini-pekka").trauma);
   });
 
   it("heavy and arcane hits carry distinct contact silhouettes", () => {
