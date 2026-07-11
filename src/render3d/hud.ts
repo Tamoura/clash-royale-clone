@@ -2,7 +2,12 @@ import type { BattleState } from "../game/battle";
 import type { Side } from "../game/arena";
 import { getCard, type CardId } from "../game/cards";
 import { ELIXIR_MAX } from "../game/elixir";
-import { BATTLE_DURATION, OVERTIME_DURATION, effectiveElixirMultiplier } from "../game/sim";
+import {
+  BATTLE_DURATION,
+  OVERTIME_DURATION,
+  SANDBOX_ELIXIR_RATE,
+  effectiveElixirMultiplier,
+} from "../game/sim";
 import { cardStatLines } from "../render/cardinfo";
 import { cardDisplayName } from "../render/cardNames";
 import { makeCardCanvas } from "../ui/cardFrame";
@@ -268,7 +273,8 @@ export class Hud {
     this.elixirBar.setAttribute("aria-valuenow", String(amountInt));
     const mult = effectiveElixirMultiplier(state);
     this.elixirBar.classList.toggle("x2", mult >= 2 && !state.result);
-    this.x2Tag.textContent = `x${mult}`;
+    // Sandbox's huge flat rate reads as "infinite", not a real multiplier.
+    this.x2Tag.textContent = mult >= SANDBOX_ELIXIR_RATE ? "∞" : `x${mult}`;
 
     // Elixir leak warning at max — pulse the bar until the player spends.
     const atMax = amount >= ELIXIR_MAX && !state.result;

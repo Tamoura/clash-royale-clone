@@ -575,6 +575,27 @@ button.card.ready-pop {
   100% { opacity: 0; transform: scale(1.05) translateY(-14px); }
 }
 
+/* ══ Sandbox reset ══ */
+.sandbox-reset {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 4;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: #e5e7eb;
+  border: none;
+  border-radius: 10px;
+  background: rgba(20, 26, 38, 0.78);
+  cursor: pointer;
+  transition: transform 0.08s ease;
+}
+.sandbox-reset:hover {
+  transform: scale(1.08);
+}
+
 /* ══ Emote bar ══ */
 .emote-bar {
   position: absolute;

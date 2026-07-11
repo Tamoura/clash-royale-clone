@@ -19,7 +19,7 @@ import {
 } from "./game/cards";
 import type { Side } from "./game/arena";
 import { cardDisplayName } from "./render/cardNames";
-import { isDoubleElixir, tick } from "./game/sim";
+import { SANDBOX_ELIXIR_RATE, isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
 import { Battle3D } from "./render3d/scene3d";
 import {
@@ -82,6 +82,15 @@ const overlay = document.getElementById("overlay")!;
 const bannerEl = document.getElementById("banner")!;
 const emoteBar = document.getElementById("emotes")!;
 
+// Sandbox-only in-battle reset (wired to sandboxReset() further down,
+// after the battle state it restarts is declared).
+const sandboxResetBtn = document.createElement("button");
+sandboxResetBtn.className = "sandbox-reset";
+sandboxResetBtn.textContent = "↺ Reset";
+sandboxResetBtn.setAttribute("aria-label", "Reset the sandbox battle");
+sandboxResetBtn.style.display = "none";
+stage.appendChild(sandboxResetBtn);
+
 // ---- Meta progression (gold/gems/owned/chests) --------------------------
 
 let profile: PlayerProfile = loadProfile(localStorage);
@@ -139,7 +148,17 @@ const GAME_MODES: GameMode[] = [
   { id: "mega", name: "Mega Elixir ⚡7", blurb: "7× elixir — total chaos", elixirRate: 7, mirror: false },
   { id: "mirror", name: "Mirror Match", blurb: "Both get the same random deck", elixirRate: 1, mirror: true },
   { id: "crazy", name: "Crazy 🎲", blurb: "Every card scrambled — counts, spawns & stats go wild", elixirRate: 1, mirror: false },
+  { id: "sandbox", name: "Sandbox 🛠️", blurb: "Practice: infinite elixir, sleeping bot, reset anytime — no rewards", elixirRate: SANDBOX_ELIXIR_RATE, mirror: false },
 ];
+
+function isSandbox(): boolean {
+  return gameMode.id === "sandbox";
+}
+
+/** Sandbox is a solo practice space; friend matches fall back to Classic. */
+function netGameMode(): GameMode {
+  return gameMode.id === "sandbox" ? GAME_MODES[0] : gameMode;
+}
 
 const MODE_KEY = "cr-clone-mode";
 
@@ -238,13 +257,25 @@ function restart(): void {
   bot = createBot(Date.now() & 0xffff, DIFFICULTIES[difficulty]);
   selectCard(null);
   hud.setReward(null);
-  hud.setOpponentName("Bot");
+  hud.setOpponentName(isSandbox() ? "Training dummy" : "Bot");
   scene.setViewpoint("player");
   scene.reset();
   audio.setIntensity(0);
   audio.restartMusic();
+  sandboxResetBtn.style.display = isSandbox() ? "" : "none";
   startCountdown();
 }
+
+/** Instant sandbox restart — no countdown between experiments. */
+function sandboxReset(): void {
+  restart();
+  phase = "playing";
+  showBanner("Reset!", true);
+}
+sandboxResetBtn.addEventListener("click", () => {
+  sandboxReset();
+  sandboxResetBtn.blur();
+});
 
 /** Begin a networked match once the relay pairs both players. */
 function startOnlineMatch(
@@ -256,6 +287,7 @@ function startOnlineMatch(
 ): void {
   const side = sideForRole(role);
   mode = "online";
+  sandboxResetBtn.style.display = "none";
   const session: OnlineSession = {
     client,
     ls: new Lockstep(side, INPUT_DELAY),
@@ -833,7 +865,7 @@ function openFriendLobby(deck: CardId[]): void {
 
   const hint = document.createElement("p");
   hint.className = "lobby-hint";
-  hint.innerHTML = `Mode: <b>${gameMode.name}</b><br/>You both need to be on the same Wi-Fi.`;
+  hint.innerHTML = `Mode: <b>${netGameMode().name}</b><br/>You both need to be on the same Wi-Fi.`;
   pickerRoot.appendChild(hint);
 
   const status = document.createElement("div");
@@ -897,8 +929,9 @@ function openFriendLobby(deck: CardId[]): void {
     createBtn.disabled = true;
     const c = connectRoom();
     wire(c);
-    const hostDeck = gameMode.mirror ? botDeck() : deck;
-    c.create(hostDeck, { elixirRate: gameMode.elixirRate, mirror: gameMode.mirror });
+    const netMode = netGameMode();
+    const hostDeck = netMode.mirror ? botDeck() : deck;
+    c.create(hostDeck, { elixirRate: netMode.elixirRate, mirror: netMode.mirror });
   });
   joinBtn.addEventListener("click", () => {
     const code = codeInput.value.trim().toUpperCase();
@@ -920,6 +953,7 @@ function openFriendLobby(deck: CardId[]): void {
 function showPicker(): void {
   pickerRoot.classList.add("show");
   topbar.style.display = "none";
+  sandboxResetBtn.style.display = "none";
 }
 
 function openHome(): void {
@@ -1223,7 +1257,8 @@ function frame(now: number): void {
       acc += dt;
       while (acc >= SIM_DT) {
         tick(battle, SIM_DT);
-        tickBot(battle, bot, SIM_DT);
+        // Sandbox: the bot sleeps (towers still defend) — pure practice.
+        if (!isSandbox()) tickBot(battle, bot, SIM_DT);
         acc -= SIM_DT;
       }
     }
@@ -1237,8 +1272,9 @@ function frame(now: number): void {
     }
     if (ev.type === "crown" && mode === "solo") botEmote(ev.winner === "enemy" ? "😂" : "😭");
     if (ev.type === "finish") {
-      // Online friendly matches don't touch trophies/levels.
-      if (mode === "solo") {
+      // Online friendly matches and sandbox practice don't touch
+      // trophies/levels — you can't farm the ladder from either.
+      if (mode === "solo" && !isSandbox()) {
         botEmote(ev.winner === "enemy" ? "🎉" : "😭");
         applyMatchResult(ev.winner);
       }
