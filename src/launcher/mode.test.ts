@@ -48,7 +48,7 @@ describe("game mode", () => {
   it("recognises only the two real modes", () => {
     expect(isGameMode("clash")).toBe(true);
     expect(isGameMode("islamic")).toBe(true);
-    expect(isGameMode("unity")).toBe(false);
+    expect(isGameMode("unknown")).toBe(false);
     expect(isGameMode(null)).toBe(false);
   });
 

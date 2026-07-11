@@ -1,27 +1,7 @@
 /// <reference types="vitest/config" />
-import { defineConfig, type Plugin } from "vite";
-
-/**
- * Serve the Unity WebGL build (/unity/*) with no-store so a rebuilt edition is
- * always picked up — Unity's Build/*.wasm/.data filenames are stable, so the
- * browser would otherwise serve a stale cached build.
- */
-function noCacheUnity(): Plugin {
-  return {
-    name: "no-cache-unity",
-    configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        if (req.url && req.url.startsWith("/unity/")) {
-          res.setHeader("Cache-Control", "no-store, must-revalidate");
-        }
-        next();
-      });
-    },
-  };
-}
+import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [noCacheUnity()],
   // Base path: "/" for local dev; the GitHub Pages workflow sets VITE_BASE
   // to "/clash-royale-clone/" so asset URLs resolve under the project subpath.
   base: process.env.VITE_BASE || "/",

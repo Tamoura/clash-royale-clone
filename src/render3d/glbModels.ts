@@ -4,9 +4,9 @@ import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js
 import { ARABIC } from "./theme";
 
 /**
- * Real rigged character models (CC0 KayKit) shared with the Unity edition,
- * loaded as glTF and animated with an AnimationMixer. The native build uses its
- * hand-built primitive rigs by default; specific cards opt into a GLB model.
+ * Real rigged character models (CC0 KayKit), loaded as glTF and animated with
+ * an AnimationMixer. The game uses its hand-built primitive rigs by default;
+ * specific cards opt into a GLB model.
  */
 
 interface LoadedGlb {
