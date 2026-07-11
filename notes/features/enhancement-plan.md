@@ -16,15 +16,14 @@ shell) and in measured signals from self-play testing.
 - 29-card pool, 8-card decks, trophies + card levels, bot difficulties,
   elixir-rate game modes, LAN 1v1 lockstep, character gallery.
 
-**Known issues (data-backed via self-play, 2026-06):**
-- ⚖️ Win-conditions **giant / hog-rider / balloon underperform** — confirmed
-  three independent ways (random-deck, single-deck controlled swap, multi-deck
-  controlled swap). Giant ranked lowest in every context.
-- 🤖 Bot **never casts rage or freeze** (two dead cards), and **~38% of games
-  stalemate** to overtime even after the piloting/closing improvements.
-- 🐛 A whole bug class (no arena bounds — Firecracker recoil walked units off
-  the field) slipped through until self-play found it. → make self-play a
-  permanent CI guard.
+**Known issues (data-backed via self-play, 2026-06 → updated 2026-07):**
+- ⚖️ ~~Giant / hog-rider / balloon underperform~~ **Fixed** (stat buffs +
+  bot win-con piloting fix); lab now scores them 50.0/50.0/50.8%. Remaining
+  outliers: royal-giant 43% (weak), pekka 57% (strong).
+- 🤖 ~~Bot never casts rage or freeze~~ **Fixed** (plus elixir-advantage
+  cycling). Stalemate rate not yet re-measured after these changes.
+- 🐛 ~~Self-play CI guard~~ **Done** — invariants test in
+  `integration.test.ts` runs with the suite.
 
 ## Design pillars
 1. **Feel great** — every hit, deploy, and tower fall has weight.
@@ -34,30 +33,45 @@ shell) and in measured signals from self-play testing.
 
 ## Tracks
 
-### A — Game Feel & Juice (do first: low effort, highest felt impact)
-- [ ] Crown-pop animation on the HUD when a tower falls (S)
-- [ ] Spell **radius telegraph** while dragging any spell (S–M)
-- [ ] Hit-stop / impact flash + screen-shake tuning on heavy hits & tower falls
-      (S) — render-only; never touch the sim timestep (would break lockstep)
-- [ ] Elixir-leak warning (bar flashes at 10) + deploy ghost preview (S)
-- [ ] Sandbox/practice mode (infinite elixir, reset) (S)
+### A — Game Feel & Juice (do first: low effort, highest felt impact) ✅
+- [x] Crown-pop animation on the HUD when a tower falls (S)
+- [x] Spell **radius telegraph** while dragging any spell (S–M)
+- [x] Hit-stop / impact flash + screen-shake tuning on heavy hits & tower falls
+      (S) — render-only (`render3d/hitstop.ts`); sim timestep untouched
+- [x] Elixir-leak warning (bar flashes at 10) + deploy ghost preview (S)
+- [x] Sandbox/practice mode (infinite elixir, sleeping bot, instant reset,
+      no rewards) — see `notes/features/sandbox-mode.md`
 
 ### B — Balance & a reusable "Balance Lab"
-- [ ] Commit the controlled card-swap harness as a `npm run balance` tool (M)
-- [ ] Buff giant/hog/balloon to ~parity, verified by the lab (M)
-- [ ] Per-card stat audit vs CR reference numbers (M)
+- [x] Commit the controlled card-swap harness as a `npm run balance` tool
+      (runs via vite-node; `npm run balance -- 64` for bigger samples)
+- [x] Buff giant/hog/balloon to ~parity, verified by the lab. Post-fix
+      (n=128): giant 50.0% · hog 50.0% · balloon 50.8% ✅
+- [ ] Per-card stat audit vs CR reference numbers (M). Lab flags to start
+      with: **royal-giant 43.0% (weak) · pekka 57.0% (strong)** as the
+      deck's win-con slot
 
 Method note: the swap test MUST score the mirror (a card swapped for itself) at
 exactly 50% — that's the unbiased-harness check. Replace one card *in place*
 (deck order changes the opening hand) and pair the same seed across both
-orientations (cancels side/tempo bias).
+orientations (cancels side/tempo bias). Swap candidates into the deck's
+**win-con slot**, not a support slot — otherwise you measure a two-win-con
+deck (and a duplicate card when the candidate is already in the base deck).
+
+Finding (2026-07, via the lab): balloon's terrible win rate was partly a
+**bot bug, not a card problem** — with two equal-cost win-cons in hand the
+push logic always broke the tie the same way, so the second win-con rotted
+in hand all match. Fixed: random tie-break + balloon escorts a leading tank.
 
 ### C — Bot AI & Sim Safety
-- [ ] Teach the bot **rage** (own push) & **freeze** (defending cluster) (S–M)
-- [ ] Cut stalemates: elixir-advantage awareness + counter-push timing (M)
+- [x] Teach the bot **rage** (own push) & **freeze** (defending cluster)
+- [x] Elixir-advantage awareness: cycle a cheap card in the back when ahead
+      instead of leaking at 10 (stalemate rate not yet re-measured)
+- [x] Win-con piloting fix: random tie-break between equal-cost win-cons +
+      flying win-con escorts a leading tank (was: balloon rotted in hand)
 - [ ] Make "Hard" genuinely hard: cycle tracking, predictive defense (M)
-- [ ] Self-play **invariants test in CI** (the harness that found the recoil
-      bug): no NaN / hp>maxHp / elixir-range / off-board / infinite game (S–M)
+- [x] Self-play **invariants test in CI** (no NaN / hp>maxHp / elixir range /
+      off-board / games finish within overtime; 3 seeds)
 
 ### D — Modes & Replayability (cheap thanks to determinism)
 - [ ] **Replays** — store inputs, replay the deterministic sim (M)
@@ -65,10 +79,12 @@ orientations (cancels side/tempo bias).
 - [ ] Challenge/puzzle mode (scripted "defend this push") (M)
 - [ ] Daily seeded challenge (M)
 
-### E — Progression & Meta
-- [ ] Chest/reward loop → card shards → upgrades (M)
-- [ ] Card collection + upgrade-cost economy screen (M)
-- [ ] Arena/theme unlocks tied to trophies (M)
+### E — Progression & Meta ✅ (`src/meta/`, fully tested)
+- [x] Chest/reward loop → gold/gems → upgrades (chest slots, timers,
+      gem-skip)
+- [x] Card collection + upgrade-cost economy screen
+- [x] Arena unlocks tied to trophies (bot drafts only cards unlocked at
+      the player's arena)
 
 ### F — Multiplayer & Social
 - [ ] Hosted relay (beyond LAN) + rematch (L)
