@@ -851,6 +851,40 @@ button.card.ready-pop {
   max-width: 460px;
 }
 
+/* Draft: three big choices per round, on any screen. */
+#deckpicker .picker-grid.draft-row {
+  grid-template-columns: repeat(3, 1fr) !important;
+  max-width: 380px;
+}
+
+/* Challenge list rows */
+.challenge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  max-width: 460px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(20, 26, 38, 0.6);
+  border: 1px solid rgba(120, 140, 190, 0.25);
+}
+.challenge-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+.challenge-blurb {
+  font-size: 12.5px;
+  opacity: 0.75;
+  margin-top: 2px;
+}
+.challenge-play {
+  flex-shrink: 0;
+  width: auto;
+  padding: 8px 14px;
+}
+
 /* Phone portrait: 4-wide so cards stay legible at common 360–430 px widths. */
 @media (max-width: 480px) {
   #deckpicker .picker-grid {

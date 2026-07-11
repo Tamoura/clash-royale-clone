@@ -75,9 +75,15 @@ in hand all match. Fixed: random tie-break + balloon escorts a leading tank.
 
 ### D — Modes & Replayability (cheap thanks to determinism)
 - [ ] **Replays** — store inputs, replay the deterministic sim (M)
-- [ ] Draft mode (pick from offered cards) (M)
-- [ ] Challenge/puzzle mode (scripted "defend this push") (M)
-- [ ] Daily seeded challenge (M)
+- [x] Draft mode — 8 rounds of pick-1-of-3 from the full pool, the bot
+      takes one of the rest (`game/draft.ts`, seeded/deterministic)
+- [x] Challenge/puzzle mode — 3 scripted "defend this push" scenarios,
+      survive-N-seconds win, first-clear gold (`game/challenges.ts`)
+- [x] Daily seeded challenge — mirror deck of the day from a date hash,
+      +100 gold once per day (`game/daily.ts`)
+
+Special modes never move trophies/chests (only ladder does); "Play again"
+replays the same mode. See `notes/features/draft-challenge-modes.md`.
 
 ### E — Progression & Meta ✅ (`src/meta/`, fully tested)
 - [x] Chest/reward loop → gold/gems → upgrades (chest slots, timers,
