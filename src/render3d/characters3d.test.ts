@@ -147,7 +147,8 @@ describe("cel outlines", () => {
     });
     expect(outline).not.toBeNull();
     const o = outline as unknown as THREE.Mesh;
-    expect(o.scale.x).toBeGreaterThanOrEqual(1.08); // thicker than the old 1.06
+    expect(o.scale.x).toBeGreaterThanOrEqual(1.07);
+    expect(o.scale.x).toBeLessThan(1.09); // strong silhouette without swallowing details
     const mat = o.material as THREE.MeshBasicMaterial;
     expect(mat.color.r).toBeLessThan(0.08); // near-black, not navy
     expect(mat.color.g).toBeLessThan(0.08);
@@ -309,6 +310,7 @@ describe("surface texturing (3d-texturing skill)", () => {
     expect(a.map).not.toBeNull();
     expect(a.map).toBe(b.map); // one cached texture, not per-material
     expect(a.map!.userData.shared).toBe(true);
+    expect(a.map!.colorSpace).toBe(THREE.NoColorSpace);
   });
 
   it("material instances stay distinct so per-entity flashes don't bleed", () => {

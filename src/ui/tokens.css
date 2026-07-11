@@ -1,0 +1,118 @@
+/* ============================================================
+   CR Clone — Shared Design Tokens
+   imported by main.ts via Vite; apply before style.css.
+   Edition overrides live on :root[data-edition="arabic"].
+   ============================================================ */
+:root {
+  /* ── Palette: Clash Royale (default) ── */
+  --cr-sky:           #76AEDE;
+  --cr-grass:         #6FBF5A;
+  --cr-gold:          #F6C14E;
+  --cr-gold-dark:     #D9912B;
+  --cr-gold-trim:     #8A5A14;
+  --cr-gold-border:   #D9A93F;
+  --cr-navy:          #0F1829;
+  --cr-bg:            #1b2433;
+  --cr-panel:         #1D2A47;
+  --cr-panel-mid:     #1B2947;
+  --cr-panel-dark:    #14203A;
+  --cr-border:        #2E4470;
+  --cr-slot-bg:       #1F2C44;
+  --cr-slot-fill:     #31435F;
+  --cr-slot-deep:     #0D1322;
+  --cr-elixir:        #E91E9B;
+  --cr-elixir-light:  #FF8FD0;
+  --cr-elixir-mid:    #F23AA8;
+  --cr-elixir-dark:   #C01878;
+  --cr-text:          #E5E7EB;
+  --cr-text-mid:      #DBE3F0;
+  --cr-text-dim:      #9CA3AF;
+  --cr-text-blue:     #9FB3D9;
+  --cr-text-gold:     #FFE082;
+  --cr-victory:       #FACC15;
+  --cr-defeat:        #F87171;
+  --cr-rarity-common: #AAB7C4;
+  --cr-rarity-rare:   #F59E0B;
+  --cr-rarity-epic:   #B950E8;
+
+  /* ── Islamic edition overrides ── */
+  --cr-panel-arabic:  #152030;
+  --cr-border-arabic: #1AA3A0;
+  --cr-gold-arabic:   #CAA23F;
+
+  /* ── Typography ── */
+  --cr-font:
+    "Chalkboard SE", "Marker Felt", "Comic Sans MS",
+    "Trebuchet MS", system-ui, sans-serif;
+
+  /* ── Radii ── */
+  --cr-r-sm: 6px;
+  --cr-r-md: 9px;
+  --cr-r-lg: 12px;
+
+  /* ── Card frame shadows ── */
+  --cr-card-shadow:
+    inset 0 0 0 1.5px rgba(255, 233, 170, 0.35),
+    inset 0 3px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -6px 10px rgba(0, 0, 0, 0.28),
+    0 3px 7px rgba(0, 0, 0, 0.5);
+  --cr-selected-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.25),
+    0 0 14px rgba(255, 224, 130, 0.8);
+  --cr-panel-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.12),
+    0 2px 5px rgba(0, 0, 0, 0.45);
+
+  /* ── Lobby backdrop glow (edition-specific) ── */
+  --cr-lobby-glow:     rgba(217, 169, 63, 0.22);
+  --cr-lobby-glow-b:   rgba(246, 193, 78, 0.10);
+  --cr-lobby-top:      rgba(27, 41, 71, 0.85);
+  --cr-hud-border:     var(--cr-gold-border);
+  --cr-topbar-border:  var(--cr-gold-border);
+  --cr-crest-glow:     rgba(246, 193, 78, 0.55);
+  --cr-btn-glow-a:
+    inset 0 3px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.15),
+    0 4px 12px rgba(0, 0, 0, 0.45);
+  --cr-btn-glow-b:
+    inset 0 3px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.15),
+    0 6px 30px rgba(246, 193, 78, 0.8),
+    0 0 60px rgba(246, 193, 78, 0.35);
+}
+
+/* ── Islamic edition token overrides ── */
+:root[data-edition="arabic"] {
+  --cr-panel:       var(--cr-panel-arabic);
+  --cr-border:      var(--cr-border-arabic);
+  --cr-gold-border: var(--cr-gold-arabic);
+  /* Lobby: deep teal radial glow replacing the Clash gold */
+  --cr-lobby-glow:  rgba(26, 163, 160, 0.28);
+  --cr-lobby-glow-b: rgba(14, 124, 132, 0.14);
+  --cr-lobby-top:   rgba(10, 28, 40, 0.90);
+  --cr-crest-glow:  rgba(26, 163, 160, 0.65);
+  --cr-btn-glow-b:
+    inset 0 3px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.15),
+    0 6px 30px rgba(26, 163, 160, 0.7),
+    0 0 60px rgba(26, 163, 160, 0.30);
+}
+
+/* ── Keyboard focus ring — visible only during keyboard navigation ── */
+:focus-visible {
+  outline: 2.5px solid var(--cr-gold);
+  outline-offset: 2px;
+  border-radius: var(--cr-r-sm);
+}
+
+/* ── Reduced-motion: silence all decorative animations globally ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

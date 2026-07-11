@@ -3,11 +3,9 @@ import type { Side } from "../game/arena";
 import { getCard, type CardId } from "../game/cards";
 import { ELIXIR_MAX } from "../game/elixir";
 import { BATTLE_DURATION, OVERTIME_DURATION, effectiveElixirMultiplier } from "../game/sim";
-import { drawCardArt } from "../render/characters";
-import { CARD_COLOR } from "../render/cardcolors";
 import { cardStatLines } from "../render/cardinfo";
 import { cardDisplayName } from "../render/cardNames";
-import { cardPortrait } from "./cardportraits";
+import { makeCardCanvas } from "../ui/cardFrame";
 
 export interface HudCallbacks {
   onSelectCard(id: CardId | null): void;
@@ -29,29 +27,9 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+/** Card canvas helper — delegates to shared cardFrame for consistent framing. */
 function cardCanvas(id: CardId): HTMLCanvasElement {
-  const c = document.createElement("canvas");
-  c.width = c.height = 80;
-  const ctx = c.getContext("2d")!;
-  // Signature backdrop so each card reads at a glance.
-  const base = CARD_COLOR[id];
-  const g = ctx.createRadialGradient(40, 30, 6, 40, 44, 52);
-  g.addColorStop(0, "#ffffff33");
-  g.addColorStop(0.25, base);
-  g.addColorStop(1, "#0a0e16");
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.roundRect(1, 1, 78, 78, 10);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,0.22)";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  // Real rendered 3D portrait when the card has a character rig;
-  // spells keep their painted icon art.
-  const portrait = cardPortrait(id);
-  if (portrait) ctx.drawImage(portrait, -6, -2, 92, 92);
-  else drawCardArt(ctx, id, 40, 43, 42);
-  return c;
+  return makeCardCanvas(id, { style: "hud" });
 }
 
 /** DOM HUD layered over the 3D stage: clock, crowns, cards, elixir. */
@@ -86,33 +64,52 @@ export class Hud {
   ) {
     // CR-style name banners with level badges around the gold clock.
     const left = el("div", "crowns player", topbar);
+    left.setAttribute("aria-label", "Your crowns");
     left.innerHTML =
-      '<span class="level">9</span><span class="pname">You</span> 👑 <span>0</span>';
+      '<span class="level" aria-hidden="true">9</span><span class="pname">You</span> 👑 <span>0</span>';
     this.playerCrowns = left.querySelector("span:last-child")!;
     this.clock = el("div", "clock", topbar);
+    this.clock.setAttribute("role", "timer");
+    this.clock.setAttribute("aria-label", "Time remaining");
     const right = el("div", "crowns enemy", topbar);
+    right.setAttribute("aria-label", "Opponent crowns");
     right.innerHTML =
-      '<span>0</span> 👑 <span class="pname">Bot</span><span class="level">9</span>';
+      '<span>0</span> 👑 <span class="pname">Bot</span><span class="level" aria-hidden="true">9</span>';
     this.enemyCrowns = right.querySelector("span:first-child")!;
     this.opponentName = right.querySelector(".pname")!;
     this.muteBtn = el("button", "mute", topbar);
     this.muteBtn.textContent = "🔊";
+    this.muteBtn.setAttribute("aria-label", "Toggle sound");
+    this.muteBtn.setAttribute("title", "Toggle sound");
     this.muteBtn.addEventListener("click", () => {
-      this.muteBtn.textContent = this.cb.onToggleSound() ? "🔇" : "🔊";
+      const muted = this.cb.onToggleSound();
+      this.muteBtn.textContent = muted ? "🔇" : "🔊";
+      this.muteBtn.setAttribute("aria-label", muted ? "Unmute sound" : "Mute sound");
     });
 
     // CR layout: the elixir droplet counter leads the bar.
     const elixirRow = el("div", "elixir-row", bottom);
+    elixirRow.setAttribute("role", "group");
+    elixirRow.setAttribute("aria-label", "Elixir");
     this.elixirNum = el("div", "elixir-num", elixirRow);
+    this.elixirNum.setAttribute("aria-label", "Elixir amount");
     this.elixirBar = el("div", "elixir-bar", elixirRow);
+    this.elixirBar.setAttribute("role", "progressbar");
+    this.elixirBar.setAttribute("aria-label", "Elixir bar");
+    this.elixirBar.setAttribute("aria-valuemin", "0");
+    this.elixirBar.setAttribute("aria-valuemax", "10");
     this.elixirFill = el("div", "elixir-fill", this.elixirBar);
     this.x2Tag = el("div", "x2-tag", this.elixirBar);
     this.x2Tag.textContent = "x2";
+    this.x2Tag.setAttribute("aria-hidden", "true");
 
     const handRow = el("div", "hand-row", bottom);
+    handRow.setAttribute("role", "group");
+    handRow.setAttribute("aria-label", "Card hand");
     const nextWrap = el("div", "next-card", handRow);
+    nextWrap.setAttribute("aria-label", "Next card");
     this.nextArt = el("div", "next-art", nextWrap);
-    el("div", "next-label", nextWrap).textContent = "next";
+    el("div", "next-label", nextWrap).textContent = "NEXT";
     // Shared stats tooltip floating above the hovered card.
     const tip = el("div", "card-tip", bottom);
     const showTip = (btn: HTMLButtonElement): void => {
@@ -140,6 +137,7 @@ export class Hud {
 
     for (let i = 0; i < 4; i++) {
       const btn = el("button", "card", handRow);
+      btn.setAttribute("aria-label", `Card slot ${i + 1}`);
       if (canHover) {
         btn.addEventListener("mouseenter", () => showTip(btn));
         btn.addEventListener("mouseleave", () => tip.classList.remove("show"));
@@ -176,11 +174,15 @@ export class Hud {
     }
 
     this.overlay = overlay;
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", "Match result");
     this.overlayTitle = el("div", "overlay-title", overlay);
     this.overlayScore = el("div", "overlay-score", overlay);
     this.overlayStats = el("div", "overlay-stats", overlay);
     const again = el("button", "again", overlay);
     again.textContent = "Play again";
+    again.setAttribute("aria-label", "Play again");
     again.addEventListener("click", () => this.cb.onRestart());
   }
 
@@ -230,8 +232,10 @@ export class Hud {
 
     // Elixir (the bar runs hot during double elixir).
     const amount = me.elixir.amount;
+    const amountInt = Math.floor(amount);
     this.elixirFill.style.width = `${(amount / ELIXIR_MAX) * 100}%`;
-    this.elixirNum.textContent = String(Math.floor(amount));
+    this.elixirNum.textContent = String(amountInt);
+    this.elixirBar.setAttribute("aria-valuenow", String(amountInt));
     const mult = effectiveElixirMultiplier(state);
     this.elixirBar.classList.toggle("x2", mult >= 2 && !state.result);
     this.x2Tag.textContent = `x${mult}`;
@@ -245,6 +249,7 @@ export class Hud {
         const isNewDraw = btn.dataset.card !== undefined && btn.dataset.card !== id;
         btn.dataset.card = id;
         btn.dataset.rarity = getCard(id).rarity;
+        btn.setAttribute("aria-label", `${cardDisplayName(id)}, ${getCard(id).cost} elixir`);
         if (isNewDraw) {
           btn.classList.remove("dealt");
           void btn.offsetWidth; // restart the pop animation

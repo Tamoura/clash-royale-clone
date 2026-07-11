@@ -1,3 +1,5 @@
+import "./ui/tokens.css";
+import "./ui/style.css";
 import { SoundEngine } from "./audio/sound";
 import {
   checkDeploy,
@@ -17,14 +19,11 @@ import {
   type CardId,
 } from "./game/cards";
 import type { Side } from "./game/arena";
-import { drawCardArt } from "./render/characters";
-import { CARD_COLOR } from "./render/cardcolors";
 import { cardDisplayName } from "./render/cardNames";
 import { isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
 import { Battle3D } from "./render3d/scene3d";
-import { ARENA_THEME_KEY } from "./render3d/theme";
-import { cardPortrait } from "./render3d/cardportraits";
+import { ARENA_THEME_KEY, ARABIC, applyEditionTokens, ARENA_THEME } from "./render3d/theme";
 import { RoomClient, type NetSocket } from "./net/roomClient";
 import { Lockstep } from "./net/lockstep";
 import { sideForRole, type Role, type MatchMode } from "./net/protocol";
@@ -34,6 +33,10 @@ import {
   saveMode as saveVariant,
   type GameMode as GameVariant,
 } from "./launcher/mode";
+import { makeCardCanvas } from "./ui/cardFrame";
+
+// Apply edition-aware CSS variables before any DOM is rendered.
+applyEditionTokens(ARENA_THEME);
 
 const stage = document.getElementById("stage")!;
 
@@ -305,33 +308,31 @@ function endOnlineMatch(message: string): void {
 
 const pickerRoot = document.getElementById("deckpicker")!;
 
-/** Card tile canvas reused in the deck row and collection grid. */
+/** Card tile canvas reused in the deck tray and collection grid. */
 function cardTileCanvas(id: CardId): HTMLCanvasElement {
-  const S = 128; // hi-res so the character reads clearly on the tile
-  const c = document.createElement("canvas");
-  c.width = c.height = S;
-  const ctx = c.getContext("2d")!;
-  ctx.fillStyle = CARD_COLOR[id];
-  ctx.beginPath();
-  ctx.roundRect(0, 0, S, S, S * 0.14);
-  ctx.fill();
-  // Use the crisp 3D portrait (troops/buildings); spells fall back to 2D art.
-  const portrait = cardPortrait(id);
-  if (portrait) {
-    ctx.drawImage(portrait, S * 0.04, 0, S * 0.92, S * 0.92);
-  } else {
-    drawCardArt(ctx, id, S / 2, S * 0.54, S * 0.5);
-  }
-  return c;
+  return makeCardCanvas(id, { style: "tile", size: 128 });
 }
 
 function buildDeckPicker(): void {
   pickerRoot.innerHTML = "";
 
+  // Edition crest — icon changes with the active theme.
+  const crest = document.createElement("div");
+  crest.className = "cr-crest";
+  crest.setAttribute("aria-hidden", "true");
+  crest.textContent = ARABIC ? "🌙" : "👑";
+  pickerRoot.appendChild(crest);
+
+  const title = document.createElement("h2");
+  title.textContent = ARABIC ? "ابنِ سطحك الحربي" : "Build your battle deck";
+  pickerRoot.appendChild(title);
+
   // Game mode: the Clash Royale clone, or the Islamic Golden Age version.
   // Switching writes the theme and reloads so art + names rebuild.
   const editionRow = document.createElement("div");
   editionRow.className = "edition-row";
+  editionRow.setAttribute("role", "group");
+  editionRow.setAttribute("aria-label", "Choose edition");
   const editionNote = document.createElement("div");
   editionNote.className = "edition-note";
   const MODE_LABEL: Record<GameVariant, string> = {
@@ -346,6 +347,7 @@ function buildDeckPicker(): void {
     const btn = document.createElement("button");
     btn.className = "edition-btn";
     btn.textContent = MODE_LABEL[v];
+    btn.setAttribute("aria-pressed", String(v === variant));
     btn.classList.toggle("chosen", v === variant);
     btn.addEventListener("click", () => {
       if (v === variant) return;
@@ -357,10 +359,6 @@ function buildDeckPicker(): void {
   pickerRoot.appendChild(editionRow);
   editionNote.textContent = MODE_HELP[variant];
   pickerRoot.appendChild(editionNote);
-
-  const title = document.createElement("h2");
-  title.textContent = "Build your battle deck";
-  pickerRoot.appendChild(title);
 
   // Ordered deck of up to 8; slots fill as you pick, click to remove.
   const deck: CardId[] = playerDeck.slice(0, 8);
@@ -429,12 +427,14 @@ function buildDeckPicker(): void {
 
   const startBtn = document.createElement("button");
   startBtn.className = "battle-btn";
-  startBtn.textContent = "Battle the Bot";
+  startBtn.textContent = "⚔️ Battle the Bot";
+  startBtn.setAttribute("aria-label", "Start a battle against the bot");
   pickerRoot.appendChild(startBtn);
 
   const friendBtn = document.createElement("button");
   friendBtn.className = "battle-btn friend";
-  friendBtn.textContent = "Play a Friend";
+  friendBtn.textContent = "🤝 Play a Friend";
+  friendBtn.setAttribute("aria-label", "Start an online match with a friend");
   pickerRoot.appendChild(friendBtn);
 
   const remove = (id: CardId): void => {
@@ -483,12 +483,15 @@ function buildDeckPicker(): void {
     const btn = document.createElement("button");
     btn.className = "pick";
     btn.dataset.card = id;
+    btn.dataset.rarity = card.rarity;
+    btn.setAttribute("aria-label", `${cardDisplayName(id)}, ${card.rarity}, ${card.cost} elixir`);
     btn.appendChild(cardTileCanvas(id));
     const name = document.createElement("div");
     name.textContent = cardDisplayName(id);
     btn.appendChild(name);
     const cost = document.createElement("div");
     cost.className = "pcost";
+    cost.setAttribute("aria-hidden", "true");
     cost.textContent = String(card.cost);
     btn.appendChild(cost);
     btn.addEventListener("click", () => add(id));

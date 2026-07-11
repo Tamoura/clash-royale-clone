@@ -20,6 +20,13 @@ describe("melee impact styles", () => {
     expect(impactStyle("prince").trauma).toBe(impactStyle("pekka").trauma);
   });
 
+  it("heavy and arcane hits carry distinct contact silhouettes", () => {
+    expect(impactStyle("pekka").kind).toBe("crush");
+    expect(impactStyle("pekka").ringRadius).toBeGreaterThan(0.8);
+    expect(impactStyle("witch").kind).toBe("magic");
+    expect(impactStyle("witch").accent).not.toBe(impactStyle("pekka").accent);
+  });
+
   it("falls back to a light hit for unknown cards", () => {
     const d = impactStyle(null);
     expect(d.particles).toBeGreaterThan(0);

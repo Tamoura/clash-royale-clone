@@ -23,6 +23,28 @@ export function hexStr(n: number): string {
 }
 
 /**
+ * Apply edition-aware CSS custom-property overrides on the document root.
+ * Must be called once before any UI is rendered so CSS selectors like
+ * :root[data-edition="arabic"] take effect.
+ */
+export function applyEditionTokens(theme: ArenaTheme): void {
+  try {
+    document.documentElement.dataset.edition = theme === "arabic" ? "arabic" : "clash";
+  } catch {
+    // node / test environment — silently skip
+  }
+}
+
+/**
+ * Primary accent colour for the current edition as a CSS hex string.
+ * Use this when JavaScript code (canvas, Three.js) needs to match the
+ * UI palette without hard-coding both editions in multiple places.
+ */
+export function accentCss(): string {
+  return ARABIC ? hexStr(THEME.turquoise) : "#F6C14E"; // teal : crown gold
+}
+
+/**
  * Which arena look is active. Read once at load (persisted); the toggle in
  * main.ts re-saves it and reloads. Lives here (not in scene3d) so both the
  * renderer and the character rigs can read it without a circular import.

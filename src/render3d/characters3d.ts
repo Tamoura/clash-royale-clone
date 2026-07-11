@@ -17,14 +17,13 @@ import { ARABIC, THEME } from "./theme";
 
 const SKIN = 0xf6c9a0;
 
-/** Shared 3-step gradient for the toon (cel) shading. */
+/** Shared four-band gradient for a softer toy-like cel transition. */
 let toonGradient: THREE.DataTexture | null = null;
 
 function gradientMap(): THREE.DataTexture {
   if (!toonGradient) {
-    // Three hard bands with a deeper core shadow → bolder cel pop.
-    const data = new Uint8Array([74, 172, 255]);
-    toonGradient = new THREE.DataTexture(data, 3, 1, THREE.RedFormat);
+    const data = new Uint8Array([62, 132, 205, 255]);
+    toonGradient = new THREE.DataTexture(data, 4, 1, THREE.RedFormat);
     toonGradient.minFilter = THREE.NearestFilter;
     toonGradient.magFilter = THREE.NearestFilter;
     toonGradient.needsUpdate = true;
@@ -69,7 +68,8 @@ function grainMap(): THREE.DataTexture {
     grainTexture.magFilter = THREE.LinearFilter;
     grainTexture.generateMipmaps = true;
     grainTexture.userData.shared = true; // disposeDeep must skip it
-    grainTexture.colorSpace = THREE.SRGBColorSpace;
+    // This is scalar surface variation, not authored display color.
+    grainTexture.colorSpace = THREE.NoColorSpace;
     grainTexture.needsUpdate = true;
   }
   return grainTexture;
@@ -91,6 +91,8 @@ function addRimLight(mat: THREE.Material): void {
        #include <dithering_fragment>`,
     );
   };
+  // Explicit key lets Three share this one shader variant across the roster.
+  mat.customProgramCacheKey = () => "premium-toon-rim-v1";
 }
 
 export function toon(color: number): THREE.MeshToonMaterial {
@@ -123,6 +125,7 @@ type Ctx3 = THREE.Object3D;
 function shadowed<T extends THREE.Mesh>(m: T, x: number, y: number, z: number): T {
   m.position.set(x, y, z);
   m.castShadow = true;
+  m.receiveShadow = true;
   return m;
 }
 
@@ -1889,7 +1892,7 @@ const ISLAMIC_BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
  */
 /** Bold CR-style cel outline: near-black and thick. */
 const OUTLINE_COLOR = 0x0b0e16;
-const OUTLINE_SCALE = 1.09;
+const OUTLINE_SCALE = 1.075;
 
 export function outlineRig(group: THREE.Group): void {
   const mat = new THREE.MeshBasicMaterial({ color: OUTLINE_COLOR, side: THREE.BackSide });
@@ -1907,6 +1910,8 @@ export function outlineRig(group: THREE.Group): void {
     const hull = new THREE.Mesh(mesh.geometry, mat);
     hull.name = "outline";
     hull.scale.setScalar(OUTLINE_SCALE);
+    hull.castShadow = false;
+    hull.receiveShadow = false;
     mesh.add(hull);
   }
 }

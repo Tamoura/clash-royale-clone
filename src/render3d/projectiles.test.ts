@@ -15,6 +15,8 @@ describe("projectile styles", () => {
     expect(wizard.glow).toBe(true);
     expect(witch.glow).toBe(true);
     expect(wizard.color).not.toBe(witch.color);
+    expect(wizard.trail).toBe("embers");
+    expect(witch.trail).toBe("streak");
   });
 
   it("the musketeer fires a fast ball with a muzzle flash", () => {
@@ -35,6 +37,13 @@ describe("projectile styles", () => {
     const f = projectileStyle("firecracker", "troop");
     expect(f.glow).toBe(true);
     expect(f.muzzleFlash).toBe(true);
+    expect(f.trail).toBe("embers");
+  });
+
+  it("electric shots have a distinct trail and impact flash", () => {
+    const electro = projectileStyle("electro-wizard", "troop");
+    expect(electro.trail).toBe("electric");
+    expect(electro.impactColor).not.toBe(electro.color);
   });
 
   it("falls back to a plain ball for unknown ranged attackers", () => {

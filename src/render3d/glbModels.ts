@@ -68,6 +68,32 @@ const MODEL_TINT: Partial<Record<string, number>> = {
   witch: 0x7a4aa8, // deep witch purple
 };
 
+/**
+ * Give every clone its own flash-safe material while retaining shared source
+ * textures. KayKit's authored values vary by model; this narrows them to the
+ * same soft vinyl response as the procedural roster.
+ */
+function normalizeMaterial(material: THREE.Material, tint?: number): THREE.Material {
+  const clone = material.clone();
+  clone.userData.shared = false;
+  const lit = clone as THREE.MeshStandardMaterial;
+  if (lit.color) {
+    if (tint !== undefined) lit.color.multiply(new THREE.Color(tint));
+    lit.color.offsetHSL(0, 0.06, 0.025);
+  }
+  if (typeof lit.roughness === "number") lit.roughness = Math.max(0.56, lit.roughness);
+  if (typeof lit.metalness === "number") lit.metalness = Math.min(0.22, lit.metalness);
+  if (lit.emissive) {
+    lit.emissive.setHex(0x000000);
+    lit.emissiveIntensity = 0.7;
+  }
+  // Clones own materials, but loaded image data remains shared by every unit.
+  for (const value of Object.values(lit)) {
+    if (value instanceof THREE.Texture) value.userData.shared = true;
+  }
+  return clone;
+}
+
 function url(file: string): string {
   return `${import.meta.env.BASE_URL}models/kaykit/${file}`;
 }
@@ -255,17 +281,9 @@ export function makeGlbUnit(cardId: string): GlbUnit | null {
     if (mesh.geometry) mesh.geometry.userData.shared = true;
     const orig = mesh.material as THREE.Material | THREE.Material[];
     const list = Array.isArray(orig) ? orig : [orig];
-    const out = list.map((m) => {
-      if (tint !== undefined) {
-        // Tinted cards clone the shared material so the colour is per-card.
-        const c = (m as THREE.MeshStandardMaterial).clone();
-        if (c.color) c.color.setHex(tint);
-        c.userData.shared = false;
-        return c;
-      }
-      m.userData.shared = true;
-      return m;
-    });
+    // Materials are never shared between live units: hit/rage emissive changes
+    // must not leak to another clone. Textures and geometry remain shared.
+    const out = list.map((m) => normalizeMaterial(m, tint));
     mesh.material = Array.isArray(orig) ? out : out[0];
   });
   attachWeapon(group, cardId);
