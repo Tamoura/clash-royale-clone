@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import type { CardId } from "../game/cards";
+import { loadChampion, normalizeChampion, type ChampionDef } from "../game/customcard";
 import { ARABIC, THEME } from "./theme";
 
 /**
@@ -2134,7 +2135,198 @@ function buildMegaKnight(): TroopRig {
   return { group: g, arm, armRest: -0.4, swingAmp: 1.8, height: 1.75, legs, offArm };
 }
 
+/** Darken a hex color by factor f (0..1). */
+function shade(color: number, f: number): number {
+  const c = new THREE.Color(color);
+  c.multiplyScalar(f);
+  return c.getHex();
+}
+
+/**
+ * The Character Studio rig: one parameterized hero assembled from the
+ * player's design — outfit colors, headgear, weapon, face, and wings for
+ * flyers. Multi-unit designs shrink so squads read as squads.
+ */
+export function buildChampionRig(raw: ChampionDef): TroopRig {
+  const def = normalizeChampion(raw);
+  const { look, abilities } = def;
+  const BODY = look.body;
+  const TRIM = look.trim;
+  const DARK = shade(BODY, 0.68);
+  const STEEL = 0xb9c4d2;
+  const g = new THREE.Group();
+
+  const legs = [makeLeg(DARK, -0.14, 0.3, 0.16), makeLeg(DARK, 0.14, 0.3, 0.16)];
+  g.add(...legs);
+
+  // Torso: tunic, belt + buckle, pauldrons, chest emblem.
+  g.add(cyl(0.28, 0.34, 0.48, BODY, 0, 0.54, 0));
+  g.add(cyl(0.35, 0.35, 0.09, shade(TRIM, 0.8), 0, 0.33, 0));
+  g.add(box(0.12, 0.12, 0.05, TRIM, 0, 0.33, 0.29));
+  for (const sx of [-1, 1]) g.add(sphere(0.16, TRIM, sx * 0.36, 0.78, 0));
+  g.add(diamond(0.09, TRIM, 0, 0.64, 0.28));
+
+  // Head + face (mood-driven brows/mouth).
+  const head = sphere(0.4, SKIN, 0, 1.16, 0);
+  addEyes(head, 0.4, 0.36, 0.1, look.mood);
+  g.add(head);
+
+  switch (look.headgear) {
+    case "helmet": {
+      const dome = sphere(0.43, STEEL, 0, 1.26, -0.02);
+      dome.scale.set(1.04, 0.82, 1.02);
+      g.add(dome);
+      g.add(cyl(0.44, 0.44, 0.09, shade(STEEL, 0.8), 0, 1.34, 0));
+      g.add(box(0.12, 0.4, 0.16, TRIM, 0, 1.66, -0.05)); // plume
+      break;
+    }
+    case "hood": {
+      const hood = cone(0.44, 0.6, DARK, 0, 1.44, -0.03);
+      hood.rotation.x = -0.08;
+      g.add(hood);
+      g.add(cyl(0.42, 0.46, 0.16, DARK, 0, 1.1, -0.04)); // cowl collar
+      break;
+    }
+    case "crown": {
+      g.add(cyl(0.3, 0.33, 0.14, 0xf2c14e, 0, 1.5, 0));
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2;
+        g.add(cone(0.05, 0.14, 0xf2c14e, Math.cos(a) * 0.28, 1.62, Math.sin(a) * 0.28));
+      }
+      g.add(sphere(0.06, TRIM, 0, 1.6, 0.3)); // front jewel
+      break;
+    }
+    case "horns": {
+      const cap = sphere(0.42, DARK, 0, 1.28, -0.02);
+      cap.scale.set(1.03, 0.7, 1.0);
+      g.add(cap);
+      for (const sx of [-1, 1]) {
+        const horn = cone(0.09, 0.36, 0xe8e0d0, sx * 0.3, 1.5, 0);
+        horn.rotation.z = sx * 0.6;
+        g.add(horn);
+      }
+      break;
+    }
+    case "turban": {
+      const t = turban(0.4, BODY, TRIM);
+      t.position.y = 1.18;
+      g.add(t);
+      break;
+    }
+    case "none": {
+      const hair = sphere(0.41, 0x5a3a1c, 0, 1.3, -0.03);
+      hair.scale.set(1.0, 0.55, 1.0);
+      g.add(hair);
+      break;
+    }
+  }
+
+  const melee = def.range <= 1;
+
+  // Free arm: fist; melee designs also carry a round trim-rimmed shield.
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.4, 0.8, 0);
+  offArm.add(box(0.14, 0.3, 0.14, BODY, 0, -0.15, 0));
+  offArm.add(sphere(0.1, SKIN, 0, -0.32, 0.02));
+  if (melee && look.weapon !== "none") {
+    const shield = cyl(0.26, 0.26, 0.06, BODY, -0.08, -0.24, 0.12);
+    shield.rotation.x = Math.PI / 2;
+    offArm.add(shield);
+    const rim = cyl(0.28, 0.28, 0.04, TRIM, -0.08, -0.24, 0.09);
+    rim.rotation.x = Math.PI / 2;
+    offArm.add(rim);
+    offArm.add(sphere(0.07, TRIM, -0.08, -0.24, 0.17)); // boss
+  }
+  g.add(offArm);
+
+  // Weapon arm.
+  const arm = new THREE.Group();
+  arm.position.set(0.4, 0.82, 0);
+  arm.add(box(0.15, 0.3, 0.15, BODY, 0, -0.15, 0));
+  arm.add(sphere(0.11, SKIN, 0, -0.33, 0.02));
+  const WOOD = 0x6d4c41;
+  switch (look.weapon) {
+    case "sword":
+      arm.add(box(0.26, 0.07, 0.1, TRIM, 0, -0.3, 0.02)); // crossguard
+      arm.add(box(0.08, 0.78, 0.13, 0xe7ecf3, 0, 0.1, 0.02)); // blade
+      arm.add(sphere(0.06, TRIM, 0, -0.44, 0.02)); // pommel
+      break;
+    case "axe":
+      arm.add(cyl(0.035, 0.045, 0.85, WOOD, 0, -0.02, 0.02));
+      arm.add(box(0.3, 0.24, 0.07, STEEL, 0.14, 0.32, 0.02)); // head
+      arm.add(box(0.08, 0.28, 0.09, TRIM, 0.28, 0.32, 0.02)); // edge band
+      break;
+    case "hammer":
+      arm.add(cyl(0.04, 0.05, 0.8, WOOD, 0, -0.04, 0.02));
+      arm.add(box(0.3, 0.2, 0.3, 0x8a93a3, 0, 0.34, 0.02)); // maul head
+      arm.add(box(0.32, 0.06, 0.32, TRIM, 0, 0.44, 0.02)); // cap
+      break;
+    case "spear":
+      arm.add(cyl(0.03, 0.035, 1.15, WOOD, 0, 0.1, 0.02));
+      arm.add(cone(0.07, 0.24, STEEL, 0, 0.78, 0.02)); // tip
+      arm.add(cyl(0.05, 0.05, 0.06, TRIM, 0, 0.62, 0.02)); // collar
+      break;
+    case "bow": {
+      const bow = new THREE.Mesh(
+        cachedGeo("champ-bow", () => new THREE.TorusGeometry(0.42, 0.035, 6, 16, Math.PI * 1.1)),
+        toon(WOOD),
+      );
+      bow.position.set(0, -0.3, 0.06);
+      bow.rotation.z = Math.PI * 0.95;
+      bow.castShadow = true;
+      arm.add(bow);
+      arm.add(box(0.02, 0.74, 0.02, 0xe8e4da, 0, -0.3, 0.06)); // string
+      break;
+    }
+    case "staff":
+      arm.add(cyl(0.035, 0.045, 1.0, WOOD, 0, 0.04, 0.02));
+      arm.add(cyl(0.06, 0.06, 0.06, TRIM, 0, 0.42, 0.02)); // ferrule
+      arm.add(shadowed(new THREE.Mesh(
+        cachedGeo("s:0.11", () => new THREE.SphereGeometry(0.11, 20, 16)),
+        glow(TRIM),
+      ), 0, 0.56, 0.02)); // glowing focus orb
+      break;
+    case "none":
+      arm.add(sphere(0.13, SKIN, 0, -0.36, 0.02)); // oversized brawler fist
+      break;
+  }
+  g.add(arm);
+
+  // Wings for flyers (drives the animateTroop flap + hover bob).
+  const wings: Wing[] = [];
+  if (abilities.flying) {
+    for (const s of [-1, 1]) {
+      const wing = new THREE.Group();
+      wing.position.set(s * 0.28, 0.9, -0.2);
+      const membrane = box(0.62, 0.34, 0.05, shade(BODY, 0.85), s * 0.34, 0.1, 0);
+      membrane.rotation.z = s * 0.25;
+      wing.add(membrane);
+      wing.add(box(0.4, 0.16, 0.05, TRIM, s * 0.24, 0.26, 0));
+      g.add(wing);
+      wings.push({ obj: wing, base: s * 0.3, amp: s * 0.5 });
+    }
+  }
+
+  // Squads shrink so multi-unit champions read as a squad, not clones.
+  const scale = def.count >= 4 ? 0.72 : def.count >= 2 ? 0.85 : 1;
+  g.scale.setScalar(scale);
+
+  const ranged = !melee;
+  return {
+    group: g,
+    arm,
+    armRest: ranged ? -0.9 : -0.5,
+    swingAmp: ranged ? 1.1 : 1.7,
+    height: 1.75 * scale,
+    hover: abilities.flying ? 0.9 : undefined,
+    legs,
+    offArm,
+    wings: wings.length ? wings : undefined,
+  };
+}
+
 const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
+  champion: () => buildChampionRig(loadChampion()),
   knight: buildKnight,
   archers: buildArcher,
   firecracker: buildFirecracker,

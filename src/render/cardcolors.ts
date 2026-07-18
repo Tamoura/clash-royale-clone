@@ -39,4 +39,5 @@ export const CARD_COLOR: Record<CardId, string> = {
   zap: "#c9a40e",
   rage: "#c2257f",
   freeze: "#2398c9",
+  champion: "#7c3aed",
 };

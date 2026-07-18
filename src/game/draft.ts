@@ -49,7 +49,8 @@ function drawOffers(
 
 export function createDraft(
   seed: number,
-  pool: CardId[] = Object.keys(CARDS) as CardId[],
+  // The Studio champion is personal — it never appears in draft offers.
+  pool: CardId[] = (Object.keys(CARDS) as CardId[]).filter((id) => id !== "champion"),
 ): DraftState {
   const first = drawOffers(pool, seed | 0 || 1);
   return {

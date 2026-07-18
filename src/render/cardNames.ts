@@ -42,9 +42,12 @@ const ISLAMIC_NAME: Record<CardId, string> = {
   zap: "Flash Powder",
   rage: "War Drums",
   freeze: "Caltrops",
+  champion: "Champion",
 };
 
 /** The card's name for the active mode (Islamic name in Arabic theme). */
 export function cardDisplayName(id: CardId): string {
+  // The Studio champion always shows the name the player gave it.
+  if (id === "champion") return getCard(id).name;
   return ARABIC ? (ISLAMIC_NAME[id] ?? getCard(id).name) : getCard(id).name;
 }

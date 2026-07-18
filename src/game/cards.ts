@@ -32,7 +32,8 @@ export type CardId =
   | "pekka"
   | "cannon"
   | "tombstone"
-  | "elixir-collector";
+  | "elixir-collector"
+  | "champion";
 
 export type Speed = "slow" | "medium" | "fast";
 
@@ -696,6 +697,27 @@ export const CARDS: Record<CardId, Card> = {
       radius: 0.6,
     }),
   },
+  /**
+   * The player-designed Studio card. This entry is a neutral baseline;
+   * customcard.ts overwrites it in place (applyChampion) with the saved
+   * design, so every consumer — sim, bot, HUD, portraits, even Crazy-mode
+   * scrambling — sees the player's champion through the normal lookup.
+   */
+  champion: {
+    id: "champion",
+    name: "Champion",
+    rarity: "epic",
+    kind: "troop",
+    cost: 3,
+    count: 1,
+    unit: unit({
+      maxHp: 1200,
+      damage: 180,
+      hitSpeed: 1.3,
+      attackRange: MELEE,
+      speed: "medium",
+    }),
+  },
   fireball: {
     id: "fireball",
     name: "Fireball",
@@ -794,6 +816,7 @@ export const DECK: CardId[] = [
   "zap",
   "rage",
   "freeze",
+  "champion",
 ];
 
 /**

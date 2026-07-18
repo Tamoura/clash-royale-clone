@@ -51,6 +51,11 @@ function renderPortrait(id: CardId): HTMLCanvasElement | null {
   }
 }
 
+/** Drop a cached portrait (e.g. after the Studio redesigns the champion). */
+export function invalidatePortrait(id: CardId): void {
+  cache.delete(id);
+}
+
 /** Cached 3D portrait for a card, or null for spells/unrenderables. */
 export function cardPortrait(id: CardId): HTMLCanvasElement | null {
   if (!cache.has(id)) {

@@ -12,7 +12,9 @@ import {
 describe("arenas", () => {
   it("covers every card in the 34-card pool exactly once", () => {
     const unlocked = Object.keys(CARD_UNLOCK_TROPHIES);
-    expect(unlocked.sort()).toEqual([...DECK].sort());
+    // The Studio champion is created by the player, never found in chests,
+    // so it's the one DECK card without an arena unlock.
+    expect(unlocked.sort()).toEqual(DECK.filter((id) => id !== "champion").sort());
     expect(unlocked).toHaveLength(34);
   });
 

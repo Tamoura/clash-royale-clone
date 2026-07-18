@@ -21,7 +21,7 @@ import type { Side } from "./game/arena";
 import { cardDisplayName } from "./render/cardNames";
 import { SANDBOX_ELIXIR_RATE, isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
-import { Battle3D } from "./render3d/scene3d";
+import { Battle3D, disposeDeep } from "./render3d/scene3d";
 import {
   ARENA_THEME_KEY,
   ARABIC,
@@ -39,6 +39,19 @@ import {
   type GameMode as GameVariant,
 } from "./launcher/mode";
 import { makeCardCanvas } from "./ui/cardFrame";
+import * as THREE from "three";
+import {
+  CHAMPION_LIMITS,
+  CHAMPION_PALETTE,
+  championElixirCost,
+  initChampion,
+  loadChampion,
+  normalizeChampion,
+  saveChampion,
+  type ChampionDef,
+} from "./game/customcard";
+import { animateTroop, buildChampionRig, type TroopRig } from "./render3d/characters3d";
+import { invalidatePortrait } from "./render3d/cardportraits";
 import {
   loadProfile,
   saveProfile,
@@ -75,6 +88,9 @@ import { dailyDeck, dateKey } from "./game/daily";
 
 // Apply edition-aware CSS variables before any DOM is rendered.
 applyEditionTokens(STORED_EDITION);
+
+// Make the saved Studio champion live before any card art or sim uses it.
+initChampion();
 
 const stage = document.getElementById("stage")!;
 
@@ -573,9 +589,391 @@ function buildHome(): void {
     () => startDaily(),
   );
   mk("🃏 Deck", "battle-btn friend", () => openDeckPicker({ mode: "deck" }));
+  mk("🛠️ Character Studio", "battle-btn friend", () => openStudio());
   mk("📚 Collection", "battle-btn friend", () => openCollection());
   mk("🎁 Chests", "battle-btn friend", () => openChests());
   pickerRoot.appendChild(nav);
+}
+
+// ---- Character Studio ----------------------------------------------------
+// Design a card: pick stats, capabilities, and a look. Elixir cost is not
+// chosen — it's computed live from what the design can do (customcard.ts).
+
+let studioAnim = 0;
+let studioCleanup: (() => void) | null = null;
+
+function openStudio(): void {
+  buildStudio(loadChampion());
+  showPicker();
+}
+
+function closeStudio(): void {
+  cancelAnimationFrame(studioAnim);
+  studioCleanup?.();
+  studioCleanup = null;
+}
+
+function buildStudio(def: ChampionDef): void {
+  closeStudio();
+  pickerRoot.innerHTML = "";
+  let cur = normalizeChampion(def);
+
+  const title = document.createElement("h2");
+  title.textContent = "Character Studio";
+  pickerRoot.appendChild(title);
+
+  const hint = document.createElement("div");
+  hint.className = "collect-label";
+  hint.textContent = "Design your own card — its elixir price follows its power.";
+  pickerRoot.appendChild(hint);
+
+  const wrap = document.createElement("div");
+  wrap.className = "studio-wrap";
+  pickerRoot.appendChild(wrap);
+
+  // -- Live 3D preview + computed cost --------------------------------
+  const previewPane = document.createElement("div");
+  previewPane.className = "studio-preview";
+  wrap.appendChild(previewPane);
+
+  const costBadge = document.createElement("div");
+  costBadge.className = "studio-cost";
+  costBadge.title = "Elixir cost — computed from the design";
+  previewPane.appendChild(costBadge);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(230, 250);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.12;
+  previewPane.appendChild(renderer.domElement);
+
+  const summary = document.createElement("div");
+  summary.className = "studio-summary";
+  previewPane.appendChild(summary);
+
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xdfeaff, 0x4a5070, 1.3));
+  const key = new THREE.DirectionalLight(0xfff2d8, 2.2);
+  key.position.set(3, 5, 5);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0x8fb6ff, 1.2);
+  rim.position.set(-4, 3, -3);
+  scene.add(rim);
+  const pivot = new THREE.Group();
+  scene.add(pivot);
+  const camera = new THREE.PerspectiveCamera(30, 230 / 250, 0.1, 30);
+
+  let rig: TroopRig | null = null;
+  function rebuildRig(): void {
+    if (rig) {
+      pivot.remove(rig.group);
+      disposeDeep(rig.group);
+    }
+    rig = buildChampionRig(cur);
+    pivot.add(rig.group);
+    const h = (rig.hover ?? 0) + rig.height;
+    camera.position.set(0, h * 0.62, h * 2.5);
+    camera.lookAt(0, h * 0.5, 0);
+  }
+
+  let walking = true;
+  const t0 = performance.now();
+  const loop = (): void => {
+    studioAnim = requestAnimationFrame(loop);
+    const t = (performance.now() - t0) / 1000;
+    if (rig) animateTroop(rig, { moving: walking, swing: 0, time: t, phase: 0 });
+    pivot.rotation.y = 0.55 + t * 0.5;
+    renderer.render(scene, camera);
+  };
+  loop();
+  studioCleanup = () => {
+    if (rig) disposeDeep(rig.group);
+    renderer.dispose();
+  };
+
+  // -- Controls --------------------------------------------------------
+  const controls = document.createElement("div");
+  controls.className = "studio-controls";
+  wrap.appendChild(controls);
+
+  const refreshers: (() => void)[] = [];
+  function refresh(): void {
+    cur = normalizeChampion(cur);
+    const cost = championElixirCost(cur);
+    costBadge.textContent = String(cost);
+    const bits = [
+      `${cur.count > 1 ? `×${cur.count} · ` : ""}${cur.hp} HP · ${cur.damage} dmg`,
+      `every ${cur.hitSpeed.toFixed(1)}s · ${cur.range <= 1 ? "melee" : `range ${cur.range}`} · ${cur.speed}`,
+    ];
+    const caps = Object.entries(cur.abilities)
+      .filter(([, on]) => on)
+      .map(([k]) => capLabel(k as keyof ChampionDef["abilities"]));
+    if (caps.length) bits.push(caps.join(" · "));
+    summary.innerHTML = bits.map((b) => `<div>${b}</div>`).join("");
+    for (const r of refreshers) r();
+    rebuildRig();
+  }
+
+  function row(label: string): HTMLElement {
+    const r = document.createElement("label");
+    r.className = "studio-row";
+    const l = document.createElement("span");
+    l.textContent = label;
+    r.appendChild(l);
+    controls.appendChild(r);
+    return r;
+  }
+
+  // Name.
+  {
+    const r = row("Name");
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = CHAMPION_LIMITS.nameLength;
+    input.value = cur.name;
+    input.addEventListener("input", () => {
+      cur.name = input.value || "Champion";
+      const cost = championElixirCost(normalizeChampion(cur));
+      costBadge.textContent = String(cost); // no rig rebuild while typing
+    });
+    r.appendChild(input);
+  }
+
+  function slider(
+    label: string,
+    min: number,
+    max: number,
+    step: number,
+    get: () => number,
+    set: (v: number) => void,
+    fmt: (v: number) => string = (v) => String(v),
+  ): void {
+    const r = row(label);
+    const out = document.createElement("b");
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.value = String(get());
+    input.addEventListener("input", () => {
+      set(Number(input.value));
+      refresh();
+    });
+    refreshers.push(() => {
+      out.textContent = fmt(get());
+      input.value = String(get());
+    });
+    r.appendChild(input);
+    r.appendChild(out);
+  }
+
+  slider("Units", CHAMPION_LIMITS.count.min, CHAMPION_LIMITS.count.max, 1,
+    () => cur.count, (v) => (cur.count = v));
+  slider("HP", CHAMPION_LIMITS.hp.min, CHAMPION_LIMITS.hp.max, 50,
+    () => cur.hp, (v) => (cur.hp = v));
+  slider("Damage", CHAMPION_LIMITS.damage.min, CHAMPION_LIMITS.damage.max, 10,
+    () => cur.damage, (v) => (cur.damage = v));
+  slider("Hit every", CHAMPION_LIMITS.hitSpeed.min, CHAMPION_LIMITS.hitSpeed.max, 0.1,
+    () => cur.hitSpeed, (v) => (cur.hitSpeed = v), (v) => `${v.toFixed(1)}s`);
+
+  function select<T extends string | number>(
+    label: string,
+    options: { value: T; text: string }[],
+    get: () => T,
+    set: (v: T) => void,
+  ): void {
+    const r = row(label);
+    const sel = document.createElement("select");
+    for (const o of options) {
+      const opt = document.createElement("option");
+      opt.value = String(o.value);
+      opt.textContent = o.text;
+      sel.appendChild(opt);
+    }
+    sel.value = String(get());
+    sel.addEventListener("change", () => {
+      const v = options.find((o) => String(o.value) === sel.value)!.value;
+      set(v);
+      refresh();
+    });
+    refreshers.push(() => (sel.value = String(get())));
+    r.appendChild(sel);
+  }
+
+  select<number>(
+    "Reach",
+    [
+      { value: 0.8, text: "Melee" },
+      ...[3, 4, 5, 6, 7, 8].map((n) => ({ value: n, text: `${n} tiles` })),
+    ],
+    () => cur.range,
+    (v) => (cur.range = v),
+  );
+  select<ChampionDef["speed"]>(
+    "Speed",
+    [
+      { value: "slow", text: "Slow" },
+      { value: "medium", text: "Medium" },
+      { value: "fast", text: "Fast" },
+    ],
+    () => cur.speed,
+    (v) => (cur.speed = v),
+  );
+
+  // Capabilities — each priced into the elixir cost.
+  const capsHead = document.createElement("div");
+  capsHead.className = "studio-section";
+  capsHead.textContent = "Capabilities (each adds to the price)";
+  controls.appendChild(capsHead);
+  const capsGrid = document.createElement("div");
+  capsGrid.className = "studio-caps";
+  controls.appendChild(capsGrid);
+  for (const cap of Object.keys(cur.abilities) as (keyof ChampionDef["abilities"])[]) {
+    const lab = document.createElement("label");
+    lab.className = "studio-cap";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = cur.abilities[cap];
+    cb.addEventListener("change", () => {
+      cur.abilities[cap] = cb.checked;
+      refresh();
+    });
+    refreshers.push(() => {
+      cb.checked = cur.abilities[cap];
+      // Pierce needs reach; flyers ignore the river on their own.
+      cb.disabled =
+        (cap === "pierce" && cur.range <= 1) ||
+        (cap === "jumpsRiver" && cur.abilities.flying);
+      lab.classList.toggle("off", cb.disabled);
+    });
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(capLabel(cap)));
+    capsGrid.appendChild(lab);
+  }
+
+  // Appearance.
+  const lookHead = document.createElement("div");
+  lookHead.className = "studio-section";
+  lookHead.textContent = "Appearance (free — style is never priced)";
+  controls.appendChild(lookHead);
+
+  function swatches(label: string, get: () => number, set: (v: number) => void): void {
+    const r = row(label);
+    const rowEl = document.createElement("div");
+    rowEl.className = "studio-swatches";
+    for (const c of CHAMPION_PALETTE) {
+      const b = document.createElement("button");
+      b.className = "studio-swatch";
+      b.style.background = `#${c.toString(16).padStart(6, "0")}`;
+      b.setAttribute("aria-label", `#${c.toString(16).padStart(6, "0")}`);
+      b.addEventListener("click", (e) => {
+        e.preventDefault();
+        set(c);
+        refresh();
+      });
+      refreshers.push(() => b.classList.toggle("sel", get() === c));
+      rowEl.appendChild(b);
+    }
+    r.appendChild(rowEl);
+  }
+  swatches("Outfit", () => cur.look.body, (v) => (cur.look.body = v));
+  swatches("Trim", () => cur.look.trim, (v) => (cur.look.trim = v));
+
+  select<ChampionDef["look"]["headgear"]>(
+    "Headgear",
+    [
+      { value: "helmet", text: "Helmet" },
+      { value: "hood", text: "Hood" },
+      { value: "crown", text: "Crown" },
+      { value: "horns", text: "Horns" },
+      { value: "turban", text: "Turban" },
+      { value: "none", text: "None" },
+    ],
+    () => cur.look.headgear,
+    (v) => (cur.look.headgear = v),
+  );
+  select<ChampionDef["look"]["weapon"]>(
+    "Weapon",
+    [
+      { value: "sword", text: "Sword" },
+      { value: "axe", text: "Axe" },
+      { value: "hammer", text: "Hammer" },
+      { value: "spear", text: "Spear" },
+      { value: "bow", text: "Bow" },
+      { value: "staff", text: "Staff" },
+      { value: "none", text: "Fists" },
+    ],
+    () => cur.look.weapon,
+    (v) => (cur.look.weapon = v),
+  );
+  select<ChampionDef["look"]["mood"]>(
+    "Face",
+    [
+      { value: "brave", text: "Brave" },
+      { value: "angry", text: "Angry" },
+      { value: "cute", text: "Cute" },
+      { value: "wicked", text: "Wicked" },
+      { value: "calm", text: "Calm" },
+    ],
+    () => cur.look.mood,
+    (v) => (cur.look.mood = v),
+  );
+
+  {
+    const r = row("Preview");
+    const b = document.createElement("button");
+    b.className = "studio-walk";
+    b.textContent = "🚶 Walking";
+    b.addEventListener("click", (e) => {
+      e.preventDefault();
+      walking = !walking;
+      b.textContent = walking ? "🚶 Walking" : "🧍 Standing";
+    });
+    r.appendChild(b);
+  }
+
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "battle-btn";
+  saveBtn.textContent = "💾 Save Champion";
+  saveBtn.addEventListener("click", () => {
+    cur.name = cur.name.trim() || "Champion";
+    saveChampion(cur);
+    invalidatePortrait("champion");
+    if (!profile.owned.includes("champion")) {
+      profile = { ...profile, owned: [...profile.owned, "champion"] };
+    }
+    persistProfile();
+    closeStudio();
+    openDeckPicker({ mode: "deck" }); // slot it straight into the deck
+  });
+  pickerRoot.appendChild(saveBtn);
+
+  const backBtn = document.createElement("button");
+  backBtn.className = "back-btn";
+  backBtn.textContent = "← Home";
+  backBtn.addEventListener("click", () => {
+    closeStudio();
+    openHome();
+  });
+  pickerRoot.appendChild(backBtn);
+
+  refresh();
+}
+
+function capLabel(cap: keyof ChampionDef["abilities"]): string {
+  const labels: Record<keyof ChampionDef["abilities"], string> = {
+    flying: "🕊️ Flies",
+    targetsAir: "🎯 Hits air",
+    splash: "💥 Splash",
+    charge: "🐎 Charge (2x)",
+    stun: "⚡ Stunning hits",
+    chill: "❄️ Chilling hits",
+    pierce: "🏹 Piercing shots",
+    jumpsRiver: "🌊 River jump",
+    deathBomb: "💣 Death bomb",
+  };
+  return labels[cap];
 }
 
 // ---- Draft screen --------------------------------------------------------
@@ -1012,7 +1410,15 @@ function buildDeckPicker(opts: { mode: "battle" | "deck" }): void {
     count.textContent = `${deck.length} / 8 cards · average ${avg} elixir`;
     const legal = isOwnedDeck(deck, owned);
     startBtn.disabled = !legal;
-    if (friendBtn) friendBtn.disabled = !legal;
+    if (friendBtn) {
+      // The Studio champion exists only in this player's save — the other
+      // client can't reproduce it, so online play would desync. Bot-only.
+      const hasChampion = deck.includes("champion");
+      friendBtn.disabled = !legal || hasChampion;
+      friendBtn.title = hasChampion
+        ? "Your Champion is bot-battles only — remove it to play a friend."
+        : "";
+    }
     grid.querySelectorAll<HTMLButtonElement>("button.pick").forEach((btn) => {
       btn.classList.toggle("chosen", deck.includes(btn.dataset.card as CardId));
     });
