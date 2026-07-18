@@ -1827,6 +1827,15 @@ scene.renderer.domElement.addEventListener("contextmenu", (ev) => {
 });
 
 window.addEventListener("keydown", (ev) => {
+  // Typing in a form field (Studio name, room code…) is not a hotkey —
+  // without this guard, a name containing "t" reloaded the whole page.
+  const el = ev.target as HTMLElement | null;
+  if (
+    el &&
+    (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)
+  ) {
+    return;
+  }
   const n = Number(ev.key);
   if (n >= 1 && n <= 4) selectCard(mySideState().hand.cards[n - 1]);
   if (ev.key === "Escape") selectCard(null);
