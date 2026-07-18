@@ -179,15 +179,19 @@ const ABILITY_SURCHARGE: Record<keyof ChampionAbilities, number> = {
   deathBomb: 0.08,
 };
 
+/** The dearest card the elixir bar can ever pay for. */
+export const MAX_CHAMPION_COST = 10;
+
 /**
- * Elixir price of a design, derived purely from its capabilities.
+ * Raw (unclamped) power score of a design — the price it WOULD cost if
+ * elixir had no ceiling.
  *
  * Offense = dps scaled by reach and (sub-linearly) by unit count — swarms
  * trade total damage for splash vulnerability, like CR's cheap hordes.
  * Defense = total HP on the field. Capabilities add percentage surcharges.
  * Calibrated so the built-in troops price within ±1 of their real cost.
  */
-export function championElixirCost(def: ChampionDef): number {
+function championScore(def: ChampionDef): number {
   const dps = def.damage / def.hitSpeed;
   const rangeFactor = def.range <= 1 ? 1 : 1 + (def.range - 1) * 0.06;
   const offense = (dps / 95) * Math.sqrt(def.count) * rangeFactor;
@@ -196,8 +200,47 @@ export function championElixirCost(def: ChampionDef): number {
   for (const key of Object.keys(ABILITY_SURCHARGE) as (keyof ChampionAbilities)[]) {
     if (def.abilities[key]) surcharge += ABILITY_SURCHARGE[key];
   }
-  const score = (offense + defense) * SPEED_FACTOR[def.speed] * surcharge;
-  return clamp(Math.round(score), 1, 10);
+  return (offense + defense) * SPEED_FACTOR[def.speed] * surcharge;
+}
+
+export interface ChampionCostInfo {
+  /** Playable price (1..MAX_CHAMPION_COST). */
+  cost: number;
+  /** Honest price with no ceiling — what the design is really worth. */
+  raw: number;
+  /**
+   * True when raw exceeds the elixir bar: the design is TOO powerful to
+   * price fairly, so it cannot be saved (the guardrail — a 23-worth
+   * monster must not sneak onto the field at 10).
+   */
+  overBudget: boolean;
+}
+
+export function championCostInfo(def: ChampionDef): ChampionCostInfo {
+  const raw = Math.max(1, Math.round(championScore(def)));
+  return {
+    cost: Math.min(raw, MAX_CHAMPION_COST),
+    raw,
+    overBudget: raw > MAX_CHAMPION_COST,
+  };
+}
+
+/** Playable elixir price of a design (see championCostInfo for the raw score). */
+export function championElixirCost(def: ChampionDef): number {
+  return championCostInfo(def).cost;
+}
+
+/**
+ * Scale an over-budget design's HP and damage down until it prices within
+ * the elixir bar. Used when loading a save that predates the guardrail
+ * (or was hand-edited) so nothing over-powered ever enters a battle.
+ */
+export function fitChampionToBudget(def: ChampionDef): ChampionDef {
+  let d = normalizeChampion(def);
+  for (let i = 0; i < 80 && championCostInfo(d).overBudget; i++) {
+    d = normalizeChampion({ ...d, hp: d.hp * 0.94, damage: d.damage * 0.94 });
+  }
+  return d;
 }
 
 /** Materialize the design as a playable troop card (cost included). */
@@ -254,12 +297,16 @@ export function applyChampion(def: ChampionDef): TroopCard {
 
 export const CHAMPION_STORAGE_KEY = "cr-clone-champion";
 
-/** Saved design, or the default when unset/corrupt (node-safe). */
+/**
+ * The saved design, or the default when unset/corrupt (node-safe).
+ * Always budget-fitted: an over-powered save is scaled down, never
+ * allowed onto the field under-priced.
+ */
 export function loadChampion(): ChampionDef {
   try {
     const raw = localStorage.getItem(CHAMPION_STORAGE_KEY);
     if (!raw) return structuredClone(DEFAULT_CHAMPION);
-    return normalizeChampion(JSON.parse(raw));
+    return fitChampionToBudget(JSON.parse(raw) as ChampionDef);
   } catch {
     return structuredClone(DEFAULT_CHAMPION);
   }
@@ -274,15 +321,33 @@ export function hasSavedChampion(): boolean {
   }
 }
 
-/** Persist + apply a design; returns the materialized card. */
-export function saveChampion(def: ChampionDef): TroopCard {
+/**
+ * Persist + apply a design; returns the materialized card, or null when
+ * the design is over budget (too powerful for the elixir bar) — the
+ * guardrail refuses to save it rather than under-price it.
+ */
+export function saveChampion(def: ChampionDef): TroopCard | null {
   const clean = normalizeChampion(def);
+  if (championCostInfo(clean).overBudget) return null;
   try {
     localStorage.setItem(CHAMPION_STORAGE_KEY, JSON.stringify(clean));
   } catch {
     // storage unavailable (private mode / node) — still apply in-memory
   }
   return applyChampion(clean);
+}
+
+/**
+ * Delete the (single) champion: clear the save and reset the shared card
+ * to the neutral default. Callers also revoke ownership / deck slots.
+ */
+export function deleteChampion(): void {
+  try {
+    localStorage.removeItem(CHAMPION_STORAGE_KEY);
+  } catch {
+    // storage unavailable — in-memory reset still happens
+  }
+  applyChampion(structuredClone(DEFAULT_CHAMPION));
 }
 
 /** Boot hook: make the saved design live before any UI renders. */

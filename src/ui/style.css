@@ -1329,6 +1329,27 @@ button.card.ready-pop {
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.55);
   z-index: 1;
 }
+.studio-cost.over {
+  background: radial-gradient(circle at 35% 28%, #f87171, #991b1b 70%);
+  border-color: #fecaca;
+  animation: overPulse 0.9s ease-in-out infinite alternate;
+}
+@keyframes overPulse {
+  from { transform: scale(1); }
+  to   { transform: scale(1.12); }
+}
+.studio-warning {
+  color: #fca5a5;
+  font-weight: bold;
+}
+.studio-delete {
+  border-color: #7f1d1d !important;
+  color: #fca5a5 !important;
+}
+.studio-delete.armed {
+  background: #7f1d1d !important;
+  color: #fff !important;
+}
 .studio-summary {
   margin-top: 6px;
   font-size: 12px;

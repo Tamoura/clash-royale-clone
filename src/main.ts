@@ -43,7 +43,10 @@ import * as THREE from "three";
 import {
   CHAMPION_LIMITS,
   CHAMPION_PALETTE,
-  championElixirCost,
+  MAX_CHAMPION_COST,
+  championCostInfo,
+  deleteChampion,
+  hasSavedChampion,
   initChampion,
   loadChampion,
   normalizeChampion,
@@ -60,6 +63,7 @@ import {
   tryOpenChest,
   ownedSet,
   isOwnedDeck,
+  clampDeckToOwned,
   MAX_CARD_LEVEL,
   type PlayerProfile,
 } from "./meta/progress";
@@ -589,7 +593,11 @@ function buildHome(): void {
     () => startDaily(),
   );
   mk("🃏 Deck", "battle-btn friend", () => openDeckPicker({ mode: "deck" }));
-  mk("🛠️ Character Studio", "battle-btn friend", () => openStudio());
+  mk(
+    hasSavedChampion() ? "🛠️ Edit Champion" : "🛠️ Create Champion",
+    "battle-btn friend",
+    () => openStudio(),
+  );
   mk("📚 Collection", "battle-btn friend", () => openCollection());
   mk("🎁 Chests", "battle-btn friend", () => openChests());
   pickerRoot.appendChild(nav);
@@ -624,7 +632,9 @@ function buildStudio(def: ChampionDef): void {
 
   const hint = document.createElement("div");
   hint.className = "collect-label";
-  hint.textContent = "Design your own card — its elixir price follows its power.";
+  hint.textContent = hasSavedChampion()
+    ? "You have one champion — saving replaces it."
+    : "Design your one champion — its elixir price follows its power.";
   pickerRoot.appendChild(hint);
 
   const wrap = document.createElement("div");
@@ -699,8 +709,11 @@ function buildStudio(def: ChampionDef): void {
   const refreshers: (() => void)[] = [];
   function refresh(): void {
     cur = normalizeChampion(cur);
-    const cost = championElixirCost(cur);
-    costBadge.textContent = String(cost);
+    const info = championCostInfo(cur);
+    // Over budget: show the HONEST price in red — a design worth more
+    // than the elixir bar can pay is blocked, never discounted to 10.
+    costBadge.textContent = String(info.overBudget ? info.raw : info.cost);
+    costBadge.classList.toggle("over", info.overBudget);
     const bits = [
       `${cur.count > 1 ? `×${cur.count} · ` : ""}${cur.hp} HP · ${cur.damage} dmg`,
       `every ${cur.hitSpeed.toFixed(1)}s · ${cur.range <= 1 ? "melee" : `range ${cur.range}`} · ${cur.speed}`,
@@ -709,7 +722,17 @@ function buildStudio(def: ChampionDef): void {
       .filter(([, on]) => on)
       .map(([k]) => capLabel(k as keyof ChampionDef["abilities"]));
     if (caps.length) bits.push(caps.join(" · "));
+    if (info.overBudget) {
+      bits.push(
+        `<span class="studio-warning">⚠️ Worth ${info.raw} elixir — the bar only holds ` +
+          `${MAX_CHAMPION_COST}. Tone it down to save.</span>`,
+      );
+    }
     summary.innerHTML = bits.map((b) => `<div>${b}</div>`).join("");
+    saveBtn.disabled = info.overBudget;
+    saveBtn.textContent = info.overBudget
+      ? `🚫 Too powerful (worth ${info.raw})`
+      : "💾 Save Champion";
     for (const r of refreshers) r();
     rebuildRig();
   }
@@ -732,9 +755,7 @@ function buildStudio(def: ChampionDef): void {
     input.maxLength = CHAMPION_LIMITS.nameLength;
     input.value = cur.name;
     input.addEventListener("input", () => {
-      cur.name = input.value || "Champion";
-      const cost = championElixirCost(normalizeChampion(cur));
-      costBadge.textContent = String(cost); // no rig rebuild while typing
+      cur.name = input.value || "Champion"; // name never affects the price
     });
     r.appendChild(input);
   }
@@ -938,7 +959,7 @@ function buildStudio(def: ChampionDef): void {
   saveBtn.textContent = "💾 Save Champion";
   saveBtn.addEventListener("click", () => {
     cur.name = cur.name.trim() || "Champion";
-    saveChampion(cur);
+    if (!saveChampion(cur)) return; // over budget — the guardrail refused
     invalidatePortrait("champion");
     if (!profile.owned.includes("champion")) {
       profile = { ...profile, owned: [...profile.owned, "champion"] };
@@ -948,6 +969,35 @@ function buildStudio(def: ChampionDef): void {
     openDeckPicker({ mode: "deck" }); // slot it straight into the deck
   });
   pickerRoot.appendChild(saveBtn);
+
+  // Delete the (single) champion: two taps to confirm, then it's removed
+  // from the save, the collection, and the deck.
+  if (hasSavedChampion()) {
+    const delBtn = document.createElement("button");
+    delBtn.className = "back-btn studio-delete";
+    delBtn.textContent = "🗑️ Delete Champion";
+    let armed = false;
+    delBtn.addEventListener("click", () => {
+      if (!armed) {
+        armed = true;
+        delBtn.textContent = "⚠️ Tap again to delete";
+        delBtn.classList.add("armed");
+        return;
+      }
+      deleteChampion();
+      invalidatePortrait("champion");
+      const owned = profile.owned.filter((id) => id !== "champion");
+      playerDeck = clampDeckToOwned(
+        playerDeck.filter((id) => id !== "champion"),
+        ownedSet(owned),
+      );
+      profile = { ...profile, owned, deck: playerDeck };
+      persistProfile();
+      closeStudio();
+      openHome();
+    });
+    pickerRoot.appendChild(delBtn);
+  }
 
   const backBtn = document.createElement("button");
   backBtn.className = "back-btn";

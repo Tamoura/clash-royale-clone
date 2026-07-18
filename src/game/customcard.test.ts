@@ -3,10 +3,15 @@ import { CARDS, getCard, type CardId } from "./cards";
 import {
   CHAMPION_LIMITS,
   DEFAULT_CHAMPION,
+  MAX_CHAMPION_COST,
   applyChampion,
   buildChampionCard,
+  championCostInfo,
   championElixirCost,
+  deleteChampion,
+  fitChampionToBudget,
   normalizeChampion,
+  saveChampion,
   type ChampionDef,
 } from "./customcard";
 
@@ -95,7 +100,7 @@ describe("championElixirCost monotonicity", () => {
     }
   });
 
-  it("a maxed-out monster caps at 10 elixir", () => {
+  it("a maxed-out monster is over budget, not discounted to 10", () => {
     const monster = normalizeChampion({
       ...base,
       count: 5,
@@ -109,7 +114,71 @@ describe("championElixirCost monotonicity", () => {
         stun: true, chill: true, pierce: true, jumpsRiver: false, deathBomb: true,
       },
     });
-    expect(championElixirCost(monster)).toBe(10);
+    const info = championCostInfo(monster);
+    expect(info.overBudget).toBe(true);
+    expect(info.raw).toBeGreaterThan(MAX_CHAMPION_COST);
+    expect(info.cost).toBe(MAX_CHAMPION_COST); // display clamp only
+  });
+
+  it("the guardrail refuses to save an over-budget design", () => {
+    const before = structuredClone(CARDS.champion);
+    const monster: ChampionDef = {
+      ...structuredClone(DEFAULT_CHAMPION),
+      count: 5,
+      hp: 3600,
+      damage: 700,
+      hitSpeed: 0.9,
+      range: 8,
+      abilities: { ...DEFAULT_CHAMPION.abilities, flying: true, splash: true, stun: true },
+    };
+    expect(championCostInfo(normalizeChampion(monster)).overBudget).toBe(true);
+    expect(saveChampion(monster)).toBeNull();
+    // The shared card must be untouched by the refused save.
+    expect(CARDS.champion).toEqual(before);
+  });
+
+  it("fitChampionToBudget scales an over-budget design into the bar", () => {
+    const monster: ChampionDef = {
+      ...structuredClone(DEFAULT_CHAMPION),
+      count: 5,
+      hp: 3600,
+      damage: 700,
+      hitSpeed: 0.9,
+      range: 8,
+      abilities: { ...DEFAULT_CHAMPION.abilities, flying: true, splash: true, stun: true },
+    };
+    const fitted = fitChampionToBudget(monster);
+    const info = championCostInfo(fitted);
+    expect(info.overBudget).toBe(false);
+    expect(info.cost).toBeLessThanOrEqual(MAX_CHAMPION_COST);
+    // Capabilities and identity survive; only raw stats are toned down.
+    expect(fitted.abilities.flying).toBe(true);
+    expect(fitted.count).toBe(5);
+    expect(fitted.hp).toBeLessThan(3600);
+  });
+
+  it("mid-range prices are honest, not floored (worth 6 costs 6, not 2)", () => {
+    const strong = normalizeChampion({
+      ...base,
+      hp: 3000,
+      damage: 450,
+      hitSpeed: 1.0,
+      speed: "fast",
+      abilities: { ...DEFAULT_CHAMPION.abilities, splash: true },
+    });
+    const info = championCostInfo(strong);
+    expect(info.overBudget).toBe(false);
+    expect(info.cost).toBeGreaterThanOrEqual(6); // a big design can never price tiny
+  });
+
+  it("deleteChampion resets the shared card to the default", () => {
+    applyChampion({ ...structuredClone(DEFAULT_CHAMPION), name: "Doomed", hp: 3000 });
+    expect(CARDS.champion.name).toBe("Doomed");
+    deleteChampion();
+    expect(CARDS.champion.name).toBe(DEFAULT_CHAMPION.name);
+    expect(CARDS.champion.kind === "troop" && CARDS.champion.unit.maxHp).toBe(
+      DEFAULT_CHAMPION.hp,
+    );
   });
 
   it("the weakest possible design still costs at least 1", () => {
