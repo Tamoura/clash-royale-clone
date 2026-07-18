@@ -5,7 +5,7 @@ name: Deploy to GitHub Pages
 # (Requires: repo public + Settings → Pages → Source: "GitHub Actions".)
 on:
   push:
-    branches: [feature/arabesque-theme, main]
+    branches: [feature/arabesque-theme, claude/game-visuals-character-balance-w122wb, main]
   workflow_dispatch:
 
 permissions:
