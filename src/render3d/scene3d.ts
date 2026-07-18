@@ -333,10 +333,12 @@ function setHpFill(view: EntityView, frac: number, width: number): void {
 const nameMaterials = new Map<string, THREE.SpriteMaterial>();
 
 function nameSpriteMaterial(cardId: CardId, side: Side): THREE.SpriteMaterial {
-  const key = `${cardId}:${side}`;
+  const name = getCard(cardId).name;
+  // Keyed by name too: renaming the Studio champion must not reuse a
+  // stale label from an earlier battle.
+  const key = `${cardId}:${side}:${name}`;
   const cached = nameMaterials.get(key);
   if (cached) return cached;
-  const name = getCard(cardId).name;
   const c = document.createElement("canvas");
   c.width = 256;
   c.height = 64;
@@ -990,7 +992,7 @@ function buildBuildingMesh(e: Entity): EntityView {
   };
 }
 
-function buildTroopMesh(e: Entity): EntityView {
+function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
   const root = new THREE.Group();
 
   // Real glTF model (KayKit) when this card has one; else the primitive rig.
@@ -1010,20 +1012,20 @@ function buildTroopMesh(e: Entity): EntityView {
       e.cardId === "mega-knight" ||
       e.cardId === "royal-giant";
     // Mega Knight towers over even the other tanks.
-    const scale = (e.cardId === "mega-knight" ? 1.6 : big ? 1.35 : 1.25) * 0.95;
+    const scale = e.cardId === "mega-knight" ? 1.6 : big ? 1.35 : 1.25;
     rig.group.scale.setScalar(scale);
     root.add(rig.group);
     lift = (rig.hover ?? 0) + rig.height * scale;
   }
 
-  // A restrained team-color contact ring: enough for ownership at phone size
-  // without competing with the character silhouette.
+  // Bold team-color contact ring: at phone size this is the primary
+  // "whose unit is that" read, so it has to pop off the grass.
   const ring = new THREE.Mesh(
-    new THREE.RingGeometry(e.radius * 0.78, e.radius * 0.9, 24),
+    new THREE.RingGeometry(e.radius * 0.8, e.radius * 1.02, 24),
     new THREE.MeshBasicMaterial({
       color: SIDE_COLOR[e.side],
       transparent: true,
-      opacity: 0.42,
+      opacity: 0.65,
       side: THREE.DoubleSide,
       depthWrite: false,
     }),
@@ -1031,6 +1033,15 @@ function buildTroopMesh(e: Entity): EntityView {
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.02;
   root.add(ring);
+
+  // Name chip so cards are tellable apart mid-fight. The caller labels
+  // only one unit per deployed group — a flock gets one label, not three.
+  if (withLabel) {
+    const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
+    label.scale.set(1.7, 0.42, 1);
+    label.position.y = lift + 0.62;
+    root.add(label);
+  }
 
   // Flyers get a soft blob shadow tying them to the ground.
   let blobShadow: THREE.Mesh | undefined;
@@ -3018,9 +3029,23 @@ export class Battle3D {
       seen.add(e.id);
       let view = this.views.get(e.id);
       if (!view) {
+        // One name label per deployed group: the lowest-id living unit of
+        // a card nearby carries it, so a swarm reads as one labeled pack.
+        const withLabel =
+          e.kind === "troop" &&
+          e.radius >= 0.28 &&
+          !state.entities.some(
+            (o) =>
+              o.id < e.id &&
+              o.hp > 0 &&
+              o.side === e.side &&
+              o.cardId === e.cardId &&
+              o.kind === "troop" &&
+              distance(o, e) < 4,
+          );
         view =
           e.kind === "troop"
-            ? buildTroopMesh(e)
+            ? buildTroopMesh(e, withLabel)
             : e.kind === "building"
               ? buildBuildingMesh(e)
               : buildTowerMesh(e);
