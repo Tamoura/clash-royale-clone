@@ -41,7 +41,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  /* Overflowing items (utility buttons, trophy chip) wrap to a second row
+     instead of being pushed off-screen and unreachable on narrow phones. */
+  flex-wrap: wrap;
+  gap: 6px 10px;
   padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
   color: var(--cr-text);
   background: linear-gradient(180deg, #253059 0%, var(--cr-panel-dark) 100%);
@@ -1259,6 +1262,31 @@ button.card.ready-pop {
 .meta-chip {
   font-size: 12px !important;
   gap: 2px;
+  min-width: 0;
+}
+
+/* Narrow phones: tighten the top bar so its two rows stay compact and
+   every button remains on-screen and tappable. */
+@media (max-width: 430px) {
+  #topbar {
+    gap: 4px 6px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  #topbar .clock {
+    padding: 3px 10px 5px;
+  }
+  #topbar .crowns {
+    padding: 4px 8px;
+    gap: 4px;
+  }
+  #topbar .mute {
+    font-size: 14px;
+    padding: 4px 7px;
+  }
+  .meta-chip {
+    font-size: 11px !important;
+  }
 }
 
 /* ══ Result overlay ══ */

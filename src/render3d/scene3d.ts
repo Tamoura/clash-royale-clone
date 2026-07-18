@@ -2542,31 +2542,65 @@ export class Battle3D {
     this.addShake(0.85);
   }
 
-  /** Arrows: a volley rains down across the radius, then a ring pop. */
-  private arrowVolley(ax: number, ay: number, radius: number): void {
-    for (let i = 0; i < 10; i++) {
-      const angle = (i / 10) * Math.PI * 2 + (i % 3) * 0.4;
+  /**
+   * Arrows: the volley is loosed from the caster's edge of the arena and
+   * visibly arcs the whole way across the field before raining down on the
+   * radius — you can read who fired it and where it's going mid-flight.
+   */
+  private arrowVolley(ax: number, ay: number, radius: number, side: Side = "enemy"): void {
+    // World +z is the player's half; the volley flies in from the caster's side.
+    const dir = side === "player" ? 1 : -1;
+    const FLIGHT = 0.55;
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2 + (i % 3) * 0.4;
       const r = radius * (0.25 + 0.7 * ((i * 37) % 10) * 0.1);
-      const ox = Math.cos(angle) * r;
-      const oz = Math.sin(angle) * r;
       const w = toWorld(ax, ay);
-      const arrow = this.makeArrow(0x4e342e, 0.6);
-      const x = w.x + ox;
-      const z = w.z + oz;
-      const y0 = 6 + (i % 4) * 0.5;
-      arrow.position.set(x + 0.6, y0, z - 1.2);
-      arrow.lookAt(x, 0.05, z);
+      const tx = w.x + Math.cos(angle) * r;
+      const tz = w.z + Math.sin(angle) * r;
+      // Launch point: staggered fan several tiles back toward the caster.
+      const sx = tx + ((i % 5) - 2) * 0.55;
+      const sz = tz + dir * (8.5 + (i % 4) * 0.8);
+      const sy = 1.1;
+      const apex = 3.8 + (i % 4) * 0.55;
+      // Bright shaft + glowing tracer: from the steep camera a small dark
+      // arrow reads as a speck, so the volley needs to shine to be seen.
+      const arrow = this.makeArrow(0xf3e2b8, 1.0);
+      const trail = new THREE.Mesh(
+        new THREE.ConeGeometry(0.07, 1.1, 6),
+        new THREE.MeshBasicMaterial({
+          color: 0xffe9a8,
+          transparent: true,
+          opacity: 0.7,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          toneMapped: false,
+        }),
+      );
+      trail.rotation.x = -Math.PI / 2;
+      trail.position.z = -0.65;
+      arrow.add(trail);
+      arrow.position.set(sx, sy, sz);
+      const at = (t: number, out: THREE.Vector3): THREE.Vector3 =>
+        out.set(
+          sx + (tx - sx) * t,
+          sy + (0.05 - sy) * t + Math.sin(t * Math.PI) * apex,
+          sz + (tz - sz) * t,
+        );
       this.addEffect(
         arrow,
-        0.3,
+        FLIGHT,
         (frac) => {
           const t = 1 - frac;
-          arrow.position.set(x + 0.6 * (1 - t), y0 * (1 - t) + 0.05 * t, z - 1.2 * (1 - t));
+          at(t, PREV_POS);
+          arrow.position.copy(PREV_POS);
+          // Nose along the flight path: aim at a point just ahead.
+          at(Math.min(1, t + 0.04), LOOK_AT);
+          arrow.lookAt(LOOK_AT);
         },
-        i * 0.035,
+        i * 0.03,
       );
     }
-    this.blast(ax, ay, radius, 0xdce6ff, 0.32);
+    this.blast(ax, ay, radius, 0xdce6ff, FLIGHT + 0.02);
   }
 
   /** Permanent pile of broken masonry where a tower used to stand. */
@@ -2870,7 +2904,7 @@ export class Battle3D {
         // Mega Knight's slam shockwave is fired from his sky-drop spawn entry.
         else if (ev.cardId === "mega-knight") {
           /* handled on spawn */
-        } else this.arrowVolley(ev.x, ev.y, 4);
+        } else this.arrowVolley(ev.x, ev.y, 4, ev.side);
         break;
       case "attack":
         if (ev.ranged) {
