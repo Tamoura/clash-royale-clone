@@ -101,11 +101,11 @@ function attackSwing(e: Entity, engaged: boolean): number {
   if (e.cooldown > e.hitSpeed - 0.3) {
     const p = (e.cooldown - (e.hitSpeed - 0.3)) / 0.3; // 1 at hit -> 0
     if (p > 0.25) return (p - 0.25) / 0.75;
-    return -Math.sin((p / 0.25) * Math.PI) * 0.14; // follow-through dip
+    return -Math.sin((p / 0.25) * Math.PI) * 0.22; // follow-through dip
   }
-  if (engaged && e.cooldown < 0.22 && e.cooldown > 0) {
-    const w = 1 - e.cooldown / 0.22;
-    return -0.5 * w * w; // ease-in wind-up
+  if (engaged && e.cooldown < 0.26 && e.cooldown > 0) {
+    const w = 1 - e.cooldown / 0.26;
+    return -0.7 * w * w; // deep ease-in wind-up telegraphs the blow
   }
   return 0;
 }
@@ -133,6 +133,8 @@ const TOWER_DEATH_TIME = 0.8;
 const SPAWN_POP_TIME = 0.35;
 const HOP_TIME = 0.34; // Mega Knight leap arc duration
 const FLASH_TIME = 0.12;
+/** Duration of the squash-and-stretch jiggle when a unit takes a hit. */
+const HIT_JIGGLE_TIME = 0.2;
 
 interface EntityView {
   root: THREE.Group;
@@ -172,6 +174,12 @@ interface EntityView {
   spawnStyle?: "rise" | "pop" | "slam";
   spawnColor?: number;
   spawnBurst?: number;
+  /** Seconds left of the take-a-hit squash jiggle. */
+  hitT?: number;
+  /** Damage stage a tower has visibly reached (0 pristine, 1 smoking, 2 burning). */
+  dmgStage?: number;
+  /** Seconds until the next damage-smoke puff on a wounded tower. */
+  smokeT?: number;
   /** Seconds left in a leap arc (Mega Knight jump), 0/undefined = grounded. */
   hopT?: number;
   /** World position the current leap launched from. */
@@ -1233,7 +1241,7 @@ export class Battle3D {
     // lanterns, spell FX, hit-sparks) bloom, so it stays subtle and cheap.
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.32, 0.34, 0.92);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.38, 0.34, 0.9);
     this.composer.addPass(this.bloom);
     this.outputPass = new OutputPass();
     this.composer.addPass(this.outputPass);
@@ -1243,7 +1251,7 @@ export class Battle3D {
   }
 
   private buildLights(): void {
-    this.scene.add(new THREE.HemisphereLight(0xdfeaff, 0x3a5f3c, 0.9));
+    this.scene.add(new THREE.HemisphereLight(0xe4edff, 0x46683f, 1.0));
     const sun = new THREE.DirectionalLight(0xfff2d8, 1.7);
     sun.position.set(10, 22, 8);
     sun.castShadow = true;
@@ -1264,6 +1272,11 @@ export class Battle3D {
     const backRim = new THREE.DirectionalLight(0x9fc4ff, 0.6);
     backRim.position.set(-8, 10, -14);
     this.scene.add(backRim);
+    // Soft golden-hour fill from the player's side so shadowed faces
+    // keep warmth instead of going flat grey.
+    const fill = new THREE.DirectionalLight(0xffe2b8, 0.3);
+    fill.position.set(-6, 8, 14);
+    this.scene.add(fill);
   }
 
   private decorate(): void {
@@ -2176,7 +2189,7 @@ export class Battle3D {
     );
   }
 
-  private puff(ax: number, ay: number, color: number, size = 0.5): void {
+  private puff(ax: number, ay: number, color: number, size = 0.5, lift = 0): void {
     const w = toWorld(ax, ay);
     const group = new THREE.Group();
     for (let i = 0; i < 4; i++) {
@@ -2187,10 +2200,10 @@ export class Battle3D {
       s.position.set((i % 2 ? 1 : -1) * 0.15 * i, 0.2 + 0.12 * i, (i > 1 ? 1 : -1) * 0.12);
       group.add(s);
     }
-    group.position.set(w.x, 0.1, w.z);
+    group.position.set(w.x, 0.1 + lift, w.z);
     this.addEffect(group, 0.45, (frac) => {
       group.scale.setScalar(1 + (1 - frac) * 1.6);
-      group.position.y = 0.1 + (1 - frac) * 0.5;
+      group.position.y = 0.1 + lift + (1 - frac) * 0.5;
       for (const child of group.children) {
         ((child as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.6 * frac;
       }
@@ -3019,9 +3032,24 @@ export class Battle3D {
         } else {
           view.root.scale.setScalar(Math.max(0.05, easeOutBack(f) * baseScale));
         }
-      } else if (view.root.scale.x !== baseScale || view.root.position.y !== 0) {
-        view.root.scale.setScalar(baseScale);
-        view.root.position.y = 0;
+      } else {
+        // Take-a-hit jiggle: a fast squash (short + wide) that springs back —
+        // every landed blow visibly deforms the victim, not just a flash.
+        view.hitT = Math.max(0, (view.hitT ?? 0) - dt);
+        const j =
+          view.hitT > 0 ? Math.sin((view.hitT / HIT_JIGGLE_TIME) * Math.PI) : 0;
+        if (j > 0) {
+          view.root.scale.set(
+            baseScale * (1 + 0.1 * j),
+            baseScale * (1 - 0.14 * j),
+            baseScale * (1 + 0.1 * j),
+          );
+        } else if (view.root.scale.x !== baseScale) {
+          view.root.scale.setScalar(baseScale);
+        }
+        if (!(view.hopT && view.hopT > 0) && view.root.position.y !== 0) {
+          view.root.position.y = 0;
+        }
       }
 
       // Leap arc: sail from the launch point to the landing on a parabola.
@@ -3035,7 +3063,12 @@ export class Battle3D {
 
       // Emissive glow chain: damage flash > rage pink > charge gold.
       const lost = view.lastHp - e.hp;
-      if (lost > 0.5) view.flashT = FLASH_TIME;
+      if (lost > 0.5) {
+        view.flashT = FLASH_TIME;
+        // Troops recoil bodily; towers/buildings show damage other ways
+        // (and deployed buildings decay every tick, which is not a "hit").
+        if (e.kind === "troop") view.hitT = HIT_JIGGLE_TIME;
+      }
       view.lastHp = e.hp;
 
       // Floating combat text, batched so swarms don't spam numbers.
@@ -3123,6 +3156,33 @@ export class Battle3D {
       if (e.kind === "troop" && e.hp < e.maxHp) view.hpGroup.visible = true;
       if (view.hpText) updateHpText(view.hpText, e.hp);
       if (view.zzz) view.zzz.visible = !e.active;
+
+      // Wounded crown towers visibly degrade: masonry bursts off as each
+      // damage threshold is crossed, then the tower smoulders — light smoke
+      // below 2/3 HP, thick black smoke and embers below 1/3.
+      if (e.kind === "princess-tower" || e.kind === "king-tower") {
+        const frac = e.hp / e.maxHp;
+        const stage = frac < 1 / 3 ? 2 : frac < 2 / 3 ? 1 : 0;
+        const towerTop = e.kind === "king-tower" ? 3.4 : 2.7;
+        if (stage > (view.dmgStage ?? 0)) {
+          view.dmgStage = stage;
+          this.puff(e.x, e.y, 0x8b7c69, 1.1, towerTop * 0.4);
+          this.emitSparks(e.x, e.y, towerTop * 0.6, 10, 4.5, 1.5, stage === 2 ? 0xff8c42 : 0xa89880, 0.11, 0.6);
+          this.addShake(0.22);
+        }
+        if ((view.dmgStage ?? 0) > 0) {
+          view.smokeT = (view.smokeT ?? 0) - dt;
+          if (view.smokeT <= 0) {
+            view.smokeT = view.dmgStage === 2 ? 0.4 : 0.9;
+            const ox = e.x + (Math.random() - 0.5) * 0.9;
+            const oy = e.y + (Math.random() - 0.5) * 0.9;
+            this.puff(ox, oy, view.dmgStage === 2 ? 0x3a332c : 0x776f64, 0.5, towerTop);
+            if (view.dmgStage === 2) {
+              this.emitSparks(ox, oy, towerTop, 2, 2.5, 1.2, 0xff8c42, 0.07, 0.5);
+            }
+          }
+        }
+      }
 
       if (view.rig) {
         const target = state.entities.find((o) => o.id === e.targetId);
@@ -3351,7 +3411,15 @@ export class Battle3D {
       }
       const ease = f * f;
       d.view.root.rotation.z = d.topple * ease;
-      d.view.root.position.y = d.view.isTroop ? -0.3 * ease : -1.6 * ease;
+      if (d.view.isTroop) {
+        // Cartoon knockout: a little launch upward with a half-spin,
+        // then crumple through the floor while fading.
+        d.view.root.rotation.y += dt * 7 * Math.sign(d.topple);
+        d.view.root.position.y =
+          Math.sin(Math.min(1, f * 1.5) * Math.PI) * 0.45 - 0.5 * ease;
+      } else {
+        d.view.root.position.y = -1.6 * ease;
+      }
       for (const mat of d.fadeMats) mat.opacity = 1 - f;
       return true;
     });

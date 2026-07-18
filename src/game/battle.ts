@@ -237,9 +237,15 @@ interface TowerStats {
   radius: number;
 }
 
+/**
+ * Tower durability is proportioned against the troop roster the way CR
+ * proportions its towers against tournament-standard cards: a princess
+ * tower outlasts ~1.8 knights of HP, the king close to 3. (The old
+ * 1400/2600 values melted in seconds against 3000+ HP win conditions.)
+ */
 const TOWER_STATS: Record<TowerKind, TowerStats> = {
-  princess: { hp: 1400, damage: 110, hitSpeed: 0.8, range: 7.5, radius: 1.0 },
-  king: { hp: 2600, damage: 110, hitSpeed: 1.0, range: 7.0, radius: 1.3 },
+  princess: { hp: 2534, damage: 120, hitSpeed: 0.8, range: 7.5, radius: 1.0 },
+  king: { hp: 4008, damage: 130, hitSpeed: 1.0, range: 7.0, radius: 1.3 },
 };
 
 /** Spells hit crown towers for a fraction of their listed damage. */

@@ -2807,16 +2807,27 @@ export function animateTroop(
   const walk = Math.sin(t * 10 + opts.phase);
   const baseScale = rig.group.scale.x;
   const lean = opts.charging ? 0.16 : 0;
+  // Body english on a strike: wind-up twists away, the blow whips through.
+  const twist = opts.swing * 0.2;
 
   if (rig.hover) {
-    rig.group.position.y = rig.hover + Math.sin(t * 3 + opts.phase) * 0.1;
+    // Flyers bob on two mixed frequencies so the float never reads as a loop.
+    rig.group.position.y =
+      rig.hover +
+      Math.sin(t * 3 + opts.phase) * 0.1 +
+      Math.sin(t * 4.7 + opts.phase * 1.3) * 0.035;
     rig.group.rotation.x = (opts.moving ? 0.14 : 0) + opts.swing * 0.25 + lean;
+    rig.group.rotation.z = Math.sin(t * 2.1 + opts.phase) * 0.05; // lazy banking sway
+    rig.group.rotation.y = twist;
   } else if (opts.moving) {
     const hop = Math.abs(walk);
-    rig.group.position.y = hop * 0.07;
+    rig.group.position.y = hop * 0.09;
     // Squash on landing, stretch at the top of the hop.
-    rig.group.scale.y = baseScale * (0.96 + hop * 0.07);
-    rig.group.rotation.x = 0.07 + opts.swing * 0.22 + lean;
+    rig.group.scale.y = baseScale * (0.95 + hop * 0.09);
+    rig.group.rotation.x = 0.09 + opts.swing * 0.22 + lean;
+    // Waddle: the torso rolls onto each stride like a marching toy.
+    rig.group.rotation.z = walk * 0.07;
+    rig.group.rotation.y = twist;
   } else {
     // Idle: gentle breathing, squashing under a heavy strike.
     rig.group.position.y = 0;
@@ -2824,18 +2835,21 @@ export function animateTroop(
     rig.group.scale.y =
       baseScale * (1 + Math.sin(t * 2.2 + opts.phase) * 0.012 - squash);
     rig.group.rotation.x = opts.swing * 0.22 + lean;
+    // Alive at rest: a slow weight-shift instead of a frozen statue.
+    rig.group.rotation.z = Math.sin(t * 1.4 + opts.phase) * 0.02;
+    rig.group.rotation.y = twist;
   }
 
   if (rig.legs) {
     for (let i = 0; i < rig.legs.length; i++) {
       const dir = i % 2 === 0 ? 1 : -1;
-      rig.legs[i].rotation.x = opts.moving ? walk * 0.6 * dir : 0;
+      rig.legs[i].rotation.x = opts.moving ? walk * 0.7 * dir : 0;
     }
   }
   if (rig.offArm) {
     // Overlapping action: the free arm trails the leg cycle slightly.
     const lagged = Math.sin(t * 10 + opts.phase - 0.55);
-    rig.offArm.rotation.x = opts.moving ? -lagged * 0.45 : 0;
+    rig.offArm.rotation.x = opts.moving ? -lagged * 0.55 : 0;
   }
   if (rig.wings) {
     for (const wing of rig.wings) {
@@ -2846,7 +2860,7 @@ export function animateTroop(
     rig.arm.rotation.x =
       rig.armRest -
       rig.swingAmp * opts.swing +
-      (opts.moving ? walk * 0.18 : 0) -
+      (opts.moving ? walk * 0.3 : 0) -
       (opts.charging ? 0.55 : 0); // weapon couched for the charge
   }
   rig.extras?.(t, opts.phase);

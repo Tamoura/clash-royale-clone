@@ -23,9 +23,10 @@ function renderPortrait(id: CardId): HTMLCanvasElement | null {
     const scene = new THREE.Scene();
     const rig = buildTroop(id); // buildings reuse their troop-style rigs? no:
     outlineRig(rig.group);
-    rig.group.rotation.y = 0.5; // three-quarter hero angle
     if (rig.arm) rig.arm.rotation.x = rig.armRest;
     animateTroop(rig, { moving: false, swing: 0, time: 0.6, phase: 0 });
+    // After animateTroop (which owns body yaw): three-quarter hero angle.
+    rig.group.rotation.y = 0.5;
     scene.add(rig.group);
     scene.add(new THREE.HemisphereLight(0xdfeaff, 0x4a5070, 1.3));
     const key = new THREE.DirectionalLight(0xfff2d8, 2.2);
