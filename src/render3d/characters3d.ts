@@ -444,19 +444,21 @@ function buildArcher(): TroopRig {
   // Bow arm, held out front — the whole group thrusts on release.
   const arm = new THREE.Group();
   arm.position.set(-0.3, 0.66, 0.05);
+  arm.rotation.y = -0.55; // yawed outboard so the bow clears her face
   arm.add(box(0.11, 0.26, 0.11, SKIN, 0, -0.13, 0));
+  // Bow held low and forward so it never crosses her face at rest.
   const bow = new THREE.Mesh(
     new THREE.TorusGeometry(0.34, 0.035, 8, 16, Math.PI),
     toon(0x8d6e63),
   );
   bow.castShadow = true;
-  bow.position.set(0, -0.26, 0.16);
+  bow.position.set(0, -0.36, 0.22);
   bow.rotation.set(0, -Math.PI / 2, 0);
   arm.add(bow);
-  arm.add(box(0.015, 0.66, 0.015, 0xe8e3d8, 0, -0.26, 0.16)); // string
+  arm.add(box(0.015, 0.66, 0.015, 0xe8e3d8, 0, -0.36, 0.22)); // string
   // Nocked arrow so the shot reads clearly.
   const nocked = new THREE.Group();
-  nocked.position.set(0, -0.26, 0.18);
+  nocked.position.set(0, -0.36, 0.24);
   const shaft = cyl(0.018, 0.018, 0.5, 0xd7ccc8, 0, 0, 0);
   shaft.rotation.x = Math.PI / 2;
   nocked.add(shaft);
@@ -465,7 +467,7 @@ function buildArcher(): TroopRig {
   nocked.add(tip);
   arm.add(nocked);
   g.add(arm);
-  return { group: g, arm, armRest: -1.05, swingAmp: 0.7, height: 1.25, legs, offArm };
+  return { group: g, arm, armRest: -0.9, swingAmp: 0.7, height: 1.25, legs, offArm };
 }
 
 function buildPrincess(): TroopRig {
@@ -505,18 +507,19 @@ function buildPrincess(): TroopRig {
   // Bow arm with a golden longbow and a glowing flaming arrow.
   const arm = new THREE.Group();
   arm.position.set(-0.3, 0.82, 0.05);
+  arm.rotation.y = -0.55; // yawed outboard so the bow clears her face
   arm.add(box(0.1, 0.26, 0.1, SKIN, 0, -0.13, 0));
   const bow = new THREE.Mesh(
     new THREE.TorusGeometry(0.4, 0.035, 8, 16, Math.PI),
     toon(GOLD),
   );
   bow.castShadow = true;
-  bow.position.set(0, -0.26, 0.18);
+  bow.position.set(0, -0.36, 0.24);
   bow.rotation.set(0, -Math.PI / 2, 0);
   arm.add(bow);
-  arm.add(box(0.015, 0.78, 0.015, 0xfff3c4, 0, -0.26, 0.18)); // string
+  arm.add(box(0.015, 0.78, 0.015, 0xfff3c4, 0, -0.36, 0.24)); // string
   const nocked = new THREE.Group();
-  nocked.position.set(0, -0.26, 0.2);
+  nocked.position.set(0, -0.36, 0.26);
   const shaft = cyl(0.018, 0.018, 0.55, 0x6d4c41, 0, 0, 0);
   shaft.rotation.x = Math.PI / 2;
   nocked.add(shaft);
@@ -528,7 +531,7 @@ function buildPrincess(): TroopRig {
   const flicker = (t: number, phase: number) => {
     flame.scale.setScalar(1 + Math.sin(t * 13 + phase) * 0.2);
   };
-  return { group: g, arm, armRest: -1.05, swingAmp: 0.7, height: 1.35, offArm, extras: flicker };
+  return { group: g, arm, armRest: -0.9, swingAmp: 0.7, height: 1.35, offArm, extras: flicker };
 }
 
 function buildGiant(): TroopRig {
@@ -1432,16 +1435,22 @@ function buildValkyrie(): TroopRig {
   arm.position.set(0.38, 0.78, 0);
   arm.add(box(0.13, 0.28, 0.13, SKIN, 0, -0.14, 0));
   arm.add(cyl(0.035, 0.035, 0.85, 0x6d4c41, 0, -0.1, 0.16)); // haft
-  arm.add(cone(0.05, 0.2, 0xc7d0dd, 0, 0.4, 0.16)); // haft spike
+  arm.add(cone(0.05, 0.2, 0xc7d0dd, 0, 0.42, 0.16)); // haft spike
+  // Broad flat half-moon blades facing the swing plane — the old edge-on
+  // squashed discs read as a grey ball, not her signature great-axe.
   for (const s of [-1, 1]) {
-    const blade = cyl(0.22, 0.22, 0.06, 0xb7c2cc, s * 0.18, 0.28, 0.16);
-    blade.rotation.z = Math.PI / 2;
-    blade.scale.y = 0.4;
+    const blade = cyl(0.28, 0.28, 0.055, 0xb7c2cc, s * 0.24, 0.28, 0.16);
+    blade.rotation.x = Math.PI / 2; // flat face forward
+    blade.scale.x = 0.82;
     arm.add(blade);
-    const hub = cyl(0.09, 0.09, 0.08, 0xf2c14e, s * 0.1, 0.28, 0.16);
-    hub.rotation.z = Math.PI / 2;
-    arm.add(hub);
+    const edge = cyl(0.3, 0.3, 0.04, 0xe7edf4, s * 0.32, 0.28, 0.16);
+    edge.rotation.x = Math.PI / 2; // bright cutting rim biased outward
+    edge.scale.x = 0.45;
+    arm.add(edge);
   }
+  const hub = cyl(0.1, 0.1, 0.1, 0xf2c14e, 0, 0.28, 0.16);
+  hub.rotation.x = Math.PI / 2; // gold boss where the blades meet the haft
+  arm.add(hub);
   g.add(arm);
   return { group: g, arm, armRest: -0.55, swingAmp: 1.9, height: 1.45, legs, offArm };
 }
@@ -1895,18 +1904,19 @@ export function buildTowerPrincess(): TroopRig {
   // Bow arm (same thrust-on-release rig as the field archer).
   const arm = new THREE.Group();
   arm.position.set(-0.26, 0.58, 0.05);
+  arm.rotation.y = -0.55; // yawed outboard so the bow clears her face
   arm.add(box(0.1, 0.24, 0.1, SKIN, 0, -0.12, 0));
   const bow = new THREE.Mesh(
     new THREE.TorusGeometry(0.3, 0.03, 8, 16, Math.PI),
     toon(0x8d6e63),
   );
   bow.castShadow = true;
-  bow.position.set(0, -0.22, 0.14);
+  bow.position.set(0, -0.32, 0.2);
   bow.rotation.set(0, -Math.PI / 2, 0);
   arm.add(bow);
-  arm.add(box(0.012, 0.58, 0.012, 0xe8e3d8, 0, -0.22, 0.14)); // string
+  arm.add(box(0.012, 0.58, 0.012, 0xe8e3d8, 0, -0.32, 0.2)); // string
   g.add(arm);
-  return { group: g, arm, armRest: -1.0, swingAmp: 0.7, height: 1.2, offArm };
+  return { group: g, arm, armRest: -0.85, swingAmp: 0.7, height: 1.2, offArm };
 }
 
 /** The king himself, enthroned on the king tower. */
