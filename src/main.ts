@@ -129,6 +129,29 @@ sandboxResetBtn.setAttribute("aria-label", "Reset the sandbox battle");
 sandboxResetBtn.style.display = "none";
 stage.appendChild(sandboxResetBtn);
 
+// Opponent play feed: every card the bot (or online foe) plays pops up as a
+// card chip, making it visible that the opponent runs the same 8-card
+// rotation the player does — no hidden hand, no free cards.
+const foePlays = document.createElement("div");
+foePlays.id = "foeplays";
+foePlays.setAttribute("aria-live", "polite");
+stage.appendChild(foePlays);
+
+function announceFoePlay(id: CardId): void {
+  const chip = document.createElement("div");
+  chip.className = "foe-play";
+  chip.appendChild(makeCardCanvas(id, { style: "hud", size: 40 }));
+  const nm = document.createElement("span");
+  nm.textContent = cardDisplayName(id);
+  chip.appendChild(nm);
+  foePlays.prepend(chip);
+  while (foePlays.children.length > 3) foePlays.lastChild?.remove();
+  window.setTimeout(() => {
+    chip.classList.add("fade");
+    window.setTimeout(() => chip.remove(), 400);
+  }, 2400);
+}
+
 // ---- Meta progression (gold/gems/owned/chests) --------------------------
 
 let profile: PlayerProfile = loadProfile(localStorage);
@@ -2067,6 +2090,16 @@ function frame(now: number): void {
   for (const ev of battle.events.splice(0)) {
     audio.onEvent(ev);
     scene.onEvent(ev);
+    // Feed the opponent's real card plays into the play feed. Synthetic
+    // effect events (an Electro Wizard's landing zap) reuse the "spell"
+    // type, so spells only count when the card really is a spell.
+    if (
+      (ev.type === "deploy" ||
+        (ev.type === "spell" && getCard(ev.cardId).kind === "spell")) &&
+      ev.side !== localSide()
+    ) {
+      announceFoePlay(ev.cardId);
+    }
     if (ev.type === "death" && (ev.kind === "princess-tower" || ev.kind === "king-tower")) {
       flashImpact();
     }
