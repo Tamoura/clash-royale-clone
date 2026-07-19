@@ -43,6 +43,7 @@ import * as THREE from "three";
 import {
   CHAMPION_LIMITS,
   CHAMPION_PALETTE,
+  DEFAULT_CHAMPION,
   MAX_CHAMPION_COST,
   championCostInfo,
   deleteChampion,
@@ -803,6 +804,70 @@ function buildStudio(def: ChampionDef): void {
     r.appendChild(out);
   }
 
+  // One-tap starting points — each showcases a different corner of the
+  // pricing model; Surprise rerolls until the design fits the budget.
+  {
+    const r = row(tr("Presets", "قوالب"));
+    const rowEl = document.createElement("div");
+    rowEl.className = "studio-presets";
+    const preset = (label: string, apply: () => void): void => {
+      const b = document.createElement("button");
+      b.className = "studio-walk";
+      b.textContent = label;
+      b.addEventListener("click", (e) => {
+        e.preventDefault();
+        apply();
+        refresh();
+      });
+      rowEl.appendChild(b);
+    };
+    const setAll = (p: Partial<ChampionDef>, caps: Partial<ChampionDef["abilities"]>): void => {
+      Object.assign(cur, p);
+      cur.abilities = { ...normalizeChampion(DEFAULT_CHAMPION).abilities, ...caps };
+    };
+    preset(tr("🛡 Tank", "🛡 درع"), () =>
+      setAll(
+        { count: 1, hp: 3400, damage: 230, hitSpeed: 1.6, range: 0.8, speed: "slow" },
+        { buildingsOnly: true },
+      ),
+    );
+    preset(tr("🎯 Sniper", "🎯 قنّاص"), () =>
+      setAll(
+        { count: 1, hp: 380, damage: 170, hitSpeed: 1.4, range: 8, speed: "medium" },
+        { targetsAir: true },
+      ),
+    );
+    preset(tr("👥 Swarm", "👥 حشد"), () =>
+      setAll(
+        { count: 5, hp: 160, damage: 80, hitSpeed: 1.0, range: 0.8, speed: "fast" },
+        {},
+      ),
+    );
+    preset(tr("🎲 Surprise", "🎲 مفاجأة"), () => {
+      const L = CHAMPION_LIMITS;
+      const ri = (lo: number, hi: number): number => lo + Math.floor(Math.random() * (hi - lo + 1));
+      for (let tries = 0; tries < 40; tries++) {
+        setAll(
+          {
+            count: ri(1, 5),
+            hp: ri(L.hp.min / 50, 3000 / 50) * 50,
+            damage: ri(L.damage.min / 10, 50) * 10,
+            hitSpeed: 0.9 + ri(0, 17) * 0.1,
+            range: Math.random() < 0.5 ? 0.8 : ri(3, 8),
+            speed: (["slow", "medium", "fast"] as const)[ri(0, 2)],
+          },
+          {},
+        );
+        for (const k of Object.keys(cur.abilities) as (keyof ChampionDef["abilities"])[]) {
+          cur.abilities[k] = Math.random() < 0.22;
+        }
+        cur = normalizeChampion(cur);
+        if (!championCostInfo(cur).overBudget) break;
+      }
+    });
+    r.appendChild(rowEl);
+  }
+
   slider(tr("Units", "الوحدات"), CHAMPION_LIMITS.count.min, CHAMPION_LIMITS.count.max, 1,
     () => cur.count, (v) => (cur.count = v));
   slider(tr("HP", "الصحة"), CHAMPION_LIMITS.hp.min, CHAMPION_LIMITS.hp.max, 50,
@@ -1036,6 +1101,8 @@ function capLabel(cap: keyof ChampionDef["abilities"]): string {
     pierce: ["🏹 Piercing shots", "🏹 سهام خارقة"],
     jumpsRiver: ["🌊 River jump", "🌊 قفز النهر"],
     deathBomb: ["💣 Death bomb", "💣 قنبلة موت"],
+    buildingsOnly: ["🏰 Building hunter (cheaper!)", "🏰 صائد المباني (أرخص!)"],
+    summoner: ["💀 Summons skeletons", "💀 يستدعي الميليشيا"],
   };
   return tr(labels[cap][0], labels[cap][1]);
 }

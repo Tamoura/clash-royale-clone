@@ -391,6 +391,7 @@ export class Hud {
       // Staggered crown tally on first show.
       if (!this.overlayShown) {
         this.overlayShown = true;
+        if (iWon) this.dropConfetti();
         this.overlayScore.textContent = "👑 0 — 0 👑";
         let step = 0;
         const targetMy = myCrowns;
@@ -419,6 +420,28 @@ export class Hud {
       this.overlayShown = false;
       this.overlay.classList.remove("show");
       delete this.overlay.dataset.kind;
+      this.overlay.querySelector(".confetti-box")?.remove();
     }
+  }
+
+  /** Rain celebratory confetti over the victory overlay. */
+  private dropConfetti(): void {
+    this.overlay.querySelector(".confetti-box")?.remove();
+    const box = document.createElement("div");
+    box.className = "confetti-box";
+    box.setAttribute("aria-hidden", "true");
+    const colors = ["#f6c14e", "#3b82f6", "#ef4444", "#66bb6a", "#e879d0", "#fff"];
+    for (let i = 0; i < 42; i++) {
+      const p = document.createElement("span");
+      p.className = "confetti";
+      p.style.left = `${(i * 137.5) % 100}%`;
+      p.style.background = colors[i % colors.length];
+      p.style.animationDelay = `${(i % 7) * 0.35}s`;
+      p.style.animationDuration = `${2.4 + ((i * 13) % 10) * 0.18}s`;
+      p.style.width = `${7 + (i % 3) * 3}px`;
+      p.style.height = `${10 + ((i * 5) % 3) * 4}px`;
+      box.appendChild(p);
+    }
+    this.overlay.appendChild(box);
   }
 }

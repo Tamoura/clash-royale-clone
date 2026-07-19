@@ -1451,6 +1451,39 @@ button.card.ready-pop {
   font: inherit;
   font-size: 13px;
 }
+.studio-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.studio-presets .studio-walk {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+/* ── Victory confetti ── */
+.confetti-box {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.confetti {
+  position: absolute;
+  top: -6%;
+  border-radius: 2px;
+  opacity: 0.95;
+  animation: confettiFall 3s linear infinite;
+}
+@keyframes confettiFall {
+  0% { transform: translateY(0) rotate(0deg); }
+  100% { transform: translateY(112vh) rotate(660deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .confetti-box {
+    display: none;
+  }
+}
 
 /* ══ Result overlay ══ */
 #overlay {

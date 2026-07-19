@@ -38,6 +38,8 @@ function defFromCard(id: CardId): ChampionDef {
       pierce: u.pierce,
       jumpsRiver: u.jumpsRiver,
       deathBomb: u.deathDamage > 0,
+      buildingsOnly: u.targetsBuildingsOnly,
+      summoner: u.spawnUnitId !== null,
     },
   };
 }
@@ -59,6 +61,10 @@ describe("championElixirCost calibration", () => {
     "prince",
     "wizard",
     "baby-dragon",
+    // Building-targeters — priceable now that the restriction is modeled.
+    "giant",
+    "hog-rider",
+    "balloon",
   ];
 
   for (const id of reference) {
@@ -88,16 +94,34 @@ describe("championElixirCost monotonicity", () => {
     expect(championElixirCost(buffed)).toBeGreaterThanOrEqual(championElixirCost(base));
   });
 
-  it("every capability adds (never subtracts) cost", () => {
+  it("every capability adds cost — except the building-hunter restriction", () => {
     // A beefy base so a percentage surcharge moves the rounded price.
     const beefy = normalizeChampion({ ...base, hp: 3000, damage: 500, range: 6 });
     for (const key of Object.keys(beefy.abilities) as (keyof ChampionDef["abilities"])[]) {
       const withIt = structuredClone(beefy);
       withIt.abilities[key] = true;
-      expect(championElixirCost(normalizeChampion(withIt))).toBeGreaterThanOrEqual(
-        championElixirCost(beefy),
-      );
+      const cost = championElixirCost(normalizeChampion(withIt));
+      if (key === "buildingsOnly") {
+        // Refusing to fight troops is a restriction: it must discount.
+        expect(cost).toBeLessThanOrEqual(championElixirCost(beefy));
+      } else {
+        expect(cost).toBeGreaterThanOrEqual(championElixirCost(beefy));
+      }
     }
+  });
+
+  it("summoner and building-hunter materialize into the card", () => {
+    const card = buildChampionCard({
+      ...structuredClone(DEFAULT_CHAMPION),
+      abilities: {
+        ...DEFAULT_CHAMPION.abilities,
+        summoner: true,
+        buildingsOnly: true,
+      },
+    });
+    expect(card.unit.spawnUnitId).toBe("skeletons");
+    expect(card.unit.spawnInterval).toBeGreaterThan(0);
+    expect(card.unit.targetsBuildingsOnly).toBe(true);
   });
 
   it("a maxed-out monster is over budget, not discounted to 10", () => {

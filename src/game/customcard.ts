@@ -46,6 +46,13 @@ export interface ChampionAbilities {
   jumpsRiver: boolean;
   /** Explodes on death, damaging nearby enemies. */
   deathBomb: boolean;
+  /**
+   * Ignores troops and marches straight for buildings (Giant-style).
+   * A restriction, so it's the one capability that LOWERS the price.
+   */
+  buildingsOnly: boolean;
+  /** Periodically summons a wave of skeletons (Witch-style). */
+  summoner: boolean;
 }
 
 export interface ChampionDef {
@@ -99,6 +106,8 @@ export const DEFAULT_CHAMPION: ChampionDef = {
     pierce: false,
     jumpsRiver: false,
     deathBomb: false,
+    buildingsOnly: false,
+    summoner: false,
   },
   look: {
     body: 0x2f6bd8,
@@ -152,6 +161,8 @@ export function normalizeChampion(raw: unknown): ChampionDef {
       pierce: a.pierce === true && range > 1,
       jumpsRiver: a.jumpsRiver === true && a.flying !== true,
       deathBomb: a.deathBomb === true,
+      buildingsOnly: a.buildingsOnly === true,
+      summoner: a.summoner === true,
     },
     look: {
       body: num(l.body, DEFAULT_CHAMPION.look.body) & 0xffffff,
@@ -166,7 +177,11 @@ export function normalizeChampion(raw: unknown): ChampionDef {
 /** Speed is a force multiplier on everything the unit does. */
 const SPEED_FACTOR: Record<Speed, number> = { slow: 0.92, medium: 1, fast: 1.1 };
 
-/** Priced capability surcharges (multiplicative, summed). */
+/**
+ * Priced capability surcharges (multiplicative, summed). Building-hunting
+ * is negative: refusing to fight troops is a restriction, so it discounts
+ * the price the way Giants and Hogs undercut equal-stat all-rounders.
+ */
 const ABILITY_SURCHARGE: Record<keyof ChampionAbilities, number> = {
   flying: 0.12,
   targetsAir: 0.1,
@@ -177,6 +192,8 @@ const ABILITY_SURCHARGE: Record<keyof ChampionAbilities, number> = {
   pierce: 0.12,
   jumpsRiver: 0.04,
   deathBomb: 0.08,
+  buildingsOnly: -0.12,
+  summoner: 0.25,
 };
 
 /** The dearest card the elixir bar can ever pay for. */
@@ -262,7 +279,7 @@ export function buildChampionCard(raw: ChampionDef): TroopCard {
       attackRange: def.range,
       sightRange: Math.max(5.5, def.range + 0.5),
       speed: def.speed,
-      targetsBuildingsOnly: false,
+      targetsBuildingsOnly: ab.buildingsOnly,
       targetsAir: ab.targetsAir,
       flying: ab.flying,
       jumpsRiver: ab.jumpsRiver,
@@ -277,8 +294,8 @@ export function buildChampionCard(raw: ChampionDef): TroopCard {
       jumpRange: 0,
       deathDamage: ab.deathBomb ? Math.round(def.damage * 0.8) : 0,
       deathRadius: ab.deathBomb ? 1.5 : 0,
-      spawnUnitId: null,
-      spawnInterval: 0,
+      spawnUnitId: ab.summoner ? "skeletons" : null,
+      spawnInterval: ab.summoner ? 7 : 0,
       elixirInterval: 0,
       radius: def.count > 1 ? 0.4 : 0.55,
     },
