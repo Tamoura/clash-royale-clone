@@ -7,7 +7,8 @@ import {
   type BattleState,
   type Entity,
 } from "../game/battle";
-import { getCard, type CardId } from "../game/cards";
+import type { CardId } from "../game/cards";
+import { cardDisplayName } from "../render/cardNames";
 import { isRaged, moveGoal } from "../game/sim";
 import { projectileStyle } from "./projectiles";
 import { damageLabel } from "./popups";
@@ -333,7 +334,8 @@ function setHpFill(view: EntityView, frac: number, width: number): void {
 const nameMaterials = new Map<string, THREE.SpriteMaterial>();
 
 function nameSpriteMaterial(cardId: CardId, side: Side): THREE.SpriteMaterial {
-  const name = getCard(cardId).name;
+  // Edition-aware: Arabic-script names in the Arabic edition.
+  const name = cardDisplayName(cardId);
   // Keyed by name too: renaming the Studio champion must not reuse a
   // stale label from an earlier battle.
   const key = `${cardId}:${side}:${name}`;

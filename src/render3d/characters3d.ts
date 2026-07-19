@@ -945,19 +945,33 @@ interface WizardTheme {
   tip: number; // headgear accent glow
   mood: EyeMood;
   headgear: "hat" | "electro" | "ice";
+  /** Face color — the Ice Wizard is frost-blue, everyone else skin-toned. */
+  skin: number;
+  /** Ambient glowing orbiters circling the caster (fire embers / ice shards). */
+  orbit: "embers" | "shards" | null;
+  /** Thick white winter fur collar (the Ice Wizard). */
+  fur: boolean;
 }
 
+/**
+ * The classic wizard reads FIRE at a glance: crimson robes, a flame-tipped
+ * hat, and embers circling his casting hand — no longer confusable with
+ * the pale-blue Ice Wizard across a busy field.
+ */
 const CLASSIC_WIZARD: WizardTheme = {
-  robe: 0x2456c8,
-  robeDk: 0x18337e,
+  robe: 0xa82f35,
+  robeDk: 0x6e1a22,
   trim: 0xf2c14e,
   hair: 0x6b4a2e, // brown, per the CR reference (not white)
   beard: 0x6b4a2e,
   orb: 0xff7a00,
-  crystal: 0x59c8ff,
-  tip: 0xfff1a8,
+  crystal: 0xffb35c,
+  tip: 0xffc46b,
   mood: "brave",
   headgear: "hat",
+  skin: SKIN,
+  orbit: "embers",
+  fur: false,
 };
 
 function buildWizard(theme: WizardTheme = CLASSIC_WIZARD): TroopRig {
@@ -970,14 +984,19 @@ function buildWizard(theme: WizardTheme = CLASSIC_WIZARD): TroopRig {
   g.add(cyl(0.4, 0.42, 0.08, 0x5a3a1c, 0, 0.76, 0)); // belt
   g.add(box(0.1, 0.1, 0.05, TRIM, 0, 0.76, 0.42)); // buckle
   for (let i = 0; i < 3; i++) g.add(sphere(0.045, TRIM, 0, 0.62 - i * 0.17, 0.4)); // star buttons
-  const head = sphere(0.32, SKIN, 0, 1.12, 0);
+  const head = sphere(0.32, theme.skin, 0, 1.12, 0);
   addEyes(head, 0.32, 0.32, 0.08, theme.mood);
   g.add(head);
   // Hair tufts + short beard, kept clear of the lit face.
   for (const s of [-1, 1]) g.add(sphere(0.12, HAIR, s * 0.28, 1.02, 0.04));
-  const beard = cone(0.2, 0.42, theme.beard, 0, 0.84, 0.12);
+  const beard = cone(0.2, theme.fur ? 0.58 : 0.42, theme.beard, 0, theme.fur ? 0.76 : 0.84, 0.12);
   beard.rotation.x = Math.PI;
   g.add(beard);
+  if (theme.fur) {
+    // Winter kit: a thick white fur collar with shoulder puffs.
+    g.add(cyl(0.3, 0.36, 0.16, 0xf2f6f8, 0, 0.9, 0));
+    for (const s of [-1, 1]) g.add(sphere(0.15, 0xf2f6f8, s * 0.3, 0.88, 0));
+  }
   let antennae: THREE.Object3D | null = null;
   if (ARABIC) {
     const t = turban(0.32, 0x2f6f6b, 0x76ff03); // teal turban, green mage jewel
@@ -1034,11 +1053,35 @@ function buildWizard(theme: WizardTheme = CLASSIC_WIZARD): TroopRig {
   orb.position.set(0, -0.34, 0.1);
   arm.add(orb);
   g.add(arm);
+
+  // Elemental orbiters: embers (fire) or crystal shards (ice) circling the
+  // caster — a moving silhouette cue readable even at phone size.
+  const orbiters: THREE.Mesh[] = [];
+  if (theme.orbit) {
+    for (let i = 0; i < 3; i++) {
+      const m =
+        theme.orbit === "shards"
+          ? new THREE.Mesh(new THREE.OctahedronGeometry(0.075), glow(theme.tip, 1.6))
+          : new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), glow(theme.orb, 1.8));
+      g.add(m);
+      orbiters.push(m);
+    }
+  }
+
   const flicker = (t: number, phase: number) => {
     const s = 1 + Math.sin(t * 11 + phase) * 0.12 + Math.sin(t * 23 + phase * 2) * 0.05;
     orb.scale.setScalar(s);
     crystal.rotation.y = t * 1.5;
     if (antennae) antennae.rotation.y = t * 4;
+    for (let i = 0; i < orbiters.length; i++) {
+      const a = t * 2.2 + phase + (i / orbiters.length) * Math.PI * 2;
+      orbiters[i].position.set(
+        Math.cos(a) * 0.52,
+        0.95 + Math.sin(t * 3 + i * 2.1) * 0.14,
+        Math.sin(a) * 0.52,
+      );
+      orbiters[i].rotation.y = a;
+    }
   };
   return { group: g, arm, armRest: -0.9, swingAmp: 1.1, height: 1.7, offArm, extras: flicker };
 }
@@ -1055,21 +1098,32 @@ function buildElectroWizard(): TroopRig {
     tip: 0xb8f3ff,
     mood: "angry",
     headgear: "electro",
+    skin: SKIN,
+    orbit: null,
+    fur: false,
   });
 }
 
+/**
+ * The Ice Wizard is unmistakably WINTER now: frost-blue skin, a deep
+ * arctic robe under a thick white fur collar, a long snowy beard, and
+ * ice shards slowly orbiting him.
+ */
 function buildIceWizard(): TroopRig {
   return buildWizard({
-    robe: 0x7ec8f0,
-    robeDk: 0x2e6fa0,
+    robe: 0x25688e,
+    robeDk: 0x143c54,
     trim: 0xeafaff,
     hair: 0xeafaff,
-    beard: 0xd6f2ff,
+    beard: 0xf2f8ff,
     orb: 0xbfeaff,
     crystal: 0xdff6ff,
-    tip: 0xeafaff,
+    tip: 0xd8f4ff,
     mood: "calm",
     headgear: "ice",
+    skin: 0x9fd8ec, // frost-touched face
+    orbit: "shards",
+    fur: true,
   });
 }
 
@@ -1097,13 +1151,17 @@ function buildWitch(): TroopRig {
     strand.rotation.z = s * 0.18;
     g.add(strand);
   }
-  // CR look: violet hood draped over white hair, golden shoulder skulls.
-  const hood = sphere(0.36, 0x4a148c, 0, 1.16, -0.04);
-  hood.scale.set(1, 0.95, 1.02);
-  g.add(hood);
-  const hoodPeak = cone(0.16, 0.3, 0x4a148c, 0, 1.5, -0.12);
-  hoodPeak.rotation.x = -0.35; // drapes backward
-  g.add(hoodPeak);
+  // Redesign: the classic crooked witch hat — a wide brim, a tall cone,
+  // and a bent tip flopping sideways. Reads "witch" from across the arena
+  // where the old hood blended into every other robed caster.
+  g.add(cyl(0.5, 0.52, 0.06, 0x38106b, 0, 1.27, -0.02)); // wide brim
+  g.add(cone(0.34, 0.58, 0x4a148c, 0, 1.58, -0.02)); // crown
+  const hatTip = cone(0.15, 0.42, 0x4a148c, 0.2, 1.86, -0.02);
+  hatTip.rotation.z = -0.9; // the tip flops over
+  g.add(hatTip);
+  g.add(sphere(0.06, 0x76ff03, 0.38, 1.94, -0.02)); // soul-green tip bauble
+  g.add(cyl(0.36, 0.38, 0.09, 0x2e7d32, 0, 1.33, -0.02)); // moss-green band
+  g.add(box(0.09, 0.09, 0.04, 0xd9a93f, 0, 1.33, 0.35)); // gold buckle
   for (const s of [-1, 1]) {
     const whiteHair = cyl(0.06, 0.045, 0.4, 0xe8e3d8, s * 0.24, 0.86, 0.12);
     whiteHair.rotation.z = s * 0.14;

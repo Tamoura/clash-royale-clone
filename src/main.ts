@@ -96,6 +96,9 @@ applyEditionTokens(STORED_EDITION);
 // Make the saved Studio champion live before any card art or sim uses it.
 initChampion();
 
+/** Edition-aware UI string: English, or Arabic in the Arabic edition. */
+const tr = (en: string, ar: string): string => (ARABIC ? ar : en);
+
 const stage = document.getElementById("stage")!;
 
 // Character portrait studio: ?gallery=<cardId|tower-princess|tower-king>
@@ -584,22 +587,26 @@ function buildHome(): void {
     btn.addEventListener("click", fn);
     nav.appendChild(btn);
   };
-  mk("⚔️ Battle", "battle-btn", () => openDeckPicker({ mode: "battle" }));
-  mk("🎲 Draft", "battle-btn friend", () => openDraft());
-  mk("🧩 Challenges", "battle-btn friend", () => openChallenges());
+  mk(tr("⚔️ Battle", "⚔️ قتال"), "battle-btn", () => openDeckPicker({ mode: "battle" }));
+  mk(tr("🎲 Draft", "🎲 انتقاء"), "battle-btn friend", () => openDraft());
+  mk(tr("🧩 Challenges", "🧩 تحديات"), "battle-btn friend", () => openChallenges());
   mk(
-    isDailyDone() ? "📅 Daily ✓ (done today)" : "📅 Daily Battle",
+    isDailyDone()
+      ? tr("📅 Daily ✓ (done today)", "📅 اليومية ✓ (أُنجزت)")
+      : tr("📅 Daily Battle", "📅 المعركة اليومية"),
     "battle-btn friend",
     () => startDaily(),
   );
-  mk("🃏 Deck", "battle-btn friend", () => openDeckPicker({ mode: "deck" }));
+  mk(tr("🃏 Deck", "🃏 المجموعة"), "battle-btn friend", () => openDeckPicker({ mode: "deck" }));
   mk(
-    hasSavedChampion() ? "🛠️ Edit Champion" : "🛠️ Create Champion",
+    hasSavedChampion()
+      ? tr("🛠️ Edit Champion", "🛠️ تعديل البطل")
+      : tr("🛠️ Create Champion", "🛠️ إنشاء البطل"),
     "battle-btn friend",
     () => openStudio(),
   );
-  mk("📚 Collection", "battle-btn friend", () => openCollection());
-  mk("🎁 Chests", "battle-btn friend", () => openChests());
+  mk(tr("📚 Collection", "📚 المقتنيات"), "battle-btn friend", () => openCollection());
+  mk(tr("🎁 Chests", "🎁 الصناديق"), "battle-btn friend", () => openChests());
   pickerRoot.appendChild(nav);
 }
 
@@ -627,14 +634,17 @@ function buildStudio(def: ChampionDef): void {
   let cur = normalizeChampion(def);
 
   const title = document.createElement("h2");
-  title.textContent = "Character Studio";
+  title.textContent = tr("Character Studio", "ورشة البطل");
   pickerRoot.appendChild(title);
 
   const hint = document.createElement("div");
   hint.className = "collect-label";
   hint.textContent = hasSavedChampion()
-    ? "You have one champion — saving replaces it."
-    : "Design your one champion — its elixir price follows its power.";
+    ? tr("You have one champion — saving replaces it.", "لديك بطل واحد — الحفظ يستبدله.")
+    : tr(
+        "Design your one champion — its elixir price follows its power.",
+        "صمّم بطلك الواحد — سعر الإكسير يتبع قوته.",
+      );
   pickerRoot.appendChild(hint);
 
   const wrap = document.createElement("div");
@@ -724,15 +734,19 @@ function buildStudio(def: ChampionDef): void {
     if (caps.length) bits.push(caps.join(" · "));
     if (info.overBudget) {
       bits.push(
-        `<span class="studio-warning">⚠️ Worth ${info.raw} elixir — the bar only holds ` +
-          `${MAX_CHAMPION_COST}. Tone it down to save.</span>`,
+        `<span class="studio-warning">` +
+          tr(
+            `⚠️ Worth ${info.raw} elixir — the bar only holds ${MAX_CHAMPION_COST}. Tone it down to save.`,
+            `⚠️ يستحق ${info.raw} إكسير — الحد الأقصى ${MAX_CHAMPION_COST}. خفّف القوة للحفظ.`,
+          ) +
+          `</span>`,
       );
     }
     summary.innerHTML = bits.map((b) => `<div>${b}</div>`).join("");
     saveBtn.disabled = info.overBudget;
     saveBtn.textContent = info.overBudget
-      ? `🚫 Too powerful (worth ${info.raw})`
-      : "💾 Save Champion";
+      ? tr(`🚫 Too powerful (worth ${info.raw})`, `🚫 قوي جدًا (${info.raw})`)
+      : tr("💾 Save Champion", "💾 حفظ البطل");
     for (const r of refreshers) r();
     rebuildRig();
   }
@@ -749,7 +763,7 @@ function buildStudio(def: ChampionDef): void {
 
   // Name.
   {
-    const r = row("Name");
+    const r = row(tr("Name", "الاسم"));
     const input = document.createElement("input");
     input.type = "text";
     input.maxLength = CHAMPION_LIMITS.nameLength;
@@ -789,13 +803,13 @@ function buildStudio(def: ChampionDef): void {
     r.appendChild(out);
   }
 
-  slider("Units", CHAMPION_LIMITS.count.min, CHAMPION_LIMITS.count.max, 1,
+  slider(tr("Units", "الوحدات"), CHAMPION_LIMITS.count.min, CHAMPION_LIMITS.count.max, 1,
     () => cur.count, (v) => (cur.count = v));
-  slider("HP", CHAMPION_LIMITS.hp.min, CHAMPION_LIMITS.hp.max, 50,
+  slider(tr("HP", "الصحة"), CHAMPION_LIMITS.hp.min, CHAMPION_LIMITS.hp.max, 50,
     () => cur.hp, (v) => (cur.hp = v));
-  slider("Damage", CHAMPION_LIMITS.damage.min, CHAMPION_LIMITS.damage.max, 10,
+  slider(tr("Damage", "الضرر"), CHAMPION_LIMITS.damage.min, CHAMPION_LIMITS.damage.max, 10,
     () => cur.damage, (v) => (cur.damage = v));
-  slider("Hit every", CHAMPION_LIMITS.hitSpeed.min, CHAMPION_LIMITS.hitSpeed.max, 0.1,
+  slider(tr("Hit every", "يضرب كل"), CHAMPION_LIMITS.hitSpeed.min, CHAMPION_LIMITS.hitSpeed.max, 0.1,
     () => cur.hitSpeed, (v) => (cur.hitSpeed = v), (v) => `${v.toFixed(1)}s`);
 
   function select<T extends string | number>(
@@ -823,20 +837,20 @@ function buildStudio(def: ChampionDef): void {
   }
 
   select<number>(
-    "Reach",
+    tr("Reach", "المدى"),
     [
-      { value: 0.8, text: "Melee" },
-      ...[3, 4, 5, 6, 7, 8].map((n) => ({ value: n, text: `${n} tiles` })),
+      { value: 0.8, text: tr("Melee", "التحام") },
+      ...[3, 4, 5, 6, 7, 8].map((n) => ({ value: n, text: tr(`${n} tiles`, `${n} بلاطات`) })),
     ],
     () => cur.range,
     (v) => (cur.range = v),
   );
   select<ChampionDef["speed"]>(
-    "Speed",
+    tr("Speed", "السرعة"),
     [
-      { value: "slow", text: "Slow" },
-      { value: "medium", text: "Medium" },
-      { value: "fast", text: "Fast" },
+      { value: "slow", text: tr("Slow", "بطيء") },
+      { value: "medium", text: tr("Medium", "متوسط") },
+      { value: "fast", text: tr("Fast", "سريع") },
     ],
     () => cur.speed,
     (v) => (cur.speed = v),
@@ -845,7 +859,7 @@ function buildStudio(def: ChampionDef): void {
   // Capabilities — each priced into the elixir cost.
   const capsHead = document.createElement("div");
   capsHead.className = "studio-section";
-  capsHead.textContent = "Capabilities (each adds to the price)";
+  capsHead.textContent = tr("Capabilities (each adds to the price)", "القدرات (كل قدرة تزيد السعر)");
   controls.appendChild(capsHead);
   const capsGrid = document.createElement("div");
   capsGrid.className = "studio-caps";
@@ -876,7 +890,7 @@ function buildStudio(def: ChampionDef): void {
   // Appearance.
   const lookHead = document.createElement("div");
   lookHead.className = "studio-section";
-  lookHead.textContent = "Appearance (free — style is never priced)";
+  lookHead.textContent = tr("Appearance (free — style is never priced)", "المظهر (مجاني — لا يؤثر في السعر)");
   controls.appendChild(lookHead);
 
   function swatches(label: string, get: () => number, set: (v: number) => void): void {
@@ -898,58 +912,58 @@ function buildStudio(def: ChampionDef): void {
     }
     r.appendChild(rowEl);
   }
-  swatches("Outfit", () => cur.look.body, (v) => (cur.look.body = v));
-  swatches("Trim", () => cur.look.trim, (v) => (cur.look.trim = v));
+  swatches(tr("Outfit", "الزي"), () => cur.look.body, (v) => (cur.look.body = v));
+  swatches(tr("Trim", "الزخرفة"), () => cur.look.trim, (v) => (cur.look.trim = v));
 
   select<ChampionDef["look"]["headgear"]>(
-    "Headgear",
+    tr("Headgear", "غطاء الرأس"),
     [
-      { value: "helmet", text: "Helmet" },
-      { value: "hood", text: "Hood" },
-      { value: "crown", text: "Crown" },
-      { value: "horns", text: "Horns" },
-      { value: "turban", text: "Turban" },
-      { value: "none", text: "None" },
+      { value: "helmet", text: tr("Helmet", "خوذة") },
+      { value: "hood", text: tr("Hood", "قلنسوة") },
+      { value: "crown", text: tr("Crown", "تاج") },
+      { value: "horns", text: tr("Horns", "قرون") },
+      { value: "turban", text: tr("Turban", "عمامة") },
+      { value: "none", text: tr("None", "بدون") },
     ],
     () => cur.look.headgear,
     (v) => (cur.look.headgear = v),
   );
   select<ChampionDef["look"]["weapon"]>(
-    "Weapon",
+    tr("Weapon", "السلاح"),
     [
-      { value: "sword", text: "Sword" },
-      { value: "axe", text: "Axe" },
-      { value: "hammer", text: "Hammer" },
-      { value: "spear", text: "Spear" },
-      { value: "bow", text: "Bow" },
-      { value: "staff", text: "Staff" },
-      { value: "none", text: "Fists" },
+      { value: "sword", text: tr("Sword", "سيف") },
+      { value: "axe", text: tr("Axe", "فأس") },
+      { value: "hammer", text: tr("Hammer", "مطرقة") },
+      { value: "spear", text: tr("Spear", "رمح") },
+      { value: "bow", text: tr("Bow", "قوس") },
+      { value: "staff", text: tr("Staff", "عصا") },
+      { value: "none", text: tr("Fists", "قبضات") },
     ],
     () => cur.look.weapon,
     (v) => (cur.look.weapon = v),
   );
   select<ChampionDef["look"]["mood"]>(
-    "Face",
+    tr("Face", "الوجه"),
     [
-      { value: "brave", text: "Brave" },
-      { value: "angry", text: "Angry" },
-      { value: "cute", text: "Cute" },
-      { value: "wicked", text: "Wicked" },
-      { value: "calm", text: "Calm" },
+      { value: "brave", text: tr("Brave", "شجاع") },
+      { value: "angry", text: tr("Angry", "غاضب") },
+      { value: "cute", text: tr("Cute", "لطيف") },
+      { value: "wicked", text: tr("Wicked", "شرير") },
+      { value: "calm", text: tr("Calm", "هادئ") },
     ],
     () => cur.look.mood,
     (v) => (cur.look.mood = v),
   );
 
   {
-    const r = row("Preview");
+    const r = row(tr("Preview", "المعاينة"));
     const b = document.createElement("button");
     b.className = "studio-walk";
-    b.textContent = "🚶 Walking";
+    b.textContent = tr("🚶 Walking", "🚶 يمشي");
     b.addEventListener("click", (e) => {
       e.preventDefault();
       walking = !walking;
-      b.textContent = walking ? "🚶 Walking" : "🧍 Standing";
+      b.textContent = walking ? tr("🚶 Walking", "🚶 يمشي") : tr("🧍 Standing", "🧍 واقف");
     });
     r.appendChild(b);
   }
@@ -975,12 +989,12 @@ function buildStudio(def: ChampionDef): void {
   if (hasSavedChampion()) {
     const delBtn = document.createElement("button");
     delBtn.className = "back-btn studio-delete";
-    delBtn.textContent = "🗑️ Delete Champion";
+    delBtn.textContent = tr("🗑️ Delete Champion", "🗑️ حذف البطل");
     let armed = false;
     delBtn.addEventListener("click", () => {
       if (!armed) {
         armed = true;
-        delBtn.textContent = "⚠️ Tap again to delete";
+        delBtn.textContent = tr("⚠️ Tap again to delete", "⚠️ اضغط مجددًا للحذف");
         delBtn.classList.add("armed");
         return;
       }
@@ -1001,7 +1015,7 @@ function buildStudio(def: ChampionDef): void {
 
   const backBtn = document.createElement("button");
   backBtn.className = "back-btn";
-  backBtn.textContent = "← Home";
+  backBtn.textContent = tr("← Home", "← الرئيسية");
   backBtn.addEventListener("click", () => {
     closeStudio();
     openHome();
@@ -1012,18 +1026,18 @@ function buildStudio(def: ChampionDef): void {
 }
 
 function capLabel(cap: keyof ChampionDef["abilities"]): string {
-  const labels: Record<keyof ChampionDef["abilities"], string> = {
-    flying: "🕊️ Flies",
-    targetsAir: "🎯 Hits air",
-    splash: "💥 Splash",
-    charge: "🐎 Charge (2x)",
-    stun: "⚡ Stunning hits",
-    chill: "❄️ Chilling hits",
-    pierce: "🏹 Piercing shots",
-    jumpsRiver: "🌊 River jump",
-    deathBomb: "💣 Death bomb",
+  const labels: Record<keyof ChampionDef["abilities"], [string, string]> = {
+    flying: ["🕊️ Flies", "🕊️ يطير"],
+    targetsAir: ["🎯 Hits air", "🎯 يضرب الجو"],
+    splash: ["💥 Splash", "💥 ضرر منطقة"],
+    charge: ["🐎 Charge (2x)", "🐎 شحنة (×2)"],
+    stun: ["⚡ Stunning hits", "⚡ ضربات صاعقة"],
+    chill: ["❄️ Chilling hits", "❄️ ضربات مجمّدة"],
+    pierce: ["🏹 Piercing shots", "🏹 سهام خارقة"],
+    jumpsRiver: ["🌊 River jump", "🌊 قفز النهر"],
+    deathBomb: ["💣 Death bomb", "💣 قنبلة موت"],
   };
-  return labels[cap];
+  return tr(labels[cap][0], labels[cap][1]);
 }
 
 // ---- Draft screen --------------------------------------------------------
@@ -1402,7 +1416,9 @@ function buildDeckPicker(opts: { mode: "battle" | "deck" }): void {
   const startBtn = document.createElement("button");
   startBtn.className = "battle-btn";
   startBtn.textContent =
-    opts.mode === "battle" ? "⚔️ Battle the Bot" : "💾 Save deck";
+    opts.mode === "battle"
+      ? tr("⚔️ Battle the Bot", "⚔️ قتال الروبوت")
+      : tr("💾 Save deck", "💾 حفظ المجموعة");
   startBtn.setAttribute(
     "aria-label",
     opts.mode === "battle" ? "Start a battle against the bot" : "Save deck",
@@ -1413,14 +1429,14 @@ function buildDeckPicker(opts: { mode: "battle" | "deck" }): void {
   if (opts.mode === "battle") {
     friendBtn = document.createElement("button");
     friendBtn.className = "battle-btn friend";
-    friendBtn.textContent = "🤝 Play a Friend";
+    friendBtn.textContent = tr("🤝 Play a Friend", "🤝 اللعب مع صديق");
     friendBtn.setAttribute("aria-label", "Start an online match with a friend");
     pickerRoot.appendChild(friendBtn);
   }
 
   const backBtn = document.createElement("button");
   backBtn.className = "back-btn";
-  backBtn.textContent = "← Home";
+  backBtn.textContent = tr("← Home", "← الرئيسية");
   backBtn.addEventListener("click", () => openHome());
   pickerRoot.appendChild(backBtn);
 
@@ -1466,7 +1482,10 @@ function buildDeckPicker(opts: { mode: "battle" | "deck" }): void {
       const hasChampion = deck.includes("champion");
       friendBtn.disabled = !legal || hasChampion;
       friendBtn.title = hasChampion
-        ? "Your Champion is bot-battles only — remove it to play a friend."
+        ? tr(
+            "Your Champion is bot-battles only — remove it to play a friend.",
+            "بطلك لمعارك الروبوت فقط — أزله للعب مع صديق.",
+          )
         : "";
     }
     grid.querySelectorAll<HTMLButtonElement>("button.pick").forEach((btn) => {
