@@ -818,9 +818,14 @@ function buildTowerMesh(e: Entity): EntityView {
   const barWidth = king ? 2.2 : 1.8;
   const barY = height + (king ? 1.5 : 1.2);
   // Sit the bar behind the tower, on its outer side: above enemy towers
-  // (-z, the top), below the player's (+z, the bottom). Keyed to the
-  // canonical side, so it mirrors correctly under the guest's flipped view.
-  const barZ = (e.side === "player" ? 1 : -1) * (king ? 1.7 : 1.4);
+  // (-z, the top), below the player's (+z, the bottom)... except the FAR
+  // king: it sits so deep that an outer-side plate projects above the top
+  // of the frustum and is never visible. Its plate hangs on the
+  // river-facing front instead (view-aware, so the guest's flipped camera
+  // gets the same fix for the host's king).
+  const outward = e.side === "player" ? 1 : -1;
+  const farSide = e.side !== viewSide;
+  const barZ = king && farSide ? -outward * 1.9 : outward * (king ? 1.7 : 1.4);
   const bar = makeHpBar(barWidth, HP_COLOR[e.side], barY);
   bar.group.position.z = barZ;
   root.add(bar.group);
