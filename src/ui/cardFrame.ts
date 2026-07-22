@@ -43,8 +43,12 @@ export function makeCardCanvas(id: CardId, opts: CardFrameOptions = {}): HTMLCan
   const S = opts.size ?? (style === "hud" ? 80 : 128);
 
   const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = S;
+  // Supersample for retina: the canvas is CSS-sized by its container, so
+  // doubling the backing store just makes the art crisp on phones.
+  const dpr = Math.min(2, (typeof devicePixelRatio !== "undefined" ? devicePixelRatio : 1) || 1);
+  canvas.width = canvas.height = Math.round(S * dpr);
   const ctx = canvas.getContext("2d")!;
+  ctx.scale(dpr, dpr);
   const base = CARD_COLOR[id];
 
   // Clip path shared by fill and rim stroke.

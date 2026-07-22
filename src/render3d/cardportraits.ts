@@ -16,7 +16,7 @@ function renderPortrait(id: CardId): HTMLCanvasElement | null {
   try {
     if (!renderer) {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      renderer.setSize(220, 220);
+      renderer.setSize(320, 320); // retina-crisp when drawn into card frames
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = 1.15;
     }
@@ -43,7 +43,7 @@ function renderPortrait(id: CardId): HTMLCanvasElement | null {
     renderer.render(scene, camera);
 
     const out = document.createElement("canvas");
-    out.width = out.height = 220;
+    out.width = out.height = 320;
     out.getContext("2d")!.drawImage(renderer.domElement, 0, 0);
     return out;
   } catch {

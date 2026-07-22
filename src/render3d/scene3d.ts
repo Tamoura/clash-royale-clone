@@ -24,6 +24,8 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
+import { FXAAShader } from "three/examples/jsm/shaders/FXAAShader.js";
 import {
   animateTroop,
   articulate,
@@ -487,8 +489,9 @@ let brickTexture: THREE.CanvasTexture | null = null;
 function brickTex(): THREE.CanvasTexture {
   if (!brickTexture) {
     const c = document.createElement("canvas");
-    c.width = c.height = 64;
+    c.width = c.height = 128; // 2x for crisp mortar lines up close
     const ctx = c.getContext("2d")!;
+    ctx.scale(2, 2);
     ctx.fillStyle = "#c2b49a";
     ctx.fillRect(0, 0, 64, 64);
     ctx.strokeStyle = "rgba(90,75,55,0.5)";
@@ -1121,6 +1124,7 @@ export class Battle3D {
   private readonly composer: EffectComposer;
   private readonly bloom: UnrealBloomPass;
   private readonly outputPass: OutputPass;
+  private fxaa!: ShaderPass;
   private readonly zonePlane: THREE.Mesh; // own-half deploy area (blue)
   // Enemy half, split per lane: a dark "no-deploy" overlay that turns into a
   // blue "deployable" strip once that lane's princess tower falls.
@@ -1264,6 +1268,10 @@ export class Battle3D {
     this.composer.addPass(this.bloom);
     this.outputPass = new OutputPass();
     this.composer.addPass(this.outputPass);
+    // FXAA last: smooths the toon silhouettes the raw composer leaves
+    // jagged (MSAA is off because the post stack would discard it anyway).
+    this.fxaa = new ShaderPass(FXAAShader);
+    this.composer.addPass(this.fxaa);
 
     this.resize();
     window.addEventListener("resize", this.onResize);
@@ -1675,7 +1683,8 @@ export class Battle3D {
    * broken-plank decals in the corners.
    */
   private makeStoneTexture(): THREE.CanvasTexture {
-    const tile = 32; // px per arena unit → 1-unit tiles like CR's grid
+    const tile = 48; // px per arena unit → 1-unit tiles like CR's grid
+    const px = tile / 32; // scale for stroke widths tuned at 32px/unit
     const c = document.createElement("canvas");
     c.width = ARENA_WIDTH * tile;
     c.height = ARENA_HEIGHT * tile;
@@ -1707,7 +1716,7 @@ export class Battle3D {
         const y = t * c.height;
         // Sway fades near the river (paths funnel into the bridges).
         const funnel = Math.min(1, Math.abs(t - 0.5) * 3.2);
-        const sway = Math.sin(t * Math.PI * 3 + phase) * 24 * funnel;
+        const sway = Math.sin(t * Math.PI * 3 + phase) * 24 * px * funnel;
         pts.push([bx * tile + sway, y]);
       }
       const stroke = (width: number, style: string): void => {
@@ -1720,14 +1729,14 @@ export class Battle3D {
         for (const [x, y] of pts) ctx.lineTo(x, y);
         ctx.stroke();
       };
-      stroke(58, "rgba(186,148,92,0.85)");
-      stroke(42, "rgba(214,178,112,0.95)");
-      stroke(7, "rgba(150,112,58,0.4)");
+      stroke(58 * px, "rgba(186,148,92,0.85)");
+      stroke(42 * px, "rgba(214,178,112,0.95)");
+      stroke(7 * px, "rgba(150,112,58,0.4)");
       // Footworn speckles along the path.
       ctx.fillStyle = "rgba(140,104,52,0.45)";
       for (let i = 0; i < 90; i++) {
         const [x, y] = pts[Math.floor(rand() * pts.length)];
-        ctx.fillRect(x + (rand() - 0.5) * 34, y + (rand() - 0.5) * 20, 2.5, 2);
+        ctx.fillRect(x + (rand() - 0.5) * 34 * px, y + (rand() - 0.5) * 20 * px, 2.5 * px, 2 * px);
       }
     };
     path(BRIDGE_XS[0], 0.6);
@@ -1737,7 +1746,7 @@ export class Battle3D {
     for (let i = 0; i < 46; i++) {
       const x = rand() * c.width;
       const y = rand() * c.height;
-      const r = 1.5 + rand() * 3;
+      const r = (1.5 + rand() * 3) * px;
       ctx.fillStyle = rand() < 0.5 ? "rgba(148,132,104,0.55)" : "rgba(120,102,78,0.5)";
       ctx.beginPath();
       ctx.ellipse(x, y, r, r * 0.75, rand() * 3, 0, Math.PI * 2);
@@ -1748,13 +1757,13 @@ export class Battle3D {
     const planks = (cx: number, cy: number, a0: number): void => {
       for (let i = 0; i < 3; i++) {
         ctx.save();
-        ctx.translate(cx + (rand() - 0.5) * 30, cy + (rand() - 0.5) * 30);
+        ctx.translate(cx + (rand() - 0.5) * 30 * px, cy + (rand() - 0.5) * 30 * px);
         ctx.rotate(a0 + (rand() - 0.5) * 1.2);
         ctx.fillStyle = i % 2 ? "rgba(146,102,58,0.8)" : "rgba(120,82,44,0.8)";
-        ctx.fillRect(-26, -5, 52, 10);
+        ctx.fillRect(-26 * px, -5 * px, 52 * px, 10 * px);
         ctx.fillStyle = "rgba(70,48,26,0.7)";
-        ctx.fillRect(-22, -1.5, 6, 3);
-        ctx.fillRect(16, -1.5, 6, 3);
+        ctx.fillRect(-22 * px, -1.5 * px, 6 * px, 3 * px);
+        ctx.fillRect(16 * px, -1.5 * px, 6 * px, 3 * px);
         ctx.restore();
       }
     };
@@ -2127,12 +2136,15 @@ export class Battle3D {
   resize(): void {
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
-    const mobile = w < 720 || window.matchMedia("(pointer: coarse)").matches;
-    const dpr = Math.min(mobile ? 1.5 : 2, window.devicePixelRatio);
+    // Full retina sharpness everywhere (capped at 2x): the old 1.5x mobile
+    // cap left phones — where most play happens — visibly soft.
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(w, h, false);
     this.composer.setPixelRatio(dpr);
     this.composer.setSize(w, h);
+    const res = this.fxaa.material.uniforms["resolution"].value as THREE.Vector2;
+    res.set(1 / (w * dpr), 1 / (h * dpr));
     this.frameOrtho();
   }
 
