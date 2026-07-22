@@ -110,6 +110,8 @@ export interface SideStats {
   elixirSpent: number;
   /** Elixir wasted sitting at a full bar — the honest "why they outspent you". */
   elixirLeaked: number;
+  /** Extra elixir harvested from Elixir Collectors. */
+  elixirCollected: number;
 }
 
 /** Card upgrade levels (absent = level 1). */
@@ -328,14 +330,14 @@ export function createBattle(
       elixir: createElixir(),
       hand: createHand(playerDeck),
       crowns: 0,
-      stats: { damageDealt: 0, elixirSpent: 0, elixirLeaked: 0 },
+      stats: { damageDealt: 0, elixirSpent: 0, elixirLeaked: 0, elixirCollected: 0 },
       levels: levels.player ?? {},
     },
     enemy: {
       elixir: createElixir(),
       hand: createHand(enemyDeck),
       crowns: 0,
-      stats: { damageDealt: 0, elixirSpent: 0, elixirLeaked: 0 },
+      stats: { damageDealt: 0, elixirSpent: 0, elixirLeaked: 0, elixirCollected: 0 },
       levels: levels.enemy ?? {},
     },
     time: 0,

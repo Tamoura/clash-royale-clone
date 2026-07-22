@@ -416,6 +416,10 @@ export class Hud {
         `<label>elixir spent</label><span>${e.elixirSpent}</span></div>` +
         `<div class="stat-row"><span>${Math.round(p.elixirLeaked)}</span>` +
         `<label>elixir leaked</label><span>${Math.round(e.elixirLeaked)}</span></div>` +
+        (p.elixirCollected > 0 || e.elixirCollected > 0
+          ? `<div class="stat-row"><span>${Math.round(p.elixirCollected)}</span>` +
+            `<label>elixir collected</label><span>${Math.round(e.elixirCollected)}</span></div>`
+          : "") +
         (this.reward ? `<div class="reward-line">${this.reward}</div>` : "");
       this.overlay.classList.add("show");
     } else {

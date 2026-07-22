@@ -368,7 +368,10 @@ function tickCollector(state: BattleState, e: Entity, dt: number): void {
   if (e.elixirTimer > 0) return;
   e.elixirTimer += e.elixirInterval;
   const owner = sideState(state, e.side);
-  owner.elixir = { amount: Math.min(ELIXIR_MAX, owner.elixir.amount + 1) };
+  const before = owner.elixir.amount;
+  owner.elixir = { amount: Math.min(ELIXIR_MAX, before + 1) };
+  // Result-screen accounting: harvested income (a full bar wastes the drop).
+  owner.stats.elixirCollected += owner.elixir.amount - before;
   // Purple payout ring for the renderer.
   state.effects.push({ cardId: e.cardId!, x: e.x, y: e.y, radius: 0.8, ttl: 0.5 });
 }
