@@ -76,8 +76,10 @@ const KING_NO_DEPLOY_RADIUS = 4.5;
 /** Per-theme scenery palette (theme flag lives in theme.ts). */
 const arabic = ARABIC;
 const ARENA_PALETTE = {
-  // Normal: deeper, more saturated CR-blue sky; richer greens and stone edging.
-  normal: { sky: 0x3d7ec8, apron: 0xd0e4f5, far: 0xa8c8e0, fieldSide: 0x3d7a34, edging: 0xc8b890, drift: 0xe0eef8 },
+  // Normal: CR lantern-arena grade — a bright parchment field framed by
+  // dark warm timber and a dusk-amber sky, so the playfield glows against
+  // a moody surround (see the reference screenshot).
+  normal: { sky: 0x33190f, apron: 0x4a2c1a, far: 0x24110a, fieldSide: 0x6e4526, edging: 0x7a4a28, drift: 0x8f6a42 },
   // Arabic: deep jewel-blue sky (vs the washed-out light grey before); richer sandstone.
   arabic: { sky: 0x1f6ab8, apron: 0xe0c890, far: 0xcaaf78, fieldSide: 0xa89870, edging: 0xc8a85c, drift: 0xd8bc82 },
 }[ARENA_THEME];
@@ -1150,7 +1152,11 @@ export class Battle3D {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(ARENA_PALETTE.sky);
-    this.scene.fog = new THREE.Fog(ARENA_PALETTE.sky, 38, 70);
+    // Normal edition pulls the fog in close for the dark lantern-lit mood;
+    // the field stays bright inside it.
+    this.scene.fog = arabic
+      ? new THREE.Fog(ARENA_PALETTE.sky, 38, 70)
+      : new THREE.Fog(ARENA_PALETTE.sky, 26, 58);
 
     // One InstancedMesh draws every hit spark; unlit + glowing so they pop.
     const sparkMat = new THREE.MeshBasicMaterial();
@@ -1264,7 +1270,12 @@ export class Battle3D {
   }
 
   private buildLights(): void {
-    this.scene.add(new THREE.HemisphereLight(0xe4edff, 0x46683f, 1.0));
+    // Normal edition: dusk-lantern grade — warm sky bounce over dark timber.
+    this.scene.add(
+      arabic
+        ? new THREE.HemisphereLight(0xe4edff, 0x46683f, 1.0)
+        : new THREE.HemisphereLight(0xffe3c2, 0x4a2c1a, 1.0),
+    );
     const sun = new THREE.DirectionalLight(0xfff2d8, 1.7);
     sun.position.set(10, 22, 8);
     sun.castShadow = true;
@@ -1323,7 +1334,7 @@ export class Battle3D {
         const t = i / posts;
         const post = new THREE.Mesh(
           new THREE.CylinderGeometry(0.09, 0.11, 0.7, 6),
-          toon(0x6e4a28),
+          toon(arabic ? 0x6e4a28 : 0x3f2a16),
         );
         post.position.set(
           from[0] + (to[0] - from[0]) * t,
@@ -1334,7 +1345,7 @@ export class Battle3D {
         this.scene.add(post);
       }
       const len = Math.hypot(to[0] - from[0], to[1] - from[1]);
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 0.08), toon(0x7d5a36));
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 0.08), toon(arabic ? 0x7d5a36 : 0x4a3018));
       rail.position.set((from[0] + to[0]) / 2, 0.3, (from[1] + to[1]) / 2);
       rail.rotation.y = -Math.atan2(to[1] - from[1], to[0] - from[0]);
       this.scene.add(rail);
@@ -1349,7 +1360,7 @@ export class Battle3D {
     // (CR arenas are walled in by these).
     const stand = (x: number, zCenter: number, len: number, roofColor: number): void => {
       const g = new THREE.Group();
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, len), toon(0xb3a890));
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, len), toon(arabic ? 0xb3a890 : 0x5a3722));
       wall.position.y = 0.55;
       wall.castShadow = true;
       wall.receiveShadow = true;
@@ -1398,8 +1409,8 @@ export class Battle3D {
     const standX = ARENA_WIDTH / 2 + 6.2;
     const standLen = ARENA_HEIGHT / 2 - 2.5;
     for (const sx of [-1, 1]) {
-      stand(sx * standX, -ARENA_HEIGHT / 4 - 1, standLen, 0xb02e22); // enemy side
-      stand(sx * standX, ARENA_HEIGHT / 4 + 1, standLen, 0x2c55b8); // player side
+      stand(sx * standX, -ARENA_HEIGHT / 4 - 1, standLen, arabic ? 0xb02e22 : 0x7a1e14); // enemy side
+      stand(sx * standX, ARENA_HEIGHT / 4 + 1, standLen, arabic ? 0x2c55b8 : 0x1c3a6e); // player side
     }
 
     // Striped spectator tents in the corners, team-colored.
@@ -1411,7 +1422,7 @@ export class Battle3D {
       g.add(roof);
       const wall = new THREE.Mesh(
         new THREE.CylinderGeometry(1.0, 1.15, 0.9, 8),
-        toon(0xe8e3d8),
+        toon(arabic ? 0xe8e3d8 : 0x9c8a6a),
       );
       wall.position.y = 0.45;
       wall.castShadow = true;
@@ -1437,6 +1448,59 @@ export class Battle3D {
     tent(tHw, tHd, 0x3b6fd4);
     tent(-tHw, -tHd, 0xd44a3b);
     tent(tHw, -tHd, 0xd44a3b);
+
+    // Normal edition: strings of glowing paper lanterns flanking the field —
+    // the warm dusk-festival read of the reference arena. They're unlit
+    // glow material, so the bloom pass makes them softly radiate.
+    if (!arabic) {
+      const lanternColors = [0xff7a36, 0xff5340, 0xffb04a];
+      // Fog-immune so they burn through the dusk haze like real lanterns.
+      const lanternMat = (color: number): THREE.MeshBasicMaterial => {
+        const m = new THREE.MeshBasicMaterial({ color, fog: false });
+        m.toneMapped = false;
+        return m;
+      };
+      const stringLantern = (x: number, y: number, z: number, i: number): void => {
+        const body = new THREE.Mesh(
+          new THREE.SphereGeometry(0.3, 10, 8),
+          lanternMat(lanternColors[i % lanternColors.length]),
+        );
+        body.scale.set(1, 1.25, 1);
+        body.position.set(x, y - 0.4, z);
+        this.scene.add(body);
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.1, 8), toon(0x3a2413));
+        cap.position.set(x, y - 0.02, z);
+        this.scene.add(cap);
+      };
+      const rope = (len: number, x: number, y: number, z: number, alongX: boolean): void => {
+        const r = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.025, 0.025, len, 5),
+          new THREE.MeshBasicMaterial({ color: 0x1c110a, fog: false }),
+        );
+        r.rotation.set(alongX ? 0 : Math.PI / 2, 0, alongX ? Math.PI / 2 : 0);
+        r.position.set(x, y, z);
+        this.scene.add(r);
+      };
+      // A string across each end, hung right at the arena edge — the
+      // steep camera keeps anything further out above the frame.
+      for (const sz of [-1, 1]) {
+        const dz = ARENA_HEIGHT / 2;
+        const y = 2.8;
+        rope(ARENA_WIDTH + 10, 0, y, sz * dz, true);
+        for (let i = 0; i < 7; i++) {
+          stringLantern(-12 + i * 4, y + Math.sin(i * 2.3) * 0.15, sz * dz, i + (sz > 0 ? 1 : 0));
+        }
+      }
+      // Side strings for wider screens.
+      const sideX = ARENA_WIDTH / 2 + 3.4;
+      for (const sx of [-1, 1]) {
+        rope(ARENA_HEIGHT + 4, sx * sideX, 4.6, 0, false);
+        for (let i = 0; i < 8; i++) {
+          const z = -14 + i * 4;
+          stringLantern(sx * sideX, 4.6 + Math.sin(i * 1.7) * 0.18, z, i + (sx > 0 ? 1 : 0));
+        }
+      }
+    }
 
     // Lanterns (arabic) or torches (normal) flanking each bridge approach.
     for (const bx of BRIDGE_XS) {
@@ -1604,8 +1668,14 @@ export class Battle3D {
   }
 
   /** Classic CR floor: saturated checker grass with subtle mown variation. */
+  /**
+   * CR lantern-arena floor: pale parchment tiles with a fine grid, worn
+   * winding dirt paths from each bridge toward the towers (baked in, so
+   * they curve organically like the reference), scattered pebbles, and
+   * broken-plank decals in the corners.
+   */
   private makeStoneTexture(): THREE.CanvasTexture {
-    const tile = 32;
+    const tile = 32; // px per arena unit → 1-unit tiles like CR's grid
     const c = document.createElement("canvas");
     c.width = ARENA_WIDTH * tile;
     c.height = ARENA_HEIGHT * tile;
@@ -1615,27 +1685,85 @@ export class Battle3D {
       seed = (seed * 1664525 + 1013904223) & 0xffffffff;
       return ((seed >>> 8) & 0xffff) / 0xffff;
     };
-    const block = tile * 2;
-    for (let y = 0; y < c.height; y += block) {
-      for (let x = 0; x < c.width; x += block) {
-        const checker = ((x / block + y / block) & 1) === 0;
-        const shade = 0.96 + rand() * 0.055;
-        const base = checker ? [111, 191, 90] : [91, 172, 76];
-        ctx.fillStyle = `rgb(${Math.round(base[0] * shade)},${Math.round(base[1] * shade)},${Math.round(base[2] * shade)})`;
-        ctx.fillRect(x, y, block, block);
-        // Deterministic blade flecks break up large flat color without noise
-        // shimmer or high-frequency detail on small screens.
-        ctx.fillStyle = "rgba(236,255,205,0.12)";
-        for (let s = 0; s < 8; s++) {
-          const px = x + rand() * block;
-          const py = y + rand() * block;
-          ctx.fillRect(px, py, 1, 3);
-        }
-        ctx.strokeStyle = "rgba(35,98,42,0.12)";
+
+    // Parchment tile grid.
+    for (let y = 0; y < c.height; y += tile) {
+      for (let x = 0; x < c.width; x += tile) {
+        const shade = 0.965 + rand() * 0.05;
+        ctx.fillStyle = `rgb(${Math.round(232 * shade)},${Math.round(216 * shade)},${Math.round(180 * shade)})`;
+        ctx.fillRect(x, y, tile, tile);
+        ctx.strokeStyle = "rgba(150,120,80,0.22)";
         ctx.lineWidth = 1;
-        ctx.strokeRect(x + 0.5, y + 0.5, block - 1, block - 1);
+        ctx.strokeRect(x + 0.5, y + 0.5, tile - 1, tile - 1);
       }
     }
+
+    // Winding trodden paths: one per lane, swaying side to side on the
+    // march from bridge to towers, drawn dark→light→rut for depth.
+    const path = (bx: number, phase: number): void => {
+      const pts: Array<[number, number]> = [];
+      for (let i = 0; i <= 40; i++) {
+        const t = i / 40;
+        const y = t * c.height;
+        // Sway fades near the river (paths funnel into the bridges).
+        const funnel = Math.min(1, Math.abs(t - 0.5) * 3.2);
+        const sway = Math.sin(t * Math.PI * 3 + phase) * 24 * funnel;
+        pts.push([bx * tile + sway, y]);
+      }
+      const stroke = (width: number, style: string): void => {
+        ctx.strokeStyle = style;
+        ctx.lineWidth = width;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (const [x, y] of pts) ctx.lineTo(x, y);
+        ctx.stroke();
+      };
+      stroke(58, "rgba(186,148,92,0.85)");
+      stroke(42, "rgba(214,178,112,0.95)");
+      stroke(7, "rgba(150,112,58,0.4)");
+      // Footworn speckles along the path.
+      ctx.fillStyle = "rgba(140,104,52,0.45)";
+      for (let i = 0; i < 90; i++) {
+        const [x, y] = pts[Math.floor(rand() * pts.length)];
+        ctx.fillRect(x + (rand() - 0.5) * 34, y + (rand() - 0.5) * 20, 2.5, 2);
+      }
+    };
+    path(BRIDGE_XS[0], 0.6);
+    path(BRIDGE_XS[1], 3.4);
+
+    // Scattered pebbles across the whole court.
+    for (let i = 0; i < 46; i++) {
+      const x = rand() * c.width;
+      const y = rand() * c.height;
+      const r = 1.5 + rand() * 3;
+      ctx.fillStyle = rand() < 0.5 ? "rgba(148,132,104,0.55)" : "rgba(120,102,78,0.5)";
+      ctx.beginPath();
+      ctx.ellipse(x, y, r, r * 0.75, rand() * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Corner set-dressing: broken planks + nail heads, like CR's props.
+    const planks = (cx: number, cy: number, a0: number): void => {
+      for (let i = 0; i < 3; i++) {
+        ctx.save();
+        ctx.translate(cx + (rand() - 0.5) * 30, cy + (rand() - 0.5) * 30);
+        ctx.rotate(a0 + (rand() - 0.5) * 1.2);
+        ctx.fillStyle = i % 2 ? "rgba(146,102,58,0.8)" : "rgba(120,82,44,0.8)";
+        ctx.fillRect(-26, -5, 52, 10);
+        ctx.fillStyle = "rgba(70,48,26,0.7)";
+        ctx.fillRect(-22, -1.5, 6, 3);
+        ctx.fillRect(16, -1.5, 6, 3);
+        ctx.restore();
+      }
+    };
+    const inset = tile * 2.4;
+    planks(inset, inset, 0.4);
+    planks(c.width - inset, inset, -0.5);
+    planks(inset, c.height - inset, -0.3);
+    planks(c.width - inset, c.height - inset, 0.55);
+
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
@@ -1792,7 +1920,13 @@ export class Battle3D {
     }
     this.decorate();
 
-    // CR-style golden dirt lanes from each bridge to the towers — wider wear.
+    // Arabic keeps its straight golden lanes; the normal edition bakes
+    // organic winding paths directly into the floor texture instead.
+    if (arabic) this.addStraightLanes();
+    this.finishArena();
+  }
+
+  private addStraightLanes(): void {
     const laneCanvas = document.createElement("canvas");
     laneCanvas.width = 48;
     laneCanvas.height = 256;
@@ -1830,7 +1964,10 @@ export class Battle3D {
       lane.receiveShadow = true;
       this.scene.add(lane);
     }
+  }
 
+  /** River, emblems, bridges, and bank foam — both editions. */
+  private finishArena(): void {
     // Bright CR-blue water with drifting light streaks.
     const waterCanvas = document.createElement("canvas");
     waterCanvas.width = 128;
