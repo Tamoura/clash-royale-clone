@@ -19,8 +19,8 @@ function giveHand(b: BattleState, side: "player" | "enemy", cards: string[]): vo
 describe("match stats", () => {
   it("starts at zero", () => {
     const b = createBattle();
-    expect(b.player.stats).toEqual({ damageDealt: 0, elixirSpent: 0 });
-    expect(b.enemy.stats).toEqual({ damageDealt: 0, elixirSpent: 0 });
+    expect(b.player.stats).toEqual({ damageDealt: 0, elixirSpent: 0, elixirLeaked: 0 });
+    expect(b.enemy.stats).toEqual({ damageDealt: 0, elixirSpent: 0, elixirLeaked: 0 });
   });
 
   it("deploying a card records its elixir cost", () => {
@@ -53,5 +53,14 @@ describe("match stats", () => {
     giveHand(b, "player", ["fireball"]);
     deployCard(b, "player", "fireball", 9, 16);
     expect(b.player.stats.damageDealt).toBeGreaterThanOrEqual(570);
+  });
+
+  it("counts elixir leaked while sitting at a full bar", () => {
+    const b = createBattle();
+    // 30s idle at 1x: the bar caps at 10 after 14s, then every drop leaks.
+    for (let i = 0; i < 30 * 30; i++) tick(b, 1 / 30);
+    expect(b.player.stats.elixirLeaked).toBeGreaterThan(4);
+    // Both idle sides leak identically — income is the same for everyone.
+    expect(b.player.stats.elixirLeaked).toBeCloseTo(b.enemy.stats.elixirLeaked, 5);
   });
 });

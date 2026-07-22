@@ -17,7 +17,7 @@ import {
   type Entity,
   type Projectile,
 } from "./battle";
-import { ELIXIR_MAX, tickElixir } from "./elixir";
+import { ELIXIR_MAX, SECONDS_PER_ELIXIR, tickElixir } from "./elixir";
 
 /** Regular time length; the final minute of it is double elixir. */
 export const BATTLE_DURATION = 180;
@@ -573,8 +573,16 @@ export function tick(state: BattleState, dt: number): void {
   state.time += dt;
 
   const mult = effectiveElixirMultiplier(state);
-  state.player.elixir = tickElixir(state.player.elixir, dt, mult);
-  state.enemy.elixir = tickElixir(state.enemy.elixir, dt, mult);
+  // Track elixir wasted at a capped bar (skip sandbox's firehose rate) —
+  // the result screen uses it to explain spending gaps honestly.
+  const potential = (dt * mult) / SECONDS_PER_ELIXIR;
+  for (const me of [state.player, state.enemy]) {
+    const before = me.elixir.amount;
+    me.elixir = tickElixir(me.elixir, dt, mult);
+    if (mult < 50) {
+      me.stats.elixirLeaked += Math.max(0, potential - (me.elixir.amount - before));
+    }
+  }
 
   for (const effect of state.effects) effect.ttl -= dt;
   state.effects = state.effects.filter((f) => f.ttl > 0);
