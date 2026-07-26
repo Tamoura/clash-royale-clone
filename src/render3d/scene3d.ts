@@ -91,11 +91,12 @@ const ARENA_PALETTE = {
 }[ARENA_THEME];
 
 /**
- * CR-style steep camera (~66° elevation): the field reads almost
- * flat/2D while the characters stay visibly 3D. Chosen by grid
- * search so the whole arena + stands fit the frustum at fov 48.
+ * CR-style camera, lowered to ~49° elevation: steep enough that the
+ * board reads flat, shallow enough that characters show their FACES,
+ * bodies and weapons instead of the tops of their heads — silhouettes
+ * are unreadable from directly above.
  */
-const CAM_HOME = new THREE.Vector3(0, 34, 22);
+const CAM_HOME = new THREE.Vector3(0, 30, 26);
 /** HP bars and similar boards tilt to face that camera square-on. */
 const BAR_TILT = -Math.atan2(CAM_HOME.y, CAM_HOME.z - 1.0);
 
@@ -2169,7 +2170,9 @@ export class Battle3D {
     const aspect = w / h;
     // World-units of half-height the view must cover so the whole
     // board (incl. towers + edging) fits; width follows the aspect.
-    const halfH = 15.5;
+    // The shallower camera foreshortens the field, so the frame zooms
+    // in — characters render ~15% larger than under the old angle.
+    const halfH = 14.5;
     const halfW = Math.max(halfH * aspect, 10.5);
     this.camera.left = -halfW;
     this.camera.right = halfW;
