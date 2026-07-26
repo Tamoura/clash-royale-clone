@@ -1056,15 +1056,15 @@ function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
     lift = glbUnit.height;
   } else {
     rig = buildTroop(e.cardId!);
-    // CR proportions: troops read big against the field, with tanks
-    // visibly towering over swarm units.
-    const big =
-      e.cardId === "giant" ||
-      e.cardId === "pekka" ||
-      e.cardId === "mega-knight" ||
-      e.cardId === "royal-giant";
-    // Mega Knight towers over even the other tanks.
-    const scale = e.cardId === "mega-knight" ? 1.6 : big ? 1.35 : 1.25;
+    // CR readability comes from silhouette CONTRAST: tanks tower, swarm
+    // units stay small, everyone else sits between.
+    const scale =
+      e.cardId === "mega-knight" ? 1.6
+      : e.cardId === "pekka" ? 1.5
+      : e.cardId === "giant" ? 1.48
+      : e.cardId === "royal-giant" ? 1.42
+      : e.radius <= 0.32 ? 1.08 // skeletons, bats, minions — spindly packs
+      : 1.25;
     rig.group.scale.setScalar(scale);
     root.add(rig.group);
     lift = (rig.hover ?? 0) + rig.height * scale;

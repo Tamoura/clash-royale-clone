@@ -411,6 +411,28 @@ function startLadder(): void {
   audio.restartMusic();
   sandboxResetBtn.style.display = isSandbox() ? "" : "none";
   startCountdown();
+  maybeShowFirstBattleTips();
+}
+
+/** Three timed hints during the very first battle, then never again. */
+function maybeShowFirstBattleTips(): void {
+  try {
+    if (localStorage.getItem("cr-clone-tutored")) return;
+    localStorage.setItem("cr-clone-tutored", "1");
+  } catch {
+    return;
+  }
+  const tipBattle = battle;
+  const tips: [number, string][] = [
+    [5000, tr("Tap a card, then tap your half to deploy!", "!اضغط بطاقة ثم اضغط نصفك لتنشرها")],
+    [10000, tr("Destroy their towers — protect your own!", "!دمّر أبراجهم واحمِ أبراجك")],
+    [15000, tr("Full elixir wastes away — keep spending!", "!الإكسير الممتلئ يُهدر — واصل الإنفاق")],
+  ];
+  for (const [delay, text] of tips) {
+    window.setTimeout(() => {
+      if (battle === tipBattle && !battle.result) showBanner(text);
+    }, delay);
+  }
 }
 
 /** Solo battle with explicit decks; never moves trophies/chests. */
@@ -1503,9 +1525,17 @@ function buildChests(): void {
         .map(([id, n]) => `${cardDisplayName(id as CardId)} +${n}`)
         .join(", ");
       if (shardBits) bits.push(shardBits);
-      reveal.textContent = bits.join(" · ");
+      // Lid-pop first, then the loot reveal bursts out of the open chest.
+      cell.classList.add("opening");
+      openBtn.disabled = true;
+      window.setTimeout(() => {
+        reveal.textContent = bits.join(" · ");
+        reveal.classList.remove("burst");
+        void reveal.offsetWidth;
+        reveal.classList.add("burst");
+      }, 350);
       // Rebuild after a beat so the player can read the reveal.
-      window.setTimeout(() => buildChests(), 900);
+      window.setTimeout(() => buildChests(), 1600);
     });
     cell.appendChild(openBtn);
     row.appendChild(cell);
