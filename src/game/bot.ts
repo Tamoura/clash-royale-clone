@@ -153,7 +153,7 @@ function findCluster(
 }
 
 function trySpellCluster(state: BattleState): boolean {
-  for (const id of ["fireball", "arrows", "zap"] as const) {
+  for (const id of ["fireball", "tornado", "arrows", "zap"] as const) {
     if (!state.enemy.hand.cards.includes(id)) continue;
     const card = getCard(id);
     if (card.kind !== "spell" || card.cost > state.enemy.elixir.amount) continue;
@@ -224,6 +224,37 @@ function tryCycle(state: BattleState): boolean {
 /** Heavy ground threats (Giant, P.E.K.K.A…) a building can kite and stall. */
 function isHeavyGroundThreat(threat: Entity): boolean {
   return !threat.flying && (threat.targetsBuildingsOnly || threat.maxHp >= 2000);
+}
+
+/** Heal a wounded friendly cluster mid-push (2+ troops missing real HP). */
+function tryHeal(state: BattleState): boolean {
+  if (!state.enemy.hand.cards.includes("heal")) return false;
+  const card = getCard("heal");
+  if (card.kind !== "spell" || card.cost > state.enemy.elixir.amount) return false;
+  const wounded = state.entities.filter(
+    (e) => e.side === "enemy" && e.kind === "troop" && e.hp > 0 && e.maxHp - e.hp > 200,
+  );
+  if (wounded.length < 2) return false;
+  const center = wounded.reduce((a, b) => (a.maxHp > b.maxHp ? a : b));
+  const near = wounded.filter((t) => distance(center, t) <= card.radius);
+  if (near.length < 2) return false;
+  return deployCard(state, "enemy", "heal", center.x, center.y);
+}
+
+/** Chip the weakest player tower with a Skeleton Barrel when flush. */
+function tryBarrel(state: BattleState, bot: BotState): boolean {
+  if (!state.enemy.hand.cards.includes("skeleton-barrel")) return false;
+  const card = getCard("skeleton-barrel");
+  if (card.kind !== "spell" || card.cost > state.enemy.elixir.amount) return false;
+  if (state.enemy.elixir.amount < bot.pushAt) return false;
+  const towers = state.entities.filter(
+    (e) => e.side === "player" && (e.kind === "princess-tower" || e.kind === "king-tower"),
+  );
+  const princesses = towers.filter((t) => t.kind === "princess-tower");
+  const pool = princesses.length > 0 ? princesses : towers;
+  if (pool.length === 0) return false;
+  const target = pool.reduce((a, b) => (a.hp < b.hp ? a : b));
+  return deployCard(state, "enemy", "skeleton-barrel", target.x, target.y);
 }
 
 function tryDefend(state: BattleState, bot: BotState): boolean {
@@ -308,7 +339,9 @@ export function botThink(state: BattleState, bot: BotState): void {
   if (tryFreeze(state)) return;
   if (trySpellCluster(state)) return;
   if (tryDefend(state, bot)) return;
+  if (tryHeal(state)) return;
   if (tryRage(state)) return;
+  if (tryBarrel(state, bot)) return;
   if (tryEconomy(state, bot)) return;
   if (tryPush(state, bot)) return;
   tryCycle(state);

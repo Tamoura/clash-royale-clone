@@ -33,6 +33,9 @@ export type CardId =
   | "cannon"
   | "tombstone"
   | "elixir-collector"
+  | "heal"
+  | "tornado"
+  | "skeleton-barrel"
   | "champion";
 
 export type Speed = "slow" | "medium" | "fast";
@@ -135,6 +138,12 @@ export interface SpellCard {
   rageSeconds: number;
   /** Tiles survivors are shoved away from the blast center. */
   knockback: number;
+  /** HP restored to friendly troops in the radius (0 = none). */
+  heal: number;
+  /** Tiles enemy troops are dragged toward the blast center (0 = none). */
+  pull: number;
+  /** Troop card whose units burst out at the target (null = none). */
+  spawnUnit: CardId | null;
 }
 
 export type Card = TroopCard | BuildingCard | SpellCard;
@@ -697,6 +706,51 @@ export const CARDS: Record<CardId, Card> = {
       radius: 0.6,
     }),
   },
+  heal: {
+    id: "heal",
+    name: "Heal",
+    rarity: "rare",
+    kind: "spell",
+    cost: 3,
+    damage: 0,
+    radius: 3,
+    stunSeconds: 0,
+    rageSeconds: 0,
+    knockback: 0,
+    heal: 500,
+    pull: 0,
+    spawnUnit: null,
+  },
+  tornado: {
+    id: "tornado",
+    name: "Tornado",
+    rarity: "epic",
+    kind: "spell",
+    cost: 3,
+    damage: 120,
+    radius: 4,
+    stunSeconds: 0,
+    rageSeconds: 0,
+    knockback: 0,
+    heal: 0,
+    pull: 2.5,
+    spawnUnit: null,
+  },
+  "skeleton-barrel": {
+    id: "skeleton-barrel",
+    name: "Skeleton Barrel",
+    rarity: "epic",
+    kind: "spell",
+    cost: 3,
+    damage: 60,
+    radius: 1.5,
+    stunSeconds: 0,
+    rageSeconds: 0,
+    knockback: 0,
+    heal: 0,
+    pull: 0,
+    spawnUnit: "skeletons",
+  },
   /**
    * The player-designed Studio card. This entry is a neutral baseline;
    * customcard.ts overwrites it in place (applyChampion) with the saved
@@ -729,6 +783,9 @@ export const CARDS: Record<CardId, Card> = {
     stunSeconds: 0,
     rageSeconds: 0,
     knockback: 0.8,
+    heal: 0,
+    pull: 0,
+    spawnUnit: null,
   },
   arrows: {
     id: "arrows",
@@ -741,6 +798,9 @@ export const CARDS: Record<CardId, Card> = {
     stunSeconds: 0,
     rageSeconds: 0,
     knockback: 0,
+    heal: 0,
+    pull: 0,
+    spawnUnit: null,
   },
   zap: {
     id: "zap",
@@ -753,6 +813,9 @@ export const CARDS: Record<CardId, Card> = {
     stunSeconds: 0.5,
     rageSeconds: 0,
     knockback: 0,
+    heal: 0,
+    pull: 0,
+    spawnUnit: null,
   },
   rage: {
     id: "rage",
@@ -765,6 +828,9 @@ export const CARDS: Record<CardId, Card> = {
     stunSeconds: 0,
     rageSeconds: 6,
     knockback: 0,
+    heal: 0,
+    pull: 0,
+    spawnUnit: null,
   },
   freeze: {
     id: "freeze",
@@ -777,6 +843,9 @@ export const CARDS: Record<CardId, Card> = {
     stunSeconds: 4,
     rageSeconds: 0,
     knockback: 0,
+    heal: 0,
+    pull: 0,
+    spawnUnit: null,
   },
 };
 
@@ -816,6 +885,9 @@ export const DECK: CardId[] = [
   "zap",
   "rage",
   "freeze",
+  "heal",
+  "tornado",
+  "skeleton-barrel",
   "champion",
 ];
 

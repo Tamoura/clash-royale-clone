@@ -900,6 +900,60 @@ function drawFreezeArt(ctx: Ctx): void {
   circle(ctx, 0, 0, 1.3, "#ffffff");
 }
 
+
+/** Heal: a soft green cross in a glowing ring. */
+function drawHealArt(ctx: Ctx): void {
+  ctx.fillStyle = "#1d5e38";
+  ctx.beginPath();
+  ctx.arc(0, 0, 10.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#8effb0";
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+  ctx.fillStyle = "#6ee7a0";
+  ctx.fillRect(-2.4, -7.5, 4.8, 15);
+  ctx.fillRect(-7.5, -2.4, 15, 4.8);
+  ctx.fillStyle = "#d9ffe6";
+  ctx.fillRect(-1.2, -6.3, 2.4, 12.6);
+  ctx.fillRect(-6.3, -1.2, 12.6, 2.4);
+}
+
+/** Tornado: a grey spiral funnel. */
+function drawTornadoArt(ctx: Ctx): void {
+  ctx.strokeStyle = "#cfd6e0";
+  ctx.lineCap = "round";
+  for (let i = 0; i < 4; i++) {
+    const w = 9 - i * 2.1;
+    ctx.lineWidth = 2.4 - i * 0.35;
+    ctx.beginPath();
+    ctx.arc(0, -5 + i * 3.4, w, Math.PI * 0.15, Math.PI * 0.95);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "#aab4c4";
+  ctx.beginPath();
+  ctx.arc(0, 8.4, 1.6, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** Skeleton Barrel: a wooden keg with a peeking skull. */
+function drawBarrelArt(ctx: Ctx): void {
+  ctx.fillStyle = "#8a5a30";
+  ctx.beginPath();
+  ctx.ellipse(0, 1, 7.5, 9, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#5c3a1c";
+  ctx.lineWidth = 1.4;
+  for (const y of [-4, 1, 6]) {
+    ctx.beginPath();
+    ctx.moveTo(-7.2, y);
+    ctx.quadraticCurveTo(0, y + 1.6, 7.2, y);
+    ctx.stroke();
+  }
+  circle(ctx, 0, -6.5, 4, "#f5f2ea");
+  circle(ctx, -1.5, -7, 1, "#1f2430");
+  circle(ctx, 1.5, -7, 1, "#1f2430");
+}
+
 /** Static portrait used for HUD card slots and the next-card preview. */
 export function drawCardArt(
   ctx: Ctx,
@@ -917,6 +971,9 @@ export function drawCardArt(
   else if (cardId === "zap") drawZapArt(ctx);
   else if (cardId === "rage") drawRageArt(ctx);
   else if (cardId === "freeze") drawFreezeArt(ctx);
+  else if (cardId === "heal") drawHealArt(ctx);
+  else if (cardId === "tornado") drawTornadoArt(ctx);
+  else if (cardId === "skeleton-barrel") drawBarrelArt(ctx);
   else TROOP_PAINTERS[cardId]?.(ctx, STILL);
   ctx.restore();
 }

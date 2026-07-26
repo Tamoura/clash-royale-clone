@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { ARENA_HEIGHT, ARENA_WIDTH, BRIDGE_XS, RIVER_Y, type OpenLanes, type Side } from "../game/arena";
 import {
+  DEPLOY_DELAY,
   distance,
   openLanes,
   type BattleEvent,
@@ -60,6 +61,9 @@ const SPELL_TINT: Partial<Record<CardId, number>> = {
   arrows: 0x6ee7a0,
   rage: 0xff4db8,
   freeze: 0x7dd3fc,
+  heal: 0x6ee7a0,
+  tornado: 0x9aa3ad,
+  "skeleton-barrel": 0xc9954a,
 };
 
 // Which side sits at the bottom of the screen. The host views as "player"
@@ -82,8 +86,8 @@ const ARENA_PALETTE = {
   // dark warm timber and a dusk-amber sky, so the playfield glows against
   // a moody surround (see the reference screenshot).
   normal: { sky: 0x33190f, apron: 0x4a2c1a, far: 0x24110a, fieldSide: 0x6e4526, edging: 0x7a4a28, drift: 0x8f6a42 },
-  // Arabic: deep jewel-blue sky (vs the washed-out light grey before); richer sandstone.
-  arabic: { sky: 0x1f6ab8, apron: 0xe0c890, far: 0xcaaf78, fieldSide: 0xa89870, edging: 0xc8a85c, drift: 0xd8bc82 },
+  // Arabic: night bazaar — deep indigo sky, lamplit sandstone, jewel accents.
+  arabic: { sky: 0x141a38, apron: 0x8a6f48, far: 0x241d3e, fieldSide: 0xa89870, edging: 0xc8a85c, drift: 0xb89a68 },
 }[ARENA_THEME];
 
 /**
@@ -179,6 +183,8 @@ interface EntityView {
   spawnStyle?: "rise" | "pop" | "slam";
   spawnColor?: number;
   spawnBurst?: number;
+  /** White countdown ring shown while the unit's deploy freeze runs. */
+  deployRing?: THREE.Mesh;
   /** Seconds left of the take-a-hit squash jiggle. */
   hitT?: number;
   /** Damage stage a tower has visibly reached (0 pristine, 1 smoking, 2 burning). */
@@ -747,6 +753,40 @@ function buildTowerMesh(e: Entity): EntityView {
       crownDeck.castShadow = true;
       root.add(crownDeck);
     }
+
+    // CR-signature gun platform: a timber deck with a chunky cannon aimed
+    // downlane (offset so the tower crew keeps center stage).
+    const deckPlanks = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius * 0.92, radius * 0.98, 0.1, 10),
+      toon(0x8a5c2e),
+    );
+    deckPlanks.position.y = height + 0.02;
+    deckPlanks.castShadow = true;
+    root.add(deckPlanks);
+    const gun = new THREE.Group();
+    gun.position.set(radius * 0.5, height + 0.14, facing * radius * 0.5);
+    const carriage = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 0.14, 0.34),
+      toon(0x6e4a26),
+    );
+    carriage.position.y = 0.02;
+    gun.add(carriage);
+    const barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(king ? 0.16 : 0.12, king ? 0.2 : 0.15, king ? 0.85 : 0.65, 10),
+      toon(0x3a4150),
+    );
+    barrel.rotation.x = facing * 1.35; // aimed downlane with a slight lift
+    barrel.position.set(0, 0.16, facing * 0.12);
+    barrel.castShadow = true;
+    gun.add(barrel);
+    const band = new THREE.Mesh(
+      new THREE.CylinderGeometry((king ? 0.16 : 0.12) + 0.025, (king ? 0.16 : 0.12) + 0.025, 0.08, 10),
+      toon(0xf6c14e),
+    );
+    band.rotation.x = facing * 1.35;
+    band.position.set(0, 0.16, facing * 0.12);
+    gun.add(band);
+    root.add(gun);
   }
   const door = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.1), toon(0x4a3826));
   door.position.set(0, 0.62, facing * radius * 1.01);
@@ -1163,9 +1203,7 @@ export class Battle3D {
     this.scene.background = new THREE.Color(ARENA_PALETTE.sky);
     // Normal edition pulls the fog in close for the dark lantern-lit mood;
     // the field stays bright inside it.
-    this.scene.fog = arabic
-      ? new THREE.Fog(ARENA_PALETTE.sky, 38, 70)
-      : new THREE.Fog(ARENA_PALETTE.sky, 26, 58);
+    this.scene.fog = new THREE.Fog(ARENA_PALETTE.sky, arabic ? 30 : 26, arabic ? 62 : 58);
 
     // One InstancedMesh draws every hit spark; unlit + glowing so they pop.
     const sparkMat = new THREE.MeshBasicMaterial();
@@ -1286,7 +1324,7 @@ export class Battle3D {
     // Normal edition: dusk-lantern grade — warm sky bounce over dark timber.
     this.scene.add(
       arabic
-        ? new THREE.HemisphereLight(0xe4edff, 0x46683f, 1.0)
+        ? new THREE.HemisphereLight(0xcfd8ff, 0x4a3a58, 0.95)
         : new THREE.HemisphereLight(0xffe3c2, 0x4a2c1a, 1.0),
     );
     const sun = new THREE.DirectionalLight(0xfff2d8, 1.7);
@@ -1465,8 +1503,10 @@ export class Battle3D {
     // Normal edition: strings of glowing paper lanterns flanking the field —
     // the warm dusk-festival read of the reference arena. They're unlit
     // glow material, so the bloom pass makes them softly radiate.
-    if (!arabic) {
-      const lanternColors = [0xff7a36, 0xff5340, 0xffb04a];
+    {
+      const lanternColors = arabic
+        ? [0xffc46b, 0x5ad7c8, 0xffe08a]
+        : [0xff7a36, 0xff5340, 0xffb04a];
       // Fog-immune so they burn through the dusk haze like real lanterns.
       const lanternMat = (color: number): THREE.MeshBasicMaterial => {
         const m = new THREE.MeshBasicMaterial({ color, fog: false });
@@ -3068,6 +3108,16 @@ export class Battle3D {
         else if (ev.cardId === "zap") this.zapStrike(ev.x, ev.y, 2);
         else if (ev.cardId === "rage") this.rageZone(ev.x, ev.y, 2.5, 6);
         else if (ev.cardId === "freeze") this.freezeBlast(ev.x, ev.y, 3, 4);
+        else if (ev.cardId === "heal") {
+          this.blast(ev.x, ev.y, 3, 0x6ee7a0);
+          this.emitSparks(ev.x, ev.y, 0.4, 14, 2.2, 1.6, 0x8effb0, 0.1, 0.7);
+        } else if (ev.cardId === "tornado") {
+          this.blast(ev.x, ev.y, 4, 0xaab4c4);
+          this.emitSparks(ev.x, ev.y, 0.6, 18, 5, 1.8, 0xcfd6e0, 0.09, 0.6);
+        } else if (ev.cardId === "skeleton-barrel") {
+          this.puff(ev.x, ev.y, 0x8a5a30, 0.9);
+          this.boneScatter(ev.x, ev.y, 0xf5f2ea);
+        }
         // Mega Knight's slam shockwave is fired from his sky-drop spawn entry.
         else if (ev.cardId === "mega-knight") {
           /* handled on spawn */
@@ -3283,8 +3333,40 @@ export class Battle3D {
         // Troops recoil bodily; towers/buildings show damage other ways
         // (and deployed buildings decay every tick, which is not a "hit").
         if (e.kind === "troop") view.hitT = HIT_JIGGLE_TIME;
+        // Masonry chips fly off towers with every real hit.
+        if (e.kind === "princess-tower" || e.kind === "king-tower") {
+          this.emitSparks(e.x, e.y, 1.6, 3, 3.2, 1.3, 0x9b8d7b, 0.09, 0.45);
+        }
       }
       view.lastHp = e.hp;
+
+      // Deploy freeze countdown: a white ring shrinking around the unit's
+      // feet so the "why isn't it moving yet" second reads as a timer.
+      if (e.kind === "troop") {
+        if (e.deployTimer > 0) {
+          if (!view.deployRing) {
+            view.deployRing = new THREE.Mesh(
+              new THREE.RingGeometry(0.78, 0.92, 28),
+              new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.75,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+              }),
+            );
+            view.deployRing.rotation.x = -Math.PI / 2;
+            view.deployRing.position.y = 0.035;
+            view.root.add(view.deployRing);
+          }
+          view.deployRing.visible = true;
+          const f = Math.max(0.05, e.deployTimer / DEPLOY_DELAY);
+          view.deployRing.scale.setScalar((0.5 + 0.9 * f) * (e.radius / 0.5));
+          (view.deployRing.material as THREE.MeshBasicMaterial).opacity = 0.35 + 0.45 * f;
+        } else if (view.deployRing) {
+          view.deployRing.visible = false;
+        }
+      }
 
       // Floating combat text, batched so swarms don't spam numbers.
       if (lost > 0.5) view.pendingDmg = (view.pendingDmg ?? 0) + lost;

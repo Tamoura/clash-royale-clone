@@ -46,6 +46,9 @@ const ISLAMIC_NAME: Record<CardId, string> = {
   zap: "مسحوق الوميض",
   rage: "طبول الحرب",
   freeze: "حسك",
+  heal: "شفاء",
+  tornado: "زوبعة",
+  "skeleton-barrel": "برميل الميليشيا",
   champion: "بطل",
 };
 

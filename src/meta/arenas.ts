@@ -55,13 +55,13 @@ export const ARENAS: ArenaDef[] = [
     id: "builders-workshop",
     name: "Builder's Workshop",
     trophies: 1300,
-    unlocks: ["balloon", "royal-giant", "firecracker"],
+    unlocks: ["balloon", "royal-giant", "firecracker", "heal"],
   },
   {
     id: "royal-arena",
     name: "Royal Arena",
     trophies: 1600,
-    unlocks: ["skeleton-army", "ice-wizard", "pekka"],
+    unlocks: ["skeleton-army", "ice-wizard", "pekka", "tornado"],
   },
   {
     id: "frozen-peak",
@@ -73,7 +73,7 @@ export const ARENAS: ArenaDef[] = [
     id: "jungle-arena",
     name: "Jungle Arena",
     trophies: 2400,
-    unlocks: ["executioner", "mega-knight"],
+    unlocks: ["executioner", "mega-knight", "skeleton-barrel"],
   },
   {
     id: "legendary-peak",

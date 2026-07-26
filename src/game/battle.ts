@@ -1,4 +1,5 @@
 import {
+  ARENA_HEIGHT,
   ARENA_WIDTH,
   RIVER_Y,
   canDeployTroopAt,
@@ -553,6 +554,45 @@ export function applySpell(
   state.effects.push({ cardId, x, y, radius, ttl: 0.6 });
 }
 
+/** Drag enemy troops toward (x, y) — the Tornado's signature verb. */
+function pullEnemies(
+  state: BattleState,
+  side: Side,
+  x: number,
+  y: number,
+  radius: number,
+  pull: number,
+): void {
+  for (const e of state.entities) {
+    if (e.side === side || e.hp <= 0 || e.kind !== "troop") continue;
+    const d = distance(e, { x, y });
+    if (d > radius + e.radius || d < 1e-6) continue;
+    const step = Math.min(pull, d);
+    e.x += ((x - e.x) / d) * step;
+    e.y += ((y - e.y) / d) * step;
+    e.x = Math.min(ARENA_WIDTH - e.radius, Math.max(e.radius, e.x));
+    e.y = Math.min(ARENA_HEIGHT - e.radius, Math.max(e.radius, e.y));
+  }
+}
+
+/** Restore HP to friendly troops in the radius (never above max, never towers). */
+function healAllies(
+  state: BattleState,
+  side: Side,
+  cardId: CardId,
+  x: number,
+  y: number,
+  radius: number,
+  amount: number,
+): void {
+  for (const e of state.entities) {
+    if (e.side !== side || e.hp <= 0 || e.kind !== "troop") continue;
+    if (distance(e, { x, y }) > radius + e.radius) continue;
+    e.hp = Math.min(e.maxHp, e.hp + amount);
+  }
+  state.effects.push({ cardId, x, y, radius, ttl: 0.6 });
+}
+
 /** Why a deploy would be rejected (or "ok" if it would succeed). */
 export type DeployCheck = "ok" | "finished" | "not-in-hand" | "bad-spot" | "no-elixir";
 
@@ -642,17 +682,26 @@ export function deployCard(
       state.buffZones.push({ side, x, y, radius: card.radius, ttl: card.rageSeconds });
       state.effects.push({ cardId, x, y, radius: card.radius, ttl: card.rageSeconds });
     } else {
-      applySpell(
-        state,
-        side,
-        cardId,
-        x,
-        y,
-        card.damage * levelMultiplier(me.levels, card.id),
-        card.radius,
-        card.stunSeconds,
-        card.knockback,
-      );
+      // The Tornado drags enemies into the center BEFORE damage lands,
+      // so a well-placed cast bunches a push onto its own blast.
+      if (card.pull > 0) pullEnemies(state, side, x, y, card.radius, card.pull);
+      if (card.damage > 0 || card.stunSeconds > 0) {
+        applySpell(
+          state,
+          side,
+          cardId,
+          x,
+          y,
+          card.damage * levelMultiplier(me.levels, card.id),
+          card.radius,
+          card.stunSeconds,
+          card.knockback,
+        );
+      }
+      if (card.heal > 0) healAllies(state, side, cardId, x, y, card.radius, card.heal);
+      // The Skeleton Barrel bursts open where it lands — a spell that
+      // delivers troops anywhere on the field, enemy side included.
+      if (card.spawnUnit) spawnUnits(state, side, card.spawnUnit, x, y);
     }
   } else if (card.kind === "building") {
     state.events.push({ type: "deploy", side, cardId });

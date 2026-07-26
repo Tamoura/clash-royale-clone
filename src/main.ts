@@ -90,6 +90,14 @@ import {
   type Challenge,
 } from "./game/challenges";
 import { dailyDeck, dateKey } from "./game/daily";
+import {
+  claimQuest,
+  isComplete,
+  loadQuests,
+  questDef,
+  recordMatch as recordQuestMatch,
+  saveQuests,
+} from "./meta/quests";
 
 // Apply edition-aware CSS variables before any DOM is rendered.
 applyEditionTokens(STORED_EDITION);
@@ -136,21 +144,56 @@ let profile: PlayerProfile = loadProfile(localStorage);
 let playerDeck: CardId[] = profile.deck;
 let cardLevels: CardLevels = profile.levels;
 
+// ---- Daily quests ---------------------------------------------------------
+let quests = loadQuests(dateKey(new Date()));
+let battleCardsPlayed = 0;
+let questsBattleRef: BattleState | null = null;
+
 function persistProfile(): void {
   profile = { ...profile, deck: playerDeck, levels: cardLevels };
   saveProfile(localStorage, profile);
   refreshMetaChips();
 }
 
+// ---- Bot archetypes: each ladder opponent has a personality -------------
+type ArchetypeId = "balanced" | "beatdown" | "cycle";
+const ARCHETYPE_NAMES: Record<ArchetypeId, [string, string]> = {
+  balanced: ["Duelist Bot", "روبوت مبارز"],
+  beatdown: ["Crusher Bot", "روبوت ساحق"],
+  cycle: ["Cycler Bot", "روبوت سريع"],
+};
+
+function pickArchetype(): ArchetypeId {
+  const r = Math.random();
+  return r < 0.34 ? "balanced" : r < 0.67 ? "beatdown" : "cycle";
+}
+
 /** Bot drafts from cards unlocked at the player's arena (fair ladder). */
-function botDeck(): CardId[] {
+function botDeck(archetype: ArchetypeId = "balanced"): CardId[] {
   const available = cardsAvailableAt(profile.trophies);
-  const pool = available.length >= 8 ? [...available] : [...DEFAULT_DECK];
+  let pool = available.length >= 8 ? [...available] : [...DEFAULT_DECK];
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  return pool.slice(0, 8);
+  if (archetype === "cycle") {
+    // Cheap-first: out-tempo the player with a low curve.
+    const cheap = pool.filter((id) => getCard(id).cost <= 3);
+    pool = [...cheap, ...pool.filter((id) => !cheap.includes(id))];
+  } else if (archetype === "beatdown") {
+    // Heavies-first: guarantee tanks/win-conditions lead the deck.
+    const heavy = pool.filter((id) => {
+      const c = getCard(id);
+      return c.kind === "troop" && (c.unit.targetsBuildingsOnly || c.unit.maxHp >= 1400);
+    });
+    pool = [...heavy.slice(0, 3), ...pool.filter((id) => !heavy.slice(0, 3).includes(id))];
+  }
+  const deck = pool.slice(0, 8);
+  // The twist: hard bots sometimes wield YOUR champion design against you.
+  if (difficulty === "hard" && hasSavedChampion() && !deck.includes("champion") && Math.random() < 0.5) {
+    deck[deck.length - 1] = "champion";
+  }
+  return deck;
 }
 
 // ---- Bot difficulty ------------------------------------------------------
@@ -337,18 +380,31 @@ function startLadder(): void {
   online = null;
   // Crazy mode rerolls a scrambled card set each match; other modes use stock.
   setCardOverrides(gameMode.id === "crazy" ? crazyCards() : null);
+  const archetype = pickArchetype();
   // Mirror mode: player and bot share one random deck for a pure-skill match.
   const shared = gameMode.mirror ? botDeck() : null;
   battle = createBattle(
     shared ?? playerDeck,
-    shared ?? botDeck(),
+    shared ?? botDeck(archetype),
     { player: cardLevels, enemy: botLevels() },
     gameMode.elixirRate,
   );
-  bot = createBot(Date.now() & 0xffff, DIFFICULTIES[difficulty]);
+  const base = DIFFICULTIES[difficulty];
+  // Personality tweaks: beatdown banks bigger pushes, cycle plays faster.
+  const tuned: BotProfile =
+    archetype === "beatdown"
+      ? { thinkInterval: base.thinkInterval, pushAt: Math.min(10, base.pushAt + 1) }
+      : archetype === "cycle"
+        ? { thinkInterval: base.thinkInterval * 0.85, pushAt: Math.max(4, base.pushAt - 2) }
+        : base;
+  bot = createBot(Date.now() & 0xffff, tuned);
   selectCard(null);
   hud.setReward(null);
-  hud.setOpponentName(isSandbox() ? "Training dummy" : "Bot");
+  hud.setOpponentName(
+    isSandbox()
+      ? tr("Training dummy", "دمية تدريب")
+      : tr(ARCHETYPE_NAMES[archetype][0], ARCHETYPE_NAMES[archetype][1]),
+  );
   scene.setViewpoint("player");
   scene.reset();
   audio.setIntensity(0);
@@ -610,6 +666,65 @@ function buildHome(): void {
   mk(tr("📚 Collection", "📚 المقتنيات"), "battle-btn friend", () => openCollection());
   mk(tr("🎁 Chests", "🎁 الصناديق"), "battle-btn friend", () => openChests());
   pickerRoot.appendChild(nav);
+
+  // Daily quest board: three goals, gold on claim, fresh every day.
+  const today = dateKey(new Date());
+  if (quests.date !== today) {
+    quests = loadQuests(today);
+    saveQuests(quests);
+  }
+  const board = document.createElement("div");
+  board.className = "quest-board";
+  const qTitle = document.createElement("div");
+  qTitle.className = "quest-title";
+  qTitle.textContent = tr("📜 Daily Quests", "📜 مهام اليوم");
+  board.appendChild(qTitle);
+  for (const id of quests.active) {
+    const def = questDef(id);
+    if (!def) continue;
+    const row = document.createElement("div");
+    row.className = "quest-row";
+    const label = document.createElement("div");
+    label.className = "quest-label";
+    label.textContent = tr(def.en, def.ar);
+    row.appendChild(label);
+    const done = isComplete(quests, id);
+    const claimed = quests.claimed.includes(id);
+    const bar = document.createElement("div");
+    bar.className = "quest-bar";
+    const fill = document.createElement("div");
+    fill.className = "quest-fill";
+    fill.style.width = `${Math.round(Math.min(1, (quests.progress[id] ?? 0) / def.target) * 100)}%`;
+    bar.appendChild(fill);
+    const count = document.createElement("span");
+    count.className = "quest-count";
+    count.textContent = `${Math.min(def.target, Math.round(quests.progress[id] ?? 0))}/${def.target}`;
+    bar.appendChild(count);
+    row.appendChild(bar);
+    const btn = document.createElement("button");
+    btn.className = "quest-claim";
+    if (claimed) {
+      btn.textContent = "✓";
+      btn.disabled = true;
+    } else if (done) {
+      btn.textContent = `🪙 ${def.reward}`;
+      btn.addEventListener("click", () => {
+        const res = claimQuest(quests, id);
+        if (!res) return;
+        quests = res.state;
+        saveQuests(quests);
+        profile = { ...profile, gold: profile.gold + res.reward };
+        persistProfile();
+        buildHome(); // refresh board + currency
+      });
+    } else {
+      btn.textContent = `🪙 ${def.reward}`;
+      btn.disabled = true;
+    }
+    row.appendChild(btn);
+    board.appendChild(row);
+  }
+  pickerRoot.appendChild(board);
 }
 
 // ---- Character Studio ----------------------------------------------------
@@ -1342,9 +1457,17 @@ function buildChests(): void {
       return;
     }
     const ready = isChestReady(slot, now);
+    if (ready) cell.classList.add("ready");
+    // CSS-art chest: banded wooden trunk with a gold lock; wobbles when ready.
+    const art = document.createElement("div");
+    art.className = "chest-art" + (slot.rarity === "rare" ? " rare" : "");
+    art.innerHTML =
+      '<div class="chest-base"></div><div class="chest-lid"></div>' +
+      '<div class="chest-band"></div><div class="chest-lock"></div>';
+    cell.appendChild(art);
     const label = document.createElement("div");
     label.className = "chest-rarity";
-    label.textContent = slot.rarity === "rare" ? "🎁 Rare" : "📦 Free";
+    label.textContent = slot.rarity === "rare" ? tr("Rare", "نادر") : tr("Free", "مجاني");
     cell.appendChild(label);
     const timer = document.createElement("div");
     timer.className = "chest-timer";
@@ -2065,9 +2188,29 @@ function frame(now: number): void {
     }
   }
   botEmoteCooldown = Math.max(0, botEmoteCooldown - dt);
+  // New battle object → fresh quest counters.
+  if (questsBattleRef !== battle) {
+    questsBattleRef = battle;
+    battleCardsPlayed = 0;
+  }
   for (const ev of battle.events.splice(0)) {
     audio.onEvent(ev);
     scene.onEvent(ev);
+    if ((ev.type === "deploy" || ev.type === "spell") && ev.side === localSide()) {
+      battleCardsPlayed++;
+    }
+    if (ev.type === "finish" && mode === "solo" && !isSandbox()) {
+      // Fold the match into today's quests (any real solo battle counts).
+      const today = dateKey(new Date());
+      if (quests.date !== today) quests = loadQuests(today);
+      quests = recordQuestMatch(quests, {
+        won: ev.winner === "player",
+        cardsPlayed: battleCardsPlayed,
+        damage: battle.player.stats.damageDealt,
+      });
+      saveQuests(quests);
+      battleCardsPlayed = 0;
+    }
     if (ev.type === "death" && (ev.kind === "princess-tower" || ev.kind === "king-tower")) {
       flashImpact();
     }

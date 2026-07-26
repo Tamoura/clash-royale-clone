@@ -39,6 +39,13 @@ export function cardStatLines(id: CardId): string[] {
         tr(`${card.rageSeconds}s boost: faster troops`, `تسريع الوحدات ${card.rageSeconds} ث`),
       );
     }
+    if (card.heal > 0) bits.push(tr(`heals ${card.heal}`, `يشفي ${card.heal}`));
+    if (card.pull > 0) bits.push(tr("drags enemies to its center", "يسحب الأعداء إلى مركزها"));
+    if (card.spawnUnit) {
+      bits.push(
+        tr(`unloads ${cardDisplayName(card.spawnUnit)}s`, `يطلق ${cardDisplayName(card.spawnUnit)}`),
+      );
+    }
     bits.push(tr(`radius ${card.radius}`, `نصف قطر ${card.radius}`));
     lines.push(bits.join(" · "));
     return lines;
