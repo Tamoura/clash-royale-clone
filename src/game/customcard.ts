@@ -109,12 +109,14 @@ export const DEFAULT_CHAMPION: ChampionDef = {
     buildingsOnly: false,
     summoner: false,
   },
+  // Deliberately NOT the Knight formula (blue + helmet + sword): the
+  // default champion reads as its own hero even before the player edits it.
   look: {
-    body: 0x2f6bd8,
-    trim: 0xf2c14e,
-    headgear: "helmet",
-    weapon: "sword",
-    mood: "brave",
+    body: 0x8a3fc2,
+    trim: 0x5ad7c8,
+    headgear: "horns",
+    weapon: "hammer",
+    mood: "angry",
   },
 };
 

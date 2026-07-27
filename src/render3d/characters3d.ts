@@ -745,14 +745,21 @@ function buildRoyalGiant(): TroopRig {
   const g = new THREE.Group();
   const legs = [makeLeg(ARMORDK, -0.26, 0.34, 0.26), makeLeg(ARMORDK, 0.26, 0.34, 0.26)];
   g.add(...legs);
-  const belly = sphere(0.62, 0xc98850, 0, 0.95, 0); // bare-bellied bruiser
-  belly.scale.set(1, 0.95, 0.82);
-  g.add(belly);
-  g.add(box(0.42, 0.72, 0.1, ARMOR, 0, 0.96, 0.49)); // royal tabard
-  g.add(box(0.12, 0.72, 0.02, GOLD, 0, 0.96, 0.55)); // gold stripe
-  g.add(cyl(0.63, 0.63, 0.12, GOLD, 0, 0.55, 0)); // gold belt
-  g.add(sphere(0.11, 0xff5252, 0, 0.55, 0.6)); // ruby buckle
-  g.add(cyl(0.5, 0.6, 0.34, ARMORDK, 0, 0.4, 0)); // armoured skirt
+  // Full royal-blue cuirass — no bare belly, so he never reads as a
+  // re-colored Giant. The Giant is skin and leather; this is a wall of armor.
+  const cuirass = sphere(0.6, ARMOR, 0, 0.96, 0);
+  cuirass.scale.set(1, 1.0, 0.8);
+  g.add(cuirass);
+  g.add(box(0.46, 0.76, 0.1, ARMORDK, 0, 0.96, 0.46)); // breastplate panel
+  g.add(box(0.12, 0.76, 0.02, GOLD, 0, 0.96, 0.52)); // gold stripe
+  g.add(cyl(0.62, 0.62, 0.12, GOLD, 0, 0.52, 0)); // gold belt
+  g.add(sphere(0.11, 0xff5252, 0, 0.52, 0.56)); // ruby buckle
+  g.add(cyl(0.5, 0.6, 0.34, ARMORDK, 0, 0.38, 0)); // armoured skirt
+  // Long royal cape — a back-view silhouette no other heavy has.
+  const cape = box(0.74, 0.95, 0.07, 0x9c2430, 0, 1.02, -0.5);
+  cape.rotation.x = 0.08;
+  g.add(cape);
+  g.add(box(0.8, 0.12, 0.1, GOLD, 0, 1.5, -0.44)); // cape clasp bar
   for (const s of [-1, 1]) g.add(sphere(0.26, IRON, s * 0.6, 1.34, 0)); // pauldrons
   const head = sphere(0.42, SKIN, 0, 1.72, 0);
   addEyes(head, 0.42, 0.34, 0.18, "brave");
@@ -776,38 +783,40 @@ function buildRoyalGiant(): TroopRig {
     g.add(sphere(0.06, 0xff5252, 0, 2.14, 0.4)); // crown ruby
   }
 
-  // Off arm braces the cannon's underside.
+  // Off arm cradles the next cannonball.
   const offArm = new THREE.Group();
-  offArm.position.set(-0.46, 1.0, 0.24);
-  offArm.add(box(0.24, 0.46, 0.24, SKIN, 0, -0.2, 0));
-  offArm.add(sphere(0.2, SKIN, 0, -0.42, 0.08));
-  offArm.rotation.x = -0.55;
+  offArm.position.set(-0.62, 1.2, 0);
+  offArm.add(box(0.24, 0.46, 0.24, ARMOR, 0, -0.24, 0));
+  offArm.add(sphere(0.2, SKIN, 0, -0.48, 0.1));
+  offArm.add(sphere(0.19, IRONDK, 0, -0.52, 0.3)); // cannonball
+  offArm.rotation.x = -0.3;
   g.add(offArm);
 
-  // Main arm hoists a huge forward-pointing cannon (the attack).
+  // Main arm shoulders the huge cannon (the attack) — carried high like
+  // artillery, not hanging at his side like the Giant's fist.
   const arm = new THREE.Group();
-  arm.position.set(0.62, 1.2, 0);
-  arm.add(box(0.24, 0.46, 0.24, SKIN, 0, -0.24, 0)); // upper arm
-  arm.add(sphere(0.2, SKIN, 0, -0.46, 0.12)); // fist
+  arm.position.set(0.6, 1.34, 0);
+  arm.add(box(0.24, 0.44, 0.24, ARMOR, 0, -0.22, 0)); // armored arm
+  arm.add(sphere(0.2, SKIN, 0, -0.44, 0.1)); // fist
   const cannon = new THREE.Group();
-  cannon.position.set(-0.12, -0.42, 0.2);
-  const barrel = cyl(0.2, 0.24, 1.1, IRON, 0, 0, 0);
+  cannon.position.set(0.04, 0.16, -0.08);
+  cannon.rotation.x = -0.14; // tilted up for the lob
+  const barrel = cyl(0.2, 0.24, 1.15, IRON, 0, 0, 0);
   barrel.rotation.x = Math.PI / 2;
-  barrel.position.z = 0.55;
+  barrel.position.z = 0.28;
   cannon.add(barrel);
-  const breech = sphere(0.26, IRONDK, 0, 0, -0.04);
-  cannon.add(breech);
+  cannon.add(sphere(0.27, IRONDK, 0, 0, -0.34)); // breech
   const band = cyl(0.27, 0.27, 0.12, GOLD, 0, 0, 0);
   band.rotation.x = Math.PI / 2;
-  band.position.z = 0.7;
+  band.position.z = 0.44;
   cannon.add(band);
   const muzzle = cyl(0.28, 0.28, 0.12, GOLD, 0, 0, 0);
   muzzle.rotation.x = Math.PI / 2;
-  muzzle.position.z = 1.12;
+  muzzle.position.z = 0.86;
   cannon.add(muzzle);
   arm.add(cannon);
   g.add(arm);
-  return { group: g, arm, armRest: -0.08, swingAmp: 0.4, height: 2.1, legs, offArm };
+  return { group: g, arm, armRest: -0.08, swingAmp: 0.4, height: 2.3, legs, offArm };
 }
 
 function buildMusketeer(): TroopRig {
@@ -966,6 +975,10 @@ interface WizardTheme {
   orbit: "embers" | "shards" | null;
   /** Thick white winter fur collar (the Ice Wizard). */
   fur: boolean;
+  /** Beard cone length override — the Electro Wizard wears a short goatee. */
+  beardLen?: number;
+  /** Twin tesla-coil pack on the back (the Electro Wizard). */
+  coils?: boolean;
 }
 
 /**
@@ -1004,7 +1017,8 @@ function buildWizard(theme: WizardTheme = CLASSIC_WIZARD): TroopRig {
   g.add(head);
   // Hair tufts + short beard, kept clear of the lit face.
   for (const s of [-1, 1]) g.add(sphere(0.12, HAIR, s * 0.28, 1.02, 0.04));
-  const beard = cone(0.2, theme.fur ? 0.58 : 0.42, theme.beard, 0, theme.fur ? 0.76 : 0.84, 0.12);
+  const beardLen = theme.beardLen ?? (theme.fur ? 0.58 : 0.42);
+  const beard = cone(0.2, beardLen, theme.beard, 0, theme.fur ? 0.76 : 0.84, 0.12);
   beard.rotation.x = Math.PI;
   g.add(beard);
   if (theme.fur) {
@@ -1012,20 +1026,39 @@ function buildWizard(theme: WizardTheme = CLASSIC_WIZARD): TroopRig {
     g.add(cyl(0.3, 0.36, 0.16, 0xf2f6f8, 0, 0.9, 0));
     for (const s of [-1, 1]) g.add(sphere(0.15, 0xf2f6f8, s * 0.3, 0.88, 0));
   }
+  if (theme.coils) {
+    // Twin tesla coils leaning wide over the shoulders from a back pack —
+    // an angular, technological outline no other robed caster shares.
+    g.add(box(0.36, 0.3, 0.14, ROBEDK, 0, 0.86, -0.32));
+    for (const s of [-1, 1]) {
+      const coil = cyl(0.05, 0.1, 0.52, ROBEDK, s * 0.32, 1.16, -0.28);
+      coil.rotation.z = s * 0.42;
+      g.add(coil);
+      const ring = cyl(0.11, 0.11, 0.05, TRIM, s * 0.4, 1.28, -0.28);
+      ring.rotation.z = s * 0.42;
+      g.add(ring);
+      const spark = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), glow(theme.tip, 2.4));
+      spark.position.set(s * 0.46, 1.42, -0.28);
+      g.add(spark);
+    }
+  }
   let antennae: THREE.Object3D | null = null;
   if (ARABIC) {
     const t = turban(0.32, 0x2f6f6b, 0x76ff03); // teal turban, green mage jewel
     t.position.y = 1.12;
     g.add(t);
   } else if (theme.headgear === "electro") {
-    // No hat: a wild electric mohawk and a crackling bolt antenna.
-    for (let i = 0; i < 5; i++) {
-      const spike = cone(0.06, 0.34 - Math.abs(i - 2) * 0.05, HAIR, (i - 2) * 0.1, 1.36, -0.02);
+    // No hat: a tall crest of hair swept BACK by its own static charge —
+    // deliberately not a ring of spikes, which reads like Ice's crown.
+    for (let i = 0; i < 3; i++) {
+      const hSpike = 0.62 - i * 0.16;
+      const spike = cone(0.1 - i * 0.015, hSpike, HAIR, 0, 1.34 + hSpike * 0.3, -0.06 - i * 0.15);
+      spike.rotation.x = -0.5 - i * 0.25; // raked backward
       g.add(spike);
     }
     antennae = new THREE.Group();
     const bolt = new THREE.Mesh(new THREE.OctahedronGeometry(0.09), glow(theme.tip, 2.2));
-    bolt.position.set(0, 1.66, -0.02);
+    bolt.position.set(0, 1.82, -0.14);
     antennae.add(bolt);
     g.add(antennae);
   } else if (theme.headgear === "ice") {
@@ -1102,12 +1135,14 @@ function buildWizard(theme: WizardTheme = CLASSIC_WIZARD): TroopRig {
 }
 
 function buildElectroWizard(): TroopRig {
+  // Storm-charcoal, a color no other caster wears: white read as an Ice
+  // Wizard palette swap, and indigo collided with the Musketeer's coat.
   return buildWizard({
-    robe: 0xf4f8ff,
-    robeDk: 0x2a6fb0,
+    robe: 0x3a4653,
+    robeDk: 0x232c36,
     trim: 0x4fd2ff,
-    hair: 0x6fe3ff,
-    beard: 0xeaf6ff,
+    hair: 0x45e8ff,
+    beard: 0xd9f6ff,
     orb: 0x5ad1ff,
     crystal: 0x9bf0ff,
     tip: 0xb8f3ff,
@@ -1116,6 +1151,8 @@ function buildElectroWizard(): TroopRig {
     skin: SKIN,
     orbit: null,
     fur: false,
+    beardLen: 0.2, // short goatee — the long beard belongs to Ice
+    coils: true,
   });
 }
 
@@ -1408,7 +1445,8 @@ function buildValkyrie(): TroopRig {
   const g = new THREE.Group();
   const legs = [makeLeg(0x4e342e, -0.13, 0.26, 0.16), makeLeg(0x4e342e, 0.13, 0.26, 0.16)];
   g.add(...legs);
-  g.add(cyl(0.3, 0.44, 0.5, 0xb71c1c, 0, 0.5, 0)); // dress
+  g.add(cyl(0.3, 0.5, 0.5, 0x8e1220, 0, 0.5, 0)); // deep crimson dress
+  g.add(cyl(0.5, 0.53, 0.1, 0xe8e3d8, 0, 0.28, 0)); // fur-trimmed hem
   g.add(cyl(0.38, 0.4, 0.09, 0x6d4c41, 0, 0.34, 0)); // belt
   const head = sphere(0.3, SKIN, 0, 1.04, 0);
   addEyes(head, 0.3, 0.38, 0.1, "angry");
@@ -1418,20 +1456,31 @@ function buildValkyrie(): TroopRig {
     t.position.y = 1.04;
     g.add(t);
   } else {
-    const hair = sphere(0.31, 0xe07b39, 0, 1.12, -0.03);
-    hair.scale.set(1, 0.66, 1);
+    // Big wild mane with heavy outswept braids — her head outline stops
+    // matching the Knight's smooth steel dome.
+    const hair = sphere(0.34, 0xe07b39, 0, 1.13, -0.03);
+    hair.scale.set(1.08, 0.7, 1.05);
     g.add(hair);
     for (const s of [-1, 1]) {
-      const braid = cyl(0.07, 0.05, 0.5, 0xe07b39, s * 0.27, 0.84, -0.1);
-      braid.rotation.z = s * 0.25;
+      const braid = cyl(0.11, 0.07, 0.68, 0xe07b39, s * 0.34, 0.78, -0.12);
+      braid.rotation.z = s * 0.48;
       g.add(braid);
+      g.add(sphere(0.09, 0xc75b28, s * 0.5, 0.5, -0.12)); // braid tie
+    }
+    // Broad gold valkyrie wings flaring from the circlet — matched to her
+    // headband, not to steel, so nothing up top echoes the Knight's helm.
+    for (const s of [-1, 1]) {
+      const wing = cone(0.18, 0.46, 0xf2c14e, s * 0.42, 1.36, -0.04);
+      wing.scale.z = 0.3; // flat feathered fan
+      wing.rotation.z = -s * 1.15; // sweeping up and outward
+      g.add(wing);
     }
   }
-  // Battle armor: steel pauldrons with rivets, a leather chest guard,
-  // and a gold headband.
+  // Fur-mantled shoulders (matching the hem) and a leather chest guard —
+  // no steel up top, that's the Knight's material.
   for (const s of [-1, 1]) {
-    g.add(sphere(0.15, 0x9aa3ad, s * 0.36, 0.78, 0)); // pauldron
-    g.add(sphere(0.05, 0xf2c14e, s * 0.36, 0.86, 0.08)); // rivet
+    g.add(sphere(0.17, 0xe8e3d8, s * 0.37, 0.78, 0)); // fur pauldron
+    g.add(sphere(0.05, 0xf2c14e, s * 0.37, 0.9, 0.06)); // gold stud
   }
   g.add(box(0.36, 0.3, 0.3, 0x6b4a2a, 0, 0.66, 0.06)); // chest guard
   g.add(diamond(0.07, 0xf2c14e, 0, 0.7, 0.24)); // emblem
@@ -1451,11 +1500,11 @@ function buildValkyrie(): TroopRig {
   // Broad flat half-moon blades facing the swing plane — the old edge-on
   // squashed discs read as a grey ball, not her signature great-axe.
   for (const s of [-1, 1]) {
-    const blade = cyl(0.28, 0.28, 0.055, 0xb7c2cc, s * 0.24, 0.28, 0.16);
+    const blade = cyl(0.33, 0.33, 0.055, 0xb7c2cc, s * 0.28, 0.28, 0.16);
     blade.rotation.x = Math.PI / 2; // flat face forward
     blade.scale.x = 0.82;
     arm.add(blade);
-    const edge = cyl(0.3, 0.3, 0.04, 0xe7edf4, s * 0.32, 0.28, 0.16);
+    const edge = cyl(0.35, 0.35, 0.04, 0xe7edf4, s * 0.37, 0.28, 0.16);
     edge.rotation.x = Math.PI / 2; // bright cutting rim biased outward
     edge.scale.x = 0.45;
     arm.add(edge);
