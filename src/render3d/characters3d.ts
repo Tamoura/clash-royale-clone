@@ -537,45 +537,49 @@ function buildPrincess(): TroopRig {
 function buildGiant(): TroopRig {
   const g = new THREE.Group();
   const legs = [
-    makeLeg(0x7a5230, -0.26, 0.34, 0.26),
-    makeLeg(0x7a5230, 0.26, 0.34, 0.26),
+    makeLeg(0x7a5230, -0.3, 0.34, 0.3),
+    makeLeg(0x7a5230, 0.3, 0.34, 0.3),
   ];
   g.add(...legs);
-  const belly = sphere(0.62, 0xc98850, 0, 0.95, 0);
-  belly.scale.set(1, 0.95, 0.82);
+  // The belly IS the character: a barrel wider than the head is tall,
+  // with a small head perched on top and heavy slouched shoulders.
+  const belly = sphere(0.74, 0xc98850, 0, 0.98, 0);
+  belly.scale.set(1, 0.92, 0.85);
   g.add(belly);
-  g.add(box(0.34, 0.26, 0.06, 0xa96f3d, 0.2, 0.85, 0.49)); // patch
-  g.add(cyl(0.63, 0.63, 0.12, 0x7a5230, 0, 0.55, 0)); // belt
-  g.add(sphere(0.11, 0xf2c14e, 0, 0.55, 0.6)); // buckle
-  g.add(cyl(0.5, 0.6, 0.34, 0x8a5a35, 0, 0.4, 0)); // loincloth skirt
-  const head = sphere(0.42, SKIN, 0, 1.72, 0);
-  addEyes(head, 0.42, 0.34, 0.18, "calm");
+  g.add(box(0.38, 0.3, 0.06, 0xa96f3d, 0.24, 0.9, 0.58)); // patch
+  g.add(cyl(0.74, 0.74, 0.13, 0x7a5230, 0, 0.5, 0)); // belt
+  g.add(sphere(0.12, 0xf2c14e, 0, 0.5, 0.71)); // buckle
+  g.add(cyl(0.58, 0.7, 0.36, 0x8a5a35, 0, 0.36, 0)); // loincloth skirt
+  const head = sphere(0.38, SKIN, 0, 1.86, 0);
+  addEyes(head, 0.38, 0.34, 0.18, "calm");
   g.add(head);
-  const beard = sphere(0.4, 0x8a5a35, 0, 1.56, 0.14);
+  const beard = sphere(0.37, 0x8a5a35, 0, 1.7, 0.13);
   beard.scale.set(1, 0.62, 0.85);
   g.add(beard);
-  g.add(box(0.5, 0.07, 0.06, 0x5d3d22, 0, 1.92, 0.36)); // heavy brow
-  g.add(sphere(0.09, SKIN, 0, 1.74, 0.42)); // nose
+  g.add(box(0.46, 0.07, 0.06, 0x5d3d22, 0, 2.04, 0.32)); // heavy brow
+  g.add(sphere(0.09, SKIN, 0, 1.88, 0.38)); // nose
   if (ARABIC) {
-    const t = turban(0.42, 0x9c5a2a, 0xf2c14e);
-    t.position.y = 1.78;
+    const t = turban(0.38, 0x9c5a2a, 0xf2c14e);
+    t.position.y = 1.92;
     g.add(t);
   }
 
+  // Slouched shoulders: arms hang low and forward off the barrel,
+  // ending in fists nearly as big as the head.
   const offArm = new THREE.Group();
-  offArm.position.set(-0.66, 1.28, 0);
-  offArm.add(box(0.24, 0.5, 0.24, SKIN, 0, -0.3, 0));
-  offArm.add(cyl(0.16, 0.16, 0.12, 0xf2c14e, 0, -0.5, 0)); // gold wristband
-  offArm.add(sphere(0.21, SKIN, 0, -0.62, 0));
-  offArm.rotation.x = -0.2;
+  offArm.position.set(-0.76, 1.34, 0.08);
+  offArm.add(box(0.26, 0.56, 0.26, SKIN, 0, -0.32, 0));
+  offArm.add(cyl(0.18, 0.18, 0.12, 0xf2c14e, 0, -0.56, 0)); // gold wristband
+  offArm.add(sphere(0.27, SKIN, 0, -0.72, 0));
+  offArm.rotation.x = -0.24;
   g.add(offArm);
   const arm = new THREE.Group();
-  arm.position.set(0.66, 1.28, 0);
-  arm.add(box(0.24, 0.5, 0.24, SKIN, 0, -0.3, 0));
-  arm.add(cyl(0.17, 0.17, 0.12, 0xf2c14e, 0, -0.52, 0)); // gold wristband
-  arm.add(sphere(0.23, SKIN, 0, -0.64, 0));
+  arm.position.set(0.76, 1.34, 0.08);
+  arm.add(box(0.26, 0.56, 0.26, SKIN, 0, -0.32, 0));
+  arm.add(cyl(0.19, 0.19, 0.12, 0xf2c14e, 0, -0.58, 0)); // gold wristband
+  arm.add(sphere(0.29, SKIN, 0, -0.74, 0));
   g.add(arm);
-  return { group: g, arm, armRest: -0.35, swingAmp: 1.4, height: 2.1, legs, offArm };
+  return { group: g, arm, armRest: -0.35, swingAmp: 1.4, height: 2.25, legs, offArm };
 }
 
 /**
@@ -828,20 +832,27 @@ function buildMusketeer(): TroopRig {
     g.add(plume);
   } else {
     for (const s of [-1, 1]) {
-      g.add(sphere(0.14, 0x8347c2, s * 0.22, 1.08, -0.14)); // curls
-      g.add(sphere(0.1, 0x8347c2, s * 0.28, 0.94, -0.06)); // side curls
+      g.add(sphere(0.14, 0x8347c2, s * 0.22, 1.04, -0.12)); // curls
+      g.add(sphere(0.1, 0x8347c2, s * 0.28, 0.92, -0.04)); // side curls
     }
-    const helm = sphere(0.34, 0x9aa3ad, 0, 1.2, 0);
-    helm.name = "helm";
-    helm.scale.y = 0.72;
-    g.add(helm);
-    g.add(cyl(0.345, 0.355, 0.08, 0x78909c, 0, 1.12, 0)); // helmet rim
-    const feather = cone(0.07, 0.36, 0x3b82f6, 0.22, 1.5, 0);
+    // Wide-brimmed cavalier hat with a swooping feather — reads
+    // "musketeer" from any angle, unlike a low steel dome.
+    const brim = cyl(0.46, 0.5, 0.05, 0x2d3a8c, 0, 1.2, 0);
+    brim.name = "helm";
+    g.add(brim);
+    g.add(cyl(0.24, 0.3, 0.26, 0x3f51b5, 0, 1.34, 0)); // hat crown
+    g.add(cyl(0.305, 0.315, 0.07, 0xf2c14e, 0, 1.25, 0)); // gold hatband
+    const feather = cone(0.09, 0.52, 0x3b82f6, 0.32, 1.46, -0.1);
     feather.name = "feather";
-    feather.rotation.z = -0.6;
+    feather.rotation.z = -0.85;
     g.add(feather);
   }
   g.add(sphere(0.15, 0x9aa3ad, 0.36, 0.76, 0)); // shoulder pad
+  // Powder bandolier slung across the coat.
+  const bandolier = cyl(0.34, 0.34, 0.08, 0x6d4c41, 0, 0.6, 0);
+  bandolier.rotation.z = 0.55;
+  g.add(bandolier);
+  g.add(sphere(0.07, 0x4a3325, -0.24, 0.48, 0.24)); // powder pouch
 
   const offArm = new THREE.Group();
   offArm.position.set(-0.34, 0.72, 0);
@@ -853,14 +864,15 @@ function buildMusketeer(): TroopRig {
   arm.add(box(0.12, 0.26, 0.12, SKIN, 0, -0.13, 0));
   arm.add(box(0.1, 0.12, 0.55, 0x6d4c41, 0, -0.26, 0.2)); // stock braced to shoulder
   // Long-barreled musket — the range read.
-  const barrel = cyl(0.035, 0.045, 0.85, 0x9aa3ad);
+  const barrel = cyl(0.035, 0.05, 0.95, 0x9aa3ad);
   barrel.name = "musket";
   barrel.rotation.x = Math.PI / 2;
-  barrel.position.set(0, -0.24, 0.78);
+  barrel.position.set(0, -0.24, 0.82);
   arm.add(barrel);
-  arm.add(cyl(0.055, 0.055, 0.06, 0x78909c, 0, -0.24, 1.18)); // muzzle
+  arm.add(box(0.06, 0.08, 0.34, 0x6d4c41, 0, -0.28, 0.52)); // wooden forestock
+  arm.add(cyl(0.06, 0.06, 0.07, 0x78909c, 0, -0.24, 1.27)); // flared muzzle
   g.add(arm);
-  return { group: g, arm, armRest: -0.18, swingAmp: 0.4, height: 1.5, legs, offArm };
+  return { group: g, arm, armRest: -0.18, swingAmp: 0.4, height: 1.62, legs, offArm };
 }
 
 function buildMiniPekka(): TroopRig {
@@ -1827,54 +1839,64 @@ function buildFireKite(): TroopRig {
 function buildPekka(): TroopRig {
   const g = new THREE.Group();
   const legs = [
-    makeLeg(0x10141c, -0.22, 0.4, 0.24),
-    makeLeg(0x10141c, 0.22, 0.4, 0.24),
+    makeLeg(0x10141c, -0.26, 0.4, 0.26),
+    makeLeg(0x10141c, 0.26, 0.4, 0.26),
   ];
   g.add(...legs);
-  g.add(box(0.78, 0.62, 0.52, 0x1a2333, 0, 0.7, 0)); // armored body
-  g.add(box(0.5, 0.1, 0.54, 0x39455c, 0, 0.95, 0)); // chest plate ridge
+  // Hunched slab of armor: shoulders far wider than the waist, torso
+  // pitched forward so the whole machine looms over its sword.
+  g.add(box(0.6, 0.3, 0.46, 0x141b29, 0, 0.5, 0)); // narrow waist
+  const torso = box(1.02, 0.56, 0.6, 0x1a2333, 0, 0.84, 0.04);
+  torso.rotation.x = 0.12;
+  g.add(torso);
+  g.add(box(0.62, 0.1, 0.6, 0x39455c, 0, 1.06, 0.08)); // chest plate ridge
   const chest = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), glow(0x8c7bff, 1.8));
-  chest.position.set(0, 0.74, 0.28);
+  chest.position.set(0, 0.8, 0.34);
   g.add(chest);
-  g.add(box(0.86, 0.62, 0.7, 0x222f47, 0, 1.5, 0)); // massive helmet head
+  // Helmet sunk straight into the shoulder line — no neck at all.
+  g.add(box(0.92, 0.6, 0.74, 0x222f47, 0, 1.34, 0.1));
   // Wide burning eye-slit (unlit, so it stays hot pink).
-  const eye = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.16, 0.05), glow(0xff4fd8, 2.4));
-  eye.position.set(0, 1.52, 0.36);
+  const eye = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.16, 0.05), glow(0xff4fd8, 2.4));
+  eye.position.set(0, 1.36, 0.48);
   g.add(eye);
   for (const s of [-1, 1]) {
     // Swept butterfly-wing horns, P.E.K.K.A's signature silhouette.
-    const horn = cone(0.16, 0.8, 0xb7c2cc, s * 0.58, 1.92, 0);
+    const horn = cone(0.2, 1.05, 0xb7c2cc, s * 0.66, 1.84, 0.06);
     horn.rotation.z = -s * 1.05;
     horn.scale.z = 0.45; // bladed, not round
     g.add(horn);
-    const hornTip = cone(0.07, 0.34, 0xdde4ec, s * 0.94, 2.08, 0);
+    const hornTip = cone(0.08, 0.42, 0xdde4ec, s * 1.1, 2.04, 0.06);
     hornTip.rotation.z = -s * 1.25;
     hornTip.scale.z = 0.45;
     g.add(hornTip);
-    g.add(sphere(0.13, 0xb7c2cc, s * 0.46, 0.98, 0)); // shoulder bolt
-    g.add(cone(0.09, 0.24, 0xb7c2cc, s * 0.5, 1.18, 0)); // shoulder spike
+    // Pauldrons that ride level with the helmet sell the hunch.
+    const pauldron = sphere(0.3, 0x2a3752, s * 0.6, 1.16, 0.04);
+    pauldron.scale.y = 0.8;
+    g.add(pauldron);
+    g.add(cone(0.11, 0.3, 0xb7c2cc, s * 0.64, 1.4, 0.04)); // shoulder spike
+    g.add(sphere(0.09, 0xb7c2cc, s * 0.4, 1.0, 0.32)); // chest rivet
   }
 
   const offArm = new THREE.Group();
-  offArm.position.set(-0.52, 0.92, 0);
-  offArm.add(box(0.2, 0.46, 0.2, 0x1a2333, 0, -0.24, 0));
-  offArm.add(sphere(0.13, 0x39455c, 0, -0.5, 0)); // gauntlet
+  offArm.position.set(-0.72, 1.0, 0.04);
+  offArm.add(box(0.26, 0.52, 0.26, 0x1a2333, 0, -0.26, 0));
+  offArm.add(sphere(0.17, 0x39455c, 0, -0.58, 0)); // gauntlet
   g.add(offArm);
 
   // Two-handed great sword, carried high so the blade clears the helm.
   const arm = new THREE.Group();
-  arm.position.set(0.56, 1.1, 0);
-  arm.add(box(0.2, 0.42, 0.2, 0x1a2333, 0, -0.22, 0));
-  arm.add(box(0.44, 0.09, 0.16, 0x39455c, 0, -0.46, 0)); // crossguard
-  arm.add(box(0.13, 1.3, 0.26, 0xdde4ec, 0, 0.24, 0)); // huge blade
-  arm.add(box(0.05, 1.28, 0.04, 0x9aa8bd, 0, 0.24, 0.12)); // fuller line
+  arm.position.set(0.72, 1.12, 0.04);
+  arm.add(box(0.26, 0.48, 0.26, 0x1a2333, 0, -0.24, 0));
+  arm.add(box(0.5, 0.1, 0.18, 0x39455c, 0, -0.5, 0)); // crossguard
+  arm.add(box(0.16, 1.5, 0.3, 0xdde4ec, 0, 0.26, 0)); // huge blade
+  arm.add(box(0.06, 1.48, 0.05, 0x9aa8bd, 0, 0.26, 0.14)); // fuller line
   // Glowing energy edges (unlit → bloom-ready).
   for (const s of [-1, 1]) {
-    const edge = new THREE.Mesh(new THREE.BoxGeometry(0.03, 1.3, 0.07), glow(0x76e6ff, 2.2));
-    edge.position.set(s * 0.075, 0.24, 0);
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(0.035, 1.5, 0.08), glow(0x76e6ff, 2.2));
+    edge.position.set(s * 0.09, 0.26, 0);
     arm.add(edge);
   }
-  arm.add(cone(0.13, 0.24, 0xdde4ec, 0, 1.0, 0)); // blade point
+  arm.add(cone(0.16, 0.3, 0xdde4ec, 0, 1.14, 0)); // blade point
   g.add(arm);
   return { group: g, arm, armRest: -0.62, swingAmp: 1.8, height: 2.4, legs, offArm };
 }
@@ -1978,22 +2000,34 @@ function buildFirecracker(): TroopRig {
   band.name = "headband";
   g.add(band);
 
+  // Rocket backpack — spare fireworks poking over her shoulders give a
+  // spiky back silhouette no other small troop has.
+  g.add(box(0.32, 0.34, 0.16, 0x5a4a2a, 0, 0.6, -0.26));
+  for (const [i, col] of [0xd84e4e, 0x2f6bd8, 0xffd54f].entries()) {
+    const rx = -0.09 + i * 0.09;
+    g.add(cyl(0.05, 0.05, 0.34, col, rx, 0.88, -0.26));
+    g.add(cone(0.055, 0.12, 0xdde4ec, rx, 1.1, -0.26));
+  }
+
   const offArm = new THREE.Group();
   offArm.position.set(-0.3, 0.62, 0);
   offArm.add(box(0.11, 0.26, 0.11, 0x2b2333, 0, -0.13, 0)); // dark glove
   g.add(offArm);
 
-  // Oversized firework launcher tube on the shoulder.
+  // Comically oversized firework launcher tube on the shoulder — longer
+  // than she is tall, with carnival stripe bands.
   const arm = new THREE.Group();
   arm.position.set(0.32, 0.66, 0.05);
   arm.add(box(0.11, 0.26, 0.11, 0x2b2333, 0, -0.13, 0)); // dark glove
-  const tube = cyl(0.15, 0.15, 0.72, 0x8d6e63, 0, -0.24, 0.34);
+  const tube = cyl(0.2, 0.2, 0.98, 0x8d6e63, 0, -0.24, 0.4);
   tube.name = "launcher";
   tube.rotation.x = Math.PI / 2;
   arm.add(tube);
-  arm.add(cyl(0.17, 0.17, 0.06, 0xf2c14e, 0, -0.24, 0.68).rotateX(Math.PI / 2));
-  arm.add(sphere(0.08, 0xffd54f, 0, -0.24, 0.74)); // packed firework
-  const fuse = cyl(0.012, 0.012, 0.12, 0x4a4a4a, 0.0, -0.1, 0.3);
+  arm.add(cyl(0.205, 0.205, 0.1, 0xd84e4e, 0, -0.24, 0.16).rotateX(Math.PI / 2)); // stripe
+  arm.add(cyl(0.205, 0.205, 0.1, 0xd84e4e, 0, -0.24, 0.56).rotateX(Math.PI / 2)); // stripe
+  arm.add(cyl(0.23, 0.23, 0.07, 0xf2c14e, 0, -0.24, 0.86).rotateX(Math.PI / 2)); // gold rim
+  arm.add(sphere(0.11, 0xffd54f, 0, -0.24, 0.94)); // packed firework
+  const fuse = cyl(0.012, 0.012, 0.14, 0x4a4a4a, 0.0, -0.08, 0.24);
   fuse.rotation.z = 0.5;
   arm.add(fuse);
   g.add(arm);
