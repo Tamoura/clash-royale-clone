@@ -16,6 +16,17 @@ import {
  * "tower-princess" and "tower-king".
  */
 export function startGallery(container: HTMLElement, subject: string): void {
+  // Audit-tool extras: ?pose=front|back|<degrees> parks the turntable at an
+  // exact angle with a frozen idle pose, and ?bg=chroma strips the set
+  // (pedestal, floor, label) to a solid keyable green for masking.
+  const params = new URLSearchParams(location.search);
+  const poseParam = params.get("pose");
+  const chroma = params.get("bg") === "chroma";
+  const poseAngle =
+    poseParam === "front" ? 0 :
+    poseParam === "back" ? Math.PI :
+    poseParam !== null ? (parseFloat(poseParam) * Math.PI) / 180 : null;
+
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.15;
@@ -24,7 +35,7 @@ export function startGallery(container: HTMLElement, subject: string): void {
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x46588f);
+  scene.background = new THREE.Color(chroma ? 0x00ff00 : 0x46588f);
 
   let rig: TroopRig;
   let title: string;
@@ -45,23 +56,25 @@ export function startGallery(container: HTMLElement, subject: string): void {
   // Pose: three-quarter turn on a stone pedestal.
   const stage = new THREE.Group();
   stage.add(rig.group);
-  stage.rotation.y = 0.55;
+  stage.rotation.y = poseAngle ?? 0.55;
   scene.add(stage);
-  const pedestal = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.5, 1.7, 0.3, 24),
-    toon(0xc6bda9),
-  );
-  pedestal.position.y = -0.15;
-  pedestal.receiveShadow = true;
-  scene.add(pedestal);
-  const floor = new THREE.Mesh(
-    new THREE.CircleGeometry(7, 32),
-    new THREE.MeshToonMaterial({ color: 0x33426e }),
-  );
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -0.3;
-  floor.receiveShadow = true;
-  scene.add(floor);
+  if (!chroma) {
+    const pedestal = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.5, 1.7, 0.3, 24),
+      toon(0xc6bda9),
+    );
+    pedestal.position.y = -0.15;
+    pedestal.receiveShadow = true;
+    scene.add(pedestal);
+    const floor = new THREE.Mesh(
+      new THREE.CircleGeometry(7, 32),
+      new THREE.MeshToonMaterial({ color: 0x33426e }),
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -0.3;
+    floor.receiveShadow = true;
+    scene.add(floor);
+  }
 
   scene.add(new THREE.HemisphereLight(0xdfeaff, 0x4a5070, 1.25));
   const key = new THREE.DirectionalLight(0xfff2d8, 2.1);
@@ -89,7 +102,7 @@ export function startGallery(container: HTMLElement, subject: string): void {
     "text-shadow:-2px -2px 0 #14213a,2px -2px 0 #14213a," +
     "-2px 2px 0 #14213a,2px 2px 0 #14213a,0 4px 6px rgba(0,0,0,.6)";
   label.textContent = title;
-  container.appendChild(label);
+  if (!chroma) container.appendChild(label);
 
   const resize = (): void => {
     const w = container.clientWidth || 1;
@@ -104,9 +117,12 @@ export function startGallery(container: HTMLElement, subject: string): void {
 
   const t0 = performance.now();
   const frame = (): void => {
-    const t = (performance.now() - t0) / 1000;
+    // Fixed poses freeze the idle clock too, so shots are deterministic.
+    const t = poseAngle !== null ? 0.35 : (performance.now() - t0) / 1000;
     animateTroop(rig, { moving: false, swing: 0, time: t, phase: 0 });
-    stage.rotation.y = 0.55 + Math.sin(t * 0.5) * 0.12; // slow showcase sway
+    if (poseAngle === null) {
+      stage.rotation.y = 0.55 + Math.sin(t * 0.5) * 0.12; // slow showcase sway
+    }
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
   };
