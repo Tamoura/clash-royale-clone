@@ -886,8 +886,8 @@ function buildMusketeer(): TroopRig {
 
 function buildMiniPekka(): TroopRig {
   const g = new THREE.Group();
-  const STEEL = 0x3a4d6e, STEELDK = 0x202b3d, CYAN = 0x4fd8ff;
-  const legs = [makeLeg(0x10141c, -0.15, 0.3, 0.18), makeLeg(0x10141c, 0.15, 0.3, 0.18)];
+  const STEEL = 0x46628f, STEELDK = 0x2b4066, CYAN = 0x4fd8ff;
+  const legs = [makeLeg(0x1b2a44, -0.15, 0.3, 0.18), makeLeg(0x1b2a44, 0.15, 0.3, 0.18)];
   g.add(...legs);
   g.add(box(0.56, 0.44, 0.4, STEELDK, 0, 0.52, 0)); // chunky body
   g.add(box(0.46, 0.16, 0.44, STEEL, 0, 0.66, 0.02)); // chest plate
@@ -1272,7 +1272,7 @@ function buildWitch(): TroopRig {
 function buildBalloon(): TroopRig {
   const g = new THREE.Group();
   // CR palette: dark navy/teal patched envelope, not a carnival red one.
-  const NAVY = 0x224b5e, NAVYDK = 0x18374a;
+  const NAVY = 0x2f7d8a, NAVYDK = 0x225a64;
   const envelope = sphere(0.55, NAVY, 0, 1.5, 0);
   envelope.scale.set(1, 1.15, 1);
   g.add(envelope);
@@ -1384,11 +1384,11 @@ function buildBabyDragon(): TroopRig {
 
 function buildGargoyle(): TroopRig {
   const g = new THREE.Group();
-  const SKINB = 0x3d4f7a, SKINDK = 0x2a3758, MEMBRANE = 0x7b4db8;
+  const SKINB = 0x5a4390, SKINDK = 0x3e2c66, MEMBRANE = 0x9b5fd8;
   const body = sphere(0.24, SKINB, 0, 0.38, 0);
   body.scale.set(1, 1.2, 0.9);
   g.add(body);
-  const head = sphere(0.22, 0x4a5f8c, 0, 0.76, 0.04);
+  const head = sphere(0.22, 0x6a51a3, 0, 0.76, 0.04);
   g.add(head);
   // Glowing violet eyes (CR Minions read) + snaggle fangs + little horns.
   for (const s of [-1, 1]) {
@@ -1899,7 +1899,7 @@ function buildPekka(): TroopRig {
   torso.rotation.x = 0.12;
   g.add(torso);
   g.add(box(0.62, 0.1, 0.6, 0x39455c, 0, 1.06, 0.08)); // chest plate ridge
-  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), glow(0x8c7bff, 1.8));
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), glow(0xff4fd8, 1.8));
   chest.position.set(0, 0.8, 0.34);
   g.add(chest);
   // Helmet sunk straight into the shoulder line — no neck at all.
@@ -1941,7 +1941,7 @@ function buildPekka(): TroopRig {
   arm.add(box(0.06, 1.48, 0.05, 0x9aa8bd, 0, 0.26, 0.14)); // fuller line
   // Glowing energy edges (unlit → bloom-ready).
   for (const s of [-1, 1]) {
-    const edge = new THREE.Mesh(new THREE.BoxGeometry(0.035, 1.5, 0.08), glow(0x76e6ff, 2.2));
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(0.035, 1.5, 0.08), glow(0xff6fe0, 2.2));
     edge.position.set(s * 0.09, 0.26, 0);
     arm.add(edge);
   }
@@ -1993,7 +1993,7 @@ export function buildTowerPrincess(): TroopRig {
 /** The king himself, enthroned on the king tower. */
 export function buildTowerKing(): TroopRig {
   const g = new THREE.Group();
-  g.add(cyl(0.34, 0.48, 0.66, 0x4365c8, 0, 0.38, 0)); // royal robe
+  g.add(cyl(0.34, 0.48, 0.66, 0x7a1f3d, 0, 0.38, 0)); // royal robe
   g.add(cyl(0.44, 0.46, 0.09, 0xf2c14e, 0, 0.14, 0)); // gold trim
   const sash = box(0.18, 0.54, 0.05, 0xb71c1c, 0.1, 0.44, 0.34);
   sash.rotation.z = -0.3;
@@ -2014,13 +2014,13 @@ export function buildTowerKing(): TroopRig {
 
   const offArm = new THREE.Group();
   offArm.position.set(-0.44, 0.66, 0);
-  offArm.add(box(0.13, 0.28, 0.13, 0x4365c8, 0, -0.14, 0));
+  offArm.add(box(0.13, 0.28, 0.13, 0x7a1f3d, 0, -0.14, 0));
   g.add(offArm);
 
   // Sword arm raised in command.
   const arm = new THREE.Group();
   arm.position.set(0.44, 0.7, 0);
-  arm.add(box(0.13, 0.28, 0.13, 0x4365c8, 0, -0.14, 0));
+  arm.add(box(0.13, 0.28, 0.13, 0x7a1f3d, 0, -0.14, 0));
   arm.add(box(0.22, 0.05, 0.08, 0x8d6e63, 0, -0.3, 0)); // guard
   arm.add(box(0.05, 0.55, 0.1, 0xdde4ec, 0, -0.02, 0)); // blade
   g.add(arm);
@@ -2085,10 +2085,10 @@ function buildFirecracker(): TroopRig {
 
 function buildMagicArcher(): TroopRig {
   const g = new THREE.Group();
-  const legs = [makeLeg(0x2a1f44, -0.12, 0.3, 0.14), makeLeg(0x2a1f44, 0.12, 0.3, 0.14)];
+  const legs = [makeLeg(0x123c30, -0.12, 0.3, 0.14), makeLeg(0x123c30, 0.12, 0.3, 0.14)];
   g.add(...legs);
-  g.add(cyl(0.24, 0.36, 0.56, 0x5e3aa6, 0, 0.56, 0)); // long mystic robe
-  g.add(cyl(0.3, 0.32, 0.07, 0x3c2470, 0, 0.42, 0)); // sash
+  g.add(cyl(0.24, 0.36, 0.56, 0x1f7a5f, 0, 0.56, 0)); // long mystic robe
+  g.add(cyl(0.3, 0.32, 0.07, 0x14523f, 0, 0.42, 0)); // sash
   const head = sphere(0.28, SKIN, 0, 1.06, 0);
   addEyes(head, 0.28, 0.36, 0.08, "calm");
   // Signature teal-glowing eyes over the pupils.
@@ -2104,20 +2104,20 @@ function buildMagicArcher(): TroopRig {
   fringe.scale.set(1.6, 0.5, 0.8);
   g.add(fringe);
   // Pointed hood draped over the head.
-  const hood = sphere(0.32, 0x4a2d8f, 0, 1.12, -0.04);
+  const hood = sphere(0.32, 0x1a6350, 0, 1.12, -0.04);
   hood.scale.set(1, 0.9, 1);
   g.add(hood);
-  g.add(cone(0.2, 0.4, 0x4a2d8f, 0, 1.42, -0.06)); // hood point
+  g.add(cone(0.2, 0.4, 0x1a6350, 0, 1.42, -0.06)); // hood point
 
   const offArm = new THREE.Group();
   offArm.position.set(0.32, 0.76, 0);
-  offArm.add(box(0.11, 0.28, 0.11, 0x5e3aa6, 0, -0.14, 0));
+  offArm.add(box(0.11, 0.28, 0.11, 0x1f7a5f, 0, -0.14, 0));
   g.add(offArm);
 
   // Bow arm out front, holding a glowing nocked arrow.
   const arm = new THREE.Group();
   arm.position.set(-0.32, 0.78, 0.05);
-  arm.add(box(0.11, 0.28, 0.11, 0x5e3aa6, 0, -0.14, 0));
+  arm.add(box(0.11, 0.28, 0.11, 0x1f7a5f, 0, -0.14, 0));
   const bow = new THREE.Mesh(
     new THREE.TorusGeometry(0.36, 0.035, 8, 16, Math.PI),
     toon(0x37206b),
@@ -2229,11 +2229,11 @@ function buildExecutioner(): TroopRig {
 
 function buildMegaKnight(): TroopRig {
   const g = new THREE.Group();
-  const DARK = 0x2c2748,
-    STEEL = 0x9aa6b5,
-    DARKSTEEL = 0x3b3a55,
+  const DARK = 0x35281e,
+    STEEL = 0xa89a86,
+    DARKSTEEL = 0x4d3d2c,
     GOLD = 0xe8b84b,
-    SPIKE = 0xd7dee8;
+    SPIKE = 0xe3cba4;
 
   // Bulky legs.
   const legs = [makeLeg(DARK, -0.22, 0.34, 0.24), makeLeg(DARK, 0.22, 0.34, 0.24)];
