@@ -82,10 +82,9 @@ const KING_NO_DEPLOY_RADIUS = 4.5;
 /** Per-theme scenery palette (theme flag lives in theme.ts). */
 const arabic = ARABIC;
 const ARENA_PALETTE = {
-  // Normal: CR lantern-arena grade — a bright parchment field framed by
-  // dark warm timber and a dusk-amber sky, so the playfield glows against
-  // a moody surround (see the reference screenshot).
-  normal: { sky: 0x33190f, apron: 0x4a2c1a, far: 0x24110a, fieldSide: 0x6e4526, edging: 0x7a4a28, drift: 0x8f6a42 },
+  // Normal: CR neon party arena (reference screenshot) — a pale ice-blue
+  // checker court inside a dark purple cage, magenta/blue neon accents.
+  normal: { sky: 0x2c1247, apron: 0x2a1a44, far: 0x190b30, fieldSide: 0x8a7cc2, edging: 0x453e66, drift: 0x554b80 },
   // Arabic: night bazaar — deep indigo sky, lamplit sandstone, jewel accents.
   arabic: { sky: 0x141a38, apron: 0x8a6f48, far: 0x241d3e, fieldSide: 0xa89870, edging: 0xc8a85c, drift: 0xb89a68 },
 }[ARENA_THEME];
@@ -491,17 +490,24 @@ function unlitGlow(color: number): THREE.MeshBasicMaterial {
 }
 
 /** Shared stone-brick texture for tower walls. */
-let brickTexture: THREE.CanvasTexture | null = null;
+const brickTextures: Partial<Record<"sand" | "pink" | "blue", THREE.CanvasTexture>> = {};
 
-function brickTex(): THREE.CanvasTexture {
-  if (!brickTexture) {
+const BRICK_TINTS = {
+  sand: { base: "#c2b49a", mortar: "rgba(90,75,55,0.5)" },
+  // Neon arena team stone: enemy towers magenta, player towers blue-slate.
+  pink: { base: "#d873cf", mortar: "rgba(120,40,110,0.55)" },
+  blue: { base: "#93a9d1", mortar: "rgba(45,65,105,0.55)" },
+} as const;
+
+function brickTex(variant: keyof typeof BRICK_TINTS = "sand"): THREE.CanvasTexture {
+  if (!brickTextures[variant]) {
     const c = document.createElement("canvas");
     c.width = c.height = 128; // 2x for crisp mortar lines up close
     const ctx = c.getContext("2d")!;
     ctx.scale(2, 2);
-    ctx.fillStyle = "#c2b49a";
+    ctx.fillStyle = BRICK_TINTS[variant].base;
     ctx.fillRect(0, 0, 64, 64);
-    ctx.strokeStyle = "rgba(90,75,55,0.5)";
+    ctx.strokeStyle = BRICK_TINTS[variant].mortar;
     ctx.lineWidth = 1.6;
     for (let row = 0; row < 6; row++) {
       const y = row * 11;
@@ -517,11 +523,12 @@ function brickTex(): THREE.CanvasTexture {
         ctx.stroke();
       }
     }
-    brickTexture = new THREE.CanvasTexture(c);
-    brickTexture.colorSpace = THREE.SRGBColorSpace;
-    brickTexture.userData.shared = true;
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.userData.shared = true;
+    brickTextures[variant] = tex;
   }
-  return brickTexture;
+  return brickTextures[variant]!;
 }
 
 /** A gold crescent-and-orb finial that tops domes and spires. */
@@ -641,9 +648,12 @@ function buildTowerMesh(e: Entity): EntityView {
   const height = king ? 2.35 : 1.85;
 
   // Two-step stone platform under the keep, gold-trimmed like CR.
+  // Neon arena: the whole tower is team-colored (enemy magenta, player
+  // blue) like the reference screenshot; the Arabic edition stays sand.
+  const enemySide = e.side === "enemy";
   const platform = new THREE.Mesh(
     new THREE.BoxGeometry(radius * 2.9, 0.18, radius * 2.9),
-    toon(0xcfc4ab),
+    toon(arabic ? 0xcfc4ab : enemySide ? 0xd2a8d8 : 0xaebeda),
   );
   platform.position.y = 0.09;
   platform.castShadow = true;
@@ -657,14 +667,16 @@ function buildTowerMesh(e: Entity): EntityView {
   root.add(platTrim);
   const plinth = new THREE.Mesh(
     new THREE.BoxGeometry(radius * 2.3, 0.3, radius * 2.3),
-    toon(0x9c8d74),
+    toon(arabic ? 0x9c8d74 : 0x8d93a4),
   );
   plinth.position.y = 0.32;
   plinth.castShadow = true;
   plinth.receiveShadow = true;
   root.add(plinth);
 
-  const wallMat = new THREE.MeshToonMaterial({ map: brickTex() });
+  const wallMat = new THREE.MeshToonMaterial({
+    map: brickTex(arabic ? "sand" : enemySide ? "pink" : "blue"),
+  });
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(radius * 2, height, radius * 2),
     wallMat,
@@ -684,7 +696,7 @@ function buildTowerMesh(e: Entity): EntityView {
   root.add(trim);
 
   // Merlons along the four roof edges — taller CR battlements.
-  const merlon = toon(0x9c8d74);
+  const merlon = toon(arabic ? 0x9c8d74 : 0x8d93a4);
   for (const side of [-1, 1]) {
     for (let i = -1; i <= 1; i++) {
       const a = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.38, 0.2), merlon);
@@ -1326,9 +1338,9 @@ export class Battle3D {
     this.scene.add(
       arabic
         ? new THREE.HemisphereLight(0xcfd8ff, 0x4a3a58, 0.95)
-        : new THREE.HemisphereLight(0xffe3c2, 0x4a2c1a, 1.0),
+        : new THREE.HemisphereLight(0xcfe0ff, 0x3a2c58, 1.05),
     );
-    const sun = new THREE.DirectionalLight(0xfff2d8, 1.7);
+    const sun = new THREE.DirectionalLight(arabic ? 0xfff2d8 : 0xeef2ff, 1.7);
     sun.position.set(10, 22, 8);
     sun.castShadow = true;
     const mobile =
@@ -1348,9 +1360,9 @@ export class Battle3D {
     const backRim = new THREE.DirectionalLight(0x9fc4ff, 0.6);
     backRim.position.set(-8, 10, -14);
     this.scene.add(backRim);
-    // Soft golden-hour fill from the player's side so shadowed faces
-    // keep warmth instead of going flat grey.
-    const fill = new THREE.DirectionalLight(0xffe2b8, 0.3);
+    // Soft fill from the player's side so shadowed faces keep color
+    // (warm at dusk, cool violet under the neon rig).
+    const fill = new THREE.DirectionalLight(arabic ? 0xffe2b8 : 0xd8c2ff, 0.3);
     fill.position.set(-6, 8, 14);
     this.scene.add(fill);
   }
@@ -1386,7 +1398,7 @@ export class Battle3D {
         const t = i / posts;
         const post = new THREE.Mesh(
           new THREE.CylinderGeometry(0.09, 0.11, 0.7, 6),
-          toon(arabic ? 0x6e4a28 : 0x3f2a16),
+          toon(arabic ? 0x6e4a28 : 0x2b2f48),
         );
         post.position.set(
           from[0] + (to[0] - from[0]) * t,
@@ -1397,7 +1409,7 @@ export class Battle3D {
         this.scene.add(post);
       }
       const len = Math.hypot(to[0] - from[0], to[1] - from[1]);
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 0.08), toon(arabic ? 0x7d5a36 : 0x4a3018));
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 0.08), toon(arabic ? 0x7d5a36 : 0x3a4060));
       rail.position.set((from[0] + to[0]) / 2, 0.3, (from[1] + to[1]) / 2);
       rail.rotation.y = -Math.atan2(to[1] - from[1], to[0] - from[0]);
       this.scene.add(rail);
@@ -1412,7 +1424,7 @@ export class Battle3D {
     // (CR arenas are walled in by these).
     const stand = (x: number, zCenter: number, len: number, roofColor: number): void => {
       const g = new THREE.Group();
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, len), toon(arabic ? 0xb3a890 : 0x5a3722));
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, len), toon(arabic ? 0xb3a890 : 0x2e3352));
       wall.position.y = 0.55;
       wall.castShadow = true;
       wall.receiveShadow = true;
@@ -1461,8 +1473,8 @@ export class Battle3D {
     const standX = ARENA_WIDTH / 2 + 6.2;
     const standLen = ARENA_HEIGHT / 2 - 2.5;
     for (const sx of [-1, 1]) {
-      stand(sx * standX, -ARENA_HEIGHT / 4 - 1, standLen, arabic ? 0xb02e22 : 0x7a1e14); // enemy side
-      stand(sx * standX, ARENA_HEIGHT / 4 + 1, standLen, arabic ? 0x2c55b8 : 0x1c3a6e); // player side
+      stand(sx * standX, -ARENA_HEIGHT / 4 - 1, standLen, arabic ? 0xb02e22 : 0xa8236e); // enemy side
+      stand(sx * standX, ARENA_HEIGHT / 4 + 1, standLen, arabic ? 0x2c55b8 : 0x2c55b8); // player side
     }
 
     // Striped spectator tents in the corners, team-colored.
@@ -1474,7 +1486,7 @@ export class Battle3D {
       g.add(roof);
       const wall = new THREE.Mesh(
         new THREE.CylinderGeometry(1.0, 1.15, 0.9, 8),
-        toon(arabic ? 0xe8e3d8 : 0x9c8a6a),
+        toon(arabic ? 0xe8e3d8 : 0x6a5f92),
       );
       wall.position.y = 0.45;
       wall.castShadow = true;
@@ -1507,7 +1519,7 @@ export class Battle3D {
     {
       const lanternColors = arabic
         ? [0xffc46b, 0x5ad7c8, 0xffe08a]
-        : [0xff7a36, 0xff5340, 0xffb04a];
+        : [0xff4fd8, 0x59d6ff, 0xb08aff];
       // Fog-immune so they burn through the dusk haze like real lanterns.
       const lanternMat = (color: number): THREE.MeshBasicMaterial => {
         const m = new THREE.MeshBasicMaterial({ color, fog: false });
@@ -1522,14 +1534,14 @@ export class Battle3D {
         body.scale.set(1, 1.25, 1);
         body.position.set(x, y - 0.4, z);
         this.scene.add(body);
-        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.1, 8), toon(0x3a2413));
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.1, 8), toon(arabic ? 0x3a2413 : 0x23283c));
         cap.position.set(x, y - 0.02, z);
         this.scene.add(cap);
       };
       const rope = (len: number, x: number, y: number, z: number, alongX: boolean): void => {
         const r = new THREE.Mesh(
           new THREE.CylinderGeometry(0.025, 0.025, len, 5),
-          new THREE.MeshBasicMaterial({ color: 0x1c110a, fog: false }),
+          new THREE.MeshBasicMaterial({ color: arabic ? 0x1c110a : 0x181430, fog: false }),
         );
         r.rotation.set(alongX ? 0 : Math.PI / 2, 0, alongX ? Math.PI / 2 : 0);
         r.position.set(x, y, z);
@@ -1573,11 +1585,11 @@ export class Battle3D {
           lantern.position.set(w.x + 1.2, 0.92, sz * 2.2);
           this.scene.add(lantern);
         } else {
-          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.1, 6), toon(0x5a4632));
+          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.1, 6), toon(0x2f3450));
           pole.position.set(w.x + 1.45, 0.55, sz * 2.2);
           pole.castShadow = true;
           this.scene.add(pole);
-          const flame = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), unlitGlow(0xffa726));
+          const flame = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), unlitGlow(0xd96aff));
           flame.position.set(w.x + 1.45, 1.2, sz * 2.2);
           this.scene.add(flame);
         }
@@ -1607,12 +1619,12 @@ export class Battle3D {
           g.add(date);
         }
       } else {
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.5, 8), toon(0x6e4a28));
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.5, 8), toon(0x2f2a4a));
         trunk.position.y = 0.25;
         trunk.castShadow = true;
         g.add(trunk);
         for (let i = 0; i < 3; i++) {
-          const layer = new THREE.Mesh(new THREE.ConeGeometry(0.75 - i * 0.18, 0.7, 10), toon(i % 2 ? 0x3f8f45 : 0x4ba14f));
+          const layer = new THREE.Mesh(new THREE.ConeGeometry(0.75 - i * 0.18, 0.7, 10), toon(i % 2 ? 0x3d2f66 : 0x4a3a7c));
           layer.position.y = 0.62 + i * 0.42;
           layer.castShadow = true;
           g.add(layer);
@@ -1623,7 +1635,7 @@ export class Battle3D {
       this.scene.add(g);
     };
     const rock = (x: number, z: number, s: number): void => {
-      const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 0), toon(0x8e9aa5));
+      const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 0), toon(arabic ? 0x8e9aa5 : 0x6a628f));
       m.position.set(x, 0.16 * s, z);
       m.scale.set(s, s * 0.7, s);
       m.castShadow = true;
@@ -1698,29 +1710,7 @@ export class Battle3D {
     return g;
   }
 
-  /** Gold eight-point star inlaid in the floor (the classic CR arena mark). */
-  private makeStarEmblem(z: number): THREE.Group {
-    const g = new THREE.Group();
-    const R = 2.6;
-    const r = 0.95; // sharp points
-    const shape = new THREE.Shape();
-    for (let i = 0; i < 16; i++) {
-      const a = (Math.PI / 8) * i - Math.PI / 2;
-      const rad = i % 2 === 0 ? R : r;
-      const x = Math.cos(a) * rad;
-      const y = Math.sin(a) * rad;
-      if (i === 0) shape.moveTo(x, y);
-      else shape.lineTo(x, y);
-    }
-    shape.closePath();
-    const star = new THREE.Mesh(new THREE.ShapeGeometry(shape), toon(0xe8b948));
-    star.rotation.x = -Math.PI / 2;
-    star.position.set(0, 0.03, z);
-    star.receiveShadow = true;
-    g.add(star);
-    return g;
-  }
-
+  
   /** Classic CR floor: saturated checker grass with subtle mown variation. */
   /**
    * CR lantern-arena floor: pale parchment tiles with a fine grid, worn
@@ -1729,7 +1719,10 @@ export class Battle3D {
    * broken-plank decals in the corners.
    */
   private makeStoneTexture(): THREE.CanvasTexture {
-    const tile = 48; // px per arena unit → 1-unit tiles like CR's grid
+    // Neon party-arena court (reference screenshot): pale ice-blue checker
+    // tiles, straight lavender lanes linking bridges and tower rows, a huge
+    // faint emblem watermark on each half, and scattered party-popper rods.
+    const tile = 48; // px per arena unit -> 1-unit tiles like CR's grid
     const px = tile / 32; // scale for stroke widths tuned at 32px/unit
     const c = document.createElement("canvas");
     c.width = ARENA_WIDTH * tile;
@@ -1741,83 +1734,81 @@ export class Battle3D {
       return ((seed >>> 8) & 0xffff) / 0xffff;
     };
 
-    // Parchment tile grid.
-    for (let y = 0; y < c.height; y += tile) {
-      for (let x = 0; x < c.width; x += tile) {
-        const shade = 0.965 + rand() * 0.05;
-        ctx.fillStyle = `rgb(${Math.round(232 * shade)},${Math.round(216 * shade)},${Math.round(180 * shade)})`;
+    // Ice-blue checkerboard with a faint 2x2 sub-checker inside each tile.
+    for (let ty = 0; ty < ARENA_HEIGHT; ty++) {
+      for (let tx = 0; tx < ARENA_WIDTH; tx++) {
+        const x = tx * tile, y = ty * tile;
+        const light = (tx + ty) % 2 === 0;
+        ctx.fillStyle = light ? "#d3e6ef" : "#c4dae7";
         ctx.fillRect(x, y, tile, tile);
-        ctx.strokeStyle = "rgba(150,120,80,0.22)";
+        ctx.fillStyle = "rgba(255,255,255,0.10)";
+        const h = tile / 2;
+        ctx.fillRect(x, y, h, h);
+        ctx.fillRect(x + h, y + h, h, h);
+        ctx.strokeStyle = "rgba(150,175,205,0.28)";
         ctx.lineWidth = 1;
         ctx.strokeRect(x + 0.5, y + 0.5, tile - 1, tile - 1);
       }
     }
 
-    // Winding trodden paths: one per lane, swaying side to side on the
-    // march from bridge to towers, drawn dark→light→rut for depth.
-    const path = (bx: number, phase: number): void => {
-      const pts: Array<[number, number]> = [];
-      for (let i = 0; i <= 40; i++) {
-        const t = i / 40;
-        const y = t * c.height;
-        // Sway fades near the river (paths funnel into the bridges).
-        const funnel = Math.min(1, Math.abs(t - 0.5) * 3.2);
-        const sway = Math.sin(t * Math.PI * 3 + phase) * 24 * px * funnel;
-        pts.push([bx * tile + sway, y]);
-      }
-      const stroke = (width: number, style: string): void => {
-        ctx.strokeStyle = style;
-        ctx.lineWidth = width;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.beginPath();
-        ctx.moveTo(pts[0][0], pts[0][1]);
-        for (const [x, y] of pts) ctx.lineTo(x, y);
-        ctx.stroke();
-      };
-      stroke(58 * px, "rgba(186,148,92,0.85)");
-      stroke(42 * px, "rgba(214,178,112,0.95)");
-      stroke(7 * px, "rgba(150,112,58,0.4)");
-      // Footworn speckles along the path.
-      ctx.fillStyle = "rgba(140,104,52,0.45)";
-      for (let i = 0; i < 90; i++) {
-        const [x, y] = pts[Math.floor(rand() * pts.length)];
-        ctx.fillRect(x + (rand() - 0.5) * 34 * px, y + (rand() - 0.5) * 20 * px, 2.5 * px, 2 * px);
-      }
-    };
-    path(BRIDGE_XS[0], 0.6);
-    path(BRIDGE_XS[1], 3.4);
-
-    // Scattered pebbles across the whole court.
-    for (let i = 0; i < 46; i++) {
-      const x = rand() * c.width;
-      const y = rand() * c.height;
-      const r = (1.5 + rand() * 3) * px;
-      ctx.fillStyle = rand() < 0.5 ? "rgba(148,132,104,0.55)" : "rgba(120,102,78,0.5)";
+    // Huge faint emblem watermark on each half (crown in a ring).
+    const watermark = (cy: number): void => {
+      ctx.save();
+      ctx.strokeStyle = "rgba(110,135,190,0.13)";
+      ctx.lineWidth = 9 * px;
+      const cx = c.width / 2;
+      const R = 4.1 * tile;
       ctx.beginPath();
-      ctx.ellipse(x, y, r, r * 0.75, rand() * 3, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.arc(cx, cy, R, 0, Math.PI * 2);
+      ctx.stroke();
+      // Crown: base bar + three points.
+      ctx.lineWidth = 7 * px;
+      const w = R * 0.95, hgt = R * 0.7;
+      ctx.beginPath();
+      ctx.moveTo(cx - w / 2, cy + hgt * 0.4);
+      ctx.lineTo(cx + w / 2, cy + hgt * 0.4);
+      ctx.moveTo(cx - w / 2, cy + hgt * 0.4);
+      ctx.lineTo(cx - w / 2, cy - hgt * 0.25);
+      ctx.lineTo(cx - w / 6, cy + hgt * 0.05);
+      ctx.lineTo(cx, cy - hgt * 0.55);
+      ctx.lineTo(cx + w / 6, cy + hgt * 0.05);
+      ctx.lineTo(cx + w / 2, cy - hgt * 0.25);
+      ctx.lineTo(cx + w / 2, cy + hgt * 0.4);
+      ctx.stroke();
+      ctx.restore();
+    };
+    watermark(c.height * 0.25);
+    watermark(c.height * 0.75);
+
+    // Straight lavender lanes: one vertical band per bridge, plus
+    // horizontal connectors through each princess-tower row.
+    const lane = (x: number, y: number, w: number, h: number): void => {
+      ctx.fillStyle = "rgba(178,162,224,0.78)";
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = "rgba(140,120,190,0.5)";
+      ctx.lineWidth = 2 * px;
+      ctx.strokeRect(x + px, y + px, w - 2 * px, h - 2 * px);
+    };
+    const laneW = 1.7 * tile;
+    const rowY = [6.5, ARENA_HEIGHT - 6.5];
+    for (const bx of BRIDGE_XS) {
+      lane(bx * tile - laneW / 2, rowY[0] * tile - laneW / 2, laneW, (rowY[1] - rowY[0]) * tile + laneW);
+    }
+    for (const ry of rowY) {
+      lane(BRIDGE_XS[0] * tile - laneW / 2, ry * tile - laneW / 2, (BRIDGE_XS[1] - BRIDGE_XS[0]) * tile + laneW, laneW);
     }
 
-    // Corner set-dressing: broken planks + nail heads, like CR's props.
-    const planks = (cx: number, cy: number, a0: number): void => {
-      for (let i = 0; i < 3; i++) {
-        ctx.save();
-        ctx.translate(cx + (rand() - 0.5) * 30 * px, cy + (rand() - 0.5) * 30 * px);
-        ctx.rotate(a0 + (rand() - 0.5) * 1.2);
-        ctx.fillStyle = i % 2 ? "rgba(146,102,58,0.8)" : "rgba(120,82,44,0.8)";
-        ctx.fillRect(-26 * px, -5 * px, 52 * px, 10 * px);
-        ctx.fillStyle = "rgba(70,48,26,0.7)";
-        ctx.fillRect(-22 * px, -1.5 * px, 6 * px, 3 * px);
-        ctx.fillRect(16 * px, -1.5 * px, 6 * px, 3 * px);
-        ctx.restore();
-      }
-    };
-    const inset = tile * 2.4;
-    planks(inset, inset, 0.4);
-    planks(c.width - inset, inset, -0.5);
-    planks(inset, c.height - inset, -0.3);
-    planks(c.width - inset, c.height - inset, 0.55);
+    // Party-popper confetti rods strewn across the court.
+    const CONFETTI = ["#e0455a", "#3b6fe0", "#59d6c8", "#f2c14e", "#e055c8"];
+    for (let i = 0; i < 44; i++) {
+      ctx.save();
+      ctx.translate(rand() * c.width, rand() * c.height);
+      ctx.rotate(rand() * Math.PI);
+      ctx.fillStyle = CONFETTI[Math.floor(rand() * CONFETTI.length)];
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(-7 * px, -2.2 * px, 14 * px, 4.4 * px);
+      ctx.restore();
+    }
 
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -1967,10 +1958,34 @@ export class Battle3D {
     }
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), toon(0xb3a890));
+        const post = new THREE.Mesh(
+          new THREE.BoxGeometry(0.7, 0.7, 0.7),
+          toon(arabic ? 0xb3a890 : 0x3c3a5c),
+        );
         post.position.set(sx * hw, 0.18, sz * hd);
         post.castShadow = true;
         this.scene.add(post);
+        if (!arabic) {
+          // Neon cap: magenta on the enemy end, blue on the player end,
+          // picked up by the bloom pass like the reference cage lights.
+          const neon = new THREE.Mesh(
+            new THREE.BoxGeometry(0.74, 0.08, 0.74),
+            unlitGlow(sz < 0 ? 0xff4fd8 : 0x4f8aff),
+          );
+          neon.position.set(sx * hw, 0.56, sz * hd);
+          this.scene.add(neon);
+        }
+      }
+    }
+    if (!arabic) {
+      // Thin neon strips along the end caps complete the cage glow.
+      for (const sz of [-1, 1]) {
+        const strip = new THREE.Mesh(
+          new THREE.BoxGeometry(ARENA_WIDTH + 1.4, 0.05, 0.1),
+          unlitGlow(sz < 0 ? 0xff4fd8 : 0x4f8aff),
+        );
+        strip.position.set(0, 0.24, sz * hd);
+        this.scene.add(strip);
       }
     }
     this.decorate();
@@ -2028,10 +2043,11 @@ export class Battle3D {
     waterCanvas.width = 128;
     waterCanvas.height = 32;
     const wctx = waterCanvas.getContext("2d")!;
-    // Arabic: vibrant royal-blue pool. Normal: CR's rich teal-green river.
-    wctx.fillStyle = arabic ? "#1460c8" : "#1a6870";
+    // Arabic: vibrant royal-blue pool. Normal: the neon arena's dark
+    // metal service band (no water in this arena).
+    wctx.fillStyle = arabic ? "#1460c8" : "#262b42";
     wctx.fillRect(0, 0, 128, 32);
-    wctx.strokeStyle = "rgba(255,255,255,0.5)";
+    wctx.strokeStyle = arabic ? "rgba(255,255,255,0.5)" : "rgba(150,160,220,0.28)";
     wctx.lineWidth = 1.6;
     for (let i = 0; i < 9; i++) {
       const y = 3 + ((i * 37) % 26);
@@ -2054,9 +2070,9 @@ export class Battle3D {
     this.waterSparkles = new THREE.InstancedMesh(
       new THREE.PlaneGeometry(0.7, 0.045),
       new THREE.MeshBasicMaterial({
-        color: 0xcff7ff,
+        color: arabic ? 0xcff7ff : 0xe08aff,
         transparent: true,
-        opacity: 0.72,
+        opacity: arabic ? 0.72 : 0.5,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
         toneMapped: false,
@@ -2067,10 +2083,13 @@ export class Battle3D {
     this.waterSparkles.frustumCulled = false;
     this.scene.add(this.waterSparkles);
 
-    // Gold emblem on each half: crescent (Arabic) or CR-style star (normal).
-    for (const sz of [-1, 1]) {
-      const z = sz * (ARENA_HEIGHT / 4 + 0.5);
-      this.scene.add(arabic ? this.makeCrescentEmblem(z) : this.makeStarEmblem(z));
+    // Gold crescent emblem on each half (Arabic). The normal edition bakes
+    // its faint crown watermark into the floor texture instead.
+    if (arabic) {
+      for (const sz of [-1, 1]) {
+        const z = sz * (ARENA_HEIGHT / 4 + 0.5);
+        this.scene.add(this.makeCrescentEmblem(z));
+      }
     }
 
     if (arabic) {
@@ -2105,44 +2124,47 @@ export class Battle3D {
         }
       }
     } else {
-      // Classic edition: chunky golden timber decks with royal-blue braces
-      // and rope handrails that read clearly from the CR top-down camera.
-      const WOOD = 0xc99032;
-      const WOOD_LIGHT = 0xe0ad45;
-      const BRACE = 0x315da8;
-      const ROPE = 0xd4a574;
+      // Neon arena: each crossing is a gold crown-buckle gate set into the
+      // dark metal band (reference screenshot), flanked by slate posts.
+      const SLATE = 0x343a52;
+      const SLATEDK = 0x23283c;
+      const GOLD = 0xd9a93f;
+      const GOLDLT = 0xf2c14e;
       for (const bx of BRIDGE_XS) {
         const w = toWorld(bx, RIVER_Y);
-        const deck = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.22, 2.6), toon(WOOD));
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.24, 2.6), toon(SLATE));
         deck.position.set(w.x, 0.1, 0);
         deck.castShadow = true;
         deck.receiveShadow = true;
         this.scene.add(deck);
-        // Raised plank seams and alternating highlights read clearly top-down.
-        for (let i = -3; i <= 3; i++) {
-          const plank = new THREE.Mesh(
-            new THREE.BoxGeometry(1.92, 0.035, 0.32),
-            toon(i % 2 ? WOOD_LIGHT : WOOD),
-          );
-          plank.position.set(w.x, 0.225, i * 0.36);
-          plank.castShadow = true;
-          this.scene.add(plank);
+        // Gold buckle plate with a raised crown boss facing the sky.
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.08, 2.0), toon(GOLD));
+        plate.position.set(w.x, 0.25, 0);
+        plate.castShadow = true;
+        this.scene.add(plate);
+        const boss = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.09, 1.3), toon(GOLDLT));
+        boss.position.set(w.x, 0.31, 0);
+        this.scene.add(boss);
+        // Three crown points at each open end of the buckle.
+        for (const sz of [-1, 1]) {
+          for (const dx of [-0.38, 0, 0.38]) {
+            const point = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.3, 4), toon(GOLDLT));
+            point.rotation.y = Math.PI / 4;
+            point.position.set(w.x + dx, 0.32, sz * 0.85);
+            point.castShadow = true;
+            this.scene.add(point);
+          }
         }
-        for (const side of [-1, 1]) {
-          const rail = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.22, 2.7), toon(0xf6c14e));
-          rail.position.set(w.x + side * 0.94, 0.34, 0);
-          rail.castShadow = true;
-          this.scene.add(rail);
-          // Rope cable between posts.
-          const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.4, 6), toon(ROPE));
-          rope.rotation.x = Math.PI / 2;
-          rope.position.set(w.x + side * 0.94, 0.58, 0);
-          this.scene.add(rope);
-          for (const ez of [-1.0, -0.33, 0.33, 1.0]) {
-            const post = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.55, 0.22), toon(BRACE));
-            post.position.set(w.x + side * 0.94, 0.46, ez);
+        // Slate corner posts with gold caps frame the gate.
+        for (const sx of [-1, 1]) {
+          for (const sz of [-1, 1]) {
+            const post = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.5, 0.34), toon(SLATEDK));
+            post.position.set(w.x + sx * 1.0, 0.3, sz * 1.2);
             post.castShadow = true;
             this.scene.add(post);
+            const cap = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.09, 0.4), toon(GOLD));
+            cap.position.set(w.x + sx * 1.0, 0.58, sz * 1.2);
+            this.scene.add(cap);
           }
         }
       }
@@ -2150,9 +2172,9 @@ export class Battle3D {
 
     // Soft foam strips along the river banks (both editions).
     const foamMat = new THREE.MeshBasicMaterial({
-      color: arabic ? 0xe8f4ff : 0xd8fff8,
+      color: arabic ? 0xe8f4ff : 0xb98aff,
       transparent: true,
-      opacity: 0.45,
+      opacity: arabic ? 0.45 : 0.3,
       depthWrite: false,
     });
     for (const sz of [-1, 1]) {
