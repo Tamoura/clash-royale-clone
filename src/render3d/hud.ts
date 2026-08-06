@@ -117,6 +117,9 @@ export class Hud {
     this.x2Tag = el("div", "x2-tag", this.elixirBar);
     this.x2Tag.textContent = "x2";
     this.x2Tag.setAttribute("aria-hidden", "true");
+    const maxTag = el("div", "elixir-max", this.elixirBar);
+    maxTag.textContent = `Max: ${ELIXIR_MAX}`;
+    maxTag.setAttribute("aria-hidden", "true");
 
     const handRow = el("div", "hand-row", bottom);
     handRow.setAttribute("role", "group");
@@ -124,7 +127,7 @@ export class Hud {
     const nextWrap = el("div", "next-card", handRow);
     nextWrap.setAttribute("aria-label", "Next card");
     this.nextArt = el("div", "next-art", nextWrap);
-    el("div", "next-label", nextWrap).textContent = "NEXT";
+    el("div", "next-label", nextWrap).textContent = "Next:";
     // Shared stats tooltip floating above the hovered card.
     const tip = el("div", "card-tip", bottom);
     const showTip = (btn: HTMLButtonElement): void => {
@@ -188,6 +191,8 @@ export class Hud {
       this.cardNeeds.push(need);
       this.cardBtns.push(btn);
     }
+    // CR layout (reference screenshot): the elixir bar runs UNDER the hand.
+    bottom.appendChild(elixirRow);
 
     this.overlay = overlay;
     overlay.setAttribute("role", "dialog");

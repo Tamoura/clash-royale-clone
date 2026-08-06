@@ -167,54 +167,75 @@ body {
 
 /* ══ Battle HUD ══ */
 #hud {
-  background: linear-gradient(180deg, #253059 0%, var(--cr-panel-dark) 100%);
-  border-top: 4px solid var(--cr-hud-border);
+  background: linear-gradient(180deg, #2d5cc0 0%, #1d3f96 40%, #142a68 100%);
+  border-top: 4px solid #0d1c4a;
   box-shadow:
-    inset 0 3px 0 rgba(255, 255, 255, 0.09),
+    inset 0 3px 0 rgba(255, 255, 255, 0.14),
     0 -4px 18px rgba(0, 0, 0, 0.5);
-  padding: 6px 12px calc(5px + env(safe-area-inset-bottom) * 0.4);
+  padding: 8px 12px calc(6px + env(safe-area-inset-bottom) * 0.4);
   position: relative;
+}
+/* Diamond ornaments on the tray's top frame (reference screenshot). */
+#hud::before {
+  content: "\25C6 \25C6";
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 11px;
+  letter-spacing: 10px;
+  padding-left: 10px;
+  color: #0d1c4a;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.18);
+  pointer-events: none;
 }
 
 /* ── Elixir row ── */
 .elixir-row {
   display: flex;
   align-items: center;
-  gap: 9px;
-  margin-bottom: 5px;
+  gap: 0;
+  margin-top: 7px;
 }
 
 .elixir-num {
   position: relative;
+  z-index: 1;
   background: radial-gradient(circle at 35% 30%, var(--cr-elixir-light), var(--cr-elixir-dark) 70%);
-  border: 2px solid #f5d0fe;
-  border-radius: 50%;
-  width: 30px;
-  height: 30px;
-  line-height: 27px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  border: 2.5px solid #fbe3ff;
+  border-radius: 50% 50% 50% 42%;
+  width: 40px;
+  height: 40px;
+  line-height: 35px;
+  margin-right: -14px;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.55);
   color: #fff;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
   font-weight: bold;
   text-align: center;
-  font-size: 16px;
+  font-size: 19px;
   flex-shrink: 0;
 }
 
 .elixir-bar {
   position: relative;
   flex: 1;
-  height: 18px;
-  background: #070b12;
-  border: 2px solid var(--cr-border);
-  border-radius: 12px;
+  height: 25px;
+  background: #10142a;
+  border: 2px solid #0d1c4a;
+  border-radius: 14px;
   overflow: hidden;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .elixir-fill {
   height: 100%;
-  background: linear-gradient(180deg, var(--cr-elixir-light) 0%, var(--cr-elixir-mid) 35%, var(--cr-elixir-dark) 100%);
+  padding-left: 14px;
+  box-sizing: content-box;
+  margin-left: -14px;
+  background: linear-gradient(180deg, #ff8fd8 0%, var(--cr-elixir-mid) 40%, var(--cr-elixir-dark) 100%);
   box-shadow:
     inset 0 3px 0 rgba(255, 255, 255, 0.5),
     0 0 8px rgba(242, 58, 168, 0.4);
@@ -227,6 +248,17 @@ body {
   animation: elixirPulse 0.8s ease-in-out infinite;
 }
 
+.elixir-bar .elixir-max {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.75);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
 .elixir-bar .x2-tag {
   display: none;
   position: absolute;
@@ -241,6 +273,9 @@ body {
 }
 .elixir-bar.x2 .x2-tag {
   display: block;
+}
+.elixir-bar.x2 .elixir-max {
+  display: none; /* x2 tag takes the same corner */
 }
 
 /* Elixir leak — flash when sitting at 10 unused */
@@ -283,33 +318,45 @@ body {
 /* ── Hand row ── */
 .hand-row {
   display: flex;
-  gap: 7px;
+  gap: 8px;
   align-items: stretch;
   justify-content: center;
+  background: linear-gradient(180deg, #3567cf 0%, #234a9f 100%);
+  border: 2px solid #142c72;
+  border-radius: 12px;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.28);
+  padding: 9px 10px 10px;
 }
 
-/* Next-card preview — slightly larger, gold label */
+/* Next-card preview — its own darker panel, label above (reference) */
 .next-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
-  opacity: 0.82;
+  justify-content: center;
+  gap: 3px;
+  background: linear-gradient(180deg, #1c2f66 0%, #14234e 100%);
+  border: 2px solid #0e1c44;
+  border-radius: 10px;
+  padding: 4px 8px;
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.35);
 }
 .next-art canvas {
-  width: 46px;
-  height: 46px;
+  width: 48px;
+  height: 48px;
   background: linear-gradient(180deg, var(--cr-slot-fill), var(--cr-slot-bg));
   border: 2px solid var(--cr-border);
   border-radius: var(--cr-r-md);
 }
 .next-label {
-  color: var(--cr-gold);
-  font-size: 9px;
+  order: -1;
+  color: #fff;
+  font-size: 10px;
   font-weight: bold;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  margin-top: 2px;
+  letter-spacing: 0.06em;
+  text-transform: none;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 .next-art.slide-in {
@@ -342,14 +389,16 @@ body {
 /* ── Card buttons ── */
 button.card {
   position: relative;
-  width: clamp(66px, 14vw, 82px);
-  border: 3.5px solid #c98a2b;
+  width: clamp(68px, 15vw, 86px);
+  border: 3.5px solid #e0a83c;
   border-radius: 12px;
   background: linear-gradient(180deg, #6a90cc 0%, #3d62a0 52%, #263f6b 100%);
-  box-shadow: var(--cr-card-shadow);
+  box-shadow:
+    var(--cr-card-shadow),
+    inset 0 0 0 1.5px #8a5f16;
   color: #fff;
   cursor: pointer;
-  padding: 5px 4px 9px;
+  padding: 3px 3px 4px;
   transition: transform 0.08s ease;
   touch-action: none;
   font-family: var(--cr-font);
@@ -358,15 +407,16 @@ button.card:hover {
   transform: translateY(-4px);
 }
 
-/* Rarity borders */
-button.card[data-rarity="common"] { border-color: var(--cr-rarity-common); }
-button.card[data-rarity="rare"]   { border-color: var(--cr-rarity-rare); }
-button.card[data-rarity="epic"]   { border-color: var(--cr-rarity-epic); }
+/* All frames are reference-gold; rarity shows as an inner ring tint. */
+button.card[data-rarity="rare"]   { box-shadow: var(--cr-card-shadow), inset 0 0 0 1.5px var(--cr-rarity-rare); }
+button.card[data-rarity="epic"]   { box-shadow: var(--cr-card-shadow), inset 0 0 0 1.5px var(--cr-rarity-epic); }
 
 button.card.selected {
-  border-color: var(--cr-gold);
-  box-shadow: var(--cr-selected-shadow);
-  transform: translateY(-4px);
+  border-color: #ffd76a;
+  box-shadow:
+    var(--cr-selected-shadow),
+    0 10px 20px rgba(0, 0, 0, 0.45);
+  transform: translateY(-12px);
 }
 
 button.card.dragging {
@@ -383,9 +433,11 @@ button.card.locked {
 }
 
 button.card canvas {
-  width: 60px;
-  height: 60px;
-  border-radius: var(--cr-r-md);
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
   background: radial-gradient(circle at 50% 32%, #334a72 0%, #1a2740 100%);
   border: 2px solid rgba(10, 16, 30, 0.55);
   box-shadow:
@@ -394,26 +446,36 @@ button.card canvas {
 }
 
 .card-name {
+  position: absolute;
+  left: 14px; /* clears the cost droplet riding the corner */
+  right: 3px;
+  bottom: 4px;
   font-size: 9px;
   font-weight: bold;
   text-shadow:
     -1px -1px 0 #14213a, 1px -1px 0 #14213a,
     -1px 1px 0 #14213a, 1px 1px 0 #14213a;
   line-height: 1.1;
+  background: linear-gradient(180deg, rgba(12, 20, 42, 0) 0%, rgba(12, 20, 42, 0.75) 45%);
+  border-radius: 0 0 7px 7px;
+  padding: 7px 1px 2px;
+  pointer-events: none;
 }
 
-/* Elixir cost — droplet bubble (top-left) */
+/* Elixir cost — droplet bubble at the bottom-left (reference layout) */
 .card-cost {
   position: absolute;
-  left: -7px;
-  top: -6px;
+  left: -11px;
+  bottom: -10px;
+  top: auto;
+  z-index: 2;
   background: radial-gradient(circle at 35% 30%, var(--cr-elixir-light), var(--cr-elixir-dark) 70%);
   border: 2px solid #f5d0fe;
   border-radius: 50%;
-  width: 22px;
-  height: 22px;
-  line-height: 19px;
-  font-size: 12px;
+  width: 26px;
+  height: 26px;
+  line-height: 23px;
+  font-size: 14px;
   font-weight: bold;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
