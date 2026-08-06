@@ -900,8 +900,11 @@ function buildTowerMesh(e: Entity): EntityView {
   view.flashT = 0;
   view.spawnT = SPAWN_POP_TIME; // towers don't pop in
   view.isTroop = false;
-  view.baseScale = 1.5; // towers stand 50% larger for prominence
-  root.scale.setScalar(1.5);
+  // Measured against real CR: at 1.5x a princess tower read 4.1 tiles wide
+  // vs CR's 3.0. 1.1x lands both towers on CR's true 3x3 / 4x4 footprints
+  // while keeping a slight landmark bump.
+  view.baseScale = 1.1;
+  root.scale.setScalar(1.1);
   return view as EntityView;
 }
 
