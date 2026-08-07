@@ -954,6 +954,33 @@ function drawBarrelArt(ctx: Ctx): void {
   circle(ctx, 1.5, -7, 1, "#1f2430");
 }
 
+function drawMirrorArt(ctx: Ctx): void {
+  // Ornate gold hand mirror; the glass echoes a tiny second card.
+  ctx.fillStyle = "#d9a93f";
+  ctx.beginPath();
+  ctx.ellipse(0, -2.5, 8, 9, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#b9c9f0";
+  ctx.beginPath();
+  ctx.ellipse(0, -2.5, 6, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Reflection sweep.
+  ctx.strokeStyle = "#eef4ff";
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(-3.4, 1.5);
+  ctx.lineTo(2.4, -6.5);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-0.8, 2.2);
+  ctx.lineTo(3.6, -3.8);
+  ctx.stroke();
+  // Handle + finial.
+  ctx.fillStyle = "#d9a93f";
+  ctx.fillRect(-1.4, 6, 2.8, 5.5);
+  circle(ctx, 0, 12, 1.6, "#b0812a");
+}
+
 /** Static portrait used for HUD card slots and the next-card preview. */
 export function drawCardArt(
   ctx: Ctx,
@@ -974,6 +1001,7 @@ export function drawCardArt(
   else if (cardId === "heal") drawHealArt(ctx);
   else if (cardId === "tornado") drawTornadoArt(ctx);
   else if (cardId === "skeleton-barrel") drawBarrelArt(ctx);
+  else if (cardId === "mirror") drawMirrorArt(ctx);
   else TROOP_PAINTERS[cardId]?.(ctx, STILL);
   ctx.restore();
 }

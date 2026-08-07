@@ -73,7 +73,7 @@ export const ARENAS: ArenaDef[] = [
     id: "jungle-arena",
     name: "Jungle Arena",
     trophies: 2400,
-    unlocks: ["executioner", "mega-knight", "skeleton-barrel"],
+    unlocks: ["executioner", "mega-knight", "skeleton-barrel", "mirror"],
   },
   {
     id: "legendary-peak",

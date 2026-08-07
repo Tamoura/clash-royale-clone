@@ -1,4 +1,4 @@
-import type { BattleState } from "../game/battle";
+import { effectiveCard, type BattleState } from "../game/battle";
 import type { Side } from "../game/arena";
 import { getCard, type CardId } from "../game/cards";
 import { ELIXIR_MAX } from "../game/elixir";
@@ -52,6 +52,7 @@ export class Hud {
   private x2Tag!: HTMLElement;
   private readonly nextArt: HTMLElement;
   private readonly cardBtns: HTMLButtonElement[] = [];
+  private readonly cardCosts: HTMLElement[] = [];
   private readonly cardVeils: HTMLElement[] = [];
   private readonly cardNeeds: HTMLElement[] = [];
   private readonly cardReady: boolean[] = [];
@@ -317,6 +318,7 @@ export class Hud {
         cost.className = "card-cost";
         cost.textContent = String(getCard(id).cost);
         btn.appendChild(cost);
+        this.cardCosts[i] = cost;
         const key = document.createElement("div");
         key.className = "key-chip";
         key.textContent = String(i + 1); // keyboard shortcut hint
@@ -337,7 +339,13 @@ export class Hud {
     me.hand.cards.forEach((id, i) => {
       const btn = this.cardBtns[i];
       btn.classList.toggle("selected", this.selected === id);
-      const cost = getCard(id).cost;
+      // Mirror's price tracks the last card played (its copy +1); with
+      // nothing to copy yet it shows "?" and stays locked.
+      const eff = effectiveCard(state, mySide, id);
+      const cost = eff?.cost ?? Infinity;
+      if (id === "mirror") {
+        this.cardCosts[i].textContent = eff ? String(eff.cost) : "?";
+      }
       const affordable = cost <= amount;
       btn.classList.toggle("locked", !affordable);
       // Bottom-up charge fill: dark covers the still-uncharged top,
@@ -369,7 +377,8 @@ export class Hud {
           ` rgba(8,12,22,0.74) ${pct.toFixed(1)}%,` +
           ` rgba(8,12,22,0.74) 100%)`;
         need.style.display = "block";
-        need.textContent = `+${Math.ceil(cost - amount)}`;
+        // A Mirror with nothing to copy shows no "+N" — it's simply dead.
+        need.textContent = Number.isFinite(cost) ? `+${Math.ceil(cost - amount)}` : "—";
         this.cardReady[i] = false;
       }
     });

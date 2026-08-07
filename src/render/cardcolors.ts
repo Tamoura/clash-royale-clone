@@ -42,5 +42,6 @@ export const CARD_COLOR: Record<CardId, string> = {
   heal: "#3fae6a",
   tornado: "#7a8494",
   "skeleton-barrel": "#8a5a30",
+  mirror: "#9b8ec9",
   champion: "#7c3aed",
 };

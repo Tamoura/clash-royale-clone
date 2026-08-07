@@ -91,6 +91,21 @@ import {
 } from "./game/challenges";
 import { dailyDeck, dateKey } from "./game/daily";
 import {
+  ACHIEVEMENTS,
+  achievementProgress,
+  checkSeason,
+  claimAchievement,
+  isEarned,
+  loadAchievements,
+  loadSeason,
+  recordChest as recordChestAch,
+  recordMatch as recordAchMatch,
+  saveAchievements,
+  saveSeason,
+  seasonKey,
+  type SeasonState,
+} from "./meta/achievements";
+import {
   claimQuest,
   isComplete,
   loadQuests,
@@ -148,6 +163,29 @@ let cardLevels: CardLevels = profile.levels;
 let quests = loadQuests(dateKey(new Date()));
 let battleCardsPlayed = 0;
 let questsBattleRef: BattleState | null = null;
+let achievements = loadAchievements();
+
+// ---- Seasons: monthly soft-reset above the 1000-trophy floor ------------
+let season: SeasonState;
+{
+  const roll = checkSeason(loadSeason(), seasonKey(new Date()), profile.trophies);
+  season = roll.state;
+  saveSeason(season);
+  if (roll.reset) {
+    const from = profile.trophies;
+    profile = { ...profile, trophies: roll.trophies };
+    saveProfile(localStorage, profile);
+    // Banner once the UI exists — boot runs before the stage is built.
+    window.setTimeout(() => {
+      showBanner(
+        tr(
+          `New season! Trophies: ${from} → ${roll.trophies}`,
+          `موسم جديد! الكؤوس: ${from} ← ${roll.trophies}`,
+        ),
+      );
+    }, 1200);
+  }
+}
 
 function persistProfile(): void {
   profile = { ...profile, deck: playerDeck, levels: cardLevels };
@@ -156,16 +194,17 @@ function persistProfile(): void {
 }
 
 // ---- Bot archetypes: each ladder opponent has a personality -------------
-type ArchetypeId = "balanced" | "beatdown" | "cycle";
+type ArchetypeId = "balanced" | "beatdown" | "cycle" | "siege";
 const ARCHETYPE_NAMES: Record<ArchetypeId, [string, string]> = {
   balanced: ["Duelist Bot", "روبوت مبارز"],
   beatdown: ["Crusher Bot", "روبوت ساحق"],
   cycle: ["Cycler Bot", "روبوت سريع"],
+  siege: ["Siege Bot", "روبوت حصار"],
 };
 
 function pickArchetype(): ArchetypeId {
   const r = Math.random();
-  return r < 0.34 ? "balanced" : r < 0.67 ? "beatdown" : "cycle";
+  return r < 0.25 ? "balanced" : r < 0.5 ? "beatdown" : r < 0.75 ? "cycle" : "siege";
 }
 
 /** Bot drafts from cards unlocked at the player's arena (fair ladder). */
@@ -187,6 +226,13 @@ function botDeck(archetype: ArchetypeId = "balanced"): CardId[] {
       return c.kind === "troop" && (c.unit.targetsBuildingsOnly || c.unit.maxHp >= 1400);
     });
     pool = [...heavy.slice(0, 3), ...pool.filter((id) => !heavy.slice(0, 3).includes(id))];
+  } else if (archetype === "siege") {
+    // Turtle kit: buildings + long-range troops lead; win by outlasting.
+    const siegey = pool.filter((id) => {
+      const c = getCard(id);
+      return c.kind === "building" || (c.kind === "troop" && c.unit.attackRange >= 4.5);
+    });
+    pool = [...siegey.slice(0, 4), ...pool.filter((id) => !siegey.slice(0, 4).includes(id))];
   }
   const deck = pool.slice(0, 8);
   // The twist: hard bots sometimes wield YOUR champion design against you.
@@ -390,13 +436,16 @@ function startLadder(): void {
     gameMode.elixirRate,
   );
   const base = DIFFICULTIES[difficulty];
-  // Personality tweaks: beatdown banks bigger pushes, cycle plays faster.
+  // Personality tweaks: beatdown banks bigger pushes, cycle plays faster,
+  // siege turtles behind buildings and only commits when fully loaded.
   const tuned: BotProfile =
     archetype === "beatdown"
       ? { thinkInterval: base.thinkInterval, pushAt: Math.min(10, base.pushAt + 1) }
       : archetype === "cycle"
         ? { thinkInterval: base.thinkInterval * 0.85, pushAt: Math.max(4, base.pushAt - 2) }
-        : base;
+        : archetype === "siege"
+          ? { thinkInterval: base.thinkInterval * 1.1, pushAt: 10 }
+          : base;
   bot = createBot(Date.now() & 0xffff, tuned);
   selectCard(null);
   hud.setReward(null);
@@ -747,6 +796,75 @@ function buildHome(): void {
     board.appendChild(row);
   }
   pickerRoot.appendChild(board);
+
+  // Achievements board: lifetime goals under the daily quests, with the
+  // current season's badge in the title row.
+  const aBoard = document.createElement("div");
+  aBoard.className = "quest-board ach-board";
+  const aTitle = document.createElement("div");
+  aTitle.className = "quest-title";
+  aTitle.textContent = tr("🏅 Achievements", "🏅 الإنجازات");
+  const seasonChip = document.createElement("span");
+  seasonChip.className = "season-chip";
+  seasonChip.textContent = tr(
+    `Season ${season.key} · best 🏆 ${Math.max(season.best, profile.trophies)}`,
+    `موسم ${season.key} · أفضل 🏆 ${Math.max(season.best, profile.trophies)}`,
+  );
+  aTitle.appendChild(seasonChip);
+  aBoard.appendChild(aTitle);
+  // Unclaimed-first, then in-progress by closeness, claimed last.
+  const sorted = [...ACHIEVEMENTS].sort((a, b) => {
+    const rank = (d: (typeof ACHIEVEMENTS)[number]): number =>
+      achievements.claimed.includes(d.id) ? 2 : isEarned(achievements, d) ? 0 : 1;
+    return rank(a) - rank(b) ||
+      achievementProgress(achievements, b) / b.target -
+      achievementProgress(achievements, a) / a.target;
+  });
+  for (const def of sorted) {
+    const row = document.createElement("div");
+    row.className = "quest-row";
+    const label = document.createElement("div");
+    label.className = "quest-label";
+    label.textContent = tr(def.en, def.ar);
+    row.appendChild(label);
+    const progress = achievementProgress(achievements, def);
+    const earned = isEarned(achievements, def);
+    const claimed = achievements.claimed.includes(def.id);
+    const bar = document.createElement("div");
+    bar.className = "quest-bar";
+    const fill = document.createElement("div");
+    fill.className = "quest-fill";
+    fill.style.width = `${Math.round((progress / def.target) * 100)}%`;
+    bar.appendChild(fill);
+    const count = document.createElement("span");
+    count.className = "quest-count";
+    count.textContent = `${Math.round(progress)}/${def.target}`;
+    bar.appendChild(count);
+    row.appendChild(bar);
+    const btn = document.createElement("button");
+    btn.className = "quest-claim";
+    if (claimed) {
+      btn.textContent = "✓";
+      btn.disabled = true;
+    } else if (earned) {
+      btn.textContent = `🪙 ${def.reward}`;
+      btn.addEventListener("click", () => {
+        const res = claimAchievement(achievements, def.id);
+        if (!res) return;
+        achievements = res.state;
+        saveAchievements(achievements);
+        profile = { ...profile, gold: profile.gold + res.reward };
+        persistProfile();
+        buildHome(); // refresh board + currency
+      });
+    } else {
+      btn.textContent = `🪙 ${def.reward}`;
+      btn.disabled = true;
+    }
+    row.appendChild(btn);
+    aBoard.appendChild(row);
+  }
+  pickerRoot.appendChild(aBoard);
 }
 
 // ---- Character Studio ----------------------------------------------------
@@ -1527,6 +1645,8 @@ function buildChests(): void {
       if (shardBits) bits.push(shardBits);
       // Lid-pop first, then the loot reveal bursts out of the open chest.
       cell.classList.add("opening");
+      achievements = recordChestAch(achievements);
+      saveAchievements(achievements);
       openBtn.disabled = true;
       window.setTimeout(() => {
         reveal.textContent = bits.join(" · ");
@@ -1964,6 +2084,16 @@ function applyMatchResult(winner: "player" | "enemy" | "draw"): void {
   cardLevels = profile.levels;
   playerDeck = profile.deck;
   persistProfile();
+  season = { ...season, best: Math.max(season.best, profile.trophies) };
+  saveSeason(season);
+  achievements = {
+    ...achievements,
+    counters: {
+      ...achievements.counters,
+      bestTrophies: Math.max(achievements.counters.bestTrophies, profile.trophies),
+    },
+  };
+  saveAchievements(achievements);
   hud.setReward(summary.rewardLine);
 }
 
@@ -2239,6 +2369,16 @@ function frame(now: number): void {
         damage: battle.player.stats.damageDealt,
       });
       saveQuests(quests);
+      achievements = recordAchMatch(achievements, {
+        won: ev.winner === localSide(),
+        crowns: mySideState().crowns,
+        cardsPlayed: battleCardsPlayed,
+        damage: mySideState().stats.damageDealt,
+        durationSec: battle.time,
+        deckHadChampion: playerDeck.includes("champion"),
+        trophiesAfter: profile.trophies,
+      });
+      saveAchievements(achievements);
       battleCardsPlayed = 0;
     }
     if (ev.type === "death" && (ev.kind === "princess-tower" || ev.kind === "king-tower")) {

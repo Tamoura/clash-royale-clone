@@ -27,6 +27,16 @@ function rarityLabel(rarity: string): string {
 export function cardStatLines(id: CardId): string[] {
   const card = getCard(id);
   const lines: string[] = [];
+  if (card.id === "mirror") {
+    lines.push(`${tr("Spell", "تعويذة")} · ${rarityLabel(card.rarity)}`);
+    lines.push(
+      tr(
+        "Replays the last card you played, for its cost +1",
+        "تعيد لعب آخر بطاقة لعبتها مقابل كلفتها +1",
+      ),
+    );
+    return lines;
+  }
   if (card.kind === "spell") {
     lines.push(`${tr("Spell", "تعويذة")} · ${rarityLabel(card.rarity)}`);
     const bits: string[] = [];

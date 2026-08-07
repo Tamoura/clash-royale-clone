@@ -36,6 +36,7 @@ export type CardId =
   | "heal"
   | "tornado"
   | "skeleton-barrel"
+  | "mirror"
   | "champion";
 
 export type Speed = "slow" | "medium" | "fast";
@@ -752,6 +753,26 @@ export const CARDS: Record<CardId, Card> = {
     spawnUnit: "skeletons",
   },
   /**
+   * Replays the last card its owner played, at that card's cost +1.
+   * The listed cost is a floor for display; battle.ts computes the real
+   * price from lastPlayed at deploy time.
+   */
+  mirror: {
+    id: "mirror",
+    name: "Mirror",
+    rarity: "epic",
+    kind: "spell",
+    cost: 1,
+    damage: 0,
+    radius: 0,
+    stunSeconds: 0,
+    rageSeconds: 0,
+    knockback: 0,
+    heal: 0,
+    pull: 0,
+    spawnUnit: null,
+  },
+  /**
    * The player-designed Studio card. This entry is a neutral baseline;
    * customcard.ts overwrites it in place (applyChampion) with the saved
    * design, so every consumer — sim, bot, HUD, portraits, even Crazy-mode
@@ -888,6 +909,7 @@ export const DECK: CardId[] = [
   "heal",
   "tornado",
   "skeleton-barrel",
+  "mirror",
   "champion",
 ];
 

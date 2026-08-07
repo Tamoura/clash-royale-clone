@@ -124,6 +124,8 @@ export interface SideState {
   crowns: number;
   stats: SideStats;
   levels: CardLevels;
+  /** Last non-Mirror card this side played — what a Mirror would copy. */
+  lastPlayed: CardId | null;
 }
 
 export interface SpellEffect {
@@ -333,6 +335,7 @@ export function createBattle(
       crowns: 0,
       stats: { damageDealt: 0, elixirSpent: 0, elixirLeaked: 0, elixirCollected: 0 },
       levels: levels.player ?? {},
+      lastPlayed: null,
     },
     enemy: {
       elixir: createElixir(),
@@ -340,6 +343,7 @@ export function createBattle(
       crowns: 0,
       stats: { damageDealt: 0, elixirSpent: 0, elixirLeaked: 0, elixirCollected: 0 },
       levels: levels.enemy ?? {},
+      lastPlayed: null,
     },
     time: 0,
     overtime: false,
@@ -634,6 +638,24 @@ function nearEnemyTower(state: BattleState, side: Side, x: number, y: number): b
   });
 }
 
+/**
+ * What a card will actually do and cost when played by `side` right now.
+ * For the Mirror that is the side's last-played card at +1 elixir; the
+ * Mirror itself is unplayable (null) until something has been played.
+ */
+export function effectiveCard(
+  state: BattleState,
+  side: Side,
+  cardId: CardId,
+): { card: ReturnType<typeof getCard>; cost: number } | null {
+  const card = getCard(cardId);
+  if (cardId !== "mirror") return { card, cost: card.cost };
+  const last = sideState(state, side).lastPlayed;
+  if (!last) return null;
+  const copied = getCard(last);
+  return { card: copied, cost: copied.cost + 1 };
+}
+
 /** Dry-run of deployCard, used for UI validity feedback. */
 export function checkDeploy(
   state: BattleState,
@@ -645,7 +667,11 @@ export function checkDeploy(
   if (state.result) return "finished";
   const me = sideState(state, side);
   if (!me.hand.cards.includes(cardId)) return "not-in-hand";
-  const card = getCard(cardId);
+  // The Mirror validates as the card it would copy (spot rules and cost
+  // both come from the copied card); with nothing to copy it's dead.
+  const eff = effectiveCard(state, side, cardId);
+  if (!eff) return "bad-spot";
+  const { card, cost } = eff;
   const validSpot =
     card.kind === "spell"
       ? inArena(x, y)
@@ -654,7 +680,7 @@ export function checkDeploy(
   // Even once a lane opens, troops can't be dropped right on the enemy's
   // towers — push-ins need a buffer (especially around the king tower).
   if (card.kind !== "spell" && nearEnemyTower(state, side, x, y)) return "bad-spot";
-  if (!trySpend(me.elixir, card.cost)) return "no-elixir";
+  if (!trySpend(me.elixir, cost)) return "no-elixir";
   return "ok";
 }
 
@@ -672,15 +698,18 @@ export function deployCard(
 ): boolean {
   if (checkDeploy(state, side, cardId, x, y) !== "ok") return false;
   const me = sideState(state, side);
-  const card = getCard(cardId);
-  me.elixir = trySpend(me.elixir, card.cost)!;
-  me.stats.elixirSpent += card.cost;
+  // The hand rotates the card that was PLAYED (mirror stays a mirror in
+  // the cycle), but everything else executes the EFFECTIVE card.
+  const { card, cost } = effectiveCard(state, side, cardId)!;
+  me.elixir = trySpend(me.elixir, cost)!;
+  me.stats.elixirSpent += cost;
   me.hand = playCard(me.hand, cardId);
+  if (cardId !== "mirror") me.lastPlayed = cardId;
   if (card.kind === "spell") {
-    state.events.push({ type: "spell", side, cardId, x, y });
+    state.events.push({ type: "spell", side, cardId: card.id, x, y });
     if (card.rageSeconds > 0) {
       state.buffZones.push({ side, x, y, radius: card.radius, ttl: card.rageSeconds });
-      state.effects.push({ cardId, x, y, radius: card.radius, ttl: card.rageSeconds });
+      state.effects.push({ cardId: card.id, x, y, radius: card.radius, ttl: card.rageSeconds });
     } else {
       // The Tornado drags enemies into the center BEFORE damage lands,
       // so a well-placed cast bunches a push onto its own blast.
@@ -689,7 +718,7 @@ export function deployCard(
         applySpell(
           state,
           side,
-          cardId,
+          card.id,
           x,
           y,
           card.damage * levelMultiplier(me.levels, card.id),
@@ -698,25 +727,25 @@ export function deployCard(
           card.knockback,
         );
       }
-      if (card.heal > 0) healAllies(state, side, cardId, x, y, card.radius, card.heal);
+      if (card.heal > 0) healAllies(state, side, card.id, x, y, card.radius, card.heal);
       // The Skeleton Barrel bursts open where it lands — a spell that
       // delivers troops anywhere on the field, enemy side included.
       if (card.spawnUnit) spawnUnits(state, side, card.spawnUnit, x, y);
     }
   } else if (card.kind === "building") {
-    state.events.push({ type: "deploy", side, cardId });
+    state.events.push({ type: "deploy", side, cardId: card.id });
     spawnBuilding(state, side, card, x, y);
   } else {
-    state.events.push({ type: "deploy", side, cardId });
+    state.events.push({ type: "deploy", side, cardId: card.id });
     spawnTroops(state, side, card, x, y);
     // The Electro Wizard lands with a zap that stuns nearby enemies.
-    if (cardId === "electro-wizard") {
+    if (card.id === "electro-wizard") {
       state.events.push({ type: "spell", side, cardId: "zap", x, y });
       applySpell(state, side, "zap", x, y, 50, 2.5, 0.5);
     }
     // The Mega Knight drops from the sky and slams: AoE damage that shoves
     // surrounding enemy troops outward in every direction.
-    if (cardId === "mega-knight") {
+    if (card.id === "mega-knight") {
       state.events.push({ type: "spell", side, cardId: "mega-knight", x, y });
       applySpell(state, side, "mega-knight", x, y, 140, 3, 0, 1.8);
     }

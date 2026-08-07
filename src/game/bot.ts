@@ -333,6 +333,23 @@ function tryPush(state: BattleState, bot: BotState): boolean {
   return deployCard(state, "enemy", pick, lane, RIVER_Y - 4);
 }
 
+/**
+ * Double down with the Mirror: right after committing a tank/win-con to a
+ * push, replay it into the same lane if the +1 price is still affordable.
+ */
+function tryMirror(state: BattleState): boolean {
+  if (!state.enemy.hand.cards.includes("mirror")) return false;
+  const last = state.enemy.lastPlayed;
+  if (!last || !isTankCard(last)) return false;
+  if (state.enemy.elixir.amount < getCard(last).cost + 1) return false;
+  const tanks = botTanks(state);
+  if (tanks.length === 0) return false;
+  const lead = tanks.reduce((a, b) => (a.y > b.y ? a : b));
+  // Only pile on while the push is still building on our half.
+  if (lead.y > RIVER_Y + 6) return false;
+  return deployCard(state, "enemy", "mirror", nearestBridgeX(lead.x), RIVER_Y - 4);
+}
+
 /** Make at most one play right now. */
 export function botThink(state: BattleState, bot: BotState): void {
   if (state.result) return;
@@ -342,6 +359,7 @@ export function botThink(state: BattleState, bot: BotState): void {
   if (tryHeal(state)) return;
   if (tryRage(state)) return;
   if (tryBarrel(state, bot)) return;
+  if (tryMirror(state)) return;
   if (tryEconomy(state, bot)) return;
   if (tryPush(state, bot)) return;
   tryCycle(state);

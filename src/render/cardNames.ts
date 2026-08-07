@@ -49,6 +49,7 @@ const ISLAMIC_NAME: Record<CardId, string> = {
   heal: "شفاء",
   tornado: "زوبعة",
   "skeleton-barrel": "برميل الميليشيا",
+  mirror: "مرآة",
   champion: "بطل",
 };
 

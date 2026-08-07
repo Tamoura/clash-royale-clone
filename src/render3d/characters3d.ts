@@ -320,7 +320,7 @@ function diamond(r: number, color: number, x: number, y: number, z: number): THR
 
 function buildKnight(): TroopRig {
   const g = new THREE.Group();
-  const BLUE = 0x2f6bd8, BLUEDK = 0x244e9c, STEEL = 0xb9c4d2, GOLD = 0xf2c14e, LEATHER = 0x5a3a1c, RED = 0xc23b3b;
+  const BLUE = 0x2f6bd8, BLUEDK = 0x244e9c, STEEL = 0xb9c4d2, GOLD = 0xf2c14e, LEATHER = 0x5a3a1c;
   const legs = [makeLeg(BLUEDK, -0.16, 0.32, 0.18), makeLeg(BLUEDK, 0.16, 0.32, 0.18)];
   for (const leg of legs) leg.add(sphere(0.1, GOLD, 0, -0.18, 0.12)); // knee rivet
   g.add(...legs);
@@ -364,9 +364,14 @@ function buildKnight(): TroopRig {
     g.add(coif);
     g.add(cyl(0.47, 0.47, 0.1, STEEL, 0, 1.42, 0)); // coif rim
     g.add(box(0.1, 0.22, 0.08, STEEL, 0, 1.12, 0.4)); // nose guard
-    g.add(box(0.14, 0.58, 0.2, RED, 0, 1.86, -0.06)); // plume
+    // Fore-aft blade crest: thin from the front, a bold red comb from the
+    // side and back — nothing like the Valkyrie's lateral gold wings.
+    const crest = box(0.1, 0.34, 0.68, GOLD, 0, 1.78, -0.08);
+    crest.rotation.x = -0.1;
+    g.add(crest);
+    g.add(box(0.06, 0.12, 0.72, 0xfff2c8, 0, 1.98, -0.1)); // bright crest spine
   }
-  const cape = box(0.5, 0.7, 0.05, 0x7a1f2b, 0, 0.62, -0.28);
+  const cape = box(0.5, 0.7, 0.05, 0x1c2f66, 0, 0.62, -0.28);
   cape.rotation.x = 0.08;
   g.add(cape);
 
@@ -375,10 +380,10 @@ function buildKnight(): TroopRig {
   offArm.position.set(-0.42, 0.82, 0);
   offArm.add(box(0.14, 0.32, 0.14, BLUE, 0, -0.16, 0));
   offArm.add(sphere(0.11, STEEL, 0, -0.32, 0.02)); // gauntlet
-  offArm.add(box(0.42, 0.56, 0.05, GOLD, -0.1, -0.28, 0.16)); // border
-  offArm.add(box(0.34, 0.48, 0.07, RED, -0.1, -0.28, 0.18)); // face
-  offArm.add(sphere(0.08, STEEL, -0.1, -0.22, 0.24)); // boss
-  offArm.add(cone(0.07, 0.16, GOLD, -0.1, -0.4, 0.24)); // emblem
+  offArm.add(box(0.54, 0.72, 0.05, GOLD, -0.16, -0.3, 0.16)); // border
+  offArm.add(box(0.44, 0.62, 0.07, BLUEDK, -0.16, -0.3, 0.18)); // face
+  offArm.add(sphere(0.09, STEEL, -0.16, -0.22, 0.24)); // boss
+  offArm.add(cone(0.08, 0.2, GOLD, -0.16, -0.44, 0.24)); // emblem
   g.add(offArm);
 
   // Sword arm: gauntlet, crossguard, fullered blade, gold pommel.

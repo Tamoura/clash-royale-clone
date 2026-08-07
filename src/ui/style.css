@@ -1862,3 +1862,20 @@ button.card.ready-pop {
     inset 0 2px 0 rgba(255, 255, 255, 0.25),
     0 6px 18px rgba(0, 0, 0, 0.5);
 }
+
+
+/* ── Achievements board + season badge ── */
+.ach-board {
+  margin-top: 10px;
+  flex-shrink: 0; /* the home column is flex — don't collapse the board */
+}
+.season-chip {
+  float: right;
+  font-size: 11px;
+  font-weight: bold;
+  color: #ffe082;
+  background: rgba(20, 33, 58, 0.75);
+  border: 1px solid rgba(242, 193, 78, 0.5);
+  border-radius: 9px;
+  padding: 2px 8px;
+}

@@ -15,7 +15,7 @@ describe("arenas", () => {
     // The Studio champion is created by the player, never found in chests,
     // so it's the one DECK card without an arena unlock.
     expect(unlocked.sort()).toEqual(DECK.filter((id) => id !== "champion").sort());
-    expect(unlocked).toHaveLength(37);
+    expect(unlocked).toHaveLength(38);
   });
 
   it("Training Camp unlocks the starter deck", () => {
