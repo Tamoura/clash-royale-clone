@@ -4,6 +4,15 @@
  */
 import { DEFAULT_DECK, type CardId } from "../game/cards";
 
+/** Index of the arena a trophy count stands in (0 = Training Camp). */
+export function arenaIndexAt(trophies: number): number {
+  let idx = 0;
+  for (let i = 0; i < ARENAS.length; i++) {
+    if (trophies >= ARENAS[i].trophies) idx = i;
+  }
+  return idx;
+}
+
 export interface ArenaDef {
   id: string;
   name: string;

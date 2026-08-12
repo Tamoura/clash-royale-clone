@@ -19,8 +19,8 @@ function giveHand(b: BattleState, side: "player" | "enemy", cards: string[]): vo
 describe("match stats", () => {
   it("starts at zero", () => {
     const b = createBattle();
-    expect(b.player.stats).toEqual({ damageDealt: 0, elixirSpent: 0, elixirLeaked: 0, elixirCollected: 0 });
-    expect(b.enemy.stats).toEqual({ damageDealt: 0, elixirSpent: 0, elixirLeaked: 0, elixirCollected: 0 });
+    expect(b.player.stats).toEqual({ damageDealt: 0, elixirSpent: 0, elixirLeaked: 0, elixirCollected: 0, damageByCard: {} });
+    expect(b.enemy.stats).toEqual({ damageDealt: 0, elixirSpent: 0, elixirLeaked: 0, elixirCollected: 0, damageByCard: {} });
   });
 
   it("deploying a card records its elixir cost", () => {

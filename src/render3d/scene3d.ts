@@ -641,6 +641,16 @@ function archGateway(): THREE.Group {
   return g;
 }
 
+/**
+ * Cosmetic tower flair tier, set from the player's trophy road: 0 = plain,
+ * 1 (600+) = gilded merlon caps, 2 (1200+) = jeweled crest too. Applies at
+ * tower build time (each battle rebuilds its towers).
+ */
+let TOWER_FLAIR = 0;
+export function setTowerFlair(tier: number): void {
+  TOWER_FLAIR = Math.max(0, Math.min(2, Math.floor(tier)));
+}
+
 function buildTowerMesh(e: Entity): EntityView {
   const root = new THREE.Group();
   const king = e.kind === "king-tower";
@@ -697,6 +707,7 @@ function buildTowerMesh(e: Entity): EntityView {
 
   // Merlons along the four roof edges — taller CR battlements.
   const merlon = toon(arabic ? 0x9c8d74 : 0x8d93a4);
+  const gildCap = TOWER_FLAIR >= 1 ? toon(0xf2c14e) : null;
   for (const side of [-1, 1]) {
     for (let i = -1; i <= 1; i++) {
       const a = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.38, 0.2), merlon);
@@ -707,7 +718,27 @@ function buildTowerMesh(e: Entity): EntityView {
       b.position.set(side * radius * 0.92, height + 0.16, i * radius * 0.7);
       b.castShadow = true;
       root.add(b);
+      if (gildCap) {
+        // Trophy-road flair: gilded caps on every battlement.
+        const capA = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.06, 0.22), gildCap);
+        capA.position.set(i * radius * 0.7, height + 0.38, side * radius * 0.92);
+        root.add(capA);
+        const capB = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.06, 0.36), gildCap);
+        capB.position.set(side * radius * 0.92, height + 0.38, i * radius * 0.7);
+        root.add(capB);
+      }
     }
+  }
+  if (TOWER_FLAIR >= 2) {
+    // Veteran crest: a ruby set in gold on the tower's river-facing wall.
+    const crestSide = e.side === "player" ? -1 : 1;
+    const setting = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.06, 8), toon(0xf2c14e));
+    setting.rotation.x = Math.PI / 2;
+    setting.position.set(0, height * 0.62, crestSide * (radius + 0.03));
+    root.add(setting);
+    const ruby = new THREE.Mesh(new THREE.OctahedronGeometry(0.11), toon(0xe0314a));
+    ruby.position.set(0, height * 0.62, crestSide * (radius + 0.08));
+    root.add(ruby);
   }
 
   // Door + team banner facing the enemy.

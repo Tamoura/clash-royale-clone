@@ -1,10 +1,21 @@
 import "./ui/tokens.css";
 import "./ui/style.css";
+
+// Offline PWA: register the service worker in production builds only —
+// in dev it would cache Vite's module graph and fight hot reload.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
+      // offline install is a bonus, never a blocker
+    });
+  });
+}
 import { SoundEngine } from "./audio/sound";
 import {
   checkDeploy,
   createBattle,
   deployCard,
+  effectiveCard,
   type BattleState,
   type CardLevels,
 } from "./game/battle";
@@ -21,7 +32,7 @@ import type { Side } from "./game/arena";
 import { cardDisplayName } from "./render/cardNames";
 import { SANDBOX_ELIXIR_RATE, isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
-import { Battle3D, disposeDeep } from "./render3d/scene3d";
+import { Battle3D, disposeDeep, setTowerFlair } from "./render3d/scene3d";
 import {
   ARENA_THEME_KEY,
   ARABIC,
@@ -69,13 +80,15 @@ import {
   type PlayerProfile,
 } from "./meta/progress";
 import {
+  ARENAS,
+  arenaIndexAt,
   arenaNameForUnlock,
   cardsAvailableAt,
   trophyProgress,
 } from "./meta/arenas";
-import { canPutInDeck, isUnlockedAt } from "./meta/collection";
+import { addShards, canPutInDeck, isUnlockedAt } from "./meta/collection";
 import { isChestReady } from "./meta/chests";
-import { CHEST_SKIP_GEMS, upgradeCost } from "./meta/economy";
+import { CHEST_SKIP_GEMS, SHARD_GOLD_PRICE, spendGold, upgradeCost } from "./meta/economy";
 import {
   DRAFT_ROUNDS,
   createDraft,
@@ -145,12 +158,47 @@ const emoteBar = document.getElementById("emotes")!;
 
 // Sandbox-only in-battle reset (wired to sandboxReset() further down,
 // after the battle state it restarts is declared).
+// ---- Match replays -------------------------------------------------------
+// Solo ladder matches record the bot's seed/profile and the player's exact
+// deploy ticks; the sim is deterministic, so that's the whole match.
+const REPLAY_KEY = "cr-clone-replay";
+interface ReplayData {
+  v: 1;
+  playerDeck: CardId[];
+  enemyDeck: CardId[];
+  playerLevels: CardLevels;
+  enemyLevels: CardLevels;
+  elixirRate: number;
+  botSeed: number;
+  botProfile: BotProfile;
+  opponent: string;
+  deploys: Array<{ t: number; c: CardId; x: number; y: number }>;
+}
+let replaying = false;
+let replaySpeed = 1;
+let soloTick = 0;
+let recording: ReplayData | null = null;
+let replayDeploys: ReplayData["deploys"] = [];
+let playbackCursor = 0;
+
+const replaySpeedBtn = document.createElement("button");
+replaySpeedBtn.className = "sandbox-reset";
+replaySpeedBtn.textContent = "⏩ x1";
+replaySpeedBtn.setAttribute("aria-label", "Toggle replay speed");
+replaySpeedBtn.style.display = "none";
+replaySpeedBtn.addEventListener("click", () => {
+  replaySpeed = replaySpeed === 1 ? 2 : 1;
+  replaySpeedBtn.textContent = `⏩ x${replaySpeed}`;
+  replaySpeedBtn.blur();
+});
+
 const sandboxResetBtn = document.createElement("button");
 sandboxResetBtn.className = "sandbox-reset";
 sandboxResetBtn.textContent = "↺ Reset";
 sandboxResetBtn.setAttribute("aria-label", "Reset the sandbox battle");
 sandboxResetBtn.style.display = "none";
 stage.appendChild(sandboxResetBtn);
+stage.appendChild(replaySpeedBtn);
 
 
 // ---- Meta progression (gold/gems/owned/chests) --------------------------
@@ -162,6 +210,7 @@ let cardLevels: CardLevels = profile.levels;
 // ---- Daily quests ---------------------------------------------------------
 let quests = loadQuests(dateKey(new Date()));
 let battleCardsPlayed = 0;
+const towerTimeline: string[] = [];
 let questsBattleRef: BattleState | null = null;
 let achievements = loadAchievements();
 
@@ -191,7 +240,14 @@ function persistProfile(): void {
   profile = { ...profile, deck: playerDeck, levels: cardLevels };
   saveProfile(localStorage, profile);
   refreshMetaChips();
+  applyTowerFlair();
 }
+
+/** Cosmetic tower tiers unlocked by climbing: 600 gilded, 1200 jeweled. */
+function applyTowerFlair(): void {
+  setTowerFlair(profile.trophies >= 1200 ? 2 : profile.trophies >= 600 ? 1 : 0);
+}
+applyTowerFlair();
 
 // ---- Bot archetypes: each ladder opponent has a personality -------------
 type ArchetypeId = "balanced" | "beatdown" | "cycle" | "siege";
@@ -241,6 +297,27 @@ function botDeck(archetype: ArchetypeId = "balanced"): CardId[] {
   }
   return deck;
 }
+
+// ---- Win/loss streaks: open rubber-banding ------------------------------
+// 3 straight losses quietly ease the next bot; 3 straight wins summon a
+// crowned "Champion Bot" that thinks faster but pays bonus gold.
+const STREAK_KEY = "cr-clone-streak";
+let streak = { wins: 0, losses: 0 };
+try {
+  const raw = localStorage.getItem(STREAK_KEY);
+  if (raw) streak = { wins: 0, losses: 0, ...JSON.parse(raw) };
+} catch {
+  // fresh streak
+}
+function saveStreak(): void {
+  try {
+    localStorage.setItem(STREAK_KEY, JSON.stringify(streak));
+  } catch {
+    // storage unavailable
+  }
+}
+const CHAMPION_BONUS_GOLD = 40;
+let championBotMatch = false;
 
 // ---- Bot difficulty ------------------------------------------------------
 
@@ -396,6 +473,7 @@ if (import.meta.env.DEV) {
 }
 
 function selectCard(id: CardId | null): void {
+  if (replaying) id = null; // replays are watch-only
   selectedCard = id;
   hud.setSelected(id);
   scene.setZoneVisible(id !== null && getCard(id).kind === "troop");
@@ -429,10 +507,13 @@ function startLadder(): void {
   const archetype = pickArchetype();
   // Mirror mode: player and bot share one random deck for a pure-skill match.
   const shared = gameMode.mirror ? botDeck() : null;
+  const myDeck = shared ?? playerDeck;
+  const foeDeck = shared ?? botDeck(archetype);
+  const foeLevels = botLevels();
   battle = createBattle(
-    shared ?? playerDeck,
-    shared ?? botDeck(archetype),
-    { player: cardLevels, enemy: botLevels() },
+    myDeck,
+    foeDeck,
+    { player: cardLevels, enemy: foeLevels },
     gameMode.elixirRate,
   );
   const base = DIFFICULTIES[difficulty];
@@ -446,21 +527,109 @@ function startLadder(): void {
         : archetype === "siege"
           ? { thinkInterval: base.thinkInterval * 1.1, pushAt: 10 }
           : base;
-  bot = createBot(Date.now() & 0xffff, tuned);
+  championBotMatch = !isSandbox() && streak.wins >= 3;
+  const mercy = !isSandbox() && streak.losses >= 3;
+  const banded: BotProfile = championBotMatch
+    ? { thinkInterval: tuned.thinkInterval * 0.85, pushAt: Math.max(4, tuned.pushAt - 1) }
+    : mercy
+      ? { thinkInterval: tuned.thinkInterval * 1.35, pushAt: Math.min(10, tuned.pushAt + 1) }
+      : tuned;
+  const botSeed = Date.now() & 0xffff;
+  bot = createBot(botSeed, banded);
+  replaying = false;
+  soloTick = 0;
   selectCard(null);
   hud.setReward(null);
+  const baseName = tr(ARCHETYPE_NAMES[archetype][0], ARCHETYPE_NAMES[archetype][1]);
   hud.setOpponentName(
     isSandbox()
       ? tr("Training dummy", "دمية تدريب")
-      : tr(ARCHETYPE_NAMES[archetype][0], ARCHETYPE_NAMES[archetype][1]),
+      : championBotMatch
+        ? `👑 ${tr("Champion", "بطل")} ${baseName}`
+        : baseName,
   );
+  if (championBotMatch) {
+    window.setTimeout(
+      () =>
+        showBanner(
+          tr(
+            `A Champion Bot approaches — beat it for +${CHAMPION_BONUS_GOLD} 🪙!`,
+            `بوت بطل يقترب — اهزمه مقابل +${CHAMPION_BONUS_GOLD} 🪙!`,
+          ),
+        ),
+      2600,
+    );
+  }
   scene.setViewpoint("player");
   scene.reset();
   audio.setIntensity(0);
   audio.restartMusic();
   sandboxResetBtn.style.display = isSandbox() ? "" : "none";
+  replaySpeedBtn.style.display = "none";
+  // Crazy mode scrambles card stats each match, so it can't replay.
+  recording =
+    isSandbox() || gameMode.id === "crazy"
+      ? null
+      : {
+          v: 1,
+          playerDeck: [...myDeck],
+          enemyDeck: [...foeDeck],
+          playerLevels: { ...cardLevels },
+          enemyLevels: { ...foeLevels },
+          elixirRate: gameMode.elixirRate ?? 1,
+          botSeed,
+          botProfile: banded,
+          opponent: baseName,
+          deploys: [],
+        };
   startCountdown();
   maybeShowFirstBattleTips();
+}
+
+/** Rewatch the saved recording: same decks, same bot seed, same deploys. */
+function startReplay(): void {
+  let rep: ReplayData;
+  try {
+    const raw = localStorage.getItem(REPLAY_KEY);
+    if (!raw) return;
+    rep = JSON.parse(raw) as ReplayData;
+    if (rep.v !== 1) return;
+  } catch {
+    return;
+  }
+  battleKind = "ladder";
+  activeChallenge = null;
+  mode = "solo";
+  online = null;
+  setCardOverrides(null);
+  battle = createBattle(
+    rep.playerDeck,
+    rep.enemyDeck,
+    { player: rep.playerLevels, enemy: rep.enemyLevels },
+    rep.elixirRate,
+  );
+  bot = createBot(rep.botSeed, rep.botProfile);
+  replaying = true;
+  recording = null;
+  soloTick = 0;
+  playbackCursor = 0;
+  replayDeploys = rep.deploys;
+  replaySpeed = 1;
+  replaySpeedBtn.textContent = "⏩ x1";
+  replaySpeedBtn.style.display = "";
+  sandboxResetBtn.style.display = "none";
+  selectCard(null);
+  hud.setReward(null);
+  hud.setOpponentName(`📺 ${rep.opponent}`);
+  scene.setViewpoint("player");
+  scene.reset();
+  audio.setIntensity(0);
+  audio.restartMusic();
+  startCountdown();
+  window.setTimeout(
+    () => showBanner(tr("REPLAY — ⏩ to speed up", "إعادة — ⏩ للتسريع")),
+    2600,
+  );
 }
 
 /** Three timed hints during the very first battle, then never again. */
@@ -497,6 +666,9 @@ function startSpecialBattle(
   setCardOverrides(null);
   // Level playing field: no card levels in special modes.
   battle = createBattle(mine, theirs, {});
+  recording = null;
+  replaying = false;
+  replaySpeedBtn.style.display = "none";
   bot = createBot(Date.now() & 0xffff, DIFFICULTIES[difficulty]);
   selectCard(null);
   hud.setReward(null);
@@ -736,6 +908,12 @@ function buildHome(): void {
   );
   mk(tr("📚 Collection", "📚 المقتنيات"), "battle-btn friend", () => openCollection());
   mk(tr("🎁 Chests", "🎁 الصناديق"), "battle-btn friend", () => openChests());
+  if (localStorage.getItem(REPLAY_KEY)) {
+    mk(tr("📺 Last Battle", "📺 آخر معركة"), "battle-btn friend", () => {
+      closeDeckPicker();
+      startReplay();
+    });
+  }
   pickerRoot.appendChild(nav);
 
   // Daily quest board: three goals, gold on claim, fresh every day.
@@ -1528,10 +1706,39 @@ function buildCollection(): void {
           id,
         );
         if (!result.ok) {
+          const shardsHave = profile.shards[id] ?? 0;
+          const missing = Math.max(0, upc2.shards - shardsHave);
+          const craftPrice = missing * SHARD_GOLD_PRICE;
           detail.textContent =
             result.reason === "afford"
               ? `Need ${upc2.gold} gold + ${upc2.shards} shards`
               : "Can't upgrade";
+          // Agency: short on shards but flush on gold? Craft them on the spot.
+          if (
+            result.reason === "afford" &&
+            missing > 0 &&
+            profile.gold >= upc2.gold + craftPrice
+          ) {
+            const craft = document.createElement("button");
+            craft.className = "quest-claim craft-btn";
+            craft.textContent = tr(
+              `⚒️ Craft ${missing} shard${missing > 1 ? "s" : ""} — 🪙 ${craftPrice}`,
+              `⚒️ اصنع ${missing} شظية — 🪙 ${craftPrice}`,
+            );
+            craft.addEventListener("click", () => {
+              const left = spendGold(profile.gold, craftPrice);
+              if (left === null) return;
+              profile = {
+                ...profile,
+                gold: left,
+                shards: addShards(profile.shards, id, missing),
+              };
+              persistProfile();
+              buildCollection();
+            });
+            detail.appendChild(document.createTextNode(" "));
+            detail.appendChild(craft);
+          }
           return;
         }
         profile = result.profile;
@@ -2076,10 +2283,15 @@ function applySpecialReward(): void {
 }
 
 function applyMatchResult(winner: "player" | "enemy" | "draw"): void {
+  const arenaBefore = arenaIndexAt(profile.trophies);
   const { profile: next, summary } = applyMetaMatchResult(
     { ...profile, deck: playerDeck, levels: cardLevels },
     winner,
   );
+  const arenaAfter = arenaIndexAt(next.trophies);
+  if (arenaAfter > arenaBefore) {
+    window.setTimeout(() => showArenaUp(ARENAS[arenaAfter]), 900);
+  }
   profile = next;
   cardLevels = profile.levels;
   playerDeck = profile.deck;
@@ -2095,6 +2307,52 @@ function applyMatchResult(winner: "player" | "enemy" | "draw"): void {
   };
   saveAchievements(achievements);
   hud.setReward(summary.rewardLine);
+}
+
+/** Full-screen "NEW ARENA" celebration with the newly findable cards. */
+function showArenaUp(arena: (typeof ARENAS)[number]): void {
+  document.getElementById("arena-up")?.remove();
+  const wrap = document.createElement("div");
+  wrap.id = "arena-up";
+  const inner = document.createElement("div");
+  inner.className = "arena-up-card";
+  const crown = document.createElement("div");
+  crown.className = "arena-up-crown";
+  crown.textContent = "🏟️";
+  inner.appendChild(crown);
+  const title = document.createElement("h2");
+  title.textContent = tr("NEW ARENA!", "!ساحة جديدة");
+  inner.appendChild(title);
+  const name = document.createElement("div");
+  name.className = "arena-up-name";
+  name.textContent = arena.name;
+  inner.appendChild(name);
+  if (arena.unlocks.length > 0) {
+    const label = document.createElement("div");
+    label.className = "arena-up-label";
+    label.textContent = tr("New cards now drop from chests:", ":بطاقات جديدة في الصناديق");
+    inner.appendChild(label);
+    const row = document.createElement("div");
+    row.className = "arena-up-cards";
+    for (const id of arena.unlocks.slice(0, 4)) {
+      const cell = document.createElement("div");
+      cell.className = "arena-up-cardcell";
+      cell.appendChild(cardTileCanvas(id));
+      const n = document.createElement("span");
+      n.textContent = cardDisplayName(id);
+      cell.appendChild(n);
+      row.appendChild(cell);
+    }
+    inner.appendChild(row);
+  }
+  const hint = document.createElement("div");
+  hint.className = "arena-up-hint";
+  hint.textContent = tr("Tap to continue", "اضغط للمتابعة");
+  inner.appendChild(hint);
+  wrap.appendChild(inner);
+  wrap.addEventListener("pointerdown", () => wrap.remove());
+  document.body.appendChild(wrap);
+  audio.sting();
 }
 
 // ---- Banners & match phases -------------------------------------------
@@ -2181,7 +2439,10 @@ function showPreview(clientX: number, clientY: number): void {
     clearPreview();
     return;
   }
-  const card = getCard(selectedCard);
+  // Preview what will actually happen: the Mirror aims and ghosts as the
+  // card it would copy (blast radius, troop ghost), not as itself.
+  const card =
+    effectiveCard(battle, localSide(), selectedCard)?.card ?? getCard(selectedCard);
   const pos = scene.pick(clientX, clientY);
   const valid =
     pos !== null &&
@@ -2192,8 +2453,8 @@ function showPreview(clientX: number, clientY: number): void {
       : card.kind === "building"
         ? Math.max(0.7, card.unit.radius)
         : 0.55;
-  scene.setHover(pos, radius, card.kind === "spell", valid, selectedCard);
-  scene.setGhost(card.kind === "spell" ? null : selectedCard, pos);
+  scene.setHover(pos, radius, card.kind === "spell", valid, card.id);
+  scene.setGhost(card.kind === "spell" ? null : card.id, pos);
 }
 
 function tryDeployAt(clientX: number, clientY: number): void {
@@ -2212,6 +2473,10 @@ function tryDeployAt(clientX: number, clientY: number): void {
       return;
     }
     if (deployCard(battle, side, selectedCard, pos.x, pos.y)) {
+      // Replay tape: remember the card and the exact tick it went down.
+      if (recording && mode === "solo") {
+        recording.deploys.push({ t: soloTick, c: selectedCard, x: pos.x, y: pos.y });
+      }
       scene.deployFlash(pos.x, pos.y);
       selectCard(null);
       clearPreview();
@@ -2323,14 +2588,25 @@ function frame(now: number): void {
       // While stalled on the peer, don't bank a backlog that bursts on resume.
       acc = Math.min(acc, SIM_DT * 3);
     } else {
-      acc += dt;
+      acc += dt * (replaying ? replaySpeed : 1);
       while (acc >= SIM_DT) {
+        // Replay: re-issue the recorded player deploys at their exact ticks.
+        if (replaying) {
+          while (
+            playbackCursor < replayDeploys.length &&
+            replayDeploys[playbackCursor].t === soloTick
+          ) {
+            const d = replayDeploys[playbackCursor++];
+            deployCard(battle, "player", d.c, d.x, d.y);
+          }
+        }
         tick(battle, SIM_DT);
         // Sandbox: the bot sleeps (towers still defend) — pure practice.
         // Challenges: the scripted waves ARE the opponent.
         if (!isSandbox() && battleKind !== "challenge") {
           tickBot(battle, bot, SIM_DT);
         }
+        soloTick++;
         if (battleKind === "challenge" && activeChallenge && !battle.result) {
           applyWaves(battle, activeChallenge, waveCursor);
           const status = challengeStatus(battle, activeChallenge);
@@ -2348,10 +2624,12 @@ function frame(now: number): void {
     }
   }
   botEmoteCooldown = Math.max(0, botEmoteCooldown - dt);
-  // New battle object → fresh quest counters.
+  // New battle object → fresh quest counters + report timeline.
   if (questsBattleRef !== battle) {
     questsBattleRef = battle;
     battleCardsPlayed = 0;
+    towerTimeline.length = 0;
+    hud.setTimeline(towerTimeline);
   }
   for (const ev of battle.events.splice(0)) {
     audio.onEvent(ev);
@@ -2359,7 +2637,15 @@ function frame(now: number): void {
     if ((ev.type === "deploy" || ev.type === "spell") && ev.side === localSide()) {
       battleCardsPlayed++;
     }
-    if (ev.type === "finish" && mode === "solo" && !isSandbox()) {
+    if (ev.type === "finish" && recording && mode === "solo" && battleKind === "ladder" && !isSandbox()) {
+      try {
+        localStorage.setItem(REPLAY_KEY, JSON.stringify(recording));
+      } catch {
+        // tape too big / storage unavailable — skip silently
+      }
+      recording = null;
+    }
+    if (ev.type === "finish" && mode === "solo" && !isSandbox() && !replaying) {
       // Fold the match into today's quests (any real solo battle counts).
       const today = dateKey(new Date());
       if (quests.date !== today) quests = loadQuests(today);
@@ -2383,15 +2669,39 @@ function frame(now: number): void {
     }
     if (ev.type === "death" && (ev.kind === "princess-tower" || ev.kind === "king-tower")) {
       flashImpact();
+      // Report timeline: who lost which tower, and when.
+      const mm = Math.floor(battle.time / 60);
+      const ss = String(Math.floor(battle.time % 60)).padStart(2, "0");
+      const mine = ev.side === localSide();
+      const tower =
+        ev.kind === "king-tower" ? tr("King", "الملك") : tr("Princess", "الأميرة");
+      towerTimeline.push(
+        `${mm}:${ss} — ${mine ? "🛡️" : "⚔️"} ${
+          mine ? tr(`your ${tower} tower fell`, `سقط برج ${tower} لديك`)
+               : tr(`enemy ${tower} tower fell`, `سقط برج ${tower} للخصم`)
+        }`,
+      );
     }
     if (ev.type === "crown" && mode === "solo") botEmote(ev.winner === "enemy" ? "😂" : "😭");
     if (ev.type === "finish") {
       // Only ladder matches move trophies/levels/chests — online friendlies,
       // sandbox, and the special modes can't farm the ladder.
-      if (mode === "solo" && battleKind === "ladder" && !isSandbox()) {
+      if (mode === "solo" && battleKind === "ladder" && !isSandbox() && !replaying) {
         botEmote(ev.winner === "enemy" ? "🎉" : "😭");
         applyMatchResult(ev.winner);
-      } else if (mode === "solo" && ev.winner === "player") {
+        if (ev.winner === "player") {
+          streak = { wins: streak.wins + 1, losses: 0 };
+          if (championBotMatch) {
+            profile = { ...profile, gold: profile.gold + CHAMPION_BONUS_GOLD };
+            persistProfile();
+            showBanner(tr(`Champion beaten! +${CHAMPION_BONUS_GOLD} 🪙`, `هزمت البطل! +${CHAMPION_BONUS_GOLD} 🪙`));
+            streak = { wins: 0, losses: 0 }; // the gauntlet resets after the boss
+          }
+        } else if (ev.winner === "enemy") {
+          streak = { wins: 0, losses: streak.losses + 1 };
+        }
+        saveStreak();
+      } else if (mode === "solo" && ev.winner === "player" && !replaying) {
         applySpecialReward();
       }
     }

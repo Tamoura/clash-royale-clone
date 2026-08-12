@@ -113,6 +113,8 @@ export interface SideStats {
   elixirLeaked: number;
   /** Extra elixir harvested from Elixir Collectors. */
   elixirCollected: number;
+  /** Damage credited to each card this side played (report screen). */
+  damageByCard: Partial<Record<CardId, number>>;
 }
 
 /** Card upgrade levels (absent = level 1). */
@@ -333,7 +335,7 @@ export function createBattle(
       elixir: createElixir(),
       hand: createHand(playerDeck),
       crowns: 0,
-      stats: { damageDealt: 0, elixirSpent: 0, elixirLeaked: 0, elixirCollected: 0 },
+      stats: { damageDealt: 0, elixirSpent: 0, elixirLeaked: 0, elixirCollected: 0, damageByCard: {} },
       levels: levels.player ?? {},
       lastPlayed: null,
     },
@@ -341,7 +343,7 @@ export function createBattle(
       elixir: createElixir(),
       hand: createHand(enemyDeck),
       crowns: 0,
-      stats: { damageDealt: 0, elixirSpent: 0, elixirLeaked: 0, elixirCollected: 0 },
+      stats: { damageDealt: 0, elixirSpent: 0, elixirLeaked: 0, elixirCollected: 0, damageByCard: {} },
       levels: levels.enemy ?? {},
       lastPlayed: null,
     },
@@ -528,6 +530,18 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
   });
 }
 
+/** Credit damage to a side's total and (when a card caused it) that card. */
+export function creditDamage(
+  state: BattleState,
+  side: Side,
+  cardId: CardId | null,
+  amount: number,
+): void {
+  const stats = sideState(state, side).stats;
+  stats.damageDealt += amount;
+  if (cardId) stats.damageByCard[cardId] = (stats.damageByCard[cardId] ?? 0) + amount;
+}
+
 export function applySpell(
   state: BattleState,
   side: Side,
@@ -538,6 +552,7 @@ export function applySpell(
   radius: number,
   stunSeconds = 0,
   knockback = 0,
+  creditId: CardId | null = null,
 ): void {
   for (const e of state.entities) {
     if (e.side === side || e.hp <= 0) continue;
@@ -546,7 +561,7 @@ export function applySpell(
     const isCrownTower = e.kind === "princess-tower" || e.kind === "king-tower";
     const dealt = damage * (isCrownTower ? TOWER_SPELL_DAMAGE_FACTOR : 1);
     e.hp -= dealt;
-    sideState(state, side).stats.damageDealt += dealt;
+    creditDamage(state, side, creditId ?? cardId, dealt);
     e.stunTimer = Math.max(e.stunTimer, stunSeconds);
     // Surviving troops get shoved away from the blast center.
     if (knockback > 0 && e.kind === "troop" && e.hp > 0) {
@@ -741,7 +756,7 @@ export function deployCard(
     // The Electro Wizard lands with a zap that stuns nearby enemies.
     if (card.id === "electro-wizard") {
       state.events.push({ type: "spell", side, cardId: "zap", x, y });
-      applySpell(state, side, "zap", x, y, 50, 2.5, 0.5);
+      applySpell(state, side, "zap", x, y, 50, 2.5, 0.5, 0, "electro-wizard");
     }
     // The Mega Knight drops from the sky and slams: AoE damage that shoves
     // surrounding enemy troops outward in every direction.

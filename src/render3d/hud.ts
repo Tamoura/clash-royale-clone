@@ -249,6 +249,12 @@ export class Hud {
     this.opponentName.textContent = name;
   }
 
+  /** Tower-fall timeline lines shown on the result report (main feeds these). */
+  private timeline: string[] = [];
+  setTimeline(lines: string[]): void {
+    this.timeline = lines;
+  }
+
   update(state: BattleState, mySide: Side = "player"): void {
     // From the local player's perspective: "me" sits at the bottom.
     const me = mySide === "player" ? state.player : state.enemy;
@@ -434,6 +440,7 @@ export class Hud {
           ? `<div class="stat-row"><span>${Math.round(p.elixirCollected)}</span>` +
             `<label>elixir collected</label><span>${Math.round(e.elixirCollected)}</span></div>`
           : "") +
+        this.buildReport(me.stats) +
         (this.reward ? `<div class="reward-line">${this.reward}</div>` : "");
       this.overlay.classList.add("show");
     } else {
@@ -442,6 +449,36 @@ export class Hud {
       delete this.overlay.dataset.kind;
       this.overlay.querySelector(".confetti-box")?.remove();
     }
+  }
+
+  /** Battle report: your damage leaders (MVP crowned) + tower timeline. */
+  private buildReport(stats: { damageByCard: Partial<Record<CardId, number>> }): string {
+    const top = (Object.entries(stats.damageByCard) as [CardId, number][])
+      .filter(([, v]) => v >= 1)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+    if (top.length === 0 && this.timeline.length === 0) return "";
+    let html = "";
+    if (top.length > 0) {
+      const max = top[0][1];
+      html += `<div class="report-title">Damage leaders</div>`;
+      html += top
+        .map(
+          ([id, v], i) =>
+            `<div class="report-row">` +
+            `<label>${i === 0 ? "👑 " : ""}${cardDisplayName(id)}</label>` +
+            `<div class="report-bar"><i style="width:${Math.round((v / max) * 100)}%"></i></div>` +
+            `<span>${Math.round(v)}</span></div>`,
+        )
+        .join("");
+    }
+    if (this.timeline.length > 0) {
+      html += `<div class="report-title">Towers</div>`;
+      html += this.timeline
+        .map((line) => `<div class="report-line">${line}</div>`)
+        .join("");
+    }
+    return html;
   }
 
   /** Rain celebratory confetti over the victory overlay. */

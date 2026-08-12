@@ -7,6 +7,7 @@ import {
   nearestBridgeX,
 } from "./arena";
 import {
+  creditDamage,
   applySpell,
   distance,
   isBuilding,
@@ -216,10 +217,9 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
       });
     }
   } else {
-    const myStats = sideState(state, e.side).stats;
     for (const t of targets) {
       t.hp -= damage;
-      myStats.damageDealt += damage;
+      creditDamage(state, e.side, e.cardId, damage);
       if (e.stunOnHit > 0) t.stunTimer = Math.max(t.stunTimer, e.stunOnHit);
       if (e.slowOnHit > 0) t.slowTimer = Math.max(t.slowTimer, e.slowOnHit);
     }
@@ -229,7 +229,7 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
         if (distance(o, target) <= e.splashRadius + o.radius) {
           const splashDmg = damage * e.splashDamageFactor;
           o.hp -= splashDmg;
-          myStats.damageDealt += splashDmg;
+          creditDamage(state, e.side, e.cardId, splashDmg);
           if (e.stunOnHit > 0) o.stunTimer = Math.max(o.stunTimer, e.stunOnHit);
           if (e.slowOnHit > 0) o.slowTimer = Math.max(o.slowTimer, e.slowOnHit);
         }
@@ -286,13 +286,12 @@ function tickPierce(state: BattleState, p: Projectile, dt: number): boolean {
   p.x += p.dirX * step;
   p.y += p.dirY * step;
   p.range -= step;
-  const myStats = sideState(state, p.side).stats;
   for (const o of state.entities) {
     if (o.side === p.side || o.hp <= 0 || p.hitIds.includes(o.id)) continue;
     if (o.flying && !p.targetsAir) continue;
     if (segmentDistance(fromX, fromY, p.x, p.y, o.x, o.y) <= o.radius + PIERCE_HALF_WIDTH) {
       o.hp -= p.damage;
-      myStats.damageDealt += p.damage;
+      creditDamage(state, p.side, p.cardId, p.damage);
       p.hitIds.push(o.id);
     }
   }
@@ -311,9 +310,8 @@ function tickProjectiles(state: BattleState, dt: number): void {
     const step = p.speed * dt;
     if (d <= step + target.radius * 0.5) {
       // Impact: damage the target, splash around it.
-      const myStats = sideState(state, p.side).stats;
       target.hp -= p.damage;
-      myStats.damageDealt += p.damage;
+      creditDamage(state, p.side, p.cardId, p.damage);
       if (p.stunOnHit > 0) target.stunTimer = Math.max(target.stunTimer, p.stunOnHit);
       if (p.slowOnHit > 0) target.slowTimer = Math.max(target.slowTimer, p.slowOnHit);
       if (p.splashRadius > 0) {
@@ -323,7 +321,7 @@ function tickProjectiles(state: BattleState, dt: number): void {
           if (distance(o, target) <= p.splashRadius + o.radius) {
             const splashDmg = p.damage * p.splashDamageFactor;
             o.hp -= splashDmg;
-            myStats.damageDealt += splashDmg;
+            creditDamage(state, p.side, p.cardId, splashDmg);
             if (p.stunOnHit > 0) o.stunTimer = Math.max(o.stunTimer, p.stunOnHit);
             if (p.slowOnHit > 0) o.slowTimer = Math.max(o.slowTimer, p.slowOnHit);
           }
@@ -450,7 +448,7 @@ function explodeOnDeath(state: BattleState, e: Entity): void {
   for (const o of livingEnemiesOf(state, e)) {
     if (distance(o, e) <= e.deathRadius + o.radius) {
       o.hp -= e.deathDamage;
-      sideState(state, e.side).stats.damageDealt += e.deathDamage;
+      creditDamage(state, e.side, e.cardId, e.deathDamage);
     }
   }
   state.effects.push({

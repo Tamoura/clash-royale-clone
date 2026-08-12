@@ -1,5 +1,12 @@
 import { ARENA_WIDTH, BRIDGE_XS, RIVER_Y, nearestBridgeX } from "./arena";
-import { deployCard, distance, type BattleState, type Entity } from "./battle";
+import {
+  deployCard,
+  distance,
+  levelMultiplier,
+  TOWER_SPELL_DAMAGE_FACTOR,
+  type BattleState,
+  type Entity,
+} from "./battle";
 import { getCard, type CardId } from "./cards";
 
 /** Seconds between bot decisions. */
@@ -334,6 +341,53 @@ function tryPush(state: BattleState, bot: BotState): boolean {
 }
 
 /**
+ * The rudest play in the game: when a player tower is low enough that a
+ * direct-damage spell finishes it outright, cast it at the tower — no
+ * cluster value needed, towers don't dodge.
+ */
+function tryFinisher(state: BattleState): boolean {
+  const towers = state.entities.filter(
+    (e) =>
+      e.side === "player" &&
+      (e.kind === "princess-tower" || e.kind === "king-tower") &&
+      e.hp > 0,
+  );
+  if (towers.length === 0) return false;
+  for (const id of state.enemy.hand.cards) {
+    const card = getCard(id);
+    if (card.kind !== "spell" || card.damage <= 0) continue;
+    if (card.cost > state.enemy.elixir.amount) continue;
+    const dealt =
+      card.damage * levelMultiplier(state.enemy.levels, id) * TOWER_SPELL_DAMAGE_FACTOR;
+    const kill = towers.find((t) => t.hp <= dealt);
+    if (kill && deployCard(state, "enemy", id, kill.x, kill.y)) return true;
+  }
+  return false;
+}
+
+/**
+ * Split pressure: sitting at max elixir with a push already committed,
+ * drop a cheap troop at the OTHER bridge so the player must answer both
+ * lanes at once.
+ */
+function trySplit(state: BattleState): boolean {
+  if (state.enemy.elixir.amount < 9.5) return false;
+  const tanks = botTanks(state);
+  if (tanks.length === 0) return false;
+  const lead = tanks.reduce((a, b) => (a.y > b.y ? a : b));
+  const otherLane = BRIDGE_XS.find((x) => x !== nearestBridgeX(lead.x));
+  if (otherLane === undefined) return false;
+  const cheap = state.enemy.hand.cards
+    .filter((id) => {
+      const c = getCard(id);
+      return c.kind === "troop" && c.cost <= 3 && !c.unit.targetsBuildingsOnly;
+    })
+    .sort(byCostAsc);
+  if (cheap.length === 0) return false;
+  return deployCard(state, "enemy", cheap[0], otherLane, RIVER_Y - 4);
+}
+
+/**
  * Double down with the Mirror: right after committing a tank/win-con to a
  * push, replay it into the same lane if the +1 price is still affordable.
  */
@@ -353,6 +407,7 @@ function tryMirror(state: BattleState): boolean {
 /** Make at most one play right now. */
 export function botThink(state: BattleState, bot: BotState): void {
   if (state.result) return;
+  if (tryFinisher(state)) return;
   if (tryFreeze(state)) return;
   if (trySpellCluster(state)) return;
   if (tryDefend(state, bot)) return;
@@ -362,6 +417,8 @@ export function botThink(state: BattleState, bot: BotState): void {
   if (tryMirror(state)) return;
   if (tryEconomy(state, bot)) return;
   if (tryPush(state, bot)) return;
+  // Still flush after (or unable to) push? Pressure the other lane.
+  if (trySplit(state)) return;
   tryCycle(state);
 }
 

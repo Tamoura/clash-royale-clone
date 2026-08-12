@@ -25,6 +25,10 @@ export const MATCH_TROPHIES = {
 /** Gems to skip a chest timer. */
 export const CHEST_SKIP_GEMS = 10;
 
+/** Gold price to craft one missing upgrade shard (player agency: no
+ * more waiting on chest luck to level the card you actually play). */
+export const SHARD_GOLD_PRICE = 15;
+
 /** One-time bonus when migrating an old all-cards save. */
 export const MIGRATION_GOLD_BONUS = 200;
 
