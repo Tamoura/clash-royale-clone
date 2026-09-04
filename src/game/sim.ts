@@ -195,6 +195,7 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
         side: e.side,
         cardId: e.cardId,
         sourceKind: e.kind,
+        towerTroop: e.towerTroop ?? null,
         sx: e.x,
         sy: e.y,
         x: e.x,
@@ -381,6 +382,14 @@ function actEntity(state: BattleState, e: Entity, dt: number): void {
   // Raged units recover from attacks and cover ground faster.
   const boostedDt = dt * rageBoost(state, e) * slowFactor;
   e.cooldown = Math.max(0, e.cooldown - boostedDt);
+  // Magazine defenders (Dagger Duchess) reload one shot at a time.
+  if (e.ammoMax && (e.ammo ?? 0) < e.ammoMax) {
+    e.reloadTimer = (e.reloadTimer ?? e.reloadSeconds ?? 0) - dt;
+    if (e.reloadTimer <= 0) {
+      e.ammo = (e.ammo ?? 0) + 1;
+      e.reloadTimer = e.reloadSeconds ?? 0;
+    }
+  }
   if (!e.active) return;
 
   // Stunned units stand helpless until the stun wears off.
@@ -403,7 +412,11 @@ function actEntity(state: BattleState, e: Entity, dt: number): void {
   if (!target) return;
 
   if (gap(e, target) <= e.attackRange) {
-    if (e.cooldown === 0) dealDamage(state, e, target);
+    const loaded = !e.ammoMax || (e.ammo ?? 0) > 0;
+    if (e.cooldown === 0 && loaded) {
+      dealDamage(state, e, target);
+      if (e.ammoMax) e.ammo = (e.ammo ?? 0) - 1;
+    }
   } else if (e.kind === "troop") {
     // Leapers (Mega Knight) bound onto a far target and slam on landing
     // instead of plodding the whole way; otherwise they walk closer.

@@ -1995,6 +1995,92 @@ export function buildTowerPrincess(): TroopRig {
   return { group: g, arm, armRest: -0.85, swingAmp: 0.7, height: 1.2, offArm };
 }
 
+/**
+ * Cannoneer tower troop: a stocky gunner in a kettle helm with a stubby
+ * mortar-cannon shouldered like a bazooka. Slow, heavy, splashing shots.
+ */
+export function buildTowerCannoneer(): TroopRig {
+  const g = new THREE.Group();
+  const COAT = 0x5a4a8c, IRON = 0x3a4150, GOLD = 0xf2c14e;
+  g.add(cyl(0.3, 0.4, 0.5, COAT, 0, 0.32, 0)); // barrel-chested coat
+  g.add(cyl(0.36, 0.36, 0.08, 0x3a2a1a, 0, 0.2, 0)); // belt
+  g.add(box(0.12, 0.12, 0.05, GOLD, 0, 0.2, 0.34)); // buckle
+  const head = sphere(0.28, SKIN, 0, 0.84, 0);
+  addEyes(head, 0.28, 0.34, 0.08, "brave");
+  g.add(head);
+  g.add(box(0.3, 0.07, 0.07, 0x4a3020, 0, 0.72, 0.26)); // bushy moustache
+  // Kettle helm with a wide brim.
+  const helm = sphere(0.31, IRON, 0, 0.96, 0);
+  helm.scale.y = 0.75;
+  g.add(helm);
+  g.add(cyl(0.38, 0.4, 0.06, IRON, 0, 0.9, 0)); // brim
+  g.add(sphere(0.06, GOLD, 0, 1.2, 0)); // helm knob
+  for (const s of [-1, 1]) g.add(sphere(0.13, IRON, s * 0.34, 0.6, 0)); // pauldrons
+
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.32, 0.56, 0);
+  offArm.add(box(0.11, 0.26, 0.11, COAT, 0, -0.13, 0));
+  g.add(offArm);
+
+  // Shouldered mortar-cannon (the attack arm): a fat short barrel.
+  const arm = new THREE.Group();
+  arm.position.set(0.32, 0.6, 0.02);
+  arm.add(box(0.11, 0.26, 0.11, COAT, 0, -0.13, 0));
+  const barrel = cyl(0.13, 0.16, 0.62, IRON, 0.02, 0.1, 0.24);
+  barrel.rotation.x = Math.PI / 2 - 0.35; // lobbing angle
+  arm.add(barrel);
+  arm.add(cyl(0.18, 0.18, 0.08, GOLD, 0.02, 0.24, 0.5).rotateX(Math.PI / 2 - 0.35)); // muzzle band
+  arm.add(sphere(0.12, 0x20262b, 0.02, -0.18, -0.02)); // breech ball
+  g.add(arm);
+  return { group: g, arm, armRest: -0.35, swingAmp: 0.6, height: 1.25, offArm };
+}
+
+/**
+ * Dagger Duchess tower troop: a raven-haired noblewoman in a violet gown
+ * who flings a burst of daggers, then reloads from the bandolier at her hip.
+ */
+export function buildTowerDuchess(): TroopRig {
+  const g = new THREE.Group();
+  const GOWN = 0x6a1fa8, GOWNDK = 0x4a1478, GOLD = 0xf2c14e, STEEL = 0xdde4ec;
+  g.add(cyl(0.2, 0.4, 0.54, GOWN, 0, 0.3, 0)); // gown
+  g.add(cyl(0.32, 0.32, 0.06, GOLD, 0, 0.14, 0)); // gold hem
+  g.add(cyl(0.22, 0.22, 0.06, GOWNDK, 0, 0.5, 0)); // waist sash
+  // Dagger bandolier across the hip.
+  for (let i = 0; i < 4; i++) {
+    const dag = box(0.03, 0.12, 0.02, STEEL, -0.16 + i * 0.1, 0.42 - i * 0.03, 0.2);
+    dag.rotation.z = 0.5;
+    g.add(dag);
+  }
+  const head = sphere(0.27, SKIN, 0, 0.84, 0);
+  addEyes(head, 0.27, 0.36, 0.1, "wicked");
+  g.add(head);
+  const hair = sphere(0.3, 0x1c1226, 0, 0.9, -0.04);
+  hair.scale.set(1, 0.8, 1.05);
+  g.add(hair);
+  const fall = cyl(0.12, 0.08, 0.5, 0x1c1226, 0, 0.62, -0.2); // long hair fall
+  fall.rotation.x = 0.2;
+  g.add(fall);
+  g.add(cyl(0.14, 0.16, 0.08, GOLD, 0, 1.1, 0)); // tiara
+  g.add(sphere(0.04, 0xff4fd8, 0, 1.15, 0.12)); // tiara gem
+
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.26, 0.56, 0);
+  offArm.add(box(0.09, 0.24, 0.09, GOWN, 0, -0.12, 0));
+  offArm.add(box(0.03, 0.22, 0.02, STEEL, 0, -0.28, 0.06)); // spare dagger
+  g.add(offArm);
+
+  // Throwing arm with a dagger ready.
+  const arm = new THREE.Group();
+  arm.position.set(0.26, 0.58, 0.02);
+  arm.add(box(0.09, 0.24, 0.09, GOWN, 0, -0.12, 0));
+  const blade = box(0.035, 0.28, 0.02, STEEL, 0, -0.32, 0.08);
+  blade.rotation.x = -0.3;
+  arm.add(blade);
+  arm.add(box(0.06, 0.06, 0.04, GOLD, 0, -0.2, 0.08)); // guard
+  g.add(arm);
+  return { group: g, arm, armRest: -0.7, swingAmp: 1.2, height: 1.2, offArm };
+}
+
 /** The king himself, enthroned on the king tower. */
 export function buildTowerKing(): TroopRig {
   const g = new THREE.Group();

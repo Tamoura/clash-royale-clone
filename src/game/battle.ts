@@ -19,6 +19,7 @@ import {
   type TroopCard,
 } from "./cards";
 import { createElixir, trySpend, type ElixirState } from "./elixir";
+import { TOWER_TROOPS, type TowerTroopId } from "./towers";
 import { createHand, playCard, type HandState } from "./hand";
 
 export type EntityKind = "troop" | "building" | "princess-tower" | "king-tower";
@@ -103,6 +104,14 @@ export interface Entity {
   targetId: number | null;
   /** King towers start inactive and wake when damaged or a princess falls. */
   active: boolean;
+  /** Defender stationed on a princess tower (null elsewhere). */
+  towerTroop?: TowerTroopId | null;
+  /** Magazine: shots left / capacity (undefined or 0 capacity = unlimited). */
+  ammo?: number;
+  ammoMax?: number;
+  /** Seconds per reloaded shot, and the countdown to the next one. */
+  reloadSeconds?: number;
+  reloadTimer?: number;
 }
 
 /** Running battle statistics shown on the result screen. */
@@ -143,6 +152,8 @@ export interface SpellEffect {
 export interface Projectile {
   id: number;
   side: Side;
+  /** Tower defender that fired it (styles the shot); null for units. */
+  towerTroop?: TowerTroopId | null;
   /** Card of the shooter (null for towers). */
   cardId: CardId | null;
   /** Shooter kind, for projectile styling. */
@@ -260,8 +271,18 @@ const TOWER_STATS: Record<TowerKind, TowerStats> = {
 /** Spells hit crown towers for a fraction of their listed damage. */
 export const TOWER_SPELL_DAMAGE_FACTOR = 0.4;
 
-function makeTower(state: BattleState, side: Side, kind: TowerKind, x: number, y: number): Entity {
+function makeTower(
+  state: BattleState,
+  side: Side,
+  kind: TowerKind,
+  x: number,
+  y: number,
+  troop: TowerTroopId = "princess",
+): Entity {
   const s = TOWER_STATS[kind];
+  // The chosen defender rewrites HOW a princess tower fights; HP is the
+  // tower's own. Kings always keep the King.
+  const t = kind === "princess" ? TOWER_TROOPS[troop] : null;
   return {
     id: state.nextEntityId++,
     side,
@@ -271,16 +292,16 @@ function makeTower(state: BattleState, side: Side, kind: TowerKind, x: number, y
     y,
     hp: s.hp,
     maxHp: s.hp,
-    damage: s.damage,
-    hitSpeed: s.hitSpeed,
-    attackRange: s.range,
-    sightRange: s.range,
+    damage: t ? t.damage : s.damage,
+    hitSpeed: t ? t.hitSpeed : s.hitSpeed,
+    attackRange: t ? t.range : s.range,
+    sightRange: t ? t.range : s.range,
     speed: 0,
     targetsBuildingsOnly: false,
     targetsAir: true,
     flying: false,
     jumpsRiver: false,
-    splashRadius: 0,
+    splashRadius: t ? t.splashRadius : 0,
     chargeDistance: 0,
     chargeProgress: 0,
     pierce: false,
@@ -306,6 +327,11 @@ function makeTower(state: BattleState, side: Side, kind: TowerKind, x: number, y
     cooldown: 0,
     targetId: null,
     active: kind !== "king",
+    towerTroop: t ? troop : null,
+    ammo: t?.ammoMax ?? 0,
+    ammoMax: t?.ammoMax ?? 0,
+    reloadSeconds: t?.reloadSeconds ?? 0,
+    reloadTimer: t?.reloadSeconds ?? 0,
   };
 }
 
@@ -328,6 +354,7 @@ export function createBattle(
   enemyDeck: CardId[] = DEFAULT_DECK,
   levels: { player?: CardLevels; enemy?: CardLevels } = {},
   elixirRate = 1,
+  towers: { player?: TowerTroopId; enemy?: TowerTroopId } = {},
 ): BattleState {
   const state: BattleState = {
     entities: [],
@@ -359,7 +386,9 @@ export function createBattle(
   };
   for (const side of ["player", "enemy"] as const) {
     for (const spot of towerSpots(side)) {
-      state.entities.push(makeTower(state, side, spot.kind, spot.x, spot.y));
+      state.entities.push(
+        makeTower(state, side, spot.kind, spot.x, spot.y, towers[side] ?? "princess"),
+      );
     }
   }
   return state;

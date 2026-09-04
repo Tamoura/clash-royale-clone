@@ -87,6 +87,13 @@ import {
   trophyProgress,
 } from "./meta/arenas";
 import { addShards, canPutInDeck, isUnlockedAt } from "./meta/collection";
+import {
+  TOWER_TROOPS,
+  TOWER_TROOP_IDS,
+  loadTowerTroop,
+  saveTowerTroop,
+  type TowerTroopId,
+} from "./game/towers";
 import { isChestReady } from "./meta/chests";
 import { CHEST_SKIP_GEMS, SHARD_GOLD_PRICE, spendGold, upgradeCost } from "./meta/economy";
 import {
@@ -172,8 +179,15 @@ interface ReplayData {
   botSeed: number;
   botProfile: BotProfile;
   opponent: string;
+  towers: { player: TowerTroopId; enemy: TowerTroopId };
   deploys: Array<{ t: number; c: CardId; x: number; y: number }>;
 }
+// ---- Tower Troops: the player's chosen tower defender ---------------------
+let towerTroop: TowerTroopId = loadTowerTroop();
+function botTowerTroop(): TowerTroopId {
+  return TOWER_TROOP_IDS[Math.floor(Math.random() * TOWER_TROOP_IDS.length)];
+}
+
 let replaying = false;
 let replaySpeed = 1;
 let soloTick = 0;
@@ -526,11 +540,13 @@ function startLadder(): void {
   const myDeck = shared ?? playerDeck;
   const foeDeck = shared ?? botDeck(archetype);
   const foeLevels = botLevels();
+  const towers = { player: towerTroop, enemy: botTowerTroop() };
   battle = createBattle(
     myDeck,
     foeDeck,
     { player: cardLevels, enemy: foeLevels },
     gameMode.elixirRate,
+    towers,
   );
   const base = DIFFICULTIES[difficulty];
   // Personality tweaks: beatdown banks bigger pushes, cycle plays faster,
@@ -597,6 +613,7 @@ function startLadder(): void {
           botSeed,
           botProfile: banded,
           opponent: baseName,
+          towers,
           deploys: [],
         };
   startCountdown();
@@ -624,6 +641,7 @@ function startReplay(): void {
     rep.enemyDeck,
     { player: rep.playerLevels, enemy: rep.enemyLevels },
     rep.elixirRate,
+    rep.towers ?? { player: "princess", enemy: "princess" },
   );
   bot = createBot(rep.botSeed, rep.botProfile);
   replaying = true;
@@ -683,7 +701,7 @@ function startSpecialBattle(
   online = null;
   setCardOverrides(null);
   // Level playing field: no card levels in special modes.
-  battle = createBattle(mine, theirs, {});
+  battle = createBattle(mine, theirs, {}, 1, { player: towerTroop, enemy: botTowerTroop() });
   recording = null;
   replaying = false;
   replaySpeedBtn.style.display = "none";
@@ -1979,6 +1997,33 @@ function buildDeckPicker(opts: { mode: "battle" | "deck" }): void {
     }
     modeBlurb.textContent = gameMode.blurb;
     pickerRoot.appendChild(modeRow);
+
+    // Tower Troop: who defends your princess towers.
+    const ttLabel = document.createElement("div");
+    ttLabel.className = "collect-label";
+    ttLabel.textContent = tr("Tower troop", "حامي الأبراج");
+    pickerRoot.appendChild(ttLabel);
+    const ttRow = document.createElement("div");
+    ttRow.className = "mode-row";
+    const ttBlurb = document.createElement("div");
+    ttBlurb.className = "mode-blurb";
+    for (const id of TOWER_TROOP_IDS) {
+      const def = TOWER_TROOPS[id];
+      const btn = document.createElement("button");
+      btn.className = "mode-btn";
+      btn.textContent = tr(def.name, def.ar);
+      btn.classList.toggle("chosen", id === towerTroop);
+      btn.addEventListener("click", () => {
+        towerTroop = id;
+        saveTowerTroop(id);
+        ttRow.querySelectorAll("button").forEach((b) => b.classList.toggle("chosen", b === btn));
+        ttBlurb.textContent = tr(def.blurb, def.blurbAr);
+      });
+      ttRow.appendChild(btn);
+    }
+    ttBlurb.textContent = tr(TOWER_TROOPS[towerTroop].blurb, TOWER_TROOPS[towerTroop].blurbAr);
+    pickerRoot.appendChild(ttRow);
+    pickerRoot.appendChild(ttBlurb);
     pickerRoot.appendChild(modeBlurb);
   }
 

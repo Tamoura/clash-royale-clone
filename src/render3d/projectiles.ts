@@ -1,4 +1,5 @@
 import type { CardId } from "../game/cards";
+import type { TowerTroopId } from "../game/towers";
 import type { EntityKind } from "../game/battle";
 
 /** Visual recipe for one ranged attack's projectile. */
@@ -36,8 +37,17 @@ const ORB_DEFAULTS = {
 export function projectileStyle(
   cardId: CardId | null,
   kind: EntityKind,
+  towerTroop: TowerTroopId | null = null,
 ): ProjectileStyle {
   if (kind !== "troop" && kind !== "building") {
+    if (towerTroop === "cannoneer") {
+      // Heavy iron shell lobbed high, with a smoky trail.
+      return { ...ORB_DEFAULTS, color: 0x20262b, impactColor: 0xffb300, trail: "embers", size: 0.32, arc: 1.0, duration: 0.3 };
+    }
+    if (towerTroop === "duchess") {
+      // A flat, fast, silver dagger.
+      return { ...ORB_DEFAULTS, form: "arrow", color: 0xdde4ec, impactColor: 0xffffff, trail: "streak", arc: 0.15, duration: 0.1 };
+    }
     // Tower arrows: deep orange-gold so they read against the sandy floor.
     return { ...ORB_DEFAULTS, form: "arrow", color: 0xe65100, trail: "streak", arc: 0.8, duration: 0.22 };
   }

@@ -2,6 +2,8 @@ import * as THREE from "three";
 import { getCard, type CardId } from "../game/cards";
 import {
   animateTroop,
+  buildTowerCannoneer,
+  buildTowerDuchess,
   buildTowerKing,
   buildTowerPrincess,
   buildTroop,
@@ -47,6 +49,14 @@ export function startGallery(container: HTMLElement, subject: string): void {
     rig = buildTowerKing();
     outlineRig(rig.group);
     title = "The King";
+  } else if (subject === "tower-cannoneer") {
+    rig = buildTowerCannoneer();
+    outlineRig(rig.group);
+    title = "Cannoneer";
+  } else if (subject === "tower-duchess") {
+    rig = buildTowerDuchess();
+    outlineRig(rig.group);
+    title = "Dagger Duchess";
   } else {
     rig = buildTroop(subject as CardId); // throws on unknown/spell ids
     title = getCard(subject as CardId).name;

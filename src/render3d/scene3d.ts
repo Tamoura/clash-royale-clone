@@ -31,6 +31,8 @@ import { FXAAShader } from "three/examples/jsm/shaders/FXAAShader.js";
 import {
   animateTroop,
   articulate,
+  buildTowerCannoneer,
+  buildTowerDuchess,
   buildTowerKing,
   buildTowerPrincess,
   buildTroop,
@@ -886,7 +888,13 @@ function buildTowerMesh(e: Entity): EntityView {
   // Tower crew: a princess archer, or the king on his keep. The rig
   // sits inside a mount group because animateTroop owns the rig's
   // own transform (hop/breath/lean).
-  const defender = king ? buildTowerKing() : buildTowerPrincess();
+  const defender = king
+    ? buildTowerKing()
+    : e.towerTroop === "cannoneer"
+      ? buildTowerCannoneer()
+      : e.towerTroop === "duchess"
+        ? buildTowerDuchess()
+        : buildTowerPrincess();
   articulate(defender);
   outlineRig(defender.group);
   defender.group.scale.setScalar(king ? 0.85 : 0.8);
@@ -2750,7 +2758,7 @@ export class Battle3D {
       seen.add(p.id);
       let view = this.projViews.get(p.id);
       if (!view) {
-        const style = projectileStyle(p.cardId, p.sourceKind);
+        const style = projectileStyle(p.cardId, p.sourceKind, p.towerTroop ?? null);
         if (style.form === "arrow") {
           view = this.makeArrow(style.color);
         } else {
@@ -2783,7 +2791,7 @@ export class Battle3D {
         this.projViews.set(p.id, view);
       }
       // Arc by flight progress: launch point -> current target leg.
-      const style = projectileStyle(p.cardId, p.sourceKind);
+      const style = projectileStyle(p.cardId, p.sourceKind, p.towerTroop ?? null);
       const target = state.entities.find((o) => o.id === p.targetId);
       const traveled = Math.hypot(p.x - p.sx, p.y - p.sy);
       const remaining = target ? Math.hypot(target.x - p.x, target.y - p.y) : 0;
