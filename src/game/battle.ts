@@ -20,6 +20,7 @@ import {
 } from "./cards";
 import { createElixir, trySpend, type ElixirState } from "./elixir";
 import { TOWER_TROOPS, type TowerTroopId } from "./towers";
+import type { AbilityId } from "./abilities";
 import { createHand, playCard, type HandState } from "./hand";
 
 export type EntityKind = "troop" | "building" | "princess-tower" | "king-tower";
@@ -137,6 +138,9 @@ export interface SideState {
   levels: CardLevels;
   /** Last non-Mirror card this side played — what a Mirror would copy. */
   lastPlayed: CardId | null;
+  /** King's Ability chosen for this match (null = none) and its meter 0..1. */
+  ability: AbilityId | null;
+  abilityCharge: number;
 }
 
 export interface SpellEffect {
@@ -230,6 +234,7 @@ export type BattleEvent =
     }
   | { type: "crown"; winner: Side }
   | { type: "king-wake"; side: Side }
+  | { type: "ability"; side: Side; ability: AbilityId; x: number; y: number }
   | { type: "finish"; winner: Side | "draw" };
 
 export interface BattleState {
@@ -355,6 +360,7 @@ export function createBattle(
   levels: { player?: CardLevels; enemy?: CardLevels } = {},
   elixirRate = 1,
   towers: { player?: TowerTroopId; enemy?: TowerTroopId } = {},
+  abilities: { player?: AbilityId | null; enemy?: AbilityId | null } = {},
 ): BattleState {
   const state: BattleState = {
     entities: [],
@@ -365,6 +371,8 @@ export function createBattle(
       stats: { damageDealt: 0, elixirSpent: 0, elixirLeaked: 0, elixirCollected: 0, damageByCard: {} },
       levels: levels.player ?? {},
       lastPlayed: null,
+      ability: abilities.player ?? null,
+      abilityCharge: 0,
     },
     enemy: {
       elixir: createElixir(),
@@ -373,6 +381,8 @@ export function createBattle(
       stats: { damageDealt: 0, elixirSpent: 0, elixirLeaked: 0, elixirCollected: 0, damageByCard: {} },
       levels: levels.enemy ?? {},
       lastPlayed: null,
+      ability: abilities.enemy ?? null,
+      abilityCharge: 0,
     },
     time: 0,
     overtime: false,
@@ -581,7 +591,7 @@ export function applySpell(
   radius: number,
   stunSeconds = 0,
   knockback = 0,
-  creditId: CardId | null = null,
+  creditId: CardId | null | false = null,
 ): void {
   for (const e of state.entities) {
     if (e.side === side || e.hp <= 0) continue;
@@ -590,7 +600,7 @@ export function applySpell(
     const isCrownTower = e.kind === "princess-tower" || e.kind === "king-tower";
     const dealt = damage * (isCrownTower ? TOWER_SPELL_DAMAGE_FACTOR : 1);
     e.hp -= dealt;
-    creditDamage(state, side, creditId ?? cardId, dealt);
+    creditDamage(state, side, creditId === false ? null : (creditId ?? cardId), dealt);
     e.stunTimer = Math.max(e.stunTimer, stunSeconds);
     // Surviving troops get shoved away from the blast center.
     if (knockback > 0 && e.kind === "troop" && e.hp > 0) {

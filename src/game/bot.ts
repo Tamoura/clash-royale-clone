@@ -8,6 +8,7 @@ import {
   type Entity,
 } from "./battle";
 import { getCard, type CardId } from "./cards";
+import { useAbility } from "./abilities";
 
 /** Seconds between bot decisions. */
 export const THINK_INTERVAL = 1.0;
@@ -341,6 +342,35 @@ function tryPush(state: BattleState, bot: BotState): boolean {
 }
 
 /**
+ * King's Ability: fire it the moment it's charged AND the situation suits
+ * it — a rally behind a push, a restore when a tower is hurting, a salvo
+ * when the player's troops crowd our king.
+ */
+function tryAbility(state: BattleState): boolean {
+  const me = state.enemy;
+  if (!me.ability || me.abilityCharge < 1) return false;
+  if (me.ability === "rally") {
+    const lead = botTanks(state).reduce<Entity | null>((a, b) => (!a || b.y > a.y ? b : a), null);
+    if (!lead || lead.y < RIVER_Y - 3) return false;
+  } else if (me.ability === "restore") {
+    const hurt = state.entities.some(
+      (e) =>
+        e.side === "enemy" &&
+        (e.kind === "princess-tower" || e.kind === "king-tower") &&
+        e.hp > 0 &&
+        e.hp < e.maxHp * 0.55,
+    );
+    if (!hurt) return false;
+  } else {
+    const king = state.entities.find((e) => e.side === "enemy" && e.kind === "king-tower");
+    if (!king) return false;
+    const near = playerTroops(state).filter((t) => distance(t, king) < 10).length;
+    if (near < 2) return false;
+  }
+  return useAbility(state, "enemy");
+}
+
+/**
  * The rudest play in the game: when a player tower is low enough that a
  * direct-damage spell finishes it outright, cast it at the tower — no
  * cluster value needed, towers don't dodge.
@@ -408,6 +438,7 @@ function tryMirror(state: BattleState): boolean {
 export function botThink(state: BattleState, bot: BotState): void {
   if (state.result) return;
   if (tryFinisher(state)) return;
+  if (tryAbility(state)) return;
   if (tryFreeze(state)) return;
   if (trySpellCluster(state)) return;
   if (tryDefend(state, bot)) return;

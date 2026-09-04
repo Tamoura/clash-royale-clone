@@ -6,6 +6,7 @@ import {
   RIVER_Y,
   nearestBridgeX,
 } from "./arena";
+import { tickAbilities } from "./abilities";
 import {
   creditDamage,
   applySpell,
@@ -586,6 +587,7 @@ export function tick(state: BattleState, dt: number): void {
   if (state.result) return;
   state.time += dt;
 
+  tickAbilities(state, dt);
   const mult = effectiveElixirMultiplier(state);
   // Track elixir wasted at a capped bar (skip sandbox's firehose rate) —
   // the result screen uses it to explain spending gaps honestly.

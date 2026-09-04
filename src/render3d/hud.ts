@@ -1,4 +1,5 @@
 import { effectiveCard, type BattleState } from "../game/battle";
+import { ABILITIES } from "../game/abilities";
 import type { Side } from "../game/arena";
 import { getCard, type CardId } from "../game/cards";
 import { ELIXIR_MAX } from "../game/elixir";
@@ -21,6 +22,8 @@ export interface HudCallbacks {
   onToggleSound(): boolean;
   /** Fired once when elixir hits the leak threshold (10). */
   onElixirLeak?(): void;
+  /** The King's Ability button was pressed. */
+  onAbility?(): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -52,6 +55,9 @@ export class Hud {
   private x2Tag!: HTMLElement;
   private readonly nextArt: HTMLElement;
   private readonly cardBtns: HTMLButtonElement[] = [];
+  private readonly abilityBtn: HTMLButtonElement;
+  private readonly abilityIcon: HTMLElement;
+  private abilityReady = false;
   private readonly cardCosts: HTMLElement[] = [];
   private readonly cardVeils: HTMLElement[] = [];
   private readonly cardNeeds: HTMLElement[] = [];
@@ -125,6 +131,16 @@ export class Hud {
     const handRow = el("div", "hand-row", bottom);
     handRow.setAttribute("role", "group");
     handRow.setAttribute("aria-label", "Card hand");
+    // King's Ability: a charge dial that lights up when ready.
+    this.abilityBtn = el("button", "ability-btn", handRow);
+    this.abilityBtn.setAttribute("aria-label", "King's Ability");
+    this.abilityBtn.style.display = "none";
+    this.abilityIcon = el("span", "ability-icon", this.abilityBtn);
+    el("span", "ability-label", this.abilityBtn).textContent = "KING";
+    this.abilityBtn.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      this.cb.onAbility?.();
+    });
     const nextWrap = el("div", "next-card", handRow);
     nextWrap.setAttribute("aria-label", "Next card");
     this.nextArt = el("div", "next-art", nextWrap);
@@ -297,6 +313,26 @@ export class Hud {
       this.cb.onElixirLeak?.();
     } else if (!atMax) {
       this.leaking = false;
+    }
+
+    // King's Ability dial.
+    if (me.ability) {
+      const def = ABILITIES[me.ability];
+      this.abilityBtn.style.display = "";
+      this.abilityBtn.title = `${def.name}: ${def.blurb}`;
+      this.abilityIcon.textContent = def.icon;
+      const pct = Math.round(me.abilityCharge * 100);
+      this.abilityBtn.style.setProperty("--charge", `${pct}%`);
+      const ready = me.abilityCharge >= 1;
+      this.abilityBtn.classList.toggle("ready", ready);
+      if (ready && !this.abilityReady) {
+        this.abilityBtn.classList.remove("ready-pop");
+        void this.abilityBtn.offsetWidth;
+        this.abilityBtn.classList.add("ready-pop");
+      }
+      this.abilityReady = ready;
+    } else {
+      this.abilityBtn.style.display = "none";
     }
 
     // Hand (rebuild card art only when the hand changes).

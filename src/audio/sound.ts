@@ -365,6 +365,9 @@ export class SoundEngine {
   onEvent(ev: BattleEvent): void {
     if (!this.ctx) return;
     switch (ev.type) {
+      case "ability":
+        this.sting();
+        break;
       case "deploy":
         this.deploy(getCard(ev.cardId).cost);
         this.bark(ev.cardId);

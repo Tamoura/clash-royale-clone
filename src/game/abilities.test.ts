@@ -1,59 +1,71 @@
 import { describe, expect, it } from "vitest";
-import { createBattle, spawnUnits, type BattleState } from "./battle";
-import { tick } from "./sim";
+import {
+  ABILITIES,
+  RESTORE_TOWER_HP,
+  RESTORE_TROOP_HP,
+  SALVO_DAMAGE,
+  useAbility,
+} from "./abilities";
+import { createBattle, spawnUnits } from "./battle";
+import { isRaged, tick } from "./sim";
 
-const TICK = 1 / 20;
+const DT = 1 / 30;
 
-function run(b: BattleState, seconds: number): void {
-  const steps = Math.round(seconds / TICK);
-  for (let i = 0; i < steps; i++) tick(b, TICK);
-}
-
-describe("Ice Wizard chill", () => {
-  it("leaves a lingering slow on the troops it hits", () => {
-    const b = createBattle();
-    spawnUnits(b, "player", "ice-wizard", 9, 14);
-    const [victim] = spawnUnits(b, "enemy", "knight", 9, 16);
-    run(b, 3);
-    expect(victim.slowTimer).toBeGreaterThan(0);
-  });
-});
-
-describe("Electro Wizard chain", () => {
-  it("strikes more than one enemy with a single shot", () => {
-    const b = createBattle();
-    spawnUnits(b, "player", "electro-wizard", 9, 13);
-    const a = spawnUnits(b, "enemy", "knight", 8.4, 16)[0];
-    const c = spawnUnits(b, "enemy", "knight", 9.6, 16)[0];
-    run(b, 2.5);
-    const hurt = [a, c].filter((e) => e.hp < e.maxHp).length;
-    expect(hurt).toBe(2);
+describe("King's Ability", () => {
+  it("charges over the match and refuses to fire early", () => {
+    const b = createBattle(undefined, undefined, {}, 1, {}, { player: "rally" });
+    expect(b.player.abilityCharge).toBe(0);
+    expect(useAbility(b, "player")).toBe(false);
+    for (let t = 0; t < ABILITIES.rally.chargeSeconds + 1; t += DT) tick(b, DT);
+    expect(b.player.abilityCharge).toBe(1);
+    expect(useAbility(b, "player")).toBe(true);
+    expect(b.player.abilityCharge).toBe(0); // spent
   });
 
-  it("stuns the troops it zaps", () => {
+  it("a side without a chosen ability never charges", () => {
     const b = createBattle();
-    spawnUnits(b, "player", "electro-wizard", 9, 13);
-    const [victim] = spawnUnits(b, "enemy", "knight", 9, 16);
-    let peakStun = 0;
-    for (let i = 0; i < Math.round(2.5 / TICK); i++) {
-      tick(b, TICK);
-      peakStun = Math.max(peakStun, victim.stunTimer);
-    }
-    expect(peakStun).toBeGreaterThan(0.5);
+    for (let t = 0; t < 10; t += DT) tick(b, DT);
+    expect(b.player.abilityCharge).toBe(0);
+    expect(useAbility(b, "player")).toBe(false);
   });
-});
 
-describe("Mega Knight leap", () => {
-  it("jumps onto a far target and slams it", () => {
-    const b = createBattle();
-    const [mk] = spawnUnits(b, "player", "mega-knight", 9, 12);
-    const [victim] = spawnUnits(b, "enemy", "knight", 9, 16.5);
-    let jumped = false;
-    for (let i = 0; i < Math.round(3 / TICK); i++) {
-      tick(b, TICK);
-      if (mk.jumpCooldown > 0) jumped = true;
-    }
-    expect(jumped).toBe(true);
-    expect(victim.hp).toBeLessThan(victim.maxHp);
+  it("Rally rages every friendly troop, wherever it stands", () => {
+    const b = createBattle(undefined, undefined, {}, 1, {}, { player: "rally" });
+    b.player.abilityCharge = 1;
+    const [near] = spawnUnits(b, "player", "knight", 3, 28);
+    const [far] = spawnUnits(b, "player", "knight", 15, 18);
+    const [foe] = spawnUnits(b, "enemy", "knight", 9, 10);
+    useAbility(b, "player");
+    expect(isRaged(b, near)).toBe(true);
+    expect(isRaged(b, far)).toBe(true);
+    expect(isRaged(b, foe)).toBe(false);
+  });
+
+  it("Restore heals towers and troops up to their caps", () => {
+    const b = createBattle(undefined, undefined, {}, 1, {}, { player: "restore" });
+    b.player.abilityCharge = 1;
+    const tower = b.entities.find((e) => e.side === "player" && e.kind === "princess-tower")!;
+    tower.hp = 1000;
+    const [knight] = spawnUnits(b, "player", "knight", 9, 24);
+    knight.hp = 100;
+    const [enemyKnight] = spawnUnits(b, "enemy", "knight", 9, 8);
+    enemyKnight.hp = 100;
+    useAbility(b, "player");
+    expect(tower.hp).toBe(1000 + RESTORE_TOWER_HP);
+    expect(knight.hp).toBe(100 + RESTORE_TROOP_HP);
+    expect(enemyKnight.hp).toBe(100); // not ours
+  });
+
+  it("Salvo bombards the enemies nearest our king, credited to no card", () => {
+    const b = createBattle(undefined, undefined, {}, 1, {}, { player: "salvo" });
+    b.player.abilityCharge = 1;
+    // Five giants marching down the lane, spaced past the splash radius;
+    // the four nearest our king eat a shell each, the fifth is spared.
+    const giants = [26, 22, 18, 14, 4].map((y) => spawnUnits(b, "enemy", "giant", 9, y)[0]);
+    useAbility(b, "player");
+    for (const g of giants.slice(0, 4)) expect(g.hp).toBe(g.maxHp - SALVO_DAMAGE);
+    expect(giants[4].hp).toBe(giants[4].maxHp);
+    expect(b.player.stats.damageDealt).toBe(SALVO_DAMAGE * 4);
+    expect(b.player.stats.damageByCard.fireball ?? 0).toBe(0); // the King's own shots
   });
 });

@@ -94,6 +94,14 @@ import {
   saveTowerTroop,
   type TowerTroopId,
 } from "./game/towers";
+import {
+  ABILITIES,
+  ABILITY_IDS,
+  loadAbility,
+  saveAbility,
+  useAbility,
+  type AbilityId,
+} from "./game/abilities";
 import { isChestReady } from "./meta/chests";
 import { CHEST_SKIP_GEMS, SHARD_GOLD_PRICE, spendGold, upgradeCost } from "./meta/economy";
 import {
@@ -180,6 +188,8 @@ interface ReplayData {
   botProfile: BotProfile;
   opponent: string;
   towers: { player: TowerTroopId; enemy: TowerTroopId };
+  abilities: { player: AbilityId | null; enemy: AbilityId | null };
+  abilityUses: number[];
   deploys: Array<{ t: number; c: CardId; x: number; y: number }>;
 }
 // ---- Tower Troops: the player's chosen tower defender ---------------------
@@ -188,12 +198,33 @@ function botTowerTroop(): TowerTroopId {
   return TOWER_TROOP_IDS[Math.floor(Math.random() * TOWER_TROOP_IDS.length)];
 }
 
+// ---- King's Ability: the player's chosen power ----------------------------
+let abilityChoice: AbilityId = loadAbility();
+function botAbility(): AbilityId {
+  return ABILITY_IDS[Math.floor(Math.random() * ABILITY_IDS.length)];
+}
+
+/** Fire the local King's Ability (button / "Q"); replays are watch-only. */
+function triggerAbility(): void {
+  if (replaying || battle.result || phase === "countdown") return;
+  if (online) return; // not lockstep-synced yet
+  if (!useAbility(battle, localSide())) {
+    hud.flashError("elixir");
+    audio.error();
+    return;
+  }
+  if (recording && mode === "solo") recording.abilityUses.push(soloTick);
+  showBanner(tr(ABILITIES[abilityChoice].name, ABILITIES[abilityChoice].ar));
+}
+
 let replaying = false;
 let replaySpeed = 1;
 let soloTick = 0;
 let recording: ReplayData | null = null;
 let replayDeploys: ReplayData["deploys"] = [];
 let playbackCursor = 0;
+let replayAbilityUses: number[] = [];
+let abilityCursor = 0;
 
 const replaySpeedBtn = document.createElement("button");
 replaySpeedBtn.className = "sandbox-reset";
@@ -541,12 +572,14 @@ function startLadder(): void {
   const foeDeck = shared ?? botDeck(archetype);
   const foeLevels = botLevels();
   const towers = { player: towerTroop, enemy: botTowerTroop() };
+  const abilities = { player: abilityChoice, enemy: botAbility() };
   battle = createBattle(
     myDeck,
     foeDeck,
     { player: cardLevels, enemy: foeLevels },
     gameMode.elixirRate,
     towers,
+    abilities,
   );
   const base = DIFFICULTIES[difficulty];
   // Personality tweaks: beatdown banks bigger pushes, cycle plays faster,
@@ -614,6 +647,8 @@ function startLadder(): void {
           botProfile: banded,
           opponent: baseName,
           towers,
+          abilities,
+          abilityUses: [],
           deploys: [],
         };
   startCountdown();
@@ -642,7 +677,10 @@ function startReplay(): void {
     { player: rep.playerLevels, enemy: rep.enemyLevels },
     rep.elixirRate,
     rep.towers ?? { player: "princess", enemy: "princess" },
+    rep.abilities ?? {},
   );
+  replayAbilityUses = rep.abilityUses ?? [];
+  abilityCursor = 0;
   bot = createBot(rep.botSeed, rep.botProfile);
   replaying = true;
   recording = null;
@@ -701,7 +739,7 @@ function startSpecialBattle(
   online = null;
   setCardOverrides(null);
   // Level playing field: no card levels in special modes.
-  battle = createBattle(mine, theirs, {}, 1, { player: towerTroop, enemy: botTowerTroop() });
+  battle = createBattle(mine, theirs, {}, 1, { player: towerTroop, enemy: botTowerTroop() }, { player: abilityChoice, enemy: botAbility() });
   recording = null;
   replaying = false;
   replaySpeedBtn.style.display = "none";
@@ -2024,6 +2062,33 @@ function buildDeckPicker(opts: { mode: "battle" | "deck" }): void {
     ttBlurb.textContent = tr(TOWER_TROOPS[towerTroop].blurb, TOWER_TROOPS[towerTroop].blurbAr);
     pickerRoot.appendChild(ttRow);
     pickerRoot.appendChild(ttBlurb);
+
+    // King's Ability: the charged power for this match.
+    const abLabel = document.createElement("div");
+    abLabel.className = "collect-label";
+    abLabel.textContent = tr("King's ability", "قدرة الملك");
+    pickerRoot.appendChild(abLabel);
+    const abRow = document.createElement("div");
+    abRow.className = "mode-row";
+    const abBlurb = document.createElement("div");
+    abBlurb.className = "mode-blurb";
+    for (const id of ABILITY_IDS) {
+      const def = ABILITIES[id];
+      const btn = document.createElement("button");
+      btn.className = "mode-btn";
+      btn.textContent = `${def.icon} ${tr(def.name, def.ar)}`;
+      btn.classList.toggle("chosen", id === abilityChoice);
+      btn.addEventListener("click", () => {
+        abilityChoice = id;
+        saveAbility(id);
+        abRow.querySelectorAll("button").forEach((b) => b.classList.toggle("chosen", b === btn));
+        abBlurb.textContent = tr(def.blurb, def.blurbAr);
+      });
+      abRow.appendChild(btn);
+    }
+    abBlurb.textContent = tr(ABILITIES[abilityChoice].blurb, ABILITIES[abilityChoice].blurbAr);
+    pickerRoot.appendChild(abRow);
+    pickerRoot.appendChild(abBlurb);
     pickerRoot.appendChild(modeBlurb);
   }
 
@@ -2297,6 +2362,7 @@ const hud = new Hud(topbar, hudRoot, overlay, {
     return audio.muted;
   },
   onElixirLeak: () => audio.elixirLeak(),
+  onAbility: triggerAbility,
 });
 
 // Audio can only start from a user gesture.
@@ -2590,6 +2656,7 @@ window.addEventListener("keydown", (ev) => {
   const n = Number(ev.key);
   if (n >= 1 && n <= 4) selectCard(mySideState().hand.cards[n - 1]);
   if (ev.key === "Escape") selectCard(null);
+  if (ev.key === "q" || ev.key === "Q") triggerAbility();
   // "T" switches the arena theme (Arabic ⇄ normal); reloads to rebuild.
   // No-op until an edition has been chosen.
   if (ev.key === "t" || ev.key === "T") {
@@ -2664,6 +2731,10 @@ function frame(now: number): void {
           ) {
             const d = replayDeploys[playbackCursor++];
             deployCard(battle, "player", d.c, d.x, d.y);
+          }
+          while (abilityCursor < replayAbilityUses.length && replayAbilityUses[abilityCursor] === soloTick) {
+            abilityCursor++;
+            useAbility(battle, "player");
           }
         }
         tick(battle, SIM_DT);

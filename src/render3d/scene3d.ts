@@ -3377,6 +3377,13 @@ export class Battle3D {
   /** Visual reactions to gameplay events. */
   onEvent(ev: BattleEvent): void {
     switch (ev.type) {
+      case "ability":
+        // Royal flourish from the king tower: a big gold ring for a rally,
+        // a green bloom for a restore, a smoke puff for a salvo launch.
+        if (ev.ability === "rally") this.rageZone(ev.x, ev.y, 4, 5);
+        else if (ev.ability === "restore") this.blast(ev.x, ev.y, 3.5, 0x6ee7a0);
+        else this.blast(ev.x, ev.y, 2.2, 0xffb300);
+        break;
       case "spell":
         if (ev.cardId === "fireball") this.fireballStrike(ev.x, ev.y);
         else if (ev.cardId === "zap") this.zapStrike(ev.x, ev.y, 2);
