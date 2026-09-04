@@ -243,6 +243,17 @@ function persistProfile(): void {
   applyTowerFlair();
 }
 
+/**
+ * Which trophy-road arena the next battle is staged in. `?arena=<id>` in
+ * the URL previews any arena (dev/testing); otherwise it's the arena the
+ * player's trophies stand in.
+ */
+function battleArenaId(): string {
+  const forced = new URLSearchParams(location.search).get("arena");
+  if (forced && ARENAS.some((a) => a.id === forced)) return forced;
+  return ARENAS[arenaIndexAt(profile.trophies)].id;
+}
+
 /** Cosmetic tower tiers unlocked by climbing: 600 gilded, 1200 jeweled. */
 function applyTowerFlair(): void {
   setTowerFlair(profile.trophies >= 1200 ? 2 : profile.trophies >= 600 ? 1 : 0);
@@ -455,6 +466,11 @@ function mySideState(): BattleState["player"] {
 let scene: Battle3D;
 try {
   scene = new Battle3D(stage);
+  // `?sky=0..1` pins the living sky for previews/screenshots.
+  const sky = new URLSearchParams(location.search).get("sky");
+  if (sky !== null && !Number.isNaN(Number(sky))) {
+    scene.forceDayPhase(Math.max(0, Math.min(1, Number(sky))));
+  }
 } catch {
   stage.innerHTML =
     '<div style="color:#e5e7eb;text-align:center;padding-top:34vh;font-size:18px;line-height:1.7">' +
@@ -560,6 +576,7 @@ function startLadder(): void {
       2600,
     );
   }
+  scene.setArenaLook(battleArenaId());
   scene.setViewpoint("player");
   scene.reset();
   audio.setIntensity(0);
@@ -621,6 +638,7 @@ function startReplay(): void {
   selectCard(null);
   hud.setReward(null);
   hud.setOpponentName(`📺 ${rep.opponent}`);
+  scene.setArenaLook(battleArenaId());
   scene.setViewpoint("player");
   scene.reset();
   audio.setIntensity(0);
@@ -673,6 +691,7 @@ function startSpecialBattle(
   selectCard(null);
   hud.setReward(null);
   hud.setOpponentName(opponentName);
+  scene.setArenaLook(battleArenaId());
   scene.setViewpoint("player");
   scene.reset();
   audio.setIntensity(0);
@@ -734,6 +753,7 @@ function startOnlineMatch(
   selectCard(null);
   hud.setReward(null);
   hud.setOpponentName("Friend");
+  scene.setArenaLook(battleArenaId());
   scene.setViewpoint(side);
   scene.reset();
   audio.setIntensity(0);
@@ -763,6 +783,7 @@ function endOnlineMatch(message: string): void {
   online = null;
   mode = "solo";
   showBanner(message);
+  scene.setArenaLook(battleArenaId());
   scene.setViewpoint("player");
   hud.setOpponentName("Bot");
   setTimeout(openHome, 1800);
