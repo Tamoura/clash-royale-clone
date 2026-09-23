@@ -18,15 +18,28 @@ import { ARABIC, THEME } from "./theme";
 
 const SKIN = 0xf6c9a0;
 
-/** Shared four-band gradient for a softer toy-like cel transition. */
+/**
+ * Shared painted light ramp (CR look): three soft bands that also carry
+ * COLOUR — shadows fall toward a cool blue-violet, the lit side stays a
+ * warm cream — instead of a grey multiply. The shader patch in
+ * addRimLight() reads the ramp's RGB (stock three.js reads only red).
+ */
 let toonGradient: THREE.DataTexture | null = null;
 
 function gradientMap(): THREE.DataTexture {
   if (!toonGradient) {
-    const data = new Uint8Array([62, 132, 205, 255]);
-    toonGradient = new THREE.DataTexture(data, 4, 1, THREE.RedFormat);
-    toonGradient.minFilter = THREE.NearestFilter;
-    toonGradient.magFilter = THREE.NearestFilter;
+    // shadow · mid · light · light (the doubled last texel widens the lit band)
+    const data = new Uint8Array([
+      84, 90, 138, 255,
+      168, 170, 200, 255,
+      255, 250, 238, 255,
+      255, 250, 238, 255,
+    ]);
+    toonGradient = new THREE.DataTexture(data, 4, 1, THREE.RGBAFormat);
+    toonGradient.minFilter = THREE.LinearFilter;
+    toonGradient.magFilter = THREE.LinearFilter;
+    toonGradient.colorSpace = THREE.NoColorSpace;
+    toonGradient.userData.shared = true;
     toonGradient.needsUpdate = true;
   }
   return toonGradient;
@@ -84,6 +97,22 @@ function grainMap(): THREE.DataTexture {
  */
 function addRimLight(mat: THREE.Material): void {
   mat.onBeforeCompile = (sh) => {
+    // Coloured light ramp: sample the gradient's RGB, not just red.
+    sh.fragmentShader = sh.fragmentShader.replace(
+      "#include <gradientmap_pars_fragment>",
+      `#ifdef USE_GRADIENTMAP
+         uniform sampler2D gradientMap;
+       #endif
+       vec3 getGradientIrradiance( vec3 normal, vec3 lightDirection ) {
+         float dotNL = dot( normal, lightDirection );
+         vec2 coord = vec2( dotNL * 0.5 + 0.5, 0.0 );
+         #ifdef USE_GRADIENTMAP
+           return texture2D( gradientMap, coord ).rgb;
+         #else
+           return vec3( 1.0 );
+         #endif
+       }`,
+    );
     sh.fragmentShader = sh.fragmentShader.replace(
       "#include <dithering_fragment>",
       `float _rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
@@ -93,7 +122,7 @@ function addRimLight(mat: THREE.Material): void {
     );
   };
   // Explicit key lets Three share this one shader variant across the roster.
-  mat.customProgramCacheKey = () => "premium-toon-rim-v1";
+  mat.customProgramCacheKey = () => "premium-toon-rim-v2";
 }
 
 export function toon(color: number): THREE.MeshToonMaterial {
@@ -107,6 +136,13 @@ export function toon(color: number): THREE.MeshToonMaterial {
     gradientMap: gradientMap(),
     map: grainMap(),
   });
+  addRimLight(mat);
+  return mat;
+}
+
+/** Give any toon material the painted colour ramp + rim light. */
+export function paintedToon(mat: THREE.MeshToonMaterial): THREE.MeshToonMaterial {
+  mat.gradientMap = gradientMap();
   addRimLight(mat);
   return mat;
 }

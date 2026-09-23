@@ -32,6 +32,7 @@ import {
   animateTroop,
   articulate,
   buildTowerCannoneer,
+  paintedToon,
   buildTowerDuchess,
   buildTowerKing,
   buildTowerPrincess,
@@ -120,6 +121,38 @@ function attackSwing(e: Entity, engaged: boolean): number {
   }
   return 0;
 }
+
+/** Display-space colour grade: saturation, contrast, tint, vignette. */
+const DEFAULT_GRADE = { saturation: 1.1, contrast: 1.05, tint: [1, 1, 1] as [number, number, number], vignette: 0.3 };
+const GradeShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    saturation: { value: 1.1 },
+    contrast: { value: 1.05 },
+    tint: { value: new THREE.Vector3(1, 1, 1) },
+    vignette: { value: 0.3 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float saturation;
+    uniform float contrast;
+    uniform vec3 tint;
+    uniform float vignette;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+      vec3 col = mix(vec3(l), c.rgb, saturation);
+      col = (col - 0.5) * contrast + 0.5;
+      col *= tint;
+      vec2 d = vUv - 0.5;
+      col *= 1.0 - vignette * smoothstep(0.35, 0.95, dot(d, d) * 2.2);
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a);
+    }`,
+};
 
 /** The game's display face (bundled, OFL) with the old system fallbacks. */
 export const GAME_FONT = "'Lilita One', 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
@@ -405,6 +438,25 @@ function nameSpriteMaterial(cardId: CardId, side: Side): THREE.SpriteMaterial {
   return mat;
 }
 
+/** Shared soft radial contact-shadow texture (dark centre, feathered edge). */
+let contactShadowTexture: THREE.CanvasTexture | null = null;
+function contactShadowTex(): THREE.CanvasTexture {
+  if (!contactShadowTexture) {
+    const c = document.createElement("canvas");
+    c.width = c.height = 64;
+    const ctx = c.getContext("2d")!;
+    const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 31);
+    g.addColorStop(0, "rgba(10,12,28,0.85)");
+    g.addColorStop(0.55, "rgba(10,12,28,0.45)");
+    g.addColorStop(1, "rgba(10,12,28,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 64);
+    contactShadowTexture = new THREE.CanvasTexture(c);
+    contactShadowTexture.userData.shared = true;
+  }
+  return contactShadowTexture;
+}
+
 /** Shared "seeing stars" texture for stunned units. */
 let stunTexture: THREE.CanvasTexture | null = null;
 
@@ -539,6 +591,26 @@ function brickTex(variant: BrickVariant = "sand"): THREE.CanvasTexture {
     ctx.scale(2, 2);
     ctx.fillStyle = BRICK_TINTS[variant].base;
     ctx.fillRect(0, 0, 64, 64);
+    // Painted bricks: each block gets its own shade, a lit top edge and a
+    // shaded bottom edge, so walls read as carved stone, not a flat decal.
+    let seed = 11;
+    const rand = (): number => {
+      seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+      return ((seed >>> 8) & 0xffff) / 0xffff;
+    };
+    for (let row = 0; row < 6; row++) {
+      const by = row * 11;
+      const boff = row % 2 ? 0 : 8;
+      for (let bx = boff - 16; bx < 64; bx += 16) {
+        const v = rand();
+        ctx.fillStyle = v < 0.5 ? `rgba(0,0,0,${(0.5 - v) * 0.16})` : `rgba(255,255,255,${(v - 0.5) * 0.18})`;
+        ctx.fillRect(bx + 1, by + 1, 14, 9);
+        ctx.fillStyle = "rgba(255,255,255,0.22)";
+        ctx.fillRect(bx + 1, by + 1, 14, 1.4);
+        ctx.fillStyle = "rgba(0,0,0,0.2)";
+        ctx.fillRect(bx + 1, by + 8.6, 14, 1.4);
+      }
+    }
     ctx.strokeStyle = BRICK_TINTS[variant].mortar;
     ctx.lineWidth = 1.6;
     for (let row = 0; row < 6; row++) {
@@ -716,9 +788,11 @@ function buildTowerMesh(e: Entity): EntityView {
   plinth.receiveShadow = true;
   root.add(plinth);
 
-  const wallMat = new THREE.MeshToonMaterial({
-    map: brickTex(enemySide ? LOOK.tower.enemy : LOOK.tower.player),
-  });
+  const wallMat = paintedToon(
+    new THREE.MeshToonMaterial({
+      map: brickTex(enemySide ? LOOK.tower.enemy : LOOK.tower.player),
+    }),
+  );
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(radius * 2, height, radius * 2),
     wallMat,
@@ -727,6 +801,28 @@ function buildTowerMesh(e: Entity): EntityView {
   body.castShadow = true;
   body.receiveShadow = true;
   root.add(body);
+
+  // Bevelled corner pillars standing proud of the wall, and a stone base
+  // course: the chunky silhouette CR towers have instead of a bare box.
+  const pillarMat = toon(LOOK.tower.battlement);
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const pillar = new THREE.Mesh(
+        new THREE.BoxGeometry(radius * 0.32, height + 0.06, radius * 0.32),
+        pillarMat,
+      );
+      pillar.position.set(sx * radius * 0.98, (height + 0.06) / 2, sz * radius * 0.98);
+      pillar.castShadow = true;
+      root.add(pillar);
+    }
+  }
+  const baseCourse = new THREE.Mesh(
+    new THREE.BoxGeometry(radius * 2.1, 0.26, radius * 2.1),
+    toon(LOOK.tower.plinth),
+  );
+  baseCourse.position.y = 0.6;
+  baseCourse.castShadow = true;
+  root.add(baseCourse);
 
   // Gold trim band under the battlements (CR's royal touch).
   const trim = new THREE.Mesh(
@@ -1183,16 +1279,26 @@ function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
     root.add(label);
   }
 
-  // Flyers get a soft blob shadow tying them to the ground.
+  // Soft contact shadow under every unit (CR grounds everything with one);
+  // flyers' shadow also shrinks with altitude (see the render loop).
   let blobShadow: THREE.Mesh | undefined;
-  if (rig?.hover) {
-    blobShadow = new THREE.Mesh(
-      new THREE.CircleGeometry(e.radius * 0.8, 20),
-      new THREE.MeshBasicMaterial({ color: 0x0a0e16, transparent: true, opacity: 0.3 }),
+  {
+    const contact = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({
+        map: contactShadowTex(),
+        transparent: true,
+        depthWrite: false,
+        opacity: rig?.hover ? 0.5 : 0.65,
+      }),
     );
-    blobShadow.rotation.x = -Math.PI / 2;
-    blobShadow.position.y = 0.025;
-    root.add(blobShadow);
+    contact.rotation.x = -Math.PI / 2;
+    contact.position.y = 0.02;
+    const d = Math.max(0.8, e.radius * 2.6);
+    contact.scale.set(d, d, 1);
+    contact.renderOrder = -1;
+    root.add(contact);
+    if (rig?.hover) blobShadow = contact;
   }
 
   const bar = makeHpBar(0.9, HP_COLOR[e.side], lift + 0.25);
@@ -1414,6 +1520,11 @@ export class Battle3D {
     this.composer.addPass(this.bloom);
     this.outputPass = new OutputPass();
     this.composer.addPass(this.outputPass);
+    // Per-arena colour grade (saturation, contrast, tint, vignette) in
+    // display space: the final "painted" push each world gets.
+    this.grade = new ShaderPass(GradeShader);
+    this.composer.addPass(this.grade);
+    this.applyGrade();
     // FXAA last: smooths the toon silhouettes the raw composer leaves
     // jagged (MSAA is off because the post stack would discard it anyway).
     this.fxaa = new ShaderPass(FXAAShader);
@@ -1484,6 +1595,7 @@ export class Battle3D {
     fog.far = LOOK.fogFar;
     this.buildLights();
     this.buildArena();
+    this.applyGrade();
   }
 
   /** An unlit, fog-immune, bloom-ready glow material the living sky can dim. */
@@ -1905,11 +2017,45 @@ export class Battle3D {
         const h = tile / 2;
         ctx.fillRect(x, y, h, h);
         ctx.fillRect(x + h, y + h, h, h);
+        // Painted bevel: every tile lit along its top/left edge and shaded
+        // along its bottom/right, so the court reads as laid stone.
+        ctx.fillStyle = "rgba(255,255,255,0.16)";
+        ctx.fillRect(x, y, tile, 2 * px);
+        ctx.fillRect(x, y, 2 * px, tile);
+        ctx.fillStyle = "rgba(0,0,0,0.1)";
+        ctx.fillRect(x, y + tile - 2 * px, tile, 2 * px);
+        ctx.fillRect(x + tile - 2 * px, y, 2 * px, tile);
         ctx.strokeStyle = F.grid;
         ctx.lineWidth = 1;
         ctx.strokeRect(x + 0.5, y + 0.5, tile - 1, tile - 1);
       }
     }
+    // Soft painterly mottling across the whole court.
+    for (let i = 0; i < 520; i++) {
+      const r = (6 + rand() * 18) * px;
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+      const dark = rand() < 0.55;
+      g.addColorStop(0, dark ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)");
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.save();
+      ctx.translate(rand() * c.width, rand() * c.height);
+      ctx.fillStyle = g;
+      ctx.fillRect(-r, -r, r * 2, r * 2);
+      ctx.restore();
+    }
+    // Ambient occlusion where the court meets its walls.
+    const ao = (x0: number, y0: number, x1: number, y1: number, w: number, hgt: number): void => {
+      const g = ctx.createLinearGradient(x0, y0, x1, y1);
+      g.addColorStop(0, "rgba(0,0,0,0.22)");
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(Math.min(x0, x1), Math.min(y0, y1), w, hgt);
+    };
+    const edge = tile * 1.1;
+    ao(0, 0, edge, 0, edge, c.height);
+    ao(c.width, 0, c.width - edge, 0, edge, c.height);
+    ao(0, 0, 0, edge, c.width, edge);
+    ao(0, c.height, 0, c.height - edge, c.width, edge);
 
     if (F.watermark) {
       const watermark = (cy: number): void => {
@@ -2474,6 +2620,19 @@ export class Battle3D {
       foam.position.set(0, 0.02, sz * 1.15);
       this.arenaGroup.add(foam);
     }
+  }
+
+  private grade!: ShaderPass;
+
+  /** Push the current look's colour grade into the grade pass. */
+  private applyGrade(): void {
+    if (!this.grade) return;
+    const g = { ...DEFAULT_GRADE, ...(LOOK.grade ?? {}) };
+    const u = this.grade.material.uniforms;
+    u["saturation"].value = g.saturation;
+    u["contrast"].value = g.contrast;
+    (u["tint"].value as THREE.Vector3).set(g.tint[0], g.tint[1], g.tint[2]);
+    u["vignette"].value = g.vignette;
   }
 
   /** Hide the end-string nearest the camera (it would cross our king). */

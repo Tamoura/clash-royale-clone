@@ -76,6 +76,8 @@ export interface ArenaLook {
   tree: { kind: TreeKind; trunk: number; leafA: number; leafB: number };
   rock: number;
   flowers: boolean;
+  /** Display-space colour grade (defaults in scene3d when omitted). */
+  grade?: { saturation?: number; contrast?: number; tint?: [number, number, number]; vignette?: number };
 }
 
 const WHITE_STREAK = "rgba(255,255,255,0.5)";
@@ -83,6 +85,7 @@ const WHITE_STREAK = "rgba(255,255,255,0.5)";
 export const LOOKS: Record<string, ArenaLook> = {
   meadow: {
     id: "meadow",
+    grade: { saturation: 1.14, contrast: 1.05, tint: [1.03, 1.0, 0.95], vignette: 0.26 },
     sky: 0x7ec8ff, apron: 0x4f9a3c, far: 0x3d7a2f, fieldSide: 0x8a6a3c, edging: 0x8b6b45, drift: 0x5fae4c,
     fogNear: 30, fogFar: 70,
     hemiSky: 0xdff3ff, hemiGround: 0x4f7a3c, hemiIntensity: 1.0, sun: 0xfff2d8, fill: 0xffe2b8,
@@ -96,6 +99,7 @@ export const LOOKS: Record<string, ArenaLook> = {
   },
   swamp: {
     id: "swamp",
+    grade: { saturation: 1.05, contrast: 1.08, tint: [0.97, 1.03, 0.94], vignette: 0.4 },
     sky: 0x2c4a2e, apron: 0x2f4a26, far: 0x1c2f18, fieldSide: 0x4a5a2a, edging: 0x5b4a2a, drift: 0x3f6a33,
     fogNear: 24, fogFar: 56,
     hemiSky: 0xb8d9a8, hemiGround: 0x2a3a1c, hemiIntensity: 0.95, sun: 0xe8f0c8, fill: 0xa8c890,
@@ -109,6 +113,7 @@ export const LOOKS: Record<string, ArenaLook> = {
   },
   bone: {
     id: "bone",
+    grade: { saturation: 1.08, contrast: 1.06, tint: [1.02, 0.98, 1.03], vignette: 0.34 },
     sky: 0x5a2d6e, apron: 0x8a6f4a, far: 0x4a2a5a, fieldSide: 0x9c8a5c, edging: 0x8f7a55, drift: 0xb8a878,
     fogNear: 26, fogFar: 60,
     hemiSky: 0xf0d8ff, hemiGround: 0x5a4a3a, hemiIntensity: 1.0, sun: 0xffe0c8, fill: 0xd8b8ff,
@@ -122,6 +127,7 @@ export const LOOKS: Record<string, ArenaLook> = {
   },
   snow: {
     id: "snow",
+    grade: { saturation: 1.02, contrast: 1.04, tint: [0.97, 1.0, 1.05], vignette: 0.22 },
     sky: 0x9fc8e8, apron: 0xe8f0f6, far: 0xc8d8e8, fieldSide: 0x8c8a86, edging: 0x7a7268, drift: 0xf4f8fb,
     fogNear: 30, fogFar: 68,
     hemiSky: 0xe8f4ff, hemiGround: 0x8a9ab0, hemiIntensity: 1.05, sun: 0xfff6e8, fill: 0xd8e8ff,
@@ -135,6 +141,7 @@ export const LOOKS: Record<string, ArenaLook> = {
   },
   forge: {
     id: "forge",
+    grade: { saturation: 1.12, contrast: 1.14, tint: [1.07, 0.97, 0.9], vignette: 0.45 },
     sky: 0x2a1410, apron: 0x2e2226, far: 0x160c0a, fieldSide: 0x3a3238, edging: 0x4a3a3a, drift: 0x3a2a2a,
     fogNear: 22, fogFar: 54,
     hemiSky: 0xffb090, hemiGround: 0x2a1a1a, hemiIntensity: 0.9, sun: 0xffcaa0, fill: 0xff8a5a,
@@ -148,6 +155,7 @@ export const LOOKS: Record<string, ArenaLook> = {
   },
   mystic: {
     id: "mystic",
+    grade: { saturation: 1.12, contrast: 1.06, tint: [1.0, 0.97, 1.06], vignette: 0.36 },
     sky: 0x2a1a5a, apron: 0x3a2a6a, far: 0x1a0f3a, fieldSide: 0x6a5aa0, edging: 0x5a4a8a, drift: 0x6a4aa8,
     fogNear: 26, fogFar: 60,
     hemiSky: 0xd8c8ff, hemiGround: 0x3a2a5a, hemiIntensity: 1.0, sun: 0xf0e8ff, fill: 0xb890ff,
@@ -161,6 +169,7 @@ export const LOOKS: Record<string, ArenaLook> = {
   },
   workshop: {
     id: "workshop",
+    grade: { saturation: 1.08, contrast: 1.06, tint: [1.05, 1.0, 0.92], vignette: 0.3 },
     sky: 0x8a6a4a, apron: 0x6a4a2a, far: 0x3a2a1a, fieldSide: 0x7a5a3a, edging: 0x9a6a3a, drift: 0x8a6a4a,
     fogNear: 26, fogFar: 60,
     hemiSky: 0xffe8c8, hemiGround: 0x5a3a1a, hemiIntensity: 1.0, sun: 0xfff0d0, fill: 0xffd8a0,
@@ -174,6 +183,7 @@ export const LOOKS: Record<string, ArenaLook> = {
   },
   royal: {
     id: "royal",
+    grade: { saturation: 1.1, contrast: 1.05, tint: [1.02, 1.0, 0.97], vignette: 0.22 },
     sky: 0x6aa8e8, apron: 0xd8d0c0, far: 0x8a9ab0, fieldSide: 0xc8c0b0, edging: 0xd9a93f, drift: 0xe0d8c8,
     fogNear: 32, fogFar: 72,
     hemiSky: 0xf0f6ff, hemiGround: 0x8a8070, hemiIntensity: 1.05, sun: 0xfff6e0, fill: 0xffe8c8,
@@ -187,6 +197,7 @@ export const LOOKS: Record<string, ArenaLook> = {
   },
   ice: {
     id: "ice",
+    grade: { saturation: 1.02, contrast: 1.05, tint: [0.95, 1.0, 1.07], vignette: 0.24 },
     sky: 0x5a8ac8, apron: 0xd0e4f4, far: 0x8ab0d8, fieldSide: 0x7a9ab8, edging: 0x6a8aa8, drift: 0xe8f4ff,
     fogNear: 30, fogFar: 68,
     hemiSky: 0xd8ecff, hemiGround: 0x5a7a9a, hemiIntensity: 1.0, sun: 0xfff6e8, fill: 0xc8e0ff,
@@ -200,6 +211,7 @@ export const LOOKS: Record<string, ArenaLook> = {
   },
   jungle: {
     id: "jungle",
+    grade: { saturation: 1.12, contrast: 1.07, tint: [0.99, 1.03, 0.95], vignette: 0.34 },
     sky: 0x3a7a4a, apron: 0x2a5a2a, far: 0x163a1a, fieldSide: 0x5a4a2a, edging: 0x6a5a3a, drift: 0x2f7a3a,
     fogNear: 24, fogFar: 58,
     hemiSky: 0xc8f0c8, hemiGround: 0x1a3a1a, hemiIntensity: 1.0, sun: 0xfff2d8, fill: 0xa0e0a0,
@@ -213,6 +225,7 @@ export const LOOKS: Record<string, ArenaLook> = {
   },
   neon: {
     id: "neon",
+    grade: { saturation: 1.15, contrast: 1.06, tint: [1.0, 0.98, 1.04], vignette: 0.32 },
     sky: 0x2c1247, apron: 0x2a1a44, far: 0x190b30, fieldSide: 0x8a7cc2, edging: 0x453e66, drift: 0x554b80,
     fogNear: 26, fogFar: 58,
     hemiSky: 0xcfe0ff, hemiGround: 0x3a2c58, hemiIntensity: 1.05, sun: 0xeef2ff, fill: 0xd8c2ff,
