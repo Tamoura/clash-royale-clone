@@ -250,6 +250,14 @@ export class Hud {
 
   setReward(text: string | null): void {
     this.reward = text;
+    if (text === null) this.rewardChest = null;
+  }
+
+  /** Chest won this match (shown on the victory screen), or null. */
+  private rewardChest: "free" | "rare" | null = null;
+  private statsHtml = "";
+  setRewardChest(rarity: "free" | "rare" | null): void {
+    this.rewardChest = rarity;
   }
 
   /** Shake the elixir row (can't afford) or the hand (bad spot). */
@@ -473,7 +481,7 @@ export class Hud {
       }
       const p = me.stats;
       const e = foe.stats;
-      this.overlayStats.innerHTML =
+      const statsHtml =
         `<div class="stat-row"><span>${Math.round(p.damageDealt)}</span>` +
         `<label>damage</label><span>${Math.round(e.damageDealt)}</span></div>` +
         `<div class="stat-row"><span>${p.elixirSpent}</span>` +
@@ -485,10 +493,21 @@ export class Hud {
             `<label>elixir collected</label><span>${Math.round(e.elixirCollected)}</span></div>`
           : "") +
         this.buildReport(me.stats) +
-        (this.reward ? `<div class="reward-line">${this.reward}</div>` : "");
+        (this.reward ? `<div class="reward-line">${this.reward}</div>` : "") +
+        (this.rewardChest
+          ? `<div class="reward-chest ${this.rewardChest}">${icon("chest")}<span>${
+              this.rewardChest === "rare" ? "Rare Chest" : "Wooden Chest"
+            }</span></div>`
+          : "");
+      // Rewrite only on change so entrance animations aren't restarted every frame.
+      if (statsHtml !== this.statsHtml) {
+        this.statsHtml = statsHtml;
+        this.overlayStats.innerHTML = statsHtml;
+      }
       this.overlay.classList.add("show");
     } else {
       this.overlayShown = false;
+      this.statsHtml = "";
       this.overlay.classList.remove("show");
       delete this.overlay.dataset.kind;
       this.overlay.querySelector(".confetti-box")?.remove();

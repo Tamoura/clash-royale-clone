@@ -2641,6 +2641,39 @@ export class Battle3D {
     if (this.endStringEnemy) this.endStringEnemy.visible = viewSide !== "enemy";
   }
 
+  private showcase = false;
+  private showcaseT = 0;
+  /** Fraction of the canvas height (from the top) the home window covers. */
+  private showcaseWindow = 0.5;
+
+  /**
+   * Home-screen diorama: frame the arena small inside the top window of
+   * the home screen and let the camera sway slowly around it. Any battle
+   * start (setViewpoint) turns it off again.
+   */
+  setShowcase(on: boolean, windowFrac = 0.5): void {
+    this.showcase = on;
+    this.showcaseWindow = windowFrac;
+    if (on) {
+      this.dayPhase = this.phaseOverride ?? 0.15;
+      const w = this.container.clientWidth || 1;
+      const h = this.container.clientHeight || 1;
+      const aspect = w / h;
+      // Whole arena inside ~90% of the window height, centred in it.
+      const V = Math.max(28 / (windowFrac * 0.9), (22 / aspect) * 1.0);
+      const top = 0.6 + V * (windowFrac / 2);
+      this.camera.left = (-V / 2) * aspect;
+      this.camera.right = (V / 2) * aspect;
+      this.camera.top = top;
+      this.camera.bottom = top - V;
+      this.camera.updateProjectionMatrix();
+    } else {
+      this.frameOrtho();
+      this.camera.position.set(CAM_HOME.x, CAM_HOME.y, cameraZForView());
+      this.camera.lookAt(0, 0, 0);
+    }
+  }
+
   /** The HUD overlay height; the frame keeps the arena clear of it. */
   setTopInset(px: number): void {
     if (Math.abs(px - this.topInsetPx) < 0.5) return;
@@ -2650,6 +2683,10 @@ export class Battle3D {
 
   /** Fit the arena to the viewport with an orthographic frustum. */
   private frameOrtho(): void {
+    if (this.showcase) {
+      this.setShowcase(true, this.showcaseWindow);
+      return;
+    }
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
     const aspect = w / h;
@@ -2698,6 +2735,7 @@ export class Battle3D {
    */
   setViewpoint(side: Side): void {
     viewSide = side;
+    if (this.showcase) this.setShowcase(false);
     this.applyEndStrings();
     this.camera.position.set(CAM_HOME.x, CAM_HOME.y, cameraZForView());
     this.camera.lookAt(0, 0, 0);
@@ -3750,6 +3788,7 @@ export class Battle3D {
   }
 
   setMatchPhase(time: number, overtime: boolean): void {
+    if (this.showcase) return; // the home diorama keeps its golden hour
     if (this.phaseOverride !== null) {
       this.dayPhase = this.phaseOverride;
       return;
@@ -4265,6 +4304,15 @@ export class Battle3D {
       if (!this.shakeCtl.active) {
         this.camera.position.set(0, CAM_HOME.y, cameraZForView());
       }
+    }
+
+    // Home diorama: a slow swaying orbit that frames the whole arena in the
+    // window at the top of the home screen.
+    if (this.showcase) {
+      this.showcaseT += dt;
+      const yaw = Math.sin(this.showcaseT * 0.18) * 0.32;
+      this.camera.position.set(Math.sin(yaw) * 26, 30, Math.cos(yaw) * 26);
+      this.camera.lookAt(0, 0, 0);
     }
 
     // Spell / deploy telegraph ring pulse (dashed feel via opacity + scale).

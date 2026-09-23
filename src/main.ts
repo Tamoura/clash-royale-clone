@@ -657,7 +657,8 @@ function startLadder(): void {
           abilityUses: [],
           deploys: [],
         };
-  startCountdown();
+  if (!isSandbox()) showVersus(championBotMatch ? `👑 ${baseName}` : baseName);
+  startCountdown(!isSandbox());
   maybeShowFirstBattleTips();
 }
 
@@ -905,8 +906,15 @@ function appendEditionToggle(parent: HTMLElement): void {
   parent.appendChild(editionNote);
 }
 
+type HomeTab = "shop" | "cards" | "battle" | "events" | "profile";
+let homeTab: HomeTab = "battle";
+
 function buildHome(): void {
   pickerRoot.innerHTML = "";
+  if (EDITION_CHOSEN && variant) {
+    buildHomeShell();
+    return;
+  }
 
   const crest = document.createElement("div");
   crest.className = "cr-crest";
@@ -932,72 +940,181 @@ function buildHome(): void {
     return;
   }
 
+}
+
+/**
+ * The CR-style home: resource bar, a window onto your current arena (the
+ * live 3D scene behind a transparent cut-out, slowly orbiting), the
+ * trophy-road banner, a tab panel, and a bottom tab bar.
+ */
+function buildHomeShell(): void {
+  const shell = document.createElement("div");
+  shell.className = "home-shell";
+  pickerRoot.appendChild(shell);
+
+  // Stage the diorama: your arena, swaying behind the window.
+  scene.setArenaLook(battleArenaId());
+  scene.setShowcase(true, 0.5);
+
+  // ---- Resource bar -----------------------------------------------------
+  const top = document.createElement("div");
+  top.className = "home-top";
+  top.innerHTML =
+    `<span class="home-chip trophies">${icon("trophy")}<b>${profile.trophies}</b></span>` +
+    `<span class="home-chip gold">${icon("coin")}<b>${profile.gold}</b></span>` +
+    `<span class="home-chip gems">${icon("gem")}<b>${profile.gems}</b></span>`;
+  shell.appendChild(top);
+
+  // ---- Arena window + trophy road banner --------------------------------
+  const win = document.createElement("div");
+  win.className = "home-window";
   const prog = trophyProgress(profile.trophies);
-  const arenaBlock = document.createElement("div");
-  arenaBlock.className = "home-arena";
-  arenaBlock.innerHTML =
+  const banner = document.createElement("div");
+  banner.className = "home-arena-banner";
+  banner.innerHTML =
     `<div class="home-arena-name">${prog.current.name}</div>` +
-    `<div class="home-trophy-row">🏆 ${profile.trophies}` +
-    (prog.next ? ` / ${prog.next.trophies}` : " · Peak") +
-    `</div>`;
-  const bar = document.createElement("div");
-  bar.className = "home-trophy-bar";
-  const fill = document.createElement("div");
-  fill.className = "home-trophy-fill";
-  fill.style.width = `${Math.round(prog.ratio * 100)}%`;
-  bar.appendChild(fill);
-  arenaBlock.appendChild(bar);
-  if (prog.next) {
-    const hint = document.createElement("div");
-    hint.className = "home-arena-next";
-    hint.textContent = `Next: ${prog.next.name}`;
-    arenaBlock.appendChild(hint);
-  }
-  pickerRoot.appendChild(arenaBlock);
+    `<div class="home-road"><div class="home-road-fill" style="width:${Math.round(prog.ratio * 100)}%"></div>` +
+    `<span>${icon("trophy")} ${profile.trophies}${prog.next ? ` / ${prog.next.trophies}` : ""}</span></div>` +
+    (prog.next ? `<div class="home-arena-next">${tr("Next", "التالي")}: ${prog.next.name}</div>` : "");
+  win.appendChild(banner);
+  shell.appendChild(win);
+  // Fit the diorama to the window once the home screen is laid out.
+  requestAnimationFrame(() => {
+    const bottom = banner.getBoundingClientRect().top;
+    const h = stage.clientHeight || 1;
+    if (bottom > 0) scene.setShowcase(true, Math.min(0.9, Math.max(0.3, bottom / h)));
+  });
 
-  const currency = document.createElement("div");
-  currency.className = "home-currency";
-  currency.innerHTML =
-    `<span class="chip gold">🪙 ${profile.gold}</span>` +
-    `<span class="chip gems">💎 ${profile.gems}</span>`;
-  pickerRoot.appendChild(currency);
-
-  const nav = document.createElement("div");
-  nav.className = "home-nav";
-  const mk = (label: string, cls: string, fn: () => void): void => {
+  // ---- Tab panel ---------------------------------------------------------
+  const panel = document.createElement("div");
+  panel.className = "home-panel";
+  shell.appendChild(panel);
+  const mk = (parent: HTMLElement, iconName: Parameters<typeof icon>[0], label: string, cls: string, fn: () => void): HTMLButtonElement => {
     const btn = document.createElement("button");
     btn.className = cls;
-    btn.textContent = label;
+    btn.innerHTML = `${icon(iconName)}<span>${label}</span>`;
     btn.addEventListener("click", fn);
-    nav.appendChild(btn);
+    parent.appendChild(btn);
+    return btn;
   };
-  mk(tr("⚔️ Battle", "⚔️ قتال"), "battle-btn", () => openDeckPicker({ mode: "battle" }));
-  mk(tr("🎲 Draft", "🎲 انتقاء"), "battle-btn friend", () => openDraft());
-  mk(tr("🧩 Challenges", "🧩 تحديات"), "battle-btn friend", () => openChallenges());
-  mk(
-    isDailyDone()
-      ? tr("📅 Daily ✓ (done today)", "📅 اليومية ✓ (أُنجزت)")
-      : tr("📅 Daily Battle", "📅 المعركة اليومية"),
-    "battle-btn friend",
-    () => startDaily(),
-  );
-  mk(tr("🃏 Deck", "🃏 المجموعة"), "battle-btn friend", () => openDeckPicker({ mode: "deck" }));
-  mk(
-    hasSavedChampion()
-      ? tr("🛠️ Edit Champion", "🛠️ تعديل البطل")
-      : tr("🛠️ Create Champion", "🛠️ إنشاء البطل"),
-    "battle-btn friend",
-    () => openStudio(),
-  );
-  mk(tr("📚 Collection", "📚 المقتنيات"), "battle-btn friend", () => openCollection());
-  mk(tr("🎁 Chests", "🎁 الصناديق"), "battle-btn friend", () => openChests());
-  if (localStorage.getItem(REPLAY_KEY)) {
-    mk(tr("📺 Last Battle", "📺 آخر معركة"), "battle-btn friend", () => {
-      closeDeckPicker();
-      startReplay();
-    });
+  const grid = (): HTMLElement => {
+    const g = document.createElement("div");
+    g.className = "home-grid";
+    panel.appendChild(g);
+    return g;
+  };
+
+  const questHost = document.createElement("div");
+  questHost.className = "home-boards";
+  const achHost = document.createElement("div");
+  achHost.className = "home-boards";
+
+  if (homeTab === "battle") {
+    mk(panel, "sword", tr("Battle", "قتال"), "battle-btn home-battle", () => openDeckPicker({ mode: "battle" }));
+    panel.appendChild(chestRow());
+    panel.appendChild(questHost);
+  } else if (homeTab === "cards") {
+    const g = grid();
+    mk(g, "cards", tr("Deck", "المجموعة"), "battle-btn friend", () => openDeckPicker({ mode: "deck" }));
+    mk(g, "book", tr("Collection", "المقتنيات"), "battle-btn friend", () => openCollection());
+    mk(
+      g,
+      "hammer",
+      hasSavedChampion() ? tr("Edit Champion", "تعديل البطل") : tr("Create Champion", "إنشاء البطل"),
+      "battle-btn friend",
+      () => openStudio(),
+    );
+  } else if (homeTab === "shop") {
+    panel.appendChild(chestRow());
+    const g = grid();
+    mk(g, "chest", tr("Chest room", "غرفة الصناديق"), "battle-btn friend", () => openChests());
+    const note = document.createElement("div");
+    note.className = "collect-label";
+    note.textContent = tr(
+      "Win ladder battles to earn chests. Craft missing shards with gold in Collection.",
+      "افز بمعارك السلم لتربح صناديق. اصنع الشظايا الناقصة بالذهب في المقتنيات.",
+    );
+    panel.appendChild(note);
+  } else if (homeTab === "events") {
+    const g = grid();
+    mk(g, "puzzle", tr("Challenges", "تحديات"), "battle-btn friend", () => openChallenges());
+    mk(
+      g,
+      "calendar",
+      isDailyDone() ? tr("Daily ✓ done", "اليومية ✓") : tr("Daily Battle", "المعركة اليومية"),
+      "battle-btn friend",
+      () => startDaily(),
+    );
+    mk(g, "dice", tr("Draft", "انتقاء"), "battle-btn friend", () => openDraft());
+    if (localStorage.getItem(REPLAY_KEY)) {
+      mk(g, "tv", tr("Last Battle", "آخر معركة"), "battle-btn friend", () => {
+        closeDeckPicker();
+        startReplay();
+      });
+    }
+  } else {
+    appendEditionToggle(panel);
+    panel.appendChild(achHost);
   }
-  pickerRoot.appendChild(nav);
+
+  // ---- Bottom tab bar -----------------------------------------------------
+  const tabs = document.createElement("nav");
+  tabs.className = "home-tabs";
+  const TABS: Array<[HomeTab, Parameters<typeof icon>[0], string, string]> = [
+    ["shop", "shop", "Shop", "المتجر"],
+    ["cards", "cards", "Cards", "البطاقات"],
+    ["battle", "sword", "Battle", "قتال"],
+    ["events", "events", "Events", "فعاليات"],
+    ["profile", "profile", "Profile", "الملف"],
+  ];
+  for (const [id, ic, en, ar] of TABS) {
+    const b = document.createElement("button");
+    b.className = "home-tab" + (id === homeTab ? " active" : "");
+    b.innerHTML = `${icon(ic)}<span>${tr(en, ar)}</span>`;
+    b.setAttribute("aria-current", id === homeTab ? "page" : "false");
+    b.addEventListener("click", () => {
+      homeTab = id;
+      buildHome();
+    });
+    tabs.appendChild(b);
+  }
+  shell.appendChild(tabs);
+
+  const pickerRoot2 = { questHost, achHost };
+  buildHomeBoards(pickerRoot2);
+}
+
+/** Chest slots under the Battle button (tap to open the chest room). */
+function chestRow(): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "home-chests";
+  const now = Date.now();
+  for (let i = 0; i < 4; i++) {
+    const slot = profile.chests[i] ?? null;
+    const cell = document.createElement("button");
+    cell.className = "home-chest" + (slot ? ` ${slot.rarity}` : " empty");
+    if (!slot) {
+      cell.innerHTML = `<span class="home-chest-label">${tr("Empty", "فارغ")}</span>`;
+    } else {
+      const left = slot.readyAt - now;
+      const label =
+        left <= 0
+          ? tr("Open!", "افتح!")
+          : left < 3_600_000
+            ? `${Math.ceil(left / 60000)}m`
+            : `${Math.ceil(left / 3_600_000)}h`;
+      cell.innerHTML = `${icon("chest")}<span class="home-chest-label">${label}</span>`;
+      if (left <= 0) cell.classList.add("ready");
+    }
+    cell.addEventListener("click", () => openChests());
+    row.appendChild(cell);
+  }
+  return row;
+}
+
+/** Daily quests and achievements, rendered into the tab that shows them. */
+function buildHomeBoards(hosts: { questHost: HTMLElement; achHost: HTMLElement }): void {
+  const { questHost, achHost } = hosts;
 
   // Daily quest board: three goals, gold on claim, fresh every day.
   const today = dateKey(new Date());
@@ -1009,7 +1126,7 @@ function buildHome(): void {
   board.className = "quest-board";
   const qTitle = document.createElement("div");
   qTitle.className = "quest-title";
-  qTitle.textContent = tr("📜 Daily Quests", "📜 مهام اليوم");
+  qTitle.innerHTML = `${icon("book")} ${tr("Daily Quests", "مهام اليوم")}`;
   board.appendChild(qTitle);
   for (const id of quests.active) {
     const def = questDef(id);
@@ -1039,7 +1156,7 @@ function buildHome(): void {
       btn.textContent = "✓";
       btn.disabled = true;
     } else if (done) {
-      btn.textContent = `🪙 ${def.reward}`;
+      btn.innerHTML = `${icon("coin")} ${def.reward}`;
       btn.addEventListener("click", () => {
         const res = claimQuest(quests, id);
         if (!res) return;
@@ -1050,13 +1167,13 @@ function buildHome(): void {
         buildHome(); // refresh board + currency
       });
     } else {
-      btn.textContent = `🪙 ${def.reward}`;
+      btn.innerHTML = `${icon("coin")} ${def.reward}`;
       btn.disabled = true;
     }
     row.appendChild(btn);
     board.appendChild(row);
   }
-  pickerRoot.appendChild(board);
+  questHost.appendChild(board);
 
   // Achievements board: lifetime goals under the daily quests, with the
   // current season's badge in the title row.
@@ -1064,7 +1181,7 @@ function buildHome(): void {
   aBoard.className = "quest-board ach-board";
   const aTitle = document.createElement("div");
   aTitle.className = "quest-title";
-  aTitle.textContent = tr("🏅 Achievements", "🏅 الإنجازات");
+  aTitle.innerHTML = `${icon("star")} ${tr("Achievements", "الإنجازات")}`;
   const seasonChip = document.createElement("span");
   seasonChip.className = "season-chip";
   seasonChip.textContent = tr(
@@ -1108,7 +1225,7 @@ function buildHome(): void {
       btn.textContent = "✓";
       btn.disabled = true;
     } else if (earned) {
-      btn.textContent = `🪙 ${def.reward}`;
+      btn.innerHTML = `${icon("coin")} ${def.reward}`;
       btn.addEventListener("click", () => {
         const res = claimAchievement(achievements, def.id);
         if (!res) return;
@@ -1119,13 +1236,13 @@ function buildHome(): void {
         buildHome(); // refresh board + currency
       });
     } else {
-      btn.textContent = `🪙 ${def.reward}`;
+      btn.innerHTML = `${icon("coin")} ${def.reward}`;
       btn.disabled = true;
     }
     row.appendChild(btn);
     aBoard.appendChild(row);
   }
-  pickerRoot.appendChild(aBoard);
+  achHost.appendChild(aBoard);
 }
 
 // ---- Character Studio ----------------------------------------------------
@@ -2469,6 +2586,7 @@ function applyMatchResult(winner: "player" | "enemy" | "draw"): void {
   cardLevels = profile.levels;
   playerDeck = profile.deck;
   persistProfile();
+  hud.setRewardChest(summary.chestGranted ? summary.chestRarity : null);
   season = { ...season, best: Math.max(season.best, profile.trophies) };
   saveSeason(season);
   achievements = {
@@ -2544,10 +2662,28 @@ function showBanner(text: string, big = false): void {
   bannerEl.classList.add("show");
 }
 
-function startCountdown(): void {
+/** CR-style "VS" splash before a match: you vs the opponent, 1.6 s. */
+function showVersus(opponent: string): void {
+  if (reduceMotion()) return;
+  document.querySelector(".versus")?.remove();
+  const vs = document.createElement("div");
+  vs.className = "versus";
+  vs.setAttribute("aria-hidden", "true");
+  const ability = ABILITIES[abilityChoice];
+  vs.innerHTML =
+    `<div class="versus-side foe"><div class="versus-name">${opponent}</div>` +
+    `<div class="versus-meta">${icon("trophy")} ${Math.max(0, profile.trophies + Math.round((Math.random() - 0.5) * 60))}</div></div>` +
+    `<div class="versus-vs">VS</div>` +
+    `<div class="versus-side me"><div class="versus-name">${tr("You", "أنت")}</div>` +
+    `<div class="versus-meta">${icon("trophy")} ${profile.trophies} ${icon("shield")} ${tr(TOWER_TROOPS[towerTroop].name, TOWER_TROOPS[towerTroop].ar)} · ${tr(ability.name, ability.ar)}</div></div>`;
+  document.body.appendChild(vs);
+  window.setTimeout(() => vs.remove(), 1650);
+}
+
+function startCountdown(withVersus = false): void {
   phase = "countdown";
   countdownStep = 4;
-  countdownTimer = 0;
+  countdownTimer = withVersus && !reduceMotion() ? 1.7 : 0;
   lastMinuteShown = false;
   overtimeShown = false;
 }
@@ -2817,6 +2953,7 @@ function frame(now: number): void {
 
   // The world holds its breath while the deck picker is open.
   if (pickerRoot.classList.contains("show")) {
+    scene.sync(battle, 0); // towers etc. exist for the home diorama
     scene.render(dt);
     requestAnimationFrame(frame);
     return;
@@ -2989,5 +3126,6 @@ if (import.meta.env.DEV) {
     tick: () => online?.tick ?? 0,
     mode: () => mode,
     entities: () => battle.entities.length,
+    battle: () => battle,
   };
 }
