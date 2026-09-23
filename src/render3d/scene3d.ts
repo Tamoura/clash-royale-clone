@@ -19,6 +19,8 @@ import { spawnRecipe } from "./spawnfx";
 import { ShakeController } from "./shake";
 import { HitStopController } from "./hitstop";
 import { ParticleField } from "./particles";
+import { batchStatic } from "./staticBatch";
+import { QualityGovernor, qualityPinFromUrl } from "./quality";
 import { impactStyle } from "./impactfx";
 import { THEME, ARABIC } from "./theme";
 import { ARABIC_LOOK, LOOKS, lookForArena, type ArenaLook, type BrickVariant } from "./arenaLooks";
@@ -170,6 +172,7 @@ const SPARK_POS = new THREE.Vector3();
 const SPARK_SCALE = new THREE.Vector3();
 const SPARK_QUAT = new THREE.Quaternion();
 const SPARK_COLOR = new THREE.Color();
+const CROWD_M = new THREE.Matrix4();
 const WATER_M = new THREE.Matrix4();
 const WATER_POS = new THREE.Vector3();
 const WATER_SCALE = new THREE.Vector3();
@@ -1022,6 +1025,7 @@ function buildTowerMesh(e: Entity): EntityView {
   const mount = new THREE.Group();
   mount.position.y = height + 0.18;
   mount.add(defender.group);
+  mount.traverse((o) => (o.castShadow = false)); // tiny on the roof; not worth a shadow pass
   root.add(mount);
   view.defender = defender;
   view.defenderMount = mount;
@@ -1062,6 +1066,8 @@ function buildTowerMesh(e: Entity): EntityView {
   root.add(hpText.sprite);
   view.hpText = hpText.text;
 
+  // The keep never moves: merge its ~50 stone/trim/gun parts by look.
+  batchStatic(root, (o) => o === mount || o === bar.group);
   view.flashMats = collectFlashMats(root);
   view.lastHp = e.hp;
   view.flashT = 0;
@@ -1301,6 +1307,10 @@ function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
     if (rig?.hover) blobShadow = contact;
   }
 
+  // Units are grounded by the contact shadow above, as in CR; skipping
+  // the shadow-map pass for ~40 parts per unit halves a busy fight's cost.
+  root.traverse((o) => (o.castShadow = false));
+
   const bar = makeHpBar(0.9, HP_COLOR[e.side], lift + 0.25);
   bar.group.visible = false; // shown once damaged
   root.add(bar.group);
@@ -1365,7 +1375,8 @@ export class Battle3D {
   /** Sim projectile meshes by projectile id. */
   private projViews = new Map<number, THREE.Object3D>();
   /** Spectator bodies/heads; they jump when a crown falls. */
-  private crowdParts: THREE.Mesh[] = [];
+  private crowd: { bodies: THREE.InstancedMesh; heads: THREE.InstancedMesh; seats: THREE.Vector2[] } | null =
+    null;
   /** Seconds of crowd cheering left. */
   private cheer = 0;
   /** Seconds until the next ambient bird flyover. */
@@ -1376,6 +1387,9 @@ export class Battle3D {
   private waterTime = 0;
   /** Post-processing: thresholded bloom followed by display output encoding. */
   private readonly composer: EffectComposer;
+  /** Steps resolution/bloom down on devices that can't hold the frame rate. */
+  private readonly quality = new QualityGovernor(qualityPinFromUrl(location.search));
+  private lastFrameAt = 0;
   private readonly bloom: UnrealBloomPass;
   private readonly outputPass: OutputPass;
   private fxaa!: ShaderPass;
@@ -1586,7 +1600,7 @@ export class Battle3D {
         disposeDeep(child);
       }
     }
-    this.crowdParts = [];
+    this.crowd = null;
     this.glowMats = [];
     (this.scene.background as THREE.Color).set(LOOK.sky);
     const fog = this.scene.fog as THREE.Fog;
@@ -1609,6 +1623,46 @@ export class Battle3D {
   /** Current look id (for tests / debugging). */
   get arenaLookId(): string {
     return LOOK.id;
+  }
+
+  /** Spectators as two instanced meshes (bodies, heads): 2 draw calls. */
+  private buildCrowd(seats: Array<{ x: number; z: number; garb: number; skin: number }>): void {
+    if (seats.length === 0) return;
+    const bodies = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(0.1, 0.13, 0.26, 6),
+      toon(0xffffff),
+      seats.length,
+    );
+    const heads = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 8, 6), toon(0xffffff), seats.length);
+    const col = new THREE.Color();
+    const hsl = { h: 0, s: 0, l: 0 };
+    const vivid = (hex: number): THREE.Color => {
+      col.set(hex).getHSL(hsl);
+      return col.setHSL(hsl.h, Math.min(1, hsl.s * 1.2), hsl.l); // as toon() does
+    };
+    seats.forEach((seat, i) => {
+      bodies.setColorAt(i, vivid(seat.garb));
+      heads.setColorAt(i, vivid(seat.skin));
+    });
+    this.crowd = { bodies, heads, seats: seats.map((s) => new THREE.Vector2(s.x, s.z)) };
+    this.poseCrowd(-1);
+    this.arenaGroup.add(bodies, heads);
+  }
+
+  /** Place every spectator; `t >= 0` makes them hop (cheering). */
+  private poseCrowd(t: number): void {
+    const c = this.crowd!;
+    c.seats.forEach((seat, i) => {
+      const hop = t >= 0 ? Math.abs(Math.sin(t * 11 + i * 2.6)) * 0.16 : 0;
+      CROWD_M.makeTranslation(seat.x, 1.06 + hop, seat.y);
+      c.bodies.setMatrixAt(i, CROWD_M);
+      CROWD_M.makeTranslation(seat.x, 1.28 + hop, seat.y);
+      c.heads.setMatrixAt(i, CROWD_M);
+    });
+    c.bodies.instanceMatrix.needsUpdate = true;
+    c.heads.instanceMatrix.needsUpdate = true;
+    c.bodies.computeBoundingSphere();
+    c.heads.computeBoundingSphere();
   }
 
   private decorate(): void {
@@ -1666,6 +1720,7 @@ export class Battle3D {
     // Long spectator stands flanking the arena: stone galleries with
     // pitched roofs — red on the enemy half, blue on the player half
     // (CR arenas are walled in by these).
+    const crowdSeats: Array<{ x: number; z: number; garb: number; skin: number }> = [];
     const stand = (x: number, zCenter: number, len: number, roofColor: number): void => {
       const g = new THREE.Group();
       const wall = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, len), toon(LOOK.standWall));
@@ -1674,29 +1729,20 @@ export class Battle3D {
       wall.receiveShadow = true;
       g.add(wall);
 
-      // A crowd of spectators leaning over the field-side parapet.
+      // A crowd of spectators leaning over the field-side parapet
+      // (collected here, drawn below as two instanced meshes).
       const innerX = -Math.sign(x) * 0.92;
       const CROWD_SKIN = [0xf6c9a0, 0x9c6644, 0xcfa07a] as const;
       const CROWD_GARB = [0xe53935, 0x3b82f6, 0xf2c14e, 0x66bb6a, 0xab47bc] as const;
       const seats = Math.floor(len / 1.1);
       for (let i = 0; i < seats; i++) {
         const z = -len / 2 + 0.7 + i * 1.1 + ((i * 7) % 3) * 0.12;
-        const body = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.1, 0.13, 0.26, 6),
-          toon(CROWD_GARB[(i * 3 + Math.round(x)) % CROWD_GARB.length]),
-        );
-        body.position.set(innerX, 1.06, z);
-        body.userData.baseY = 1.06;
-        g.add(body);
-        this.crowdParts.push(body);
-        const head = new THREE.Mesh(
-          new THREE.SphereGeometry(0.1, 8, 6),
-          toon(CROWD_SKIN[(i + Math.abs(Math.round(zCenter))) % CROWD_SKIN.length]),
-        );
-        head.position.set(innerX, 1.28, z);
-        head.userData.baseY = 1.28;
-        g.add(head);
-        this.crowdParts.push(head);
+        crowdSeats.push({
+          x: x + innerX,
+          z: zCenter + z,
+          garb: CROWD_GARB[(i * 3 + Math.round(x)) % CROWD_GARB.length],
+          skin: CROWD_SKIN[(i + Math.abs(Math.round(zCenter))) % CROWD_SKIN.length],
+        });
       }
 
       const roof = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, len + 0.4), toon(roofColor));
@@ -1720,6 +1766,7 @@ export class Battle3D {
       stand(sx * standX, -ARENA_HEIGHT / 4 - 1, standLen, LOOK.standRoofEnemy); // enemy side
       stand(sx * standX, ARENA_HEIGHT / 4 + 1, standLen, LOOK.standRoofPlayer); // player side
     }
+    this.buildCrowd(crowdSeats);
 
     // Striped spectator tents in the corners, team-colored.
     const tent = (x: number, z: number, color: number): void => {
@@ -1793,6 +1840,7 @@ export class Battle3D {
         const y = 2.8;
         const holder = this.arenaGroup;
         const endGroup = new THREE.Group();
+        endGroup.userData.batchRoot = true; // toggled as a unit per viewpoint
         this.arenaGroup = endGroup;
         rope(ARENA_WIDTH + 10, 0, y, sz * dz, true);
         for (let i = 0; i < 7; i++) {
@@ -2361,6 +2409,8 @@ export class Battle3D {
     // organic winding paths directly into the floor texture instead.
     if (arabic) this.addStraightLanes();
     this.finishArena();
+    // Hundreds of static props -> one draw call per look.
+    batchStatic(this.arenaGroup, () => false);
   }
 
   private addStraightLanes(): void {
@@ -2718,7 +2768,8 @@ export class Battle3D {
     const h = this.container.clientHeight || 1;
     // Full retina sharpness everywhere (capped at 2x): the old 1.5x mobile
     // cap left phones — where most play happens — visibly soft.
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = Math.min(this.quality.level.dprCap, window.devicePixelRatio || 1);
+    this.bloom.enabled = this.quality.level.bloom;
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(w, h, false);
     this.composer.setPixelRatio(dpr);
@@ -4257,13 +4308,7 @@ export class Battle3D {
     // Crowd cheering: spectators hop while the cheer lasts.
     if (this.cheer > 0) {
       this.cheer = Math.max(0, this.cheer - dt);
-      this.crowdParts.forEach((m, i) => {
-        const base = m.userData.baseY as number;
-        m.position.y =
-          this.cheer > 0
-            ? base + Math.abs(Math.sin(this.waterTime * 11 + i * 1.3)) * 0.16
-            : base;
-      });
+      if (this.crowd) this.poseCrowd(this.cheer > 0 ? this.waterTime : -1);
     }
 
     // Ambient bird flyovers keep the sky alive.
@@ -4368,6 +4413,9 @@ export class Battle3D {
     });
 
     this.composer.render();
+    const now = performance.now();
+    if (this.lastFrameAt > 0 && this.quality.sample((now - this.lastFrameAt) / 1000)) this.resize();
+    this.lastFrameAt = now;
   }
 
   /** Remove every entity mesh (used on battle restart). */

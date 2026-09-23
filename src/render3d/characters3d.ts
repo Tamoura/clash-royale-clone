@@ -201,7 +201,10 @@ function box(
 }
 
 function sphere(r: number, color: number, x = 0, y = 0, z = 0): THREE.Mesh {
-  const geo = cachedGeo(`s:${r}`, () => new THREE.SphereGeometry(r, 24, 18));
+  // Detail scales with size: eyes and studs don't need 24 segments.
+  const geo = cachedGeo(`s:${r}`, () =>
+    r < 0.06 ? new THREE.SphereGeometry(r, 10, 8) : r < 0.14 ? new THREE.SphereGeometry(r, 16, 12) : new THREE.SphereGeometry(r, 24, 18),
+  );
   return shadowed(new THREE.Mesh(geo, toon(color)), x, y, z);
 }
 
@@ -216,7 +219,7 @@ function cyl(
 ): THREE.Mesh {
   const geo = cachedGeo(
     `c:${rt}:${rb}:${h}`,
-    () => new THREE.CylinderGeometry(rt, rb, h, 24),
+    () => new THREE.CylinderGeometry(rt, rb, h, Math.max(rt, rb) < 0.06 ? 10 : Math.max(rt, rb) < 0.14 ? 16 : 24),
   );
   return shadowed(new THREE.Mesh(geo, toon(color)), x, y, z);
 }

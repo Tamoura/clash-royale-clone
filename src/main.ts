@@ -22,6 +22,7 @@ import {
   createBattle,
   deployCard,
   effectiveCard,
+  spawnUnits,
   type BattleState,
   type CardLevels,
 } from "./game/battle";
@@ -3127,5 +3128,10 @@ if (import.meta.env.DEV) {
     mode: () => mode,
     entities: () => battle.entities.length,
     battle: () => battle,
+    scene: () => scene,
+    spawn: (side: "player" | "enemy", id: CardId, x: number, y: number) =>
+      spawnUnits(battle, side, id, x, y).length,
+    arenas: () => ARENAS.map((a) => a.id),
+    phase: () => phase,
   };
 }

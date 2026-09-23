@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "balance": "vite-node scripts/balance.ts --",
     "relay": "node --experimental-transform-types server/relay.ts",
-    "play": "node scripts/play-lan.mjs"
+    "play": "node scripts/play-lan.mjs",
+    "visual-sheet": "node tools/visual-sheet.mjs"
   },
   "devDependencies": {
     "puppeteer-core": "^25.1.0",
