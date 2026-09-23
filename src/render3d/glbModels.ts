@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { ARABIC } from "./theme";
 
@@ -13,6 +14,25 @@ interface LoadedGlb {
   scene: THREE.Group;
   animations: THREE.AnimationClip[];
 }
+
+/**
+ * One art style on the field: every troop uses the hand-built rig roster
+ * (audited for distinct silhouettes and colours) unless the player opts in
+ * to the KayKit models with `?models=kaykit` (remembered). The free packs
+ * only cover 13 humanoid cards, so mixing them in split the field into two
+ * styles — and cost ~27 MB of downloads on every visit.
+ */
+export const MODELS_KEY = "cr-clone-models";
+function kaykitOptIn(): boolean {
+  try {
+    const q = new URLSearchParams(location.search).get("models");
+    if (q === "kaykit" || q === "rigs") localStorage.setItem(MODELS_KEY, q);
+    return localStorage.getItem(MODELS_KEY) === "kaykit";
+  } catch {
+    return false; // node / no storage: the rig roster
+  }
+}
+const USE_KAYKIT = kaykitOptIn();
 
 const loaded = new Map<string, LoadedGlb>();
 const loading = new Set<string>();
@@ -106,8 +126,9 @@ export function preloadGlbModels(): void {
   // The western KayKit models clash with the Arabic (crescent) art direction,
   // which dresses the hand-built rigs in turbans. Only load them in the normal
   // theme; the Arabic theme keeps its themed primitive rigs.
-  if (ARABIC) return;
+  if (ARABIC || !USE_KAYKIT) return;
   const loader = new GLTFLoader();
+  loader.setMeshoptDecoder(MeshoptDecoder);
   for (const file of new Set(Object.values(MODEL_FILE))) {
     if (!file || loaded.has(file) || loading.has(file)) continue;
     loading.add(file);
@@ -124,7 +145,7 @@ export function preloadGlbModels(): void {
 }
 
 export function hasGlbModel(cardId: string): boolean {
-  if (ARABIC) return false; // Arabic theme uses the turbaned primitive rigs
+  if (ARABIC || !USE_KAYKIT) return false; // one style: the rig roster
   const file = MODEL_FILE[cardId];
   return !!file && loaded.has(file);
 }

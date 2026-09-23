@@ -201,7 +201,7 @@ function box(
 }
 
 function sphere(r: number, color: number, x = 0, y = 0, z = 0): THREE.Mesh {
-  const geo = cachedGeo(`s:${r}`, () => new THREE.SphereGeometry(r, 20, 16));
+  const geo = cachedGeo(`s:${r}`, () => new THREE.SphereGeometry(r, 24, 18));
   return shadowed(new THREE.Mesh(geo, toon(color)), x, y, z);
 }
 
@@ -216,7 +216,7 @@ function cyl(
 ): THREE.Mesh {
   const geo = cachedGeo(
     `c:${rt}:${rb}:${h}`,
-    () => new THREE.CylinderGeometry(rt, rb, h, 20),
+    () => new THREE.CylinderGeometry(rt, rb, h, 24),
   );
   return shadowed(new THREE.Mesh(geo, toon(color)), x, y, z);
 }
