@@ -2044,3 +2044,198 @@ button.card.ready-pop {
 }
 .ability-btn.ready .ability-icon { filter: none; }
 .ability-btn.ready-pop { animation: crownBannerPop 0.5s ease-out; }
+
+/* ══════════════════════════════════════════════════════════════
+   Phase 1 — CR battle chrome: the top bar floats over the arena
+   ══════════════════════════════════════════════════════════════ */
+#app {
+  position: relative;
+}
+#topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 4px 8px;
+  padding: calc(6px + env(safe-area-inset-top)) 10px 18px;
+  background: linear-gradient(180deg, rgba(8, 12, 28, 0.82) 0%, rgba(8, 12, 28, 0.55) 60%, rgba(8, 12, 28, 0) 100%);
+  border-bottom: none;
+  box-shadow: none;
+  pointer-events: none;
+}
+#topbar > * {
+  pointer-events: auto;
+}
+/* Opponent banner top-left, you just under it: a compact scoreboard. */
+#topbar .crowns.enemy {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  flex-direction: row-reverse;
+}
+#topbar .crowns.player {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: start;
+}
+#topbar .crowns {
+  padding: 3px 10px 3px 4px;
+  font-size: 13px;
+  border-radius: 999px;
+}
+#topbar .crowns.enemy {
+  padding: 3px 4px 3px 10px;
+}
+#topbar .pname {
+  max-width: 12ch;
+  font-size: 12px;
+}
+#topbar .clock {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  margin: 0;
+  font-size: 22px;
+  padding: 2px 12px 4px;
+  position: relative;
+}
+#topbar .clock::before {
+  content: attr(data-label);
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: #cfd8ff;
+  text-transform: uppercase;
+  text-shadow: none;
+  margin-bottom: -2px;
+}
+#topbar .battle-menu {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  position: relative;
+}
+.menu-toggle {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  background: linear-gradient(180deg, #34457a, #1a2346);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.18), 0 3px 6px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+.menu-toggle span {
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+  background: #f4f0ff;
+}
+.menu-panel {
+  position: absolute;
+  top: 46px;
+  right: 0;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  background: linear-gradient(180deg, #223055, #141d36);
+  border: 2px solid var(--cr-gold-border, #b8892e);
+  border-radius: 12px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6);
+}
+.battle-menu.open .menu-panel {
+  display: flex;
+}
+#topbar .menu-panel .mute {
+  width: 44px;
+  height: 40px;
+  font-size: 18px;
+}
+
+/* ── One chat bubble instead of four floating emote buttons ── */
+.emote-bar {
+  left: 8px;
+  right: auto;
+  bottom: 8px;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+}
+.emote-bar .emote-toggle {
+  width: 46px;
+  height: 40px;
+  border-radius: 14px 14px 14px 4px;
+  border: 2px solid #1b2a52;
+  background: linear-gradient(180deg, #ffffff, #d9e2f5);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.bubble-dots {
+  display: flex;
+  gap: 4px;
+}
+.bubble-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #1b2a52;
+}
+.emote-tray {
+  display: none;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 14px;
+  background: rgba(14, 20, 40, 0.85);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+}
+.emote-bar.open .emote-tray {
+  display: flex;
+}
+.emote-tray button {
+  width: 42px;
+  height: 42px;
+  font-size: 24px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+}
+
+/* ── Hand: CR cards carry no captions or key hints on phones ── */
+@media (hover: none), (max-width: 480px) {
+  .key-chip {
+    display: none;
+  }
+  .card-name {
+    display: none;
+  }
+}
+/* Cost droplet rides the bottom-centre edge (reference layout). */
+.card-cost {
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: -11px;
+}
+/* Unaffordable: dimmed, not hidden. */
+button.card.locked {
+  filter: grayscale(0.55) brightness(0.86);
+}
+.card-need {
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  padding: 0 6px;
+  border-width: 1.5px;
+}

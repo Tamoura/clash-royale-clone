@@ -411,13 +411,15 @@ export class Hud {
         // with a glowing edge; dark covers the part still to charge.
         const pct = progress * 100;
         const edge = Math.max(0, pct - 5);
+        // CR read: the art stays visible (only dimmed); a pink charge line
+        // rises through it toward the playable point.
         veil.style.background =
           `linear-gradient(to top,` +
-          ` rgba(242,58,168,0.40) 0%,` +
-          ` rgba(242,58,168,0.40) ${edge.toFixed(1)}%,` +
-          ` rgba(255,190,235,0.95) ${pct.toFixed(1)}%,` +
-          ` rgba(8,12,22,0.74) ${pct.toFixed(1)}%,` +
-          ` rgba(8,12,22,0.74) 100%)`;
+          ` rgba(242,58,168,0.22) 0%,` +
+          ` rgba(242,58,168,0.22) ${edge.toFixed(1)}%,` +
+          ` rgba(255,190,235,0.9) ${pct.toFixed(1)}%,` +
+          ` rgba(8,12,22,0.32) ${pct.toFixed(1)}%,` +
+          ` rgba(8,12,22,0.32) 100%)`;
         need.style.display = "block";
         // A Mirror with nothing to copy shows no "+N" — it's simply dead.
         need.textContent = Number.isFinite(cost) ? `+${Math.ceil(cost - amount)}` : "—";

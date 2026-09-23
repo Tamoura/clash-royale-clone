@@ -1,5 +1,10 @@
 import "./ui/tokens.css";
+import "@fontsource/lilita-one/400.css";
 import "./ui/style.css";
+
+// Warm the display face now so the first in-battle canvas labels (HP
+// numbers, level shields, damage pops) never bake in a fallback font.
+void document.fonts?.load("32px 'Lilita One'").catch(() => undefined);
 
 // Offline PWA: register the service worker in production builds only —
 // in dev it would cache Vite's module graph and fight hot reload.
@@ -2381,13 +2386,48 @@ deckBtn.className = "mute";
 deckBtn.textContent = "🃏";
 deckBtn.title = "Edit deck";
 deckBtn.addEventListener("click", () => openDeckPicker({ mode: "deck" }));
-topbar.appendChild(deckBtn);
+
+// CR-style battle chrome: sound, home and deck live behind one menu
+// button instead of a second toolbar row eating the arena.
+const battleMenu = document.createElement("div");
+battleMenu.className = "battle-menu";
+const menuToggle = document.createElement("button");
+menuToggle.className = "menu-toggle";
+menuToggle.setAttribute("aria-label", "Menu");
+menuToggle.setAttribute("aria-expanded", "false");
+menuToggle.innerHTML = "<span></span><span></span><span></span>";
+const menuPanel = document.createElement("div");
+menuPanel.className = "menu-panel";
+const hudMute = topbar.querySelector("button.mute");
+if (hudMute) menuPanel.appendChild(hudMute);
+menuPanel.append(homeBtn, deckBtn);
+battleMenu.append(menuToggle, menuPanel);
+topbar.appendChild(battleMenu);
+const setMenuOpen = (open: boolean): void => {
+  battleMenu.classList.toggle("open", open);
+  menuToggle.setAttribute("aria-expanded", String(open));
+};
+menuToggle.addEventListener("click", (ev) => {
+  ev.stopPropagation();
+  setMenuOpen(!battleMenu.classList.contains("open"));
+});
+menuPanel.addEventListener("click", () => setMenuOpen(false));
+window.addEventListener("pointerdown", (ev) => {
+  if (!battleMenu.contains(ev.target as Node)) setMenuOpen(false);
+});
+
+const clockEl = topbar.querySelector<HTMLElement>(".clock");
+if (clockEl) clockEl.dataset.label = tr("Time left", "الوقت المتبقي");
+
+// The top bar floats over the arena; tell the camera how much it covers.
+new ResizeObserver(() => scene.setTopInset(topbar.offsetHeight)).observe(topbar);
+
 openHome();
 
-// Trophy + currency chips in the top bar.
+// Trophy + currency live on the home screen now; the chip is kept (not
+// mounted) so refreshMetaChips() stays a cheap no-op in battle.
 const trophyChip = document.createElement("div");
 trophyChip.className = "crowns player meta-chip";
-topbar.appendChild(trophyChip);
 
 function refreshMetaChips(): void {
   trophyChip.innerHTML =
@@ -2541,16 +2581,37 @@ function checkBanners(): void {
 
 // ---- Emotes ------------------------------------------------------------
 
+// One chat bubble (CR): tap to open the tray, pick an emote, it closes.
 const EMOTES = ["😂", "😭", "👍", "😡"];
+const emoteToggle = document.createElement("button");
+emoteToggle.className = "emote-toggle";
+emoteToggle.setAttribute("aria-label", "Emotes");
+emoteToggle.setAttribute("aria-expanded", "false");
+emoteToggle.innerHTML = '<span class="bubble-dots"><i></i><i></i><i></i></span>';
+const emoteTray = document.createElement("div");
+emoteTray.className = "emote-tray";
+const setEmotesOpen = (open: boolean): void => {
+  emoteBar.classList.toggle("open", open);
+  emoteToggle.setAttribute("aria-expanded", String(open));
+};
+emoteToggle.addEventListener("click", (ev) => {
+  ev.stopPropagation();
+  setEmotesOpen(!emoteBar.classList.contains("open"));
+});
 for (const emoji of EMOTES) {
   const btn = document.createElement("button");
   btn.textContent = emoji;
   btn.addEventListener("click", () => {
     scene.showEmote(localSide(), emoji);
     audio.emotePop();
+    setEmotesOpen(false);
   });
-  emoteBar.appendChild(btn);
+  emoteTray.appendChild(btn);
 }
+emoteBar.append(emoteTray, emoteToggle);
+window.addEventListener("pointerdown", (ev) => {
+  if (!emoteBar.contains(ev.target as Node)) setEmotesOpen(false);
+});
 
 let botEmoteCooldown = 0;
 

@@ -121,6 +121,9 @@ function attackSwing(e: Entity, engaged: boolean): number {
   return 0;
 }
 
+/** The game's display face (bundled, OFL) with the old system fallbacks. */
+export const GAME_FONT = "'Lilita One', 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
+
 /** Render-loop scratch vectors (render-avoid-allocations). */
 const PREV_POS = new THREE.Vector3();
 const LOOK_AT = new THREE.Vector3();
@@ -200,6 +203,9 @@ interface EntityView {
   hopFromZ?: number;
   /** Real glTF model (KayKit) + animation mixer, when this card uses one. */
   glb?: GlbUnit & { current?: string };
+  /** Deploy name tag: shown briefly, then shrinks away (CR shows none). */
+  label?: THREE.Object3D;
+  labelAge?: number;
 }
 
 interface DyingView {
@@ -245,7 +251,7 @@ function updateHpText(t: HpText, hp: number): void {
   t.last = value;
   const ctx = t.ctx;
   ctx.clearRect(0, 0, 128, 48);
-  ctx.font = "bold 30px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
+  ctx.font = `bold 30px ${GAME_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.lineJoin = "round";
@@ -279,26 +285,26 @@ function pillTex(): THREE.CanvasTexture {
   return pillTexture;
 }
 
-function makeHpBar(width: number, color: number, y: number): {
+function makeHpBar(width: number, color: number, y: number, height = 0.2): {
   group: THREE.Group;
   fill: THREE.Mesh;
 } {
   const group = new THREE.Group();
   const bg = new THREE.Mesh(
-    new THREE.PlaneGeometry(width, 0.2),
+    new THREE.PlaneGeometry(width, height),
     new THREE.MeshBasicMaterial({ map: pillTex(), transparent: true }),
   );
   const fill = new THREE.Mesh(
-    new THREE.PlaneGeometry(width - 0.06, 0.14),
+    new THREE.PlaneGeometry(width - 0.06, height * 0.7),
     new THREE.MeshBasicMaterial({ color }),
   );
   fill.position.z = 0.01;
   // Gloss highlight rides the fill so it scales with it.
   const gloss = new THREE.Mesh(
-    new THREE.PlaneGeometry(width - 0.06, 0.05),
+    new THREE.PlaneGeometry(width - 0.06, height * 0.25),
     new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }),
   );
-  gloss.position.set(0, 0.04, 0.01);
+  gloss.position.set(0, height * 0.2, 0.01);
   fill.add(gloss);
   group.add(bg, fill);
   group.position.y = y;
@@ -308,30 +314,48 @@ function makeHpBar(width: number, color: number, y: number): {
   return { group, fill };
 }
 
-/** Small circular level badge capping a tower HP pill. */
-function makeLevelBadge(side: Side): THREE.Sprite {
-  const c = document.createElement("canvas");
-  c.width = c.height = 64;
-  const ctx = c.getContext("2d")!;
-  ctx.fillStyle = side === "player" ? "#2c55b8" : "#b02e22";
-  ctx.strokeStyle = "#e8e3d8";
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.arc(32, 32, 26, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-  ctx.font = "bold 30px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "#fff";
-  ctx.fillText("9", 32, 34);
-  const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({
+/** Shared level-shield materials, one per side + level. */
+const levelBadgeMats = new Map<string, THREE.SpriteMaterial>();
+
+/** CR-style level shield capping an HP bar (towers and troops). */
+function makeLevelBadge(side: Side, level = 9): THREE.Sprite {
+  const key = `${side}:${level}`;
+  let mat = levelBadgeMats.get(key);
+  if (!mat) {
+    const c = document.createElement("canvas");
+    c.width = c.height = 64;
+    const ctx = c.getContext("2d")!;
+    // Shield: flat top, pointed bottom — a crest, not a coin.
+    ctx.beginPath();
+    ctx.moveTo(8, 8);
+    ctx.lineTo(56, 8);
+    ctx.lineTo(56, 36);
+    ctx.quadraticCurveTo(56, 52, 32, 60);
+    ctx.quadraticCurveTo(8, 52, 8, 36);
+    ctx.closePath();
+    ctx.fillStyle = side === "player" ? "#2c55b8" : "#b02e22";
+    ctx.fill();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = "#f2c14e";
+    ctx.stroke();
+    ctx.font = `36px ${GAME_FONT}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "rgba(10,14,22,0.85)";
+    ctx.strokeText(String(level), 32, 33);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(String(level), 32, 33);
+    mat = new THREE.SpriteMaterial({
       map: new THREE.CanvasTexture(c),
       transparent: true,
       depthWrite: false,
-    }),
-  );
+    });
+    mat.userData.shared = true;
+    levelBadgeMats.set(key, mat);
+  }
+  const sprite = new THREE.Sprite(mat);
   sprite.scale.set(0.42, 0.42, 1);
   return sprite;
 }
@@ -358,10 +382,10 @@ function nameSpriteMaterial(cardId: CardId, side: Side): THREE.SpriteMaterial {
   c.height = 64;
   const ctx = c.getContext("2d")!;
   let size = 34;
-  ctx.font = `bold ${size}px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif`;
+  ctx.font = `bold ${size}px ${GAME_FONT}`;
   while (ctx.measureText(name).width > 236 && size > 16) {
     size -= 2;
-    ctx.font = `bold ${size}px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif`;
+    ctx.font = `bold ${size}px ${GAME_FONT}`;
   }
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -390,7 +414,7 @@ function makeStunSprite(): THREE.Sprite {
     c.width = 128;
     c.height = 48;
     const ctx = c.getContext("2d")!;
-    ctx.font = "bold 30px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
+    ctx.font = `bold 30px ${GAME_FONT}`;
     ctx.textAlign = "center";
     ctx.fillStyle = "#ffe14d";
     ctx.strokeStyle = "rgba(10,14,22,0.9)";
@@ -418,11 +442,11 @@ function makeZzzSprite(): THREE.Sprite {
   const c = document.createElement("canvas");
   c.width = c.height = 64;
   const ctx = c.getContext("2d")!;
-  ctx.font = "bold 30px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
+  ctx.font = `bold 30px ${GAME_FONT}`;
   ctx.fillStyle = "rgba(255,255,255,0.9)";
   ctx.textAlign = "center";
   ctx.fillText("z", 22, 44);
-  ctx.font = "bold 20px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
+  ctx.font = `bold 20px ${GAME_FONT}`;
   ctx.fillText("z", 42, 26);
   const sprite = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true }),
@@ -913,8 +937,8 @@ function buildTowerMesh(e: Entity): EntityView {
     view.zzz = zzz;
   }
 
-  const barWidth = king ? 2.2 : 1.8;
-  const barY = height + (king ? 1.5 : 1.2);
+  const barWidth = king ? 2.8 : 2.3;
+  const barY = height + (king ? 1.55 : 1.25);
   // Sit the bar behind the tower, on its outer side: above enemy towers
   // (-z, the top), below the player's (+z, the bottom)... except the FAR
   // king: it sits so deep that an outer-side plate projects above the top
@@ -924,18 +948,20 @@ function buildTowerMesh(e: Entity): EntityView {
   const outward = e.side === "player" ? 1 : -1;
   const farSide = e.side !== viewSide;
   const barZ = king && farSide ? -outward * 1.9 : outward * (king ? 1.7 : 1.4);
-  const bar = makeHpBar(barWidth, HP_COLOR[e.side], barY);
+  const bar = makeHpBar(barWidth, HP_COLOR[e.side], barY, 0.36);
   bar.group.position.z = barZ;
   root.add(bar.group);
   view.hpGroup = bar.group;
   view.hpFill = bar.fill;
 
-  // CR pill: the HP number sits inside the bar, level badge at the end.
+  // CR plate: a chunky pill with the HP number inside and a level shield
+  // riding its left end.
   const badge = makeLevelBadge(e.side);
-  badge.position.set(-barWidth / 2, 0, 0.06);
+  badge.scale.set(0.7, 0.7, 1);
+  badge.position.set(-barWidth / 2 - 0.12, 0, 0.06);
   bar.group.add(badge);
   const hpText = makeHpText(barY + 0.02);
-  hpText.sprite.scale.set(1.1, 0.4, 1);
+  hpText.sprite.scale.set(1.75, 0.64, 1);
   hpText.sprite.position.z = barZ + 0.2;
   root.add(hpText.sprite);
   view.hpText = hpText.text;
@@ -1151,6 +1177,7 @@ function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
   // only one unit per deployed group — a flock gets one label, not three.
   if (withLabel) {
     const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
+    label.name = "unitLabel";
     label.scale.set(1.7, 0.42, 1);
     label.position.y = lift + 0.62;
     root.add(label);
@@ -1208,6 +1235,11 @@ export class Battle3D {
   private dayPhase = 0;
   private lightningT = 0;
   private wasOvertime = false;
+  /** Lantern strings at each end of the field (see applyEndStrings). */
+  private endStringPlayer: THREE.Object3D | null = null;
+  private endStringEnemy: THREE.Object3D | null = null;
+  /** Screen pixels covered by the HUD overlay across the top of the stage. */
+  private topInsetPx = 0;
   /** Fog-immune glow materials (lanterns, neon, torches) with base colors. */
   private glowMats: Array<{ mat: THREE.MeshBasicMaterial; base: THREE.Color }> = [];
   /** The light rig (rebuilt with the look; graded by the living sky). */
@@ -1642,14 +1674,24 @@ export class Battle3D {
       };
       // A string across each end, hung right at the arena edge — the
       // steep camera keeps anything further out above the frame.
+      // Each end's string lives in its own group so the one on the camera's
+      // side can hide: seen from above it would cross our own king tower.
       for (const sz of [-1, 1]) {
         const dz = ARENA_HEIGHT / 2;
         const y = 2.8;
+        const holder = this.arenaGroup;
+        const endGroup = new THREE.Group();
+        this.arenaGroup = endGroup;
         rope(ARENA_WIDTH + 10, 0, y, sz * dz, true);
         for (let i = 0; i < 7; i++) {
           stringLantern(-12 + i * 4, y + Math.sin(i * 2.3) * 0.15, sz * dz, i + (sz > 0 ? 1 : 0));
         }
+        this.arenaGroup = holder;
+        holder.add(endGroup);
+        if (sz > 0) this.endStringPlayer = endGroup;
+        else this.endStringEnemy = endGroup;
       }
+      this.applyEndStrings();
       // Side strings for wider screens.
       const sideX = ARENA_WIDTH / 2 + 3.4;
       for (const sx of [-1, 1]) {
@@ -2434,6 +2476,19 @@ export class Battle3D {
     }
   }
 
+  /** Hide the end-string nearest the camera (it would cross our king). */
+  private applyEndStrings(): void {
+    if (this.endStringPlayer) this.endStringPlayer.visible = viewSide !== "player";
+    if (this.endStringEnemy) this.endStringEnemy.visible = viewSide !== "enemy";
+  }
+
+  /** The HUD overlay height; the frame keeps the arena clear of it. */
+  setTopInset(px: number): void {
+    if (Math.abs(px - this.topInsetPx) < 0.5) return;
+    this.topInsetPx = px;
+    this.frameOrtho();
+  }
+
   /** Fit the arena to the viewport with an orthographic frustum. */
   private frameOrtho(): void {
     const w = this.container.clientWidth || 1;
@@ -2443,12 +2498,22 @@ export class Battle3D {
     // board (incl. towers + edging) fits; width follows the aspect.
     // The shallower camera foreshortens the field, so the frame zooms
     // in — characters render ~15% larger than under the old angle.
-    const halfH = 14.5;
-    const halfW = Math.max(halfH * aspect, 10.5);
+    // The frustum always matches the canvas aspect (an older fixed
+    // min-width stretched phones ~8% sideways). Fit the field's width
+    // edge to edge; on squat screens fit its depth instead. The HUD
+    // overlay covers `f` of the top, so centre the arena in what's left.
+    const NEED_HALF_W = 9.95; // field half-width + edging
+    const CONTENT_H = 26.8; // screen-space depth: near fence to far lanterns
+    const CONTENT_MID = 0.6; // its centre, in camera-up units
+    const f = Math.min(0.25, this.topInsetPx / h);
+    const halfH = Math.max(NEED_HALF_W / aspect, CONTENT_H / 2 / (1 - f));
+    const halfW = halfH * aspect;
+    const V = halfH * 2;
+    const top = CONTENT_MID + (V * (1 + f)) / 2;
     this.camera.left = -halfW;
     this.camera.right = halfW;
-    this.camera.top = halfH;
-    this.camera.bottom = -halfH;
+    this.camera.top = top;
+    this.camera.bottom = top - V;
     this.camera.updateProjectionMatrix();
   }
 
@@ -2474,6 +2539,7 @@ export class Battle3D {
    */
   setViewpoint(side: Side): void {
     viewSide = side;
+    this.applyEndStrings();
     this.camera.position.set(CAM_HOME.x, CAM_HOME.y, cameraZForView());
     this.camera.lookAt(0, 0, 0);
     const m = side === "player" ? 1 : -1;
@@ -3283,7 +3349,7 @@ export class Battle3D {
     c.width = 128;
     c.height = 64;
     const ctx = c.getContext("2d")!;
-    ctx.font = "bold 44px 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
+    ctx.font = `bold 44px ${GAME_FONT}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
@@ -3559,6 +3625,16 @@ export class Battle3D {
             : e.kind === "building"
               ? buildBuildingMesh(e)
               : buildTowerMesh(e);
+        if (e.kind === "troop" && e.cardId) {
+          view.label = view.root.getObjectByName("unitLabel");
+          view.labelAge = 0;
+          // Level shield on the (damage-only) HP bar, CR-style.
+          const lvl = (e.side === "player" ? state.player : state.enemy).levels[e.cardId] ?? 1;
+          const shield = makeLevelBadge(e.side, lvl);
+          shield.scale.set(0.34, 0.34, 1);
+          shield.position.set(-0.6, 0, 0.05);
+          view.hpGroup.add(shield);
+        }
         this.views.set(e.id, view);
         this.scene.add(view.root);
         // Entry flourish: a dark portal for risers, a sky-slam shockwave for
@@ -3585,6 +3661,18 @@ export class Battle3D {
       }
       view.root.position.x = w.x;
       view.root.position.z = w.z;
+
+      // Deploy name tag: readable for two seconds, then it shrinks away so
+      // a crowded field shows troops, not captions.
+      if (view.label) {
+        view.labelAge = (view.labelAge ?? 0) + dt;
+        const k = Math.max(0, 1 - Math.max(0, view.labelAge - 2) / 0.35);
+        view.label.scale.set(1.7 * k, 0.42 * k, 1);
+        if (k === 0) {
+          view.label.visible = false;
+          view.label = undefined;
+        }
+      }
 
       // Spawn entrance: rise out of the ground, or pop-in bounce.
       const baseScale = view.baseScale ?? 1;
