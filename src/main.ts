@@ -1,6 +1,7 @@
 import "./ui/tokens.css";
 import "@fontsource/lilita-one/400.css";
 import "./ui/style.css";
+import { icon } from "./ui/icons";
 
 // Warm the display face now so the first in-battle canvas labels (HP
 // numbers, level shields, damage pops) never bake in a fallback font.
@@ -2376,14 +2377,14 @@ window.addEventListener("pointerdown", () => audio.resume(), { once: false });
 // Home / deck buttons in the top bar.
 const homeBtn = document.createElement("button");
 homeBtn.className = "mute";
-homeBtn.textContent = "🏠";
+homeBtn.innerHTML = icon("home");
 homeBtn.title = "Home";
 homeBtn.addEventListener("click", openHome);
 topbar.appendChild(homeBtn);
 
 const deckBtn = document.createElement("button");
 deckBtn.className = "mute";
-deckBtn.textContent = "🃏";
+deckBtn.innerHTML = icon("cards");
 deckBtn.title = "Edit deck";
 deckBtn.addEventListener("click", () => openDeckPicker({ mode: "deck" }));
 

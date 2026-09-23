@@ -1,5 +1,8 @@
 import { effectiveCard, type BattleState } from "../game/battle";
-import { ABILITIES } from "../game/abilities";
+import { ABILITIES, type AbilityId } from "../game/abilities";
+import { icon, type IconName } from "../ui/icons";
+
+const ABILITY_ICON: Record<AbilityId, IconName> = { rally: "sword", restore: "heart", salvo: "bomb" };
 import type { Side } from "../game/arena";
 import { getCard, type CardId } from "../game/cards";
 import { ELIXIR_MAX } from "../game/elixir";
@@ -86,7 +89,7 @@ export class Hud {
     const left = el("div", "crowns player", topbar);
     left.setAttribute("aria-label", "Your crowns");
     left.innerHTML =
-      '<span class="level" aria-hidden="true">9</span><span class="pname">You</span> 👑 <span class="crown-count">0</span>';
+      `<span class="level" aria-hidden="true">9</span><span class="pname">You</span> ${icon("crown")} <span class="crown-count">0</span>`;
     this.playerCrownsWrap = left;
     this.playerCrowns = left.querySelector(".crown-count")!;
     this.clock = el("div", "clock", topbar);
@@ -95,17 +98,17 @@ export class Hud {
     const right = el("div", "crowns enemy", topbar);
     right.setAttribute("aria-label", "Opponent crowns");
     right.innerHTML =
-      '<span class="crown-count">0</span> 👑 <span class="pname">Bot</span><span class="level" aria-hidden="true">9</span>';
+      `<span class="crown-count">0</span> ${icon("crown")} <span class="pname">Bot</span><span class="level" aria-hidden="true">9</span>`;
     this.enemyCrownsWrap = right;
     this.enemyCrowns = right.querySelector(".crown-count")!;
     this.opponentName = right.querySelector(".pname")!;
     this.muteBtn = el("button", "mute", topbar);
-    this.muteBtn.textContent = "🔊";
+    this.muteBtn.innerHTML = icon("sound");
     this.muteBtn.setAttribute("aria-label", "Toggle sound");
     this.muteBtn.setAttribute("title", "Toggle sound");
     this.muteBtn.addEventListener("click", () => {
       const muted = this.cb.onToggleSound();
-      this.muteBtn.textContent = muted ? "🔇" : "🔊";
+      this.muteBtn.innerHTML = icon(muted ? "mute" : "sound");
       this.muteBtn.setAttribute("aria-label", muted ? "Unmute sound" : "Mute sound");
     });
 
@@ -320,7 +323,10 @@ export class Hud {
       const def = ABILITIES[me.ability];
       this.abilityBtn.style.display = "";
       this.abilityBtn.title = `${def.name}: ${def.blurb}`;
-      this.abilityIcon.textContent = def.icon;
+      if (this.abilityIcon.dataset.icon !== me.ability) {
+        this.abilityIcon.dataset.icon = me.ability;
+        this.abilityIcon.innerHTML = icon(ABILITY_ICON[me.ability]);
+      }
       const pct = Math.round(me.abilityCharge * 100);
       this.abilityBtn.style.setProperty("--charge", `${pct}%`);
       const ready = me.abilityCharge >= 1;
