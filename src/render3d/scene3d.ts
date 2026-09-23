@@ -2717,6 +2717,17 @@ export class Battle3D {
   }
 
   /** Convert a pointer event to arena tile coordinates, if on the field. */
+  /** Arena point (tiles) at height `h` → page coordinates, for DOM effects. */
+  arenaToClient(ax: number, ay: number, h = 0): { x: number; y: number } {
+    const w = toWorld(ax, ay);
+    const v = new THREE.Vector3(w.x, h, w.z).project(this.camera);
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    return {
+      x: rect.left + ((v.x + 1) / 2) * rect.width,
+      y: rect.top + ((1 - v.y) / 2) * rect.height,
+    };
+  }
+
   pick(clientX: number, clientY: number): { x: number; y: number } | null {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(

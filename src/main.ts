@@ -2651,6 +2651,67 @@ function showPreview(clientX: number, clientY: number): void {
   scene.setGhost(card.kind === "spell" ? null : card.id, pos);
 }
 
+const reduceMotion = (): boolean =>
+  !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+/** The played card flies from its hand slot to the drop point and shrinks. */
+function flyCardToField(cardId: CardId, clientX: number, clientY: number): void {
+  if (reduceMotion()) return;
+  const btn = document.querySelector<HTMLElement>(`#hud button.card[data-card="${cardId}"]`);
+  const art = btn?.querySelector("canvas");
+  if (!btn || !art) return;
+  const r = btn.getBoundingClientRect();
+  const fly = document.createElement("div");
+  fly.className = "card-fly";
+  fly.style.left = `${r.left}px`;
+  fly.style.top = `${r.top}px`;
+  fly.style.width = `${r.width}px`;
+  fly.style.height = `${r.height}px`;
+  fly.style.backgroundImage = `url(${(art as HTMLCanvasElement).toDataURL()})`;
+  document.body.appendChild(fly);
+  const dx = clientX - (r.left + r.width / 2);
+  const dy = clientY - (r.top + r.height / 2);
+  fly
+    .animate(
+      [
+        { transform: "translate(0,0) scale(1) rotate(0deg)", opacity: 1 },
+        { transform: `translate(${dx * 0.6}px, ${dy * 0.6 - 30}px) scale(0.7) rotate(-8deg)`, opacity: 1, offset: 0.6 },
+        { transform: `translate(${dx}px, ${dy}px) scale(0.25) rotate(0deg)`, opacity: 0 },
+      ],
+      { duration: 320, easing: "cubic-bezier(.4,.1,.6,1)" },
+    )
+    .finished.finally(() => fly.remove());
+}
+
+/** A fallen tower's crown arcs up to the scoreboard of whoever earned it. */
+function flyCrown(ax: number, ay: number, towerSide: Side): void {
+  if (reduceMotion()) return;
+  const earner = towerSide === localSide() ? "enemy" : "player";
+  const target = topbar.querySelector<HTMLElement>(`.crowns.${earner} .crown-count`);
+  if (!target) return;
+  const from = scene.arenaToClient(ax, ay, 3);
+  const t = target.getBoundingClientRect();
+  const crown = document.createElement("div");
+  crown.className = "crown-fly";
+  crown.innerHTML = icon("crown");
+  crown.style.left = `${from.x - 24}px`;
+  crown.style.top = `${from.y - 24}px`;
+  document.body.appendChild(crown);
+  const dx = t.left + t.width / 2 - from.x;
+  const dy = t.top + t.height / 2 - from.y;
+  crown
+    .animate(
+      [
+        { transform: "translate(0,0) scale(0.4)", opacity: 0 },
+        { transform: "translate(0,-40px) scale(1.6)", opacity: 1, offset: 0.25 },
+        { transform: `translate(${dx * 0.5}px, ${dy * 0.5 - 60}px) scale(1.2)`, opacity: 1, offset: 0.6 },
+        { transform: `translate(${dx}px, ${dy}px) scale(0.5)`, opacity: 0.9 },
+      ],
+      { duration: 900, easing: "cubic-bezier(.3,.1,.4,1)" },
+    )
+    .finished.finally(() => crown.remove());
+}
+
 function tryDeployAt(clientX: number, clientY: number): void {
   if (battle.result || !selectedCard) return;
   const pos = scene.pick(clientX, clientY);
@@ -2661,6 +2722,7 @@ function tryDeployAt(clientX: number, clientY: number): void {
     if (online) {
       // Lockstep: schedule the deploy; both peers apply it at the same tick.
       online.ls.queue({ side, cardId: selectedCard, x: pos.x, y: pos.y });
+      flyCardToField(selectedCard, clientX, clientY);
       scene.deployFlash(pos.x, pos.y);
       selectCard(null);
       clearPreview();
@@ -2671,6 +2733,7 @@ function tryDeployAt(clientX: number, clientY: number): void {
       if (recording && mode === "solo") {
         recording.deploys.push({ t: soloTick, c: selectedCard, x: pos.x, y: pos.y });
       }
+      flyCardToField(selectedCard, clientX, clientY);
       scene.deployFlash(pos.x, pos.y);
       selectCard(null);
       clearPreview();
@@ -2868,6 +2931,7 @@ function frame(now: number): void {
     }
     if (ev.type === "death" && (ev.kind === "princess-tower" || ev.kind === "king-tower")) {
       flashImpact();
+      flyCrown(ev.x, ev.y, ev.side);
       // Report timeline: who lost which tower, and when.
       const mm = Math.floor(battle.time / 60);
       const ss = String(Math.floor(battle.time % 60)).padStart(2, "0");
