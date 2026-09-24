@@ -1,5 +1,9 @@
 import "./ui/tokens.css";
 import "@fontsource/lilita-one/400.css";
+// Arabic glyphs: a rounded display face to pair with Lilita One (SIL OFL).
+// Arabic subset only, so the classic edition never downloads it.
+import "@fontsource/baloo-bhaijaan-2/arabic-700.css";
+import "@fontsource/baloo-bhaijaan-2/arabic-800.css";
 import "./ui/style.css";
 import { icon } from "./ui/icons";
 
@@ -90,6 +94,7 @@ import {
   ARENAS,
   arenaIndexAt,
   arenaNameForUnlock,
+  arenaArForUnlock,
   cardsAvailableAt,
   trophyProgress,
 } from "./meta/arenas";
@@ -151,6 +156,11 @@ import {
 
 // Apply edition-aware CSS variables before any DOM is rendered.
 applyEditionTokens(STORED_EDITION);
+// Canvas labels (unit names, banners) are painted once, so warm the
+// Arabic face up front in the Islamic edition.
+if (ARABIC) {
+  for (const w of ["700", "800"]) void document.fonts?.load(`${w} 32px 'Baloo Bhaijaan 2'`, "عربي").catch(() => undefined);
+}
 
 // Make the saved Studio champion live before any card art or sim uses it.
 initChampion();
@@ -246,7 +256,7 @@ replaySpeedBtn.addEventListener("click", () => {
 
 const sandboxResetBtn = document.createElement("button");
 sandboxResetBtn.className = "sandbox-reset";
-sandboxResetBtn.textContent = "↺ Reset";
+sandboxResetBtn.textContent = tr("↺ Reset", "↺ إعادة");
 sandboxResetBtn.setAttribute("aria-label", "Reset the sandbox battle");
 sandboxResetBtn.style.display = "none";
 stage.appendChild(sandboxResetBtn);
@@ -397,13 +407,16 @@ function loadDifficulty(): string {
 }
 
 let difficulty = loadDifficulty();
+const DIFF_AR: Record<string, string> = { easy: "سهل", normal: "عادي", hard: "صعب" };
 
 // ---- Game modes ----------------------------------------------------------
 
 interface GameMode {
   id: string;
   name: string;
+  nameAr: string;
   blurb: string;
+  blurbAr: string;
   /** Flat elixir rate (1 normal, 3 triple, 7 mega). */
   elixirRate: number;
   /** Both players battle with the same random deck. */
@@ -411,12 +424,12 @@ interface GameMode {
 }
 
 const GAME_MODES: GameMode[] = [
-  { id: "classic", name: "Classic", blurb: "Your deck, normal elixir", elixirRate: 1, mirror: false },
-  { id: "triple", name: "Triple Elixir ⚡3", blurb: "3× elixir the whole match", elixirRate: 3, mirror: false },
-  { id: "mega", name: "Mega Elixir ⚡7", blurb: "7× elixir — total chaos", elixirRate: 7, mirror: false },
-  { id: "mirror", name: "Mirror Match", blurb: "Both get the same random deck", elixirRate: 1, mirror: true },
-  { id: "crazy", name: "Crazy 🎲", blurb: "Every card scrambled — counts, spawns & stats go wild", elixirRate: 1, mirror: false },
-  { id: "sandbox", name: "Sandbox 🛠️", blurb: "Practice: infinite elixir, sleeping bot, reset anytime — no rewards", elixirRate: SANDBOX_ELIXIR_RATE, mirror: false },
+  { id: "classic", name: "Classic", nameAr: "كلاسيكي", blurb: "Your deck, normal elixir", blurbAr: "مجموعتك، وإكسير عادي", elixirRate: 1, mirror: false },
+  { id: "triple", name: "Triple Elixir ⚡3", nameAr: "إكسير ثلاثي ⚡3", blurb: "3× elixir the whole match", blurbAr: "إكسير مضاعف ٣ مرات طوال المباراة", elixirRate: 3, mirror: false },
+  { id: "mega", name: "Mega Elixir ⚡7", nameAr: "إكسير هائل ⚡7", blurb: "7× elixir — total chaos", blurbAr: "إكسير مضاعف ٧ مرات — فوضى كاملة", elixirRate: 7, mirror: false },
+  { id: "mirror", name: "Mirror Match", nameAr: "مباراة المرآة", blurb: "Both get the same random deck", blurbAr: "كلاكما بنفس المجموعة العشوائية", elixirRate: 1, mirror: true },
+  { id: "crazy", name: "Crazy 🎲", nameAr: "جنون 🎲", blurb: "Every card scrambled — counts, spawns & stats go wild", blurbAr: "كل البطاقات مخلوطة — الأعداد والقدرات تجنّ", elixirRate: 1, mirror: false },
+  { id: "sandbox", name: "Sandbox 🛠️", nameAr: "ساحة التجربة 🛠️", blurb: "Practice: infinite elixir, sleeping bot, reset anytime — no rewards", blurbAr: "تدريب: إكسير لا ينفد، روبوت نائم، إعادة في أي وقت — بلا جوائز", elixirRate: SANDBOX_ELIXIR_RATE, mirror: false },
 ];
 
 function isSandbox(): boolean {
@@ -724,9 +737,9 @@ function maybeShowFirstBattleTips(): void {
   }
   const tipBattle = battle;
   const tips: [number, string][] = [
-    [5000, tr("Tap a card, then tap your half to deploy!", "!اضغط بطاقة ثم اضغط نصفك لتنشرها")],
-    [10000, tr("Destroy their towers — protect your own!", "!دمّر أبراجهم واحمِ أبراجك")],
-    [15000, tr("Full elixir wastes away — keep spending!", "!الإكسير الممتلئ يُهدر — واصل الإنفاق")],
+    [5000, tr("Tap a card, then tap your half to deploy!", "اضغط بطاقة ثم اضغط نصفك لتنشرها!")],
+    [10000, tr("Destroy their towers — protect your own!", "دمّر أبراجهم واحمِ أبراجك!")],
+    [15000, tr("Full elixir wastes away — keep spending!", "الإكسير الممتلئ يُهدر — واصل الإنفاق!")],
   ];
   for (const [delay, text] of tips) {
     window.setTimeout(() => {
@@ -768,7 +781,7 @@ function startSpecialBattle(
 function startChallenge(ch: Challenge): void {
   activeChallenge = ch;
   waveCursor = { next: 0 };
-  startSpecialBattle("challenge", ch.deck, ch.deck, ch.name);
+  startSpecialBattle("challenge", ch.deck, ch.deck, tr(ch.name, ch.nameAr));
 }
 
 function startDaily(): void {
@@ -973,10 +986,10 @@ function buildHomeShell(): void {
   const banner = document.createElement("div");
   banner.className = "home-arena-banner";
   banner.innerHTML =
-    `<div class="home-arena-name">${prog.current.name}</div>` +
+    `<div class="home-arena-name">${tr(prog.current.name, prog.current.ar)}</div>` +
     `<div class="home-road"><div class="home-road-fill" style="width:${Math.round(prog.ratio * 100)}%"></div>` +
     `<span>${icon("trophy")} ${profile.trophies}${prog.next ? ` / ${prog.next.trophies}` : ""}</span></div>` +
-    (prog.next ? `<div class="home-arena-next">${tr("Next", "التالي")}: ${prog.next.name}</div>` : "");
+    (prog.next ? `<div class="home-arena-next">${tr("Next", "التالي")}: ${tr(prog.next.name, prog.next.ar)}</div>` : "");
   win.appendChild(banner);
   shell.appendChild(win);
   // Fit the diorama to the window once the home screen is laid out.
@@ -1294,7 +1307,7 @@ function buildStudio(def: ChampionDef): void {
 
   const costBadge = document.createElement("div");
   costBadge.className = "studio-cost";
-  costBadge.title = "Elixir cost — computed from the design";
+  costBadge.title = tr("Elixir cost — computed from the design", "تكلفة الإكسير — محسوبة من التصميم");
   previewPane.appendChild(costBadge);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -1670,7 +1683,7 @@ function buildStudio(def: ChampionDef): void {
 
   const saveBtn = document.createElement("button");
   saveBtn.className = "battle-btn";
-  saveBtn.textContent = "💾 Save Champion";
+  saveBtn.textContent = tr("💾 Save Champion", "💾 احفظ البطل");
   saveBtn.addEventListener("click", () => {
     cur.name = cur.name.trim() || "Champion";
     if (!saveChampion(cur)) return; // over budget — the guardrail refused
@@ -1755,12 +1768,15 @@ function buildDraft(): void {
   if (!d) return;
   pickerRoot.innerHTML = "";
   const title = document.createElement("h2");
-  title.textContent = `Draft — pick ${d.picks.length + 1} of ${DRAFT_ROUNDS}`;
+  title.textContent = tr(
+    `Draft — pick ${d.picks.length + 1} of ${DRAFT_ROUNDS}`,
+    `الاختيار — ${d.picks.length + 1} من ${DRAFT_ROUNDS}`,
+  );
   pickerRoot.appendChild(title);
 
   const hint = document.createElement("div");
   hint.className = "collect-label";
-  hint.textContent = "Keep one card — the bot grabs one of the others!";
+  hint.textContent = tr("Keep one card — the bot grabs one of the others!", "احتفظ ببطاقة — والروبوت يأخذ إحدى البقية!");
   pickerRoot.appendChild(hint);
 
   const row = document.createElement("div");
@@ -1802,13 +1818,13 @@ function buildDraft(): void {
   if (d.picks.length > 0) {
     const mine = document.createElement("div");
     mine.className = "collect-label";
-    mine.textContent = `Your deck so far: ${d.picks.map(cardDisplayName).join(" · ")}`;
+    mine.textContent = `${tr("Your deck so far", "مجموعتك حتى الآن")}: ${d.picks.map(cardDisplayName).join(" · ")}`;
     pickerRoot.appendChild(mine);
   }
 
   const back = document.createElement("button");
   back.className = "battle-btn friend";
-  back.textContent = "← Home";
+  back.textContent = tr("← Home", "→ الرئيسية");
   back.addEventListener("click", () => openHome());
   pickerRoot.appendChild(back);
 }
@@ -1818,7 +1834,7 @@ function buildDraft(): void {
 function openChallenges(): void {
   pickerRoot.innerHTML = "";
   const title = document.createElement("h2");
-  title.textContent = "Challenges";
+  title.textContent = tr("Challenges", "التحديات");
   pickerRoot.appendChild(title);
 
   const done = challengesDone();
@@ -1828,8 +1844,8 @@ function openChallenges(): void {
     const info = document.createElement("div");
     info.className = "challenge-info";
     info.innerHTML =
-      `<div class="challenge-name">${done.has(ch.id) ? "✅ " : ""}${ch.name}</div>` +
-      `<div class="challenge-blurb">${ch.blurb}</div>`;
+      `<div class="challenge-name">${done.has(ch.id) ? "✅ " : ""}${tr(ch.name, ch.nameAr)}</div>` +
+      `<div class="challenge-blurb">${tr(ch.blurb, ch.blurbAr)}</div>`;
     row.appendChild(info);
     const play = document.createElement("button");
     play.className = "battle-btn challenge-play";
@@ -1842,7 +1858,7 @@ function openChallenges(): void {
 
   const back = document.createElement("button");
   back.className = "battle-btn friend";
-  back.textContent = "← Home";
+  back.textContent = tr("← Home", "→ الرئيسية");
   back.addEventListener("click", () => openHome());
   pickerRoot.appendChild(back);
   showPicker();
@@ -1851,7 +1867,7 @@ function openChallenges(): void {
 function buildCollection(): void {
   pickerRoot.innerHTML = "";
   const title = document.createElement("h2");
-  title.textContent = "Collection";
+  title.textContent = tr("Collection", "المجموعة");
   pickerRoot.appendChild(title);
 
   const currency = document.createElement("div");
@@ -1863,7 +1879,7 @@ function buildCollection(): void {
 
   const detail = document.createElement("div");
   detail.className = "collect-detail";
-  detail.textContent = "Tap a card to upgrade";
+  detail.textContent = tr("Tap a card to upgrade", "اضغط على بطاقة لترقيتها");
   pickerRoot.appendChild(detail);
 
   const grid = document.createElement("div");
@@ -1884,7 +1900,7 @@ function buildCollection(): void {
     if (have) {
       btn.appendChild(cardTileCanvas(id));
       const name = document.createElement("div");
-      name.textContent = `${cardDisplayName(id)} · Lv.${level}`;
+      name.textContent = `${cardDisplayName(id)} · ${tr("Lv.", "مستوى ")}${level}`;
       btn.appendChild(name);
       const cost = document.createElement("div");
       cost.className = "pcost";
@@ -1899,7 +1915,7 @@ function buildCollection(): void {
       btn.addEventListener("click", () => {
         const upc2 = upgradeCost(card.rarity, cardLevels[id] ?? 1);
         if (!upc2) {
-          detail.textContent = `${cardDisplayName(id)} is max level.`;
+          detail.textContent = tr(`${cardDisplayName(id)} is max level.`, `${cardDisplayName(id)} في أعلى مستوى.`);
           return;
         }
         const result = tryUpgradeCard(
@@ -1955,7 +1971,7 @@ function buildCollection(): void {
       const name = document.createElement("div");
       name.textContent = unlocked
         ? cardDisplayName(id)
-        : `Unlock at ${arenaNameForUnlock(id)}`;
+        : tr(`Unlock at ${arenaNameForUnlock(id)}`, `يُفتح في ${arenaArForUnlock(id)}`);
       btn.appendChild(name);
       btn.disabled = true;
     }
@@ -1964,7 +1980,7 @@ function buildCollection(): void {
 
   const back = document.createElement("button");
   back.className = "back-btn";
-  back.textContent = "← Home";
+  back.textContent = tr("← Home", "→ الرئيسية");
   back.addEventListener("click", () => openHome());
   pickerRoot.appendChild(back);
 }
@@ -1972,7 +1988,7 @@ function buildCollection(): void {
 function buildChests(): void {
   pickerRoot.innerHTML = "";
   const title = document.createElement("h2");
-  title.textContent = "Chests";
+  title.textContent = tr("Chests", "الصناديق");
   pickerRoot.appendChild(title);
 
   const currency = document.createElement("div");
@@ -1984,7 +2000,10 @@ function buildChests(): void {
 
   const note = document.createElement("div");
   note.className = "collect-label";
-  note.textContent = `Win battles to fill slots · Skip timer for ${CHEST_SKIP_GEMS} 💎`;
+  note.textContent = tr(
+    `Win battles to fill slots · Skip timer for ${CHEST_SKIP_GEMS} 💎`,
+    `انتصر لتملأ الخانات · تخطَّ المؤقت بـ ${CHEST_SKIP_GEMS} 💎`,
+  );
   pickerRoot.appendChild(note);
 
   const reveal = document.createElement("div");
@@ -2000,7 +2019,7 @@ function buildChests(): void {
     const cell = document.createElement("div");
     cell.className = "chest-slot" + (slot ? "" : " empty");
     if (!slot) {
-      cell.textContent = "Empty";
+      cell.textContent = tr("Empty", "فارغ");
       row.appendChild(cell);
       return;
     }
@@ -2071,7 +2090,7 @@ function buildChests(): void {
 
   const back = document.createElement("button");
   back.className = "back-btn";
-  back.textContent = "← Home";
+  back.textContent = tr("← Home", "→ الرئيسية");
   back.addEventListener("click", () => openHome());
   pickerRoot.appendChild(back);
 }
@@ -2109,7 +2128,7 @@ function buildDeckPicker(opts: { mode: "battle" | "deck" }): void {
 
   const collectLabel = document.createElement("div");
   collectLabel.className = "collect-label";
-  collectLabel.textContent = "Owned cards — tap to add";
+  collectLabel.textContent = tr("Owned cards — tap to add", "بطاقاتك — اضغط للإضافة");
   pickerRoot.appendChild(collectLabel);
 
   const grid = document.createElement("div");
@@ -2122,7 +2141,7 @@ function buildDeckPicker(opts: { mode: "battle" | "deck" }): void {
     for (const level of Object.keys(DIFFICULTIES)) {
       const btn = document.createElement("button");
       btn.className = "diff-btn";
-      btn.textContent = level;
+      btn.textContent = tr(level[0].toUpperCase() + level.slice(1), DIFF_AR[level] ?? level);
       btn.classList.toggle("chosen", level === difficulty);
       btn.addEventListener("click", () => {
         difficulty = level;
@@ -2137,7 +2156,7 @@ function buildDeckPicker(opts: { mode: "battle" | "deck" }): void {
 
     const modeLabel = document.createElement("div");
     modeLabel.className = "collect-label";
-    modeLabel.textContent = "Game mode";
+    modeLabel.textContent = tr("Game mode", "نمط اللعب");
     pickerRoot.appendChild(modeLabel);
 
     const modeRow = document.createElement("div");
@@ -2147,17 +2166,17 @@ function buildDeckPicker(opts: { mode: "battle" | "deck" }): void {
     for (const m of GAME_MODES) {
       const btn = document.createElement("button");
       btn.className = "mode-btn";
-      btn.textContent = m.name;
+      btn.textContent = tr(m.name, m.nameAr);
       btn.classList.toggle("chosen", m.id === gameMode.id);
       btn.addEventListener("click", () => {
         gameMode = m;
         localStorage.setItem(MODE_KEY, m.id);
         modeRow.querySelectorAll("button").forEach((b) => b.classList.toggle("chosen", b === btn));
-        modeBlurb.textContent = m.blurb;
+        modeBlurb.textContent = tr(m.blurb, m.blurbAr);
       });
       modeRow.appendChild(btn);
     }
-    modeBlurb.textContent = gameMode.blurb;
+    modeBlurb.textContent = tr(gameMode.blurb, gameMode.blurbAr);
     pickerRoot.appendChild(modeRow);
 
     // Tower Troop: who defends your princess towers.
@@ -2276,7 +2295,10 @@ function buildDeckPicker(opts: { mode: "battle" | "deck" }): void {
     const avg = costs.length
       ? (costs.reduce((s, c) => s + c, 0) / costs.length).toFixed(1)
       : "0.0";
-    count.textContent = `${deck.length} / 8 cards · average ${avg} elixir`;
+    count.textContent = tr(
+      `${deck.length} / 8 cards · average ${avg} elixir`,
+      `${deck.length} / 8 بطاقات · متوسط الإكسير ${avg}`,
+    );
     const legal = isOwnedDeck(deck, owned);
     startBtn.disabled = !legal;
     if (friendBtn) {
@@ -2355,12 +2377,15 @@ function connectRoom(): RoomClient {
 function openFriendLobby(deck: CardId[]): void {
   pickerRoot.innerHTML = "";
   const title = document.createElement("h2");
-  title.textContent = "Play a Friend";
+  title.textContent = tr("Play a Friend", "العب مع صديق");
   pickerRoot.appendChild(title);
 
   const hint = document.createElement("p");
   hint.className = "lobby-hint";
-  hint.innerHTML = `Mode: <b>${netGameMode().name}</b><br/>You both need to be on the same Wi-Fi.`;
+  hint.innerHTML = tr(
+    `Mode: <b>${netGameMode().name}</b><br/>You both need to be on the same Wi-Fi.`,
+    `النمط: <b>${netGameMode().nameAr}</b><br/>يجب أن تكونا على شبكة الواي فاي نفسها.`,
+  );
   pickerRoot.appendChild(hint);
 
   const status = document.createElement("div");
@@ -2369,25 +2394,25 @@ function openFriendLobby(deck: CardId[]): void {
 
   const createBtn = document.createElement("button");
   createBtn.className = "battle-btn";
-  createBtn.textContent = "Create a game";
+  createBtn.textContent = tr("Create a game", "أنشئ مباراة");
   pickerRoot.appendChild(createBtn);
 
   const joinRow = document.createElement("div");
   joinRow.className = "join-row";
   const codeInput = document.createElement("input");
   codeInput.className = "code-input";
-  codeInput.placeholder = "CODE";
+  codeInput.placeholder = tr("CODE", "الرمز");
   codeInput.maxLength = 5;
   codeInput.autocapitalize = "characters";
   const joinBtn = document.createElement("button");
   joinBtn.className = "battle-btn join";
-  joinBtn.textContent = "Join";
+  joinBtn.textContent = tr("Join", "انضم");
   joinRow.append(codeInput, joinBtn);
   pickerRoot.appendChild(joinRow);
 
   const backBtn = document.createElement("button");
   backBtn.className = "back-btn";
-  backBtn.textContent = "← Back";
+  backBtn.textContent = tr("← Back", "→ رجوع");
   pickerRoot.appendChild(backBtn);
 
   let client: RoomClient | null = null;
@@ -2411,16 +2436,16 @@ function openFriendLobby(deck: CardId[]): void {
             : "Couldn't join that game.";
     };
     c.onPeerLeft = () => {
-      status.textContent = "Your friend left the game.";
+      status.textContent = tr("Your friend left the game.", "غادر صديقك المباراة.");
     };
     c.onClose = () => {
-      if (mode !== "online") status.textContent = "Couldn't reach the game server.";
+      if (mode !== "online") status.textContent = tr("Couldn't reach the game server.", "تعذّر الوصول إلى خادم اللعبة.");
     };
   };
 
   createBtn.addEventListener("click", () => {
     if (client) return;
-    status.textContent = "Connecting…";
+    status.textContent = tr("Connecting…", "جارٍ الاتصال…");
     createBtn.disabled = true;
     const c = connectRoom();
     wire(c);
@@ -2431,10 +2456,10 @@ function openFriendLobby(deck: CardId[]): void {
   joinBtn.addEventListener("click", () => {
     const code = codeInput.value.trim().toUpperCase();
     if (!code) {
-      status.textContent = "Type your friend's code first.";
+      status.textContent = tr("Type your friend's code first.", "اكتب رمز صديقك أولًا.");
       return;
     }
-    status.textContent = "Connecting…";
+    status.textContent = tr("Connecting…", "جارٍ الاتصال…");
     const c = connectRoom();
     wire(c);
     c.join(code, deck);
@@ -2496,14 +2521,14 @@ window.addEventListener("pointerdown", () => audio.resume(), { once: false });
 const homeBtn = document.createElement("button");
 homeBtn.className = "mute";
 homeBtn.innerHTML = icon("home");
-homeBtn.title = "Home";
+homeBtn.title = tr("Home", "الرئيسية");
 homeBtn.addEventListener("click", openHome);
 topbar.appendChild(homeBtn);
 
 const deckBtn = document.createElement("button");
 deckBtn.className = "mute";
 deckBtn.innerHTML = icon("cards");
-deckBtn.title = "Edit deck";
+deckBtn.title = tr("Edit deck", "تعديل المجموعة");
 deckBtn.addEventListener("click", () => openDeckPicker({ mode: "deck" }));
 
 // CR-style battle chrome: sound, home and deck live behind one menu
@@ -2563,13 +2588,13 @@ function applySpecialReward(): void {
     markChallengeDone(activeChallenge.id);
     profile = { ...profile, gold: profile.gold + activeChallenge.goldReward };
     persistProfile();
-    hud.setReward(`First clear! +${activeChallenge.goldReward} 🪙`);
+    hud.setReward(tr(`First clear! +${activeChallenge.goldReward} 🪙`, `أول إنجاز! +${activeChallenge.goldReward} 🪙`));
   } else if (battleKind === "daily") {
     if (isDailyDone()) return;
     localStorage.setItem(DAILY_DONE_KEY, dateKey(new Date()));
     profile = { ...profile, gold: profile.gold + 100 };
     persistProfile();
-    hud.setReward("Daily complete! +100 🪙");
+    hud.setReward(tr("Daily complete! +100 🪙", "أنجزت التحدي اليومي! +100 🪙"));
   }
 }
 
@@ -2598,7 +2623,14 @@ function applyMatchResult(winner: "player" | "enemy" | "draw"): void {
     },
   };
   saveAchievements(achievements);
-  hud.setReward(summary.rewardLine);
+  // The chest shows as its own badge on the result screen.
+  const d = summary.trophiesDelta;
+  hud.setReward(
+    [
+      d === 0 ? tr("🏆 unchanged", "🏆 بلا تغيير") : `${d > 0 ? "+" : ""}${d} 🏆`,
+      `+${summary.goldDelta} 🪙`,
+    ].join(" · "),
+  );
 }
 
 /** Full-screen "NEW ARENA" celebration with the newly findable cards. */
@@ -2613,11 +2645,11 @@ function showArenaUp(arena: (typeof ARENAS)[number]): void {
   crown.textContent = "🏟️";
   inner.appendChild(crown);
   const title = document.createElement("h2");
-  title.textContent = tr("NEW ARENA!", "!ساحة جديدة");
+  title.textContent = tr("NEW ARENA!", "ساحة جديدة!");
   inner.appendChild(title);
   const name = document.createElement("div");
   name.className = "arena-up-name";
-  name.textContent = arena.name;
+  name.textContent = tr(arena.name, arena.ar);
   inner.appendChild(name);
   if (arena.unlocks.length > 0) {
     const label = document.createElement("div");

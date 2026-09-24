@@ -31,6 +31,8 @@ export function applyEditionTokens(theme: StoredEdition): void {
   try {
     document.documentElement.dataset.edition =
       theme === "arabic" ? "arabic" : theme === "normal" ? "clash" : "unset";
+    // Correct shaping/voice for Arabic text; layout itself stays LTR.
+    document.documentElement.lang = theme === "arabic" ? "ar" : "en";
   } catch {
     // node / test environment — silently skip
   }

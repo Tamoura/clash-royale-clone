@@ -2668,3 +2668,14 @@ button.card.locked {
 .reward-chest .ui-icon { width: 64px; height: 64px; }
 .reward-chest.rare .ui-icon { filter: hue-rotate(200deg) saturate(1.4); }
 @keyframes chestReward { from { transform: scale(0) rotate(-12deg); opacity: 0; } to { transform: scale(1) rotate(0); opacity: 1; } }
+
+/* ── Islamic edition: Arabic text ──
+   Each text block takes its direction from its first letter, so Arabic
+   lines read right-to-left (and punctuation lands correctly) while the
+   game layout itself stays put. Arabic letters join, so no tracking. */
+:root[data-edition="arabic"] :where(div, span, label, button, h1, h2, h3, p, li, b) {
+  unicode-bidi: plaintext;
+}
+:root[data-edition="arabic"] * {
+  letter-spacing: 0 !important;
+}

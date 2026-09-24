@@ -14,7 +14,9 @@ export interface ChallengeWave {
 export interface Challenge {
   id: string;
   name: string;
+  nameAr: string;
   blurb: string;
+  blurbAr: string;
   /** The fixed deck the player defends with. */
   deck: CardId[];
   /** Seconds to survive (all your towers standing) to win. */
@@ -31,7 +33,9 @@ export const CHALLENGES: Challenge[] = [
   {
     id: "giant-trouble",
     name: "Giant Trouble",
+    nameAr: "ورطة العمالقة",
     blurb: "Two giants, two lanes. Hold the towers for 45 seconds!",
+    blurbAr: "عملاقان في مسارين. احمِ أبراجك ٤٥ ثانية!",
     deck: [
       "knight",
       "archers",
@@ -55,7 +59,9 @@ export const CHALLENGES: Challenge[] = [
   {
     id: "air-raid",
     name: "Air Raid",
+    nameAr: "غارة جوية",
     blurb: "Balloons and dragons fill the sky. Shoot them down!",
+    blurbAr: "المناطيد والتنانين تملأ السماء. أسقطها!",
     deck: [
       "musketeer",
       "archers",
@@ -79,7 +85,9 @@ export const CHALLENGES: Challenge[] = [
   {
     id: "the-horde",
     name: "The Horde",
+    nameAr: "الحشد",
     blurb: "Wave after wave of little ones — splash them away!",
+    blurbAr: "موجة تلو موجة من الصغار — اكتسحهم بالضربات الواسعة!",
     deck: [
       "valkyrie",
       "wizard",

@@ -157,7 +157,7 @@ const GradeShader = {
 };
 
 /** The game's display face (bundled, OFL) with the old system fallbacks. */
-export const GAME_FONT = "'Lilita One', 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
+export const GAME_FONT = "'Lilita One', 'Baloo Bhaijaan 2', 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
 
 /** Render-loop scratch vectors (render-avoid-allocations). */
 const PREV_POS = new THREE.Vector3();

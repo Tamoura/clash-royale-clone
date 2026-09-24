@@ -1,3 +1,4 @@
+import { tr } from "../ui/i18n";
 import { effectiveCard, type BattleState } from "../game/battle";
 import { ABILITIES, type AbilityId } from "../game/abilities";
 import { icon, type IconName } from "../ui/icons";
@@ -89,7 +90,7 @@ export class Hud {
     const left = el("div", "crowns player", topbar);
     left.setAttribute("aria-label", "Your crowns");
     left.innerHTML =
-      `<span class="level" aria-hidden="true">9</span><span class="pname">You</span> ${icon("crown")} <span class="crown-count">0</span>`;
+      `<span class="level" aria-hidden="true">9</span><span class="pname">${tr("You", "أنت")}</span> ${icon("crown")} <span class="crown-count">0</span>`;
     this.playerCrownsWrap = left;
     this.playerCrowns = left.querySelector(".crown-count")!;
     this.clock = el("div", "clock", topbar);
@@ -105,7 +106,7 @@ export class Hud {
     this.muteBtn = el("button", "mute", topbar);
     this.muteBtn.innerHTML = icon("sound");
     this.muteBtn.setAttribute("aria-label", "Toggle sound");
-    this.muteBtn.setAttribute("title", "Toggle sound");
+    this.muteBtn.setAttribute("title", tr("Toggle sound", "تشغيل/كتم الصوت"));
     this.muteBtn.addEventListener("click", () => {
       const muted = this.cb.onToggleSound();
       this.muteBtn.innerHTML = icon(muted ? "mute" : "sound");
@@ -128,7 +129,7 @@ export class Hud {
     this.x2Tag.textContent = "x2";
     this.x2Tag.setAttribute("aria-hidden", "true");
     const maxTag = el("div", "elixir-max", this.elixirBar);
-    maxTag.textContent = `Max: ${ELIXIR_MAX}`;
+    maxTag.textContent = tr(`Max: ${ELIXIR_MAX}`, `الحد: ${ELIXIR_MAX}`);
     maxTag.setAttribute("aria-hidden", "true");
 
     const handRow = el("div", "hand-row", bottom);
@@ -139,7 +140,7 @@ export class Hud {
     this.abilityBtn.setAttribute("aria-label", "King's Ability");
     this.abilityBtn.style.display = "none";
     this.abilityIcon = el("span", "ability-icon", this.abilityBtn);
-    el("span", "ability-label", this.abilityBtn).textContent = "KING";
+    el("span", "ability-label", this.abilityBtn).textContent = tr("KING", "الملك");
     this.abilityBtn.addEventListener("pointerdown", (ev) => {
       ev.preventDefault();
       this.cb.onAbility?.();
@@ -147,7 +148,7 @@ export class Hud {
     const nextWrap = el("div", "next-card", handRow);
     nextWrap.setAttribute("aria-label", "Next card");
     this.nextArt = el("div", "next-art", nextWrap);
-    el("div", "next-label", nextWrap).textContent = "Next:";
+    el("div", "next-label", nextWrap).textContent = tr("Next:", "التالي:");
     // Shared stats tooltip floating above the hovered card.
     const tip = el("div", "card-tip", bottom);
     const showTip = (btn: HTMLButtonElement): void => {
@@ -222,7 +223,7 @@ export class Hud {
     this.overlayScore = el("div", "overlay-score", overlay);
     this.overlayStats = el("div", "overlay-stats", overlay);
     const again = el("button", "again", overlay);
-    again.textContent = "Play again";
+    again.textContent = tr("Play again", "العب مجددًا");
     again.setAttribute("aria-label", "Play again");
     again.addEventListener("click", () => this.cb.onRestart());
   }
@@ -383,7 +384,7 @@ export class Hud {
         if (lvl > 1) {
           const chip = document.createElement("div");
           chip.className = "lvl-chip";
-          chip.textContent = `Lv.${lvl}`;
+          chip.textContent = tr(`Lv.${lvl}`, `مستوى ${lvl}`);
           btn.appendChild(chip);
         }
         // Re-attach the persistent charge overlay + "+N" badge, which the
@@ -455,7 +456,7 @@ export class Hud {
       const { winner, playerCrowns, enemyCrowns } = state.result;
       const iWon = winner === mySide;
       this.overlayTitle.textContent =
-        winner === "draw" ? "DRAW" : iWon ? "VICTORY! 🎉" : "DEFEAT";
+        winner === "draw" ? tr("DRAW", "تعادل") : iWon ? tr("VICTORY! 🎉", "انتصار! 🎉") : tr("DEFEAT", "هزيمة");
       this.overlayTitle.dataset.kind = winner === "draw" ? "draw" : iWon ? "player" : "enemy";
       this.overlay.dataset.kind = this.overlayTitle.dataset.kind;
       const myCrowns = mySide === "player" ? playerCrowns : enemyCrowns;
@@ -483,20 +484,20 @@ export class Hud {
       const e = foe.stats;
       const statsHtml =
         `<div class="stat-row"><span>${Math.round(p.damageDealt)}</span>` +
-        `<label>damage</label><span>${Math.round(e.damageDealt)}</span></div>` +
+        `<label>${tr("damage", "الضرر")}</label><span>${Math.round(e.damageDealt)}</span></div>` +
         `<div class="stat-row"><span>${p.elixirSpent}</span>` +
-        `<label>elixir spent</label><span>${e.elixirSpent}</span></div>` +
+        `<label>${tr("elixir spent", "الإكسير المصروف")}</label><span>${e.elixirSpent}</span></div>` +
         `<div class="stat-row"><span>${Math.round(p.elixirLeaked)}</span>` +
-        `<label>elixir leaked</label><span>${Math.round(e.elixirLeaked)}</span></div>` +
+        `<label>${tr("elixir leaked", "الإكسير المهدور")}</label><span>${Math.round(e.elixirLeaked)}</span></div>` +
         (p.elixirCollected > 0 || e.elixirCollected > 0
           ? `<div class="stat-row"><span>${Math.round(p.elixirCollected)}</span>` +
-            `<label>elixir collected</label><span>${Math.round(e.elixirCollected)}</span></div>`
+            `<label>${tr("elixir collected", "الإكسير المجموع")}</label><span>${Math.round(e.elixirCollected)}</span></div>`
           : "") +
         this.buildReport(me.stats) +
         (this.reward ? `<div class="reward-line">${this.reward}</div>` : "") +
         (this.rewardChest
           ? `<div class="reward-chest ${this.rewardChest}">${icon("chest")}<span>${
-              this.rewardChest === "rare" ? "Rare Chest" : "Wooden Chest"
+              this.rewardChest === "rare" ? tr("Rare Chest", "صندوق نادر") : tr("Wooden Chest", "صندوق خشبي")
             }</span></div>`
           : "");
       // Rewrite only on change so entrance animations aren't restarted every frame.
@@ -524,7 +525,7 @@ export class Hud {
     let html = "";
     if (top.length > 0) {
       const max = top[0][1];
-      html += `<div class="report-title">Damage leaders</div>`;
+      html += `<div class="report-title">${tr("Damage leaders", "الأكثر ضررًا")}</div>`;
       html += top
         .map(
           ([id, v], i) =>
@@ -536,7 +537,7 @@ export class Hud {
         .join("");
     }
     if (this.timeline.length > 0) {
-      html += `<div class="report-title">Towers</div>`;
+      html += `<div class="report-title">${tr("Towers", "الأبراج")}</div>`;
       html += this.timeline
         .map((line) => `<div class="report-line">${line}</div>`)
         .join("");

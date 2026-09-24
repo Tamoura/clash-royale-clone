@@ -16,6 +16,8 @@ export function arenaIndexAt(trophies: number): number {
 export interface ArenaDef {
   id: string;
   name: string;
+  /** Name in the Islamic edition, where each arena is its own Islamic world. */
+  ar: string;
   /** Minimum trophies to stand in this arena. */
   trophies: number;
   /** Cards that become findable in chests at this arena. */
@@ -27,66 +29,77 @@ export const ARENAS: ArenaDef[] = [
   {
     id: "training-camp",
     name: "Training Camp",
+    ar: "ساحة التدريب",
     trophies: 0,
     unlocks: [...DEFAULT_DECK],
   },
   {
     id: "goblin-stadium",
     name: "Goblin Stadium",
+    ar: "واحة النخيل",
     trophies: 100,
     unlocks: ["skeletons", "zap", "cannon"],
   },
   {
     id: "bone-pit",
     name: "Bone Pit",
+    ar: "وادي الرمال",
     trophies: 200,
     unlocks: ["tombstone", "valkyrie", "bats"],
   },
   {
     id: "barbarian-bowl",
     name: "Barbarian Bowl",
+    ar: "سوق التوابل",
     trophies: 400,
     unlocks: ["hog-rider", "wizard", "gargoyles"],
   },
   {
     id: "pekka-playhouse",
     name: "P.E.K.K.A's Playhouse",
+    ar: "قلعة النحاس",
     trophies: 700,
     unlocks: ["prince", "minions", "elixir-collector"],
   },
   {
     id: "spell-valley",
     name: "Spell Valley",
+    ar: "حدائق الأندلس",
     trophies: 1000,
     unlocks: ["witch", "freeze", "rage"],
   },
   {
     id: "builders-workshop",
     name: "Builder's Workshop",
+    ar: "دار الصنّاع",
     trophies: 1300,
     unlocks: ["balloon", "royal-giant", "firecracker", "heal"],
   },
   {
     id: "royal-arena",
     name: "Royal Arena",
+    ar: "قصر الحمراء",
     trophies: 1600,
     unlocks: ["skeleton-army", "ice-wizard", "pekka", "tornado"],
   },
   {
     id: "frozen-peak",
     name: "Frozen Peak",
+    ar: "قمم الأطلس",
     trophies: 2000,
     unlocks: ["electro-wizard", "magic-archer", "princess"],
   },
   {
     id: "jungle-arena",
     name: "Jungle Arena",
+    ar: "بساتين الغوطة",
     trophies: 2400,
     unlocks: ["executioner", "mega-knight", "skeleton-barrel", "mirror"],
   },
   {
     id: "legendary-peak",
     name: "Legendary Peak",
+    ar: "مدينة الأهلّة",
     trophies: 3000,
     unlocks: [],
   },
@@ -150,6 +163,11 @@ export function cardsAvailableAt(trophies: number): CardId[] {
 
 export function unlockTrophiesFor(id: CardId): number {
   return CARD_UNLOCK_TROPHIES[id] ?? 0;
+}
+
+export function arenaArForUnlock(id: CardId): string {
+  const need = unlockTrophiesFor(id);
+  return (ARENAS.find((a) => a.trophies === need) ?? ARENAS[0]).ar;
 }
 
 export function arenaNameForUnlock(id: CardId): string {
