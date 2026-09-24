@@ -2,7 +2,9 @@
  * Trophy Road arena looks: every arena on the ladder is its own world.
  * scene3d consumes one ArenaLook per battle — floor, sky, mid-band,
  * crossings, towers, props, lights — so climbing visibly changes the
- * stage you fight on. The Arabic edition keeps its single night bazaar.
+ * stage you fight on. The Islamic edition climbs its own road of
+ * Islamic worlds (ISLAMIC_LOOKS), from a sunny training court to a
+ * moonlit medina.
  */
 
 export type BrickVariant =
@@ -76,8 +78,27 @@ export interface ArenaLook {
   tree: { kind: TreeKind; trunk: number; leafA: number; leafB: number };
   rock: number;
   flowers: boolean;
+  /** Islamic edition only: zellige floor, lane, dome and emblem colours. */
+  islamic?: IslamicTiles;
   /** Display-space colour grade (defaults in scene3d when omitted). */
   grade?: { saturation?: number; contrast?: number; tint?: [number, number, number]; vignette?: number };
+}
+
+/** The Islamic floor and trim palette (the zellige is drawn by scene3d). */
+export interface IslamicTiles {
+  /** Plaster base under the tile pattern. */
+  plaster: string;
+  /** Eight-point star fill, small diamonds, and the gold strapwork. */
+  star: string;
+  diamond: string;
+  strap: string;
+  /** Lane dirt as "r,g,b" (core) and its worn speckle. */
+  lane: string;
+  laneWear: string;
+  /** Tower cupolas (princess, king) and the crescent floor emblems. */
+  dome: number;
+  domeKing: number;
+  emblem: number;
 }
 
 const WHITE_STREAK = "rgba(255,255,255,0.5)";
@@ -239,10 +260,14 @@ export const LOOKS: Record<string, ArenaLook> = {
   },
 };
 
-/** Arabic edition: one night bazaar, driven by the fields scene3d shares. */
+/**
+ * Islamic edition, first look and shared base: the night spice souk that
+ * the edition launched with. Every Islamic world below starts from it.
+ */
 export const ARABIC_LOOK: ArenaLook = {
   ...LOOKS.neon,
-  id: "arabic",
+  id: "souk",
+  grade: { saturation: 1.1, contrast: 1.05, tint: [1.04, 1.0, 0.96], vignette: 0.3 },
   sky: 0x141a38, apron: 0x8a6f48, far: 0x241d3e, fieldSide: 0xa89870, edging: 0xc8a85c, drift: 0xb89a68,
   fogNear: 30, fogFar: 62,
   hemiSky: 0xcfd8ff, hemiGround: 0x4a3a58, hemiIntensity: 0.95, sun: 0xfff2d8, fill: 0xffe2b8,
@@ -252,6 +277,148 @@ export const ARABIC_LOOK: ArenaLook = {
   fencePost: 0x6e4a28, fenceRail: 0x7d5a36, standWall: 0xb3a890, standRoofEnemy: 0xb02e22, standRoofPlayer: 0x2c55b8, tentWall: 0xe8e3d8, cornerPost: 0xb3a890,
   neon: null, lanterns: [0xffc46b, 0x5ad7c8, 0xffe08a], torch: 0xffc46b,
   tree: { kind: "palm", trunk: 0x8a6a3e, leafA: 0x3f8f45, leafB: 0x57a83f }, rock: 0x8e9aa5, flowers: true,
+  islamic: {
+    plaster: "#efe7cf", star: "rgba(26,163,160,0.12)", diamond: "rgba(184,92,56,0.10)", strap: "202,162,63",
+    lane: "214,178,94", laneWear: "160,124,58", dome: 0x0e7c84, domeKing: 0x1aa3a0, emblem: 0xe8b948,
+  },
+};
+
+const I = ARABIC_LOOK;
+const tiles = (t: Partial<IslamicTiles>): IslamicTiles => ({ ...I.islamic!, ...t });
+
+/**
+ * The Islamic trophy road: eleven worlds, each a palette over the shared
+ * zellige court, domed towers and crescent emblems.
+ */
+export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {
+  souk: I,
+  // Training Ground: a sunny whitewashed courtyard.
+  courtyard: {
+    ...I, id: "courtyard",
+    grade: { saturation: 1.12, contrast: 1.09, tint: [1.0, 1.0, 1.0], vignette: 0.22 },
+    sky: 0x8fcbea, far: 0x6f9a52, apron: 0xb89868, fogNear: 42, fogFar: 88,
+    hemiSky: 0xffffff, hemiGround: 0x8a7a5a, hemiIntensity: 0.98, sun: 0xfff6e0, fill: 0xfff0d0,
+    nightSky: 0x1a2350, lanterns: [0xffd27a, 0x7fe3d6],
+    band: { ...I.band, fill: "#2a8ee0" },
+    islamic: tiles({ plaster: "#e8d9b4", star: "rgba(26,163,160,0.24)", diamond: "rgba(184,92,56,0.18)", domeKing: 0x1aa3a0, dome: 0x2bb7b0 }),
+  },
+  // Palm Oasis: green-and-turquoise tiles round a clear spring.
+  oasis: {
+    ...I, id: "oasis",
+    grade: { saturation: 1.16, contrast: 1.09, tint: [0.98, 1.03, 1.0], vignette: 0.24 },
+    sky: 0x9fe0dc, far: 0x4f8f4a, apron: 0xc9a870, fogNear: 42, fogFar: 88,
+    hemiSky: 0xf2fff8, hemiGround: 0x6a7a4a, hemiIntensity: 0.98, sun: 0xfff8e0, fill: 0xe8ffe8,
+    nightSky: 0x10304a, lanterns: [0xffe08a, 0x6fe0b0],
+    band: { ...I.band, fill: "#1fb5b0", glint: 0xe0fff8, foam: 0xf0fffc },
+    tree: { kind: "palm", trunk: 0x8a6a3e, leafA: 0x2f9a4a, leafB: 0x4cc05a },
+    islamic: tiles({ plaster: "#e4d9b2", star: "rgba(40,160,90,0.26)", diamond: "rgba(26,163,160,0.2)", dome: 0x2f9a5a, domeKing: 0x1aa38a, emblem: 0xe8c04a }),
+  },
+  // Sand Valley: hot ochre dunes and terracotta stars at noon.
+  dunes: {
+    ...I, id: "dunes",
+    grade: { saturation: 1.1, contrast: 1.09, tint: [1.06, 1.0, 0.92], vignette: 0.26 },
+    sky: 0xf2cf98, far: 0xd8a868, apron: 0xc89858, drift: 0xe0b878, fieldSide: 0xc8a070, fogNear: 42, fogFar: 88,
+    hemiSky: 0xfff0d8, hemiGround: 0x9a7048, hemiIntensity: 0.98, sun: 0xffe8c0, fill: 0xffd8a8,
+    nightSky: 0x2a1a38, lanterns: [0xffb050, 0xffe08a],
+    band: { ...I.band, fill: "#2c9aa8" },
+    tree: { kind: "palm", trunk: 0x7a5a32, leafA: 0x6a8a3a, leafB: 0x8aa048 },
+    islamic: tiles({ plaster: "#e6c592", star: "rgba(184,92,56,0.26)", diamond: "rgba(160,110,50,0.22)", lane: "222,176,110", laneWear: "170,120,60", dome: 0xc0703a, domeKing: 0xd08a3a, emblem: 0xf0c050 }),
+  },
+  // Copper Citadel: dark red stone, copper domes, a molten copper channel.
+  copper: {
+    ...I, id: "copper",
+    grade: { saturation: 1.12, contrast: 1.08, tint: [1.07, 0.98, 0.92], vignette: 0.36 },
+    sky: 0x3a1c22, far: 0x2a1418, apron: 0x5a3228, fieldSide: 0x7a4a38, edging: 0xb87333, drift: 0x6a3a2a, fogNear: 26, fogFar: 58,
+    hemiSky: 0xffd8c0, hemiGround: 0x4a2418, hemiIntensity: 0.95, sun: 0xffd0a0, fill: 0xff9a6a,
+    nightSky: 0x1a0a10, lanterns: [0xff8a3a, 0xffc46b], torch: 0xff7a2a,
+    band: { fill: "#d9642a", streak: "rgba(255,210,120,0.6)", glint: 0xffe0a0, glintOpacity: 0.8, foam: 0xffb060, foamOpacity: 0.5, bridge: "stone" },
+    tower: { ...I.tower, enemy: "dark", player: "dark", platformEnemy: 0x8a5a48, platformPlayer: 0x8a5a48, plinth: 0x6a4038, battlement: 0x6a4038 },
+    tree: { kind: "dead", trunk: 0x4a2a20, leafA: 0x5a3a2a, leafB: 0x5a3a2a }, flowers: false,
+    islamic: tiles({ plaster: "#d8c2a8", star: "rgba(184,90,40,0.18)", diamond: "rgba(120,50,30,0.14)", lane: "190,130,90", laneWear: "120,70,40", dome: 0xb87333, domeKing: 0xd08840, emblem: 0xe89048 }),
+  },
+  // Andalusian Gardens: ivory arcades, green-and-blue tiles, cypresses.
+  andalus: {
+    ...I, id: "andalus",
+    grade: { saturation: 1.14, contrast: 1.09, tint: [0.99, 1.02, 1.01], vignette: 0.24 },
+    sky: 0xa8d8f0, far: 0x3f7a44, apron: 0xb8a078, fogNear: 42, fogFar: 88,
+    hemiSky: 0xf8fff8, hemiGround: 0x5a7048, hemiIntensity: 0.98, sun: 0xfff6e8, fill: 0xf0fff0,
+    nightSky: 0x142848, lanterns: [0xfff0b0, 0x8fe0c0],
+    band: { ...I.band, fill: "#3aa0d8" },
+    tree: { kind: "pine", trunk: 0x5a4028, leafA: 0x2a6a38, leafB: 0x357a42 },
+    islamic: tiles({ plaster: "#ebe0c8", star: "rgba(40,130,70,0.26)", diamond: "rgba(40,90,170,0.22)", dome: 0x2a7a4a, domeKing: 0x2a8a6a, emblem: 0xdcb040 }),
+  },
+  // Artisans' House: warm wood and brass inlay.
+  artisans: {
+    ...I, id: "artisans",
+    grade: { saturation: 1.08, contrast: 1.09, tint: [1.05, 1.0, 0.94], vignette: 0.3 },
+    sky: 0xd8b888, far: 0x7a5a38, apron: 0x8a6440, fieldSide: 0x9a7650, fogNear: 42, fogFar: 88,
+    hemiSky: 0xfff0d8, hemiGround: 0x6a4a30, hemiIntensity: 0.98, sun: 0xffe8c8, fill: 0xffd8a8,
+    nightSky: 0x2a1c20, lanterns: [0xffc46b, 0xffe08a],
+    band: { ...I.band, fill: "#2a7ab8" },
+    tree: { kind: "topiary", trunk: 0x5a3a20, leafA: 0x5a7a38, leafB: 0x6a8a40 },
+    islamic: tiles({ plaster: "#d9c095", star: "rgba(140,90,40,0.26)", diamond: "rgba(202,162,63,0.26)", lane: "200,160,100", dome: 0xc9a04a, domeKing: 0xd8b050, emblem: 0xc9a04a }),
+  },
+  // Alhambra Palace: rose-ivory stucco, deep red and gold, royal domes.
+  alhambra: {
+    ...I, id: "alhambra",
+    grade: { saturation: 1.12, contrast: 1.09, tint: [1.04, 0.99, 0.98], vignette: 0.26 },
+    sky: 0x9cc8ec, far: 0x5a7a4a, apron: 0xc8a888, fogNear: 42, fogFar: 88,
+    hemiSky: 0xfff8f0, hemiGround: 0x7a5a50, hemiIntensity: 0.98, sun: 0xfff2e0, fill: 0xffe8e0,
+    nightSky: 0x201838, lanterns: [0xffd27a, 0xff9a8a],
+    band: { ...I.band, fill: "#2a86d8" },
+    tower: { ...I.tower, enemy: "marble", player: "marble", platformEnemy: 0xe8d8c8, platformPlayer: 0xe8d8c8 },
+    tree: { kind: "pine", trunk: 0x5a4028, leafA: 0x2a6a38, leafB: 0x357a42 },
+    islamic: tiles({ plaster: "#ecd5c2", star: "rgba(170,40,40,0.22)", diamond: "rgba(202,162,63,0.28)", dome: 0xb8923a, domeKing: 0xd8aa3a, emblem: 0xe8b948 }),
+  },
+  // Atlas Peaks: snowbound kasbah, icy tiles, cedar forest.
+  atlas: {
+    ...I, id: "atlas",
+    grade: { saturation: 1.06, contrast: 1.09, tint: [0.97, 1.0, 1.05], vignette: 0.24 },
+    sky: 0xcfe4f4, far: 0xe8f0f8, apron: 0xd8e2ec, drift: 0xf4f8fc, fieldSide: 0xb8c4d0, fogNear: 42, fogFar: 88,
+    hemiSky: 0xf4faff, hemiGround: 0x8a9ab0, hemiIntensity: 0.98, sun: 0xf8fbff, fill: 0xe8f0ff,
+    nightSky: 0x1a2848, lanterns: [0xffe0a0, 0x9fd8ff],
+    band: { fill: "#8fd0f0", streak: WHITE_STREAK, glint: 0xffffff, glintOpacity: 0.8, foam: 0xffffff, foamOpacity: 0.6, bridge: "stone" },
+    tower: { ...I.tower, enemy: "grey", player: "grey", platformEnemy: 0xc8d0da, platformPlayer: 0xc8d0da, plinth: 0x8a94a4, battlement: 0x8a94a4 },
+    tree: { kind: "pine", trunk: 0x4a3a2a, leafA: 0x2a5a48, leafB: 0x356a52 }, flowers: false,
+    islamic: tiles({ plaster: "#dce6f0", star: "rgba(40,110,190,0.24)", diamond: "rgba(26,163,160,0.2)", lane: "196,206,220", laneWear: "140,150,170", dome: 0x2a6ab0, domeKing: 0x3a88c8, emblem: 0xd8c070 }),
+  },
+  // Ghouta Orchards: Damascus rose and orchard green.
+  ghouta: {
+    ...I, id: "ghouta",
+    grade: { saturation: 1.16, contrast: 1.09, tint: [1.02, 1.01, 0.99], vignette: 0.24 },
+    sky: 0xb0dcf0, far: 0x4a8a3a, apron: 0xb89a70, fogNear: 42, fogFar: 88,
+    hemiSky: 0xfff8fa, hemiGround: 0x6a7a48, hemiIntensity: 0.98, sun: 0xfff4e8, fill: 0xffeef0,
+    nightSky: 0x241a3a, lanterns: [0xffb0c8, 0xffe08a],
+    band: { ...I.band, fill: "#2aa0c8" },
+    tree: { kind: "topiary", trunk: 0x6a4a2a, leafA: 0x3f8f3a, leafB: 0x58a84a },
+    islamic: tiles({ plaster: "#ecd9cf", star: "rgba(200,70,110,0.24)", diamond: "rgba(60,140,60,0.22)", dome: 0x3a8a5a, domeKing: 0xc05a7a, emblem: 0xe0b048 }),
+  },
+  // Moonlit Medina: the legendary night city of lanterns and gold.
+  medina: {
+    ...I, id: "medina",
+    grade: { saturation: 1.15, contrast: 1.07, tint: [1.0, 0.98, 1.05], vignette: 0.36 },
+    sky: 0x0c0f2a, far: 0x14163a, apron: 0x4a3e5a, fieldSide: 0x6a6088, edging: 0xcaa23f, drift: 0x5a4e70, fogNear: 26, fogFar: 58,
+    hemiSky: 0xc8d0ff, hemiGround: 0x2a2448, hemiIntensity: 0.9, sun: 0xe8ecff, fill: 0xb8a8ff,
+    nightSky: 0x06081a, lanterns: [0xffc46b, 0xffe08a, 0x9fd8ff, 0xff9ac0], torch: 0xffd27a,
+    band: { fill: "#1a2a78", streak: "rgba(180,200,255,0.4)", glint: 0xffe8a0, glintOpacity: 0.7, foam: 0xc8d0ff, foamOpacity: 0.35, bridge: "stone" },
+    tower: { ...I.tower, platformEnemy: 0xb8b0c8, platformPlayer: 0xb8b0c8, plinth: 0x7a7090, battlement: 0x7a7090 },
+    islamic: tiles({ plaster: "#dcd8e8", star: "rgba(60,50,150,0.16)", diamond: "rgba(202,162,63,0.2)", lane: "200,180,130", laneWear: "140,120,80", dome: 0xcaa23f, domeKing: 0xe8c050, emblem: 0xf0c848 }),
+  },
+};
+
+/** Which Islamic world each trophy-road arena is staged in. */
+const ISLAMIC_ARENA_TO_LOOK: Record<string, string> = {
+  "training-camp": "courtyard",
+  "goblin-stadium": "oasis",
+  "bone-pit": "dunes",
+  "barbarian-bowl": "souk",
+  "pekka-playhouse": "copper",
+  "spell-valley": "andalus",
+  "builders-workshop": "artisans",
+  "royal-arena": "alhambra",
+  "frozen-peak": "atlas",
+  "jungle-arena": "ghouta",
+  "legendary-peak": "medina",
 };
 
 /** Which world each trophy-road arena is staged in. */
@@ -269,6 +436,7 @@ const ARENA_TO_LOOK: Record<string, string> = {
   "legendary-peak": "neon",
 };
 
-export function lookForArena(arenaId: string): ArenaLook {
+export function lookForArena(arenaId: string, islamic = false): ArenaLook {
+  if (islamic) return ISLAMIC_LOOKS[ISLAMIC_ARENA_TO_LOOK[arenaId] ?? "souk"] ?? ARABIC_LOOK;
   return LOOKS[ARENA_TO_LOOK[arenaId] ?? "neon"] ?? LOOKS.neon;
 }

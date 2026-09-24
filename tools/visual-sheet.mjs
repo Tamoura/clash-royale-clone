@@ -8,7 +8,8 @@
 //                                                per shot and writes diff-sheet.png
 //
 // Options: --out <dir>  --baseline <dir>  --url <running dev server>
-//          --only <arena id,...>  --chrome <path>  (or CHROME_PATH)
+//          --only <arena id,...>  --edition clash|arabic  --chrome <path>
+//          (or CHROME_PATH)
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import puppeteer from "puppeteer-core";
@@ -21,6 +22,7 @@ const opt = (name, fallback) => {
 const OUT = resolve(opt("out", "visual-sheet"));
 const BASELINE = opt("baseline", null);
 const ONLY = opt("only", null)?.split(",");
+const EDITION = opt("edition", "clash") === "arabic" ? "arabic" : "normal";
 const CHROME = opt("chrome", process.env.CHROME_PATH ?? "/opt/pw-browsers/chromium");
 const VIEW = { width: 390, height: 844, deviceScaleFactor: 1 };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -49,10 +51,10 @@ async function openPage(query) {
   const page = await browser.newPage();
   await page.setViewport(VIEW);
   await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
-  await page.evaluateOnNewDocument(() => {
-    localStorage.setItem("cr-clone-arena-theme", "normal");
+  await page.evaluateOnNewDocument((edition) => {
+    localStorage.setItem("cr-clone-arena-theme", edition);
     localStorage.setItem("cr-clone-tutored", "1");
-  });
+  }, EDITION);
   page.on("pageerror", (e) => errors.push(`${query}: ${e.message}`));
   await page.goto(`${base}/?quality=high${query}`, { waitUntil: "load" });
   await page.waitForFunction(() => window.__cr, { timeout: 30000 });

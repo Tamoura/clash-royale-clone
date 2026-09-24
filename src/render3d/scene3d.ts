@@ -879,7 +879,7 @@ function buildTowerMesh(e: Entity): EntityView {
   // a big central dome (king) or crescent spire (princess) toward the rear,
   // so the tower crew stays visible up front.
   if (arabic) {
-    const domeColor = king ? THEME.turquoise : THEME.teal;
+    const domeColor = king ? (LOOK.islamic?.domeKing ?? THEME.turquoise) : (LOOK.islamic?.dome ?? THEME.teal);
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
         const cup = onionDome(radius * 0.26, domeColor);
@@ -1590,8 +1590,7 @@ export class Battle3D {
    * when the look actually changes; call before reset() for a new battle.
    */
   setArenaLook(arenaId: string): void {
-    if (arabic) return;
-    const next = lookForArena(arenaId);
+    const next = lookForArena(arenaId, arabic);
     if (next.id === LOOK.id) return;
     LOOK = next;
     for (const g of [this.arenaGroup, this.lightGroup]) {
@@ -1894,15 +1893,15 @@ export class Battle3D {
     // Trees by look: palms, pines, violet topiary, or dead snags.
     const tree = (x: number, z: number, s: number): void => {
       const g = new THREE.Group();
-      const kind = arabic ? "palm" : LOOK.tree.kind;
+      const kind = LOOK.tree.kind;
       if (kind === "palm") {
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 1.5, 8), toon(0x8a6a3e));
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 1.5, 8), toon(LOOK.tree.trunk));
         trunk.position.y = 0.75;
         trunk.rotation.z = 0.06;
         trunk.castShadow = true;
         g.add(trunk);
         for (let i = 0; i < 7; i++) {
-          const frond = new THREE.Mesh(new THREE.ConeGeometry(0.16, 1.0, 5), toon(i % 2 ? 0x3f8f45 : 0x57a83f));
+          const frond = new THREE.Mesh(new THREE.ConeGeometry(0.16, 1.0, 5), toon(i % 2 ? LOOK.tree.leafA : LOOK.tree.leafB));
           const a = (i / 7) * Math.PI * 2;
           frond.position.set(Math.cos(a) * 0.42, 1.5, Math.sin(a) * 0.42);
           frond.rotation.set(Math.PI / 2 - 0.5, 0, -a + Math.PI / 2);
@@ -2022,7 +2021,7 @@ export class Battle3D {
       const a = bBot - (i / steps) * span;
       shape.lineTo(cx + Math.cos(a) * r, Math.sin(a) * r);
     }
-    const crescent = new THREE.Mesh(new THREE.ShapeGeometry(shape), toon(0xe8b948));
+    const crescent = new THREE.Mesh(new THREE.ShapeGeometry(shape), toon(LOOK.islamic?.emblem ?? 0xe8b948));
     crescent.rotation.x = -Math.PI / 2;
     crescent.rotation.z = 0; // open the crescent vertically (down the board)
     crescent.position.set(0, 0.03, z);
@@ -2239,8 +2238,9 @@ export class Battle3D {
     c.height = ARENA_HEIGHT * tile;
     const ctx = c.getContext("2d")!;
 
-    // Pale warm plaster base — kept light so the units read clearly on top.
-    ctx.fillStyle = "#efe7cf";
+    const Z = LOOK.islamic ?? ARABIC_LOOK.islamic!;
+    // Pale plaster base — kept light so the units read clearly on top.
+    ctx.fillStyle = Z.plaster;
     ctx.fillRect(0, 0, c.width, c.height);
 
     const cell = tile * 4; // one star motif every 4 arena units
@@ -2273,9 +2273,9 @@ export class Battle3D {
     for (let y = 0; y <= c.height; y += cell) {
       for (let x = 0; x <= c.width; x += cell) {
         diamond(x, y, cell * 0.2);
-        ctx.fillStyle = "rgba(184,92,56,0.10)";
+        ctx.fillStyle = Z.diamond;
         ctx.fill();
-        ctx.strokeStyle = "rgba(202,162,63,0.20)";
+        ctx.strokeStyle = `rgba(${Z.strap},0.20)`;
         ctx.lineWidth = tile * 0.05;
         ctx.stroke();
       }
@@ -2283,15 +2283,15 @@ export class Battle3D {
     for (let y = cell / 2; y < c.height; y += cell) {
       for (let x = cell / 2; x < c.width; x += cell) {
         star8(x, y, R, inner);
-        ctx.fillStyle = "rgba(26,163,160,0.12)";
+        ctx.fillStyle = Z.star;
         ctx.fill();
-        ctx.strokeStyle = "rgba(202,162,63,0.28)";
+        ctx.strokeStyle = `rgba(${Z.strap},0.28)`;
         ctx.lineWidth = tile * 0.06;
         ctx.stroke();
       }
     }
     // Whisper-faint gold lattice for the interlaced look.
-    ctx.strokeStyle = "rgba(202,162,63,0.07)";
+    ctx.strokeStyle = `rgba(${Z.strap},0.07)`;
     ctx.lineWidth = tile * 0.04;
     for (let x = cell / 2; x < c.width; x += cell) {
       ctx.beginPath();
@@ -2418,16 +2418,17 @@ export class Battle3D {
     laneCanvas.width = 48;
     laneCanvas.height = 256;
     const lctx = laneCanvas.getContext("2d")!;
+    const Z = LOOK.islamic ?? ARABIC_LOOK.islamic!;
     const grad = lctx.createLinearGradient(0, 0, 48, 0);
-    grad.addColorStop(0, "rgba(214,178,94,0)");
-    grad.addColorStop(0.15, "rgba(214,178,94,0.75)");
-    grad.addColorStop(0.5, "rgba(230,198,120,0.95)");
-    grad.addColorStop(0.85, "rgba(214,178,94,0.75)");
-    grad.addColorStop(1, "rgba(214,178,94,0)");
+    grad.addColorStop(0, `rgba(${Z.lane},0)`);
+    grad.addColorStop(0.15, `rgba(${Z.lane},0.75)`);
+    grad.addColorStop(0.5, `rgba(${Z.lane},0.95)`);
+    grad.addColorStop(0.85, `rgba(${Z.lane},0.75)`);
+    grad.addColorStop(1, `rgba(${Z.lane},0)`);
     lctx.fillStyle = grad;
     lctx.fillRect(0, 0, 48, 256);
     // Speckled wear so the path reads as trodden dirt.
-    lctx.fillStyle = "rgba(160,124,58,0.55)";
+    lctx.fillStyle = `rgba(${Z.laneWear},0.55)`;
     for (let i = 0; i < 120; i++) {
       lctx.fillRect((i * 13) % 46, (i * 47) % 254, 2.5, 1.8);
     }
@@ -2436,7 +2437,7 @@ export class Battle3D {
       lctx.fillRect((i * 19 + 5) % 46, (i * 31 + 9) % 254, 1.8, 1.2);
     }
     // Center rut line for CR lane readability.
-    lctx.fillStyle = "rgba(140,100,40,0.25)";
+    lctx.fillStyle = `rgba(${Z.laneWear},0.3)`;
     lctx.fillRect(22, 0, 4, 256);
     const laneTex = new THREE.CanvasTexture(laneCanvas);
     laneTex.colorSpace = THREE.SRGBColorSpace;
