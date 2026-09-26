@@ -384,7 +384,9 @@ export class Hud {
         if (lvl > 1) {
           const chip = document.createElement("div");
           chip.className = "lvl-chip";
-          chip.textContent = tr(`Lv.${lvl}`, `مستوى ${lvl}`);
+          // Arabic "مستوى" is too wide for the corner; the number alone reads.
+          chip.textContent = tr(`Lv.${lvl}`, String(lvl));
+          chip.title = tr(`Level ${lvl}`, `مستوى ${lvl}`);
           btn.appendChild(chip);
         }
         // Re-attach the persistent charge overlay + "+N" badge, which the

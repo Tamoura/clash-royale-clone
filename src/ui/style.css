@@ -508,11 +508,13 @@ button.card canvas {
   text-align: center;
 }
 
-/* Level badge (bottom-right) */
+/* Level badge (top-right, clear of the centred cost droplet) */
 .lvl-chip {
   position: absolute;
   right: -6px;
-  bottom: -8px;
+  top: -8px;
+  z-index: 3;
+  white-space: nowrap;
   background: linear-gradient(180deg, var(--cr-gold), var(--cr-gold-dark));
   border: 2px solid var(--cr-gold-trim);
   border-radius: var(--cr-r-sm);

@@ -1,41 +1,46 @@
 import { describe, expect, it } from "vitest";
-import { QUALITY_LEVELS, QualityGovernor, SETTLE, WINDOW, qualityPinFromUrl } from "./quality";
+import { QUALITY_LEVELS, QualityGovernor, qualityPinFromUrl } from "./quality";
 
-function run(gov: QualityGovernor, fps: number, seconds: number): number {
-  let changes = 0;
-  for (let t = 0; t < seconds; t += 1 / fps) if (gov.sample(1 / fps)) changes++;
-  return changes;
+/** Run `seconds` of frames whose duration depends on the current level. */
+function run(gov: QualityGovernor, frameAt: (level: number) => number, seconds: number): void {
+  for (let t = 0; t < seconds; ) {
+    const dt = frameAt(gov.index);
+    gov.sample(dt);
+    t += dt;
+  }
 }
 
 describe("adaptive quality", () => {
   it("holds full quality on a device that keeps 60 fps", () => {
     const gov = new QualityGovernor();
-    expect(run(gov, 60, 30)).toBe(0);
+    run(gov, () => 1 / 60, 60);
     expect(gov.level).toEqual(QUALITY_LEVELS[0]);
   });
 
-  it("steps down one level per window when frames are slow, waiting to settle between", () => {
+  it("drops bloom first, then resolution, while each step really helps", () => {
+    // GPU-bound phone: every step down buys real frame time.
     const gov = new QualityGovernor();
-    expect(run(gov, 30, WINDOW + 0.1)).toBe(1);
+    const cost = [1 / 24, 1 / 32, 1 / 50];
+    run(gov, (i) => cost[i], 9); // warm-up 5 s + one 2 s window
     expect(gov.index).toBe(1);
-    // Still slow: the next step only comes after the settle time plus a window.
-    expect(run(gov, 30, SETTLE - 0.2)).toBe(0);
-    expect(run(gov, 30, WINDOW + 0.5)).toBe(1);
+    expect(gov.level).toEqual({ dprCap: 2, bloom: false }); // still full res
+    run(gov, (i) => cost[i], 30);
     expect(gov.index).toBe(2);
-    expect(gov.level.bloom).toBe(false);
+    expect(gov.level.dprCap).toBe(1.5); // never lower than 1.5x
   });
 
-  it("bottoms out at the lowest level and never steps back up", () => {
+  it("undoes a step that doesn't help and stops (30 fps cap, Low Power Mode)", () => {
     const gov = new QualityGovernor();
-    run(gov, 20, 60);
-    expect(gov.index).toBe(QUALITY_LEVELS.length - 1);
-    run(gov, 60, 30);
-    expect(gov.index).toBe(QUALITY_LEVELS.length - 1);
+    run(gov, () => 1 / 30, 120);
+    expect(gov.index).toBe(0);
+    expect(gov.level).toEqual(QUALITY_LEVELS[0]); // sharp, with bloom
   });
 
-  it("ignores long hitches such as a tab switch", () => {
+  it("ignores start-up hitches and long pauses such as a tab switch", () => {
     const gov = new QualityGovernor();
+    for (let i = 0; i < 40; i++) gov.sample(0.1); // 4 s of loading jank
     for (let i = 0; i < 20; i++) gov.sample(1.5);
+    run(gov, () => 1 / 60, 20);
     expect(gov.index).toBe(0);
   });
 
@@ -44,7 +49,7 @@ describe("adaptive quality", () => {
     expect(qualityPinFromUrl("?quality=low")).toBe("low");
     expect(qualityPinFromUrl("?arena=2")).toBe("auto");
     const high = new QualityGovernor("high");
-    run(high, 10, 30);
+    run(high, () => 1 / 10, 30);
     expect(high.index).toBe(0);
     expect(new QualityGovernor("low").index).toBe(QUALITY_LEVELS.length - 1);
   });
