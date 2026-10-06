@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LOOKAHEAD_SEC,
+  MAX_LOOKAHEAD_SEC,
   MUSIC_FADE_SEC,
   STEPS_PER_BAR,
   TRACKS,
@@ -9,6 +10,7 @@ import {
   degreeSemis,
   dueSteps,
   layersAt,
+  lookaheadFor,
   parseDegree,
   parseLine,
   SCALES,
@@ -285,11 +287,40 @@ describe("look-ahead scheduler", () => {
     expect(booked).toBeLessThan(56);
   });
 
-  it("a stalled clock skips ahead instead of bursting the backlog", () => {
+  it("stretches the window when timers run late, within a cap", () => {
+    expect(lookaheadFor(0)).toBe(LOOKAHEAD_SEC);
+    expect(lookaheadFor(0.025)).toBe(LOOKAHEAD_SEC);
+    expect(lookaheadFor(0.2)).toBeCloseTo(0.3);
+    expect(lookaheadFor(5)).toBe(MAX_LOOKAHEAD_SEC);
+  });
+
+  it("a slightly late step still plays; a stalled clock skips ahead instead of bursting the backlog", () => {
+    const late = { step: 3, time: 9.85 };
+    expect(dueSteps(late, 10, LOOKAHEAD_SEC, () => 0.2).map((s) => s.step)).toEqual([3, 4]);
+
     const cur = { step: 10, time: 1 };
     const due = dueSteps(cur, 30, LOOKAHEAD_SEC, () => 0.2);
     expect(due.length).toBe(1);
     expect(due[0].time).toBeGreaterThanOrEqual(30);
+  });
+
+  it("keeps the music fed through janky frames", async () => {
+    const { sound } = await load(memoryStorage());
+    const engine = new sound.SoundEngine({ edition: "classic" });
+    engine.playMusic("menu");
+    engine.resume();
+    const ctx = FakeAudioContext.last!;
+    const steps: number[] = [];
+    const spy = vi.spyOn(engine as unknown as { playStep: (d: unknown, s: number, t: number) => void }, "playStep");
+    spy.mockImplementation((_d, s) => void steps.push(s));
+    // The main thread blocks for 200 ms at a time: timers fire that late.
+    for (let i = 0; i < 40; i++) {
+      ctx.currentTime += 0.2;
+      vi.advanceTimersByTime(200);
+    }
+    // 8 s at 0.29 s a step: every step booked, none skipped.
+    expect(steps.length).toBeGreaterThanOrEqual(27);
+    expect(steps).toEqual(steps.map((_, i) => steps[0] + i));
   });
 
   it("the engine's music notes go out in time order within the look-ahead", async () => {

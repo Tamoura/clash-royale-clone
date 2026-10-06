@@ -4,13 +4,14 @@ import { getCard, type CardId } from "../game/cards";
 import { ARABIC } from "../render3d/theme";
 import { getPrefs, onPrefs, setPrefs, type Prefs } from "../ui/prefs";
 import {
-  LOOKAHEAD_SEC,
+  MAX_LOOKAHEAD_SEC,
   MUSIC_FADE_SEC,
   SCHEDULER_TICK_MS,
   TRACKS,
   compileTrack,
   dueSteps,
   layersAt,
+  lookaheadFor,
   stepSeconds,
   type CompiledTrack,
   type Cursor,
@@ -111,9 +112,9 @@ const PATCHES: Record<InstrumentId, Patch> = {
   flute: { wave: "triangle", wave2: "sine", oct2: 1, mix2: 0.25, attack: 0.04, decay: 0.2, sustain: 0.75, release: 0.18, cutoff: 2600, cutoffEnv: 0.3, q: 0.7, vibrato: { rate: 5, cents: 9, delay: 0.18 }, gain: 0.2 },
   ney: { wave: "sine", wave2: "triangle", oct2: 0, detune2: 4, mix2: 0.45, attack: 0.07, decay: 0.25, sustain: 0.8, release: 0.22, cutoff: 2200, cutoffEnv: 0.2, q: 0.7, vibrato: { rate: 5.5, cents: 16, delay: 0.14 }, gain: 0.22 },
   brass: { wave: "sawtooth", wave2: "sawtooth", oct2: 0, detune2: 8, mix2: 0.7, attack: 0.025, decay: 0.16, sustain: 0.65, release: 0.09, cutoff: 950, cutoffEnv: 2.2, q: 1.6, gain: 0.13 },
-  mizmar: { wave: "sawtooth", wave2: "square", oct2: 0, detune2: -6, mix2: 0.35, attack: 0.02, decay: 0.14, sustain: 0.7, release: 0.08, cutoff: 1500, cutoffEnv: 1.3, q: 3.5, vibrato: { rate: 6.2, cents: 22, delay: 0.09 }, gain: 0.12 },
+  mizmar: { wave: "sawtooth", wave2: "square", oct2: 0, detune2: -6, mix2: 0.35, attack: 0.02, decay: 0.14, sustain: 0.7, release: 0.08, cutoff: 1500, cutoffEnv: 1.3, q: 3.5, vibrato: { rate: 6.2, cents: 22, delay: 0.09 }, gain: 0.17 },
   pluck: { wave: "triangle", wave2: "sine", oct2: -1, mix2: 0.6, attack: 0.005, decay: 0.2, sustain: 0.35, release: 0.08, cutoff: 700, cutoffEnv: 2, q: 1, gain: 0.34 },
-  oud: { wave: "sawtooth", wave2: "triangle", oct2: -1, mix2: 0.5, attack: 0.003, decay: 0.14, sustain: 0.18, release: 0.1, cutoff: 520, cutoffEnv: 3.2, q: 2.6, gain: 0.3 },
+  oud: { wave: "sawtooth", wave2: "triangle", oct2: -1, mix2: 0.5, attack: 0.003, decay: 0.14, sustain: 0.18, release: 0.1, cutoff: 520, cutoffEnv: 3.2, q: 2.6, gain: 0.38 },
   harp: { wave: "triangle", attack: 0.004, decay: 0.32, sustain: 0.12, release: 0.25, cutoff: 3200, cutoffEnv: 0.5, q: 0.7, gain: 0.1 },
   qanun: { wave: "triangle", wave2: "sawtooth", oct2: 0, detune2: 3, mix2: 0.3, attack: 0.003, decay: 0.16, sustain: 0.08, release: 0.14, cutoff: 2800, cutoffEnv: 1.2, q: 1.2, gain: 0.1 },
   chip: { wave: "square", attack: 0.004, decay: 0.09, sustain: 0.3, release: 0.05, cutoff: 2400, cutoffEnv: 0.8, q: 0.8, gain: 0.055 },
@@ -170,6 +171,8 @@ export class SoundEngine {
   private deck: Deck | null = null;
   private compiled = new Map<TrackId, CompiledTrack>();
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** Audio-clock time of the previous scheduler pump (-1: none yet). */
+  private lastPump = -1;
   private hiddenSuspend = false;
   private duckHeld = false;
   private localSide: Side = "player";
@@ -381,7 +384,7 @@ export class SoundEngine {
       old.gain.gain.cancelScheduledValues(t);
       old.gain.gain.setValueAtTime(old.gain.gain.value, t);
       old.gain.gain.linearRampToValueAtTime(0, t + MUSIC_FADE_SEC);
-      setTimeout(() => old.gain.disconnect(), (MUSIC_FADE_SEC + LOOKAHEAD_SEC + 1.5) * 1000);
+      setTimeout(() => old.gain.disconnect(), (MUSIC_FADE_SEC + MAX_LOOKAHEAD_SEC + 1.5) * 1000);
     }
     const running = ctx.state === "running" && !(typeof document !== "undefined" && document.hidden);
     if (!this.deck && this.wanted !== "none" && running) {
@@ -398,6 +401,7 @@ export class SoundEngine {
 
   private startTimer(): void {
     if (this.timer !== null) return;
+    this.lastPump = -1;
     this.timer = setInterval(() => this.pump(), SCHEDULER_TICK_MS);
     this.pump();
   }
@@ -414,7 +418,10 @@ export class SoundEngine {
     const deck = this.deck;
     if (!ctx || !deck) return;
     const def = deck.track.def;
-    const due = dueSteps(deck.cursor, ctx.currentTime, LOOKAHEAD_SEC, () => stepSeconds(def, this.intensity));
+    const now = ctx.currentTime;
+    const horizon = lookaheadFor(this.lastPump < 0 ? 0 : now - this.lastPump);
+    this.lastPump = now;
+    const due = dueSteps(deck.cursor, now, horizon, () => stepSeconds(def, this.intensity));
     for (const { step, time } of due) this.playStep(deck, step % deck.track.length, time);
   }
 
@@ -446,6 +453,7 @@ export class SoundEngine {
     const peak = p.gain * level;
     const end = t + Math.max(dur, p.attack + 0.02);
     const amp = ctx.createGain();
+    amp.gain.value = 0;
     amp.gain.setValueAtTime(0.0001, t);
     amp.gain.linearRampToValueAtTime(peak, t + p.attack);
     amp.gain.setTargetAtTime(peak * p.sustain, t + p.attack, p.decay / 3);
@@ -453,6 +461,7 @@ export class SoundEngine {
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
     filter.Q.value = p.q;
+    filter.frequency.value = p.cutoff * (1 + p.cutoffEnv);
     filter.frequency.setValueAtTime(p.cutoff * (1 + p.cutoffEnv), t);
     filter.frequency.setTargetAtTime(p.cutoff, t + p.attack, p.decay / 2);
     filter.connect(amp).connect(out);
@@ -460,13 +469,13 @@ export class SoundEngine {
     const oscs: OscillatorNode[] = [];
     const a = ctx.createOscillator();
     a.type = p.wave;
-    a.frequency.setValueAtTime(freq, t);
+    a.frequency.value = freq;
     a.connect(filter);
     oscs.push(a);
     if (p.wave2) {
       const b = ctx.createOscillator();
       b.type = p.wave2;
-      b.frequency.setValueAtTime(freq * Math.pow(2, p.oct2 ?? 0), t);
+      b.frequency.value = freq * Math.pow(2, p.oct2 ?? 0);
       b.detune.value = p.detune2 ?? 0;
       const mix = ctx.createGain();
       mix.gain.value = p.mix2 ?? 0.5;
@@ -566,7 +575,9 @@ export class SoundEngine {
     const { type = "square", vol = 0.18, slideTo, attack = 0.004 } = opts;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
+    gain.gain.value = 0;
     osc.type = type;
+    osc.frequency.value = freq;
     osc.frequency.setValueAtTime(freq, t0);
     if (slideTo !== undefined) {
       osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t0 + duration);
@@ -605,11 +616,16 @@ export class SoundEngine {
     const filter = ctx.createBiquadFilter();
     filter.type = type;
     filter.Q.value = q;
-    filter.frequency.setValueAtTime(freq, t0);
+    // Set the cutoff from time 0, not at t0: a highpass whose cutoff jumps
+    // from the 350 Hz default on the very sample the noise starts spikes
+    // ~20 dB over its level.
+    filter.frequency.value = freq;
     if (opts.sweepTo !== undefined) {
+      filter.frequency.setValueAtTime(freq, t0);
       filter.frequency.exponentialRampToValueAtTime(Math.max(30, opts.sweepTo), t0 + duration);
     }
     const gain = ctx.createGain();
+    gain.gain.value = 0;
     gain.gain.setValueAtTime(0.0001, t0);
     gain.gain.linearRampToValueAtTime(vol, t0 + attack);
     gain.gain.exponentialRampToValueAtTime(0.001, t0 + Math.max(duration, attack + 0.01));
@@ -818,7 +834,7 @@ export class SoundEngine {
   /** A soft woodblock tick for each of the last 10 seconds (brighter for the last 3). */
   clockTick(secondsLeft: number): void {
     const urgent = secondsLeft <= 3;
-    this.tone(urgent ? 1760 : 1320, 0.05, { type: "triangle", vol: urgent ? 0.14 : 0.08 });
+    this.tone(urgent ? 1760 : 1320, 0.05, { type: "triangle", vol: urgent ? 0.2 : 0.13 });
     this.noise(0.03, { vol: urgent ? 0.06 : 0.035, type: "bandpass", filterFreq: 2500, q: 3 });
   }
 
@@ -867,15 +883,15 @@ export class SoundEngine {
   /** A soft click for any button. */
   uiTap(): void {
     if (this.throttled("ui", 45)) return;
-    this.tone(1250, 0.04, { type: "sine", slideTo: 950, vol: 0.09 });
-    this.noise(0.015, { vol: 0.03, type: "highpass", filterFreq: 5000 });
+    this.tone(1250, 0.045, { type: "sine", slideTo: 950, vol: 0.15 });
+    this.noise(0.015, { vol: 0.05, type: "highpass", filterFreq: 5000 });
   }
 
   /** Back / close: the click, falling. */
   uiBack(): void {
     if (this.throttled("ui", 45)) return;
-    this.tone(900, 0.05, { type: "sine", slideTo: 650, vol: 0.085 });
-    this.tone(620, 0.06, { type: "sine", slideTo: 480, vol: 0.06, delay: 0.045 });
+    this.tone(900, 0.05, { type: "sine", slideTo: 650, vol: 0.13 });
+    this.tone(620, 0.06, { type: "sine", slideTo: 480, vol: 0.1, delay: 0.045 });
   }
 
   /** A wooden chest rattling on its hinges. */

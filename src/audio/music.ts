@@ -295,6 +295,10 @@ export function stepSeconds(def: TrackDef, level: Intensity): number {
 /** The scheduler timer period and how far ahead it books notes. */
 export const SCHEDULER_TICK_MS = 25;
 export const LOOKAHEAD_SEC = 0.12;
+/** The most the window stretches when the main thread is janky. */
+export const MAX_LOOKAHEAD_SEC = 0.4;
+/** Behind by more than this (a stalled tab), the cursor jumps to now. */
+export const RESYNC_SEC = 0.3;
 /** Crossfade between tracks. */
 export const MUSIC_FADE_SEC = 0.4;
 
@@ -306,10 +310,20 @@ export interface Cursor {
 }
 
 /**
+ * The booking window for this pump: the nominal 0.12 s, stretched to 1.5x
+ * the gap since the previous pump when timers run late (a busy frame on a
+ * slow phone), so the music never runs dry between two pumps.
+ */
+export function lookaheadFor(gapSec: number): number {
+  return Math.min(MAX_LOOKAHEAD_SEC, Math.max(LOOKAHEAD_SEC, gapSec * 1.5));
+}
+
+/**
  * Pop every step that starts before `now + lookahead`, advancing the
  * cursor by each step's own duration (so tempo changes take effect on the
- * next step). A cursor that fell far behind (a stalled tab) jumps to now
- * instead of bursting out the backlog.
+ * next step). A step a little late still plays (at once); a cursor that
+ * fell far behind (a stalled tab) jumps to now instead of bursting out
+ * the backlog.
  */
 export function dueSteps(
   cur: Cursor,
@@ -318,7 +332,7 @@ export function dueSteps(
   stepSec: (step: number) => number,
   maxSteps = 32,
 ): { step: number; time: number }[] {
-  if (cur.time < now - 0.1) cur.time = now + 0.02;
+  if (cur.time < now - RESYNC_SEC) cur.time = now + 0.02;
   const out: { step: number; time: number }[] = [];
   while (cur.time < now + lookahead && out.length < maxSteps) {
     out.push({ step: cur.step, time: cur.time });
