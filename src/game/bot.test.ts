@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { RIVER_Y } from "./arena";
+import { ARENA_HEIGHT, RIVER_Y } from "./arena";
 import { createBattle, spawnUnits } from "./battle";
-import { botThink, createBot, tickBot } from "./bot";
+import { BOT_PROFILE_DEFAULTS, botThink, createBot, tickBot } from "./bot";
 import { createHand } from "./hand";
 import { DEFAULT_DECK, type CardId } from "./cards";
 import { createPilot, tickPilot } from "./pilot";
@@ -251,6 +251,129 @@ describe("difficulty", () => {
     c.enemy.elixir = { amount: 6 };
     botThink(c, createBot(42)); // default waits for 8
     expect(troopsOf(c, "enemy")).toHaveLength(0);
+  });
+});
+
+describe("side-aware bot", () => {
+  /** Mirror of giveBotHand for a bot playing the bottom half. */
+  function givePlayerHand(b: ReturnType<typeof createBattle>, cards: string[]): void {
+    b.player.hand = createHand([...cards, "knight", "archers", "giant", "fireball"] as never);
+    b.player.elixir = { amount: 10 };
+  }
+
+  it("fills every optional knob with the classic default", () => {
+    const bot = createBot(1, { thinkInterval: 1, pushAt: 8 });
+    expect(bot.side).toBe("enemy");
+    expect(bot.reactionDelay).toBe(0);
+    expect(bot.mistakeRate).toBe(0);
+    expect(bot.spellIQ).toBe(1);
+    expect(bot.allowFinisher).toBe(true);
+    expect(BOT_PROFILE_DEFAULTS.side).toBe("enemy");
+  });
+
+  it("defends its own (bottom) half when piloting the player side", () => {
+    const b = createBattle();
+    b.player.elixir = { amount: 10 };
+    spawnUnits(b, "enemy", "knight", 3.5, RIVER_Y + 2);
+    botThink(b, createBot(42, { side: "player" }));
+    const defenders = troopsOf(b, "player");
+    expect(defenders.length).toBeGreaterThan(0);
+    for (const d of defenders) expect(d.y).toBeGreaterThan(RIVER_Y);
+  });
+
+  it("pushes from its own bridge when piloting the player side", () => {
+    const b = createBattle();
+    givePlayerHand(b, ["giant", "skeletons", "archers", "wizard"]);
+    botThink(b, createBot(42, { side: "player" }));
+    const troops = troopsOf(b, "player");
+    expect(troops.map((t) => t.cardId)).toEqual(["giant"]);
+    expect(troops[0].y).toBeCloseTo(ARENA_HEIGHT - (RIVER_Y - 4));
+  });
+
+  it("plays the mirror image of the enemy-side bot", () => {
+    const top = createBattle();
+    const bottom = createBattle();
+    spawnUnits(top, "player", "knight", 5, RIVER_Y - 2);
+    spawnUnits(bottom, "enemy", "knight", 5, ARENA_HEIGHT - (RIVER_Y - 2));
+    top.enemy.elixir = { amount: 10 };
+    bottom.player.elixir = { amount: 10 };
+    botThink(top, createBot(9));
+    botThink(bottom, createBot(9, { side: "player" }));
+    const a = troopsOf(top, "enemy").map((e) => [e.cardId, e.x, e.y]);
+    const m = troopsOf(bottom, "player").map((e) => [e.cardId, e.x, ARENA_HEIGHT - e.y]);
+    expect(a.length).toBeGreaterThan(0);
+    expect(m).toEqual(a);
+  });
+
+  it("waits reactionDelay seconds before answering an invader", () => {
+    const b = createBattle();
+    b.enemy.elixir = { amount: 6 }; // enough to defend, short of a push
+    b.enemy.hand = createHand(["knight", "archers", "musketeer", "valkyrie", "giant", "fireball", "arrows", "zap"]);
+    spawnUnits(b, "player", "knight", 3.5, RIVER_Y - 2);
+    const slow = createBot(42, { reactionDelay: 2 });
+    botThink(b, slow); // first sight: no reaction yet
+    expect(troopsOf(b, "enemy")).toHaveLength(0);
+    b.time += 1;
+    botThink(b, slow);
+    expect(troopsOf(b, "enemy")).toHaveLength(0);
+    b.time += 1.5;
+    botThink(b, slow);
+    expect(troopsOf(b, "enemy").length).toBeGreaterThan(0);
+  });
+
+  it("a high spellIQ ignores a cluster the default bot would spell", () => {
+    const setup = () => {
+      const b = createBattle();
+      giveBotHand(b, ["arrows", "giant", "hog-rider", "balloon"]);
+      // Three archers-worth of value: enough for arrows (3), not for 2x.
+      spawnUnits(b, "player", "archers", 9, RIVER_Y - 3);
+      spawnUnits(b, "player", "archers", 9.4, RIVER_Y - 3.2);
+      return b;
+    };
+    const plain = setup();
+    botThink(plain, createBot(42));
+    expect(plain.effects.some((e) => e.cardId === "arrows")).toBe(true);
+    const picky = setup();
+    botThink(picky, createBot(42, { spellIQ: 2 }));
+    expect(picky.effects.some((e) => e.cardId === "arrows")).toBe(false);
+  });
+
+  it("never finishes a tower with a spell when allowFinisher is off", () => {
+    const setup = () => {
+      const b = createBattle();
+      giveBotHand(b, ["fireball", "skeletons", "bats", "knight"]);
+      const tower = b.entities.find((e) => e.side === "player" && e.kind === "princess-tower")!;
+      tower.hp = 50;
+      return b;
+    };
+    const rude = setup();
+    botThink(rude, createBot(1));
+    expect(rude.events.some((e) => e.type === "spell" && e.cardId === "fireball")).toBe(true);
+    const kind = setup();
+    botThink(kind, createBot(1, { allowFinisher: false }));
+    expect(kind.events.some((e) => e.type === "spell" && e.cardId === "fireball")).toBe(false);
+  });
+
+  it("slips up only within the rules: every mistake is still a legal play", () => {
+    for (const side of ["enemy", "player"] as const) {
+      const b = createBattle(DEFAULT_DECK, DEFAULT_DECK);
+      const bot = createBot(5, { side, mistakeRate: 1, thinkInterval: 0.5, pushAt: 4 });
+      let plays = 0;
+      for (let t = 0; t < 30 * 120 && !b.result; t++) {
+        tick(b, 1 / 30);
+        tickBot(b, bot, 1 / 30);
+        for (const ev of b.events) {
+          if (ev.type !== "deploy" || ev.side !== side) continue;
+          plays++;
+          // Troops and buildings land on the bot's own half (no tower has fallen).
+          if (b.player.crowns + b.enemy.crowns === 0) {
+            expect(side === "enemy" ? ev.y < RIVER_Y : ev.y > RIVER_Y).toBe(true);
+          }
+        }
+        b.events.length = 0;
+      }
+      expect(plays).toBeGreaterThan(5);
+    }
   });
 });
 

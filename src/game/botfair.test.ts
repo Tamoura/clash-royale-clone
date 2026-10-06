@@ -3,7 +3,7 @@ import { createBattle } from "./battle";
 import { createBot, tickBot } from "./bot";
 import { DEFAULT_DECK, getCard, type CardId } from "./cards";
 import { HAND_SIZE, playCard, type HandState } from "./hand";
-import { BATTLE_DURATION, tick } from "./sim";
+import { BATTLE_DURATION, OVERTIME_DURATION, tick } from "./sim";
 
 /**
  * Fair-play proof: the bot must obey EXACTLY the same card rules as the
@@ -94,4 +94,33 @@ describe("bot fair play", () => {
       b.events.length = 0;
     }
   });
+
+  it("a DEFAULT_DECK mirror between two side-aware bots is a fair fight", () => {
+    // Each seed plays twice with the two bots' seeds swapped, so a lucky
+    // seed cannot favour one side. The side, not the seed, is on trial.
+    const SEEDS = 20;
+    let playerWins = 0;
+    let enemyWins = 0;
+    for (let i = 0; i < SEEDS; i++) {
+      const a = 1000 + i * 17;
+      const c = a ^ 0x9e3779b9;
+      for (const [ps, es] of [[a, c], [c, a]]) {
+        const b = createBattle(DEFAULT_DECK, DEFAULT_DECK);
+        const botP = createBot(ps, { side: "player" });
+        const botE = createBot(es);
+        while (!b.result && b.time < BATTLE_DURATION + OVERTIME_DURATION + 1) {
+          tick(b, TICK);
+          tickBot(b, botE, TICK);
+          tickBot(b, botP, TICK);
+          b.events.length = 0;
+        }
+        if (b.result?.winner === "player") playerWins++;
+        else if (b.result?.winner === "enemy") enemyWins++;
+      }
+    }
+    const decided = playerWins + enemyWins;
+    expect(decided).toBeGreaterThan(SEEDS); // most games end with a winner
+    expect(playerWins / decided).toBeGreaterThanOrEqual(0.4);
+    expect(playerWins / decided).toBeLessThanOrEqual(0.6);
+  }, 60_000);
 });
