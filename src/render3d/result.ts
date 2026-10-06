@@ -224,7 +224,7 @@ export class ResultScreen {
     const s = d.stats;
     const table = el("div", "res-stats");
     const head = el("div", "res-stat res-stat-head");
-    head.append(el("span", "mine", tr("You", "أنت")), el("span", ""), el("span", "theirs", d.theirName));
+    head.append(el("span", "mine", d.myName), el("span", ""), el("span", "theirs", d.theirName));
     table.appendChild(head);
     const line = (label: string, mine: number, theirs: number): void => {
       const r = el("div", "res-stat");
