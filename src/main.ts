@@ -98,6 +98,9 @@ import { buildHome } from "./ui/screens/home";
 import { openFriendLobby } from "./ui/screens/lobby";
 import { openStudio } from "./ui/screens/studio";
 
+// ---- Feature registration: side-effect modules that subscribe to src/app/hooks.
+import "./audio/wire";
+
 // Apply edition-aware CSS variables before any DOM is rendered.
 applyEditionTokens(STORED_EDITION);
 // Canvas labels (unit names, banners) are painted once, so warm the
@@ -701,8 +704,9 @@ const hud = new Hud(topbar, hudRoot, overlay, {
   onAbility: triggerAbility,
 });
 
-// Audio can only start from a user gesture.
-window.addEventListener("pointerdown", () => audio.resume(), { once: false });
+// Audio can only be unlocked by a user gesture. resume() never starts music:
+// the soundtrack follows the screens and the countdown (src/audio/wire.ts).
+window.addEventListener("pointerdown", () => audio.resume(), { passive: true });
 
 const ctx: AppCtx = {
   startLadder,
