@@ -1,7 +1,15 @@
 /**
  * Render-only hit-stop: freezes the presentation clock briefly on heavy
- * impacts without touching the sim timestep (lockstep-safe).
+ * impacts without touching the sim timestep (lockstep-safe). Reduced
+ * motion keeps only a short beat of every freeze.
  */
+import { reducedMotion } from "../ui/prefs";
+
+/** Longest freeze any impact may ask for (a king tower falling). */
+export const MAX_HITSTOP = 0.3;
+/** Cap per freeze under reduced motion. */
+export const REDUCED_HITSTOP = 0.05;
+
 export class HitStopController {
   private remaining = 0;
 
@@ -20,7 +28,8 @@ export class HitStopController {
    * mid-stop so a tower fall isn't cut short by a lighter hit.
    */
   punch(seconds: number): void {
-    const s = Math.max(0, Math.min(0.12, seconds));
+    const cap = reducedMotion() ? REDUCED_HITSTOP : MAX_HITSTOP;
+    const s = Math.max(0, Math.min(cap, seconds));
     if (s > this.remaining) this.remaining = s;
   }
 

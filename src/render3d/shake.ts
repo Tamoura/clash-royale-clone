@@ -3,14 +3,18 @@
  * "trauma" (0..1) which decays linearly, and the screen offset scales with
  * trauma *squared* so small hits barely wobble while big ones really punch.
  * Pure and frame-rate independent — the renderer turns `intensity` into a
- * noisy camera offset.
+ * noisy camera offset. Under reduced motion (Settings or the OS) every kick
+ * is scaled to nothing, so the camera never moves.
  */
+import { reducedMotion } from "../ui/prefs";
+
 export class ShakeController {
   private trauma = 0;
 
-  /** Kick the camera; trauma stacks but never exceeds 1. */
+  /** Kick the camera; trauma stacks but never exceeds 1 (none under reduced motion). */
   add(amount: number): void {
-    this.trauma = Math.min(1, this.trauma + amount);
+    const scale = reducedMotion() ? 0 : 1;
+    this.trauma = Math.min(1, this.trauma + amount * scale);
   }
 
   /** Drain trauma toward rest at `decayPerSec` units per second. */
