@@ -345,6 +345,26 @@ function insideFreeze(s: SceneAnim, e: Entity, now: number): boolean {
   return false;
 }
 
+/**
+ * A stunned troop reads as frozen only inside a Freeze spell tracked from
+ * its 'spell' event. The stun timer alone can't tell: an Electro Wizard
+ * bolt stuns for a full second too, and must daze, not ice over.
+ */
+export function isFrozen(b: Battle3D, e: Entity): boolean {
+  if (e.kind !== "troop" || e.stunTimer <= 0) return false;
+  return insideFreeze(sceneAnim(b), e, b.syncState.time);
+}
+
+/** Show or hide the ice hull as `frozen` flips; a thaw bursts into shards. */
+export function setFrozen(b: Battle3D, anim: TroopAnim, rig: TroopRig, e: Entity, frozen: boolean): void {
+  if (frozen === anim.frozen) return;
+  anim.frozen = frozen;
+  if (frozen && !anim.ice) anim.ice = buildIceShell(rig);
+  if (anim.ice) for (const m of anim.ice) m.visible = frozen;
+  // Thaw: the ice cracks off in a burst of shards.
+  if (!frozen) b.fx.emit("chips", e.x, e.y, { count: 6, color: 0xcff4ff, radius: 0.45 });
+}
+
 /** Camera kick that honours the reduced-motion preference. */
 function shake(b: Battle3D, amount: number): void {
   if (!reducedMotion()) addShake(b, amount);
@@ -533,15 +553,9 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
 
   // Status: stunned units daze, frozen ones turn to ice, slowed ones tint.
   const stunned = e.kind === "troop" && e.stunTimer > 0;
-  const frozen = stunned && (e.stunTimer >= 1 || insideFreeze(sa, e, state.time));
+  const frozen = isFrozen(b, e);
   const slowed = e.kind === "troop" && e.slowTimer > 0;
-  if (anim && view.rig && frozen !== anim.frozen) {
-    anim.frozen = frozen;
-    if (frozen && !anim.ice) anim.ice = buildIceShell(view.rig);
-    if (anim.ice) for (const m of anim.ice) m.visible = frozen;
-    // Thaw: the ice cracks off in a burst of shards.
-    if (!frozen) b.fx.emit("chips", e.x, e.y, { count: 6, color: 0xcff4ff, radius: 0.45 });
-  }
+  if (anim && view.rig) setFrozen(b, anim, view.rig, e, frozen);
 
   // Emissive glow chain: damage flash > frozen > rage pink > charge gold > slow.
   const raged = e.kind === "troop" && isRaged(state, e);
