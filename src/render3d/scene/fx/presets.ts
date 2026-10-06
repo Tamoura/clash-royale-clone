@@ -198,7 +198,7 @@ export const PRESETS: Record<string, readonly Layer[]> = {
   // Electric ground ring.
   "zap-ring": [
     { pool: "add", cell: CELL.RING, count: 1, life: 0.36, dir: "none", speed: 0, height: 0.07, size0: 1.3, size1: 2, ground: true, color0: 0xfff38a, hdr0: 3.4, hdr1: 1.6, alpha0: 1, alpha1: 0 },
-    { pool: "add", cell: CELL.SOFT, count: 1, life: 0.22, dir: "none", speed: 0, height: 0.05, size0: 2.1, size1: 2.3, ground: true, color0: 0x9fe7ff, hdr0: 1.4, alpha0: 0.55, alpha1: 0 },
+    { pool: "add", cell: CELL.SOFT, count: 1, life: 0.22, dir: "none", speed: 0, height: 0.05, size0: 2.1, size1: 2.3, ground: true, color0: 0x4aa8ff, hdr0: 1.2, alpha0: 0.3, alpha1: 0 },
   ],
   // Arrow landing kick.
   "dust-kick": [

@@ -140,8 +140,8 @@ function bolt(
   let pz = gz - 1.2 + (rnd() - 0.5) * 1.6;
   let py = top;
   const seg = (ax: number, ay: number, az: number, bx: number, by: number, bz: number, wMul: number, life: number): void => {
-    // Core and halo for every segment.
-    for (let layer = 0; layer < 2; layer++) {
+    // Core, halo and a dark under-stroke (keeps the bolt legible on pale sand).
+    for (let layer = 0; layer < 3; layer++) {
       const s = clearSpec(S);
       s.x = (ax + bx) / 2;
       s.y = (ay + by) / 2;
@@ -152,11 +152,17 @@ function bolt(
       s.mode = MODE_SEGMENT;
       s.life = life;
       s.delay = delay;
-      s.cell = layer === 0 ? CELL.BOLT : CELL.SOFT;
-      const sz = layer === 0 ? width * wMul : width * wMul * 2.4;
+      s.cell = layer === 1 ? CELL.SOFT : CELL.BOLT;
+      const sz = width * wMul * (layer === 0 ? 1 : layer === 1 ? 2.4 : 1.9);
       s.size0 = s.size1 = sz;
-      if (layer === 0) color(s, 0xf4fdff, 3.2, 1, 0xbfe9ff, 1.8, 0);
-      else color(s, 0x6cc8ff, 1.3, 0.42, 0x6cc8ff, 1, 0);
+      if (layer === 2) {
+        color(s, 0x0b1838, 1, 0.6, 0x0b1838, 1, 0);
+        v.spawn("alpha", s);
+        continue;
+      }
+      // A white-hot core in a saturated blue halo, so it reads on pale sand too.
+      if (layer === 0) color(s, 0xf4fdff, 2, 1, 0xbfe9ff, 1.3, 0);
+      else color(s, 0x2f8dff, 0.8, 0.35, 0x2f8dff, 0.6, 0);
       v.spawn("add", s);
     }
   };
@@ -199,7 +205,7 @@ function bolt(
   s.size1 = 0.5;
   s.cell = CELL.FLARE;
   s.push = 1.5;
-  color(s, 0xeefcff, 2.6, 1, 0x9fe7ff, 1.2, 0);
+  color(s, 0xeefcff, 1.8, 0.8, 0x9fe7ff, 1, 0);
   v.spawn("add", s);
 }
 
@@ -277,7 +283,7 @@ export function arrows(v: VfxPool, x: number, y: number, r: number, side: Side):
     const sy = 1.1;
     const T = ARROW_FLIGHT * (0.92 + v.rand() * 0.16);
     const delay = i * 0.022;
-    for (let layer = 0; layer < 2; layer++) {
+    for (let layer = 0; layer < 3; layer++) {
       const s = clearSpec(S);
       s.x = sx;
       s.y = sy;
@@ -293,10 +299,18 @@ export function arrows(v: VfxPool, x: number, y: number, r: number, side: Side):
         s.size0 = s.size1 = 0.24;
         s.stretch = 0.3;
         color(s, 0xfff6dc, 3, 1, 0xffe9a8, 2.6, 1);
-      } else {
+      } else if (layer === 1) {
         s.size0 = s.size1 = 0.7;
         s.stretch = 0.12;
         color(s, 0xffb84d, 1.6, 0.55, 0xffb84d, 1.3, 0.5);
+      } else {
+        // A dark shaft under the glow: the volley still reads on pale ground.
+        s.size0 = s.size1 = 0.13;
+        s.stretch = 0.3;
+        s.push = 0.2;
+        color(s, 0x3b2a1a, 1, 0.9, 0x3b2a1a, 1, 0.9);
+        v.spawn("alpha", s);
+        continue;
       }
       v.spawn("add", s);
     }
