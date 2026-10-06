@@ -32,6 +32,8 @@ export interface StartPayload {
   delay: number;
   /** This seat's resume token. Keep it private. */
   token: string;
+  /** The room code (for resuming), or null from a relay that omits it. */
+  code: string | null;
 }
 
 export interface RoomClientOptions {
@@ -58,6 +60,7 @@ function toPayload(msg: StartMsg): StartPayload {
     guestLoadout: msg.guestLoadout ?? null,
     delay: msg.delay ?? 4,
     token: msg.token ?? "",
+    code: msg.code ?? null,
   };
 }
 

@@ -93,6 +93,7 @@ describe("RoomHub pairing", () => {
       hostLoadout: LOADOUT,
       guestLoadout: null,
       delay: 4,
+      code: "LION42",
     };
     expect(start.host).toEqual({ ...common, role: "host", token: "1".padStart(32, "0") });
     expect(start.guest).toEqual({ ...common, role: "guest", token: "2".padStart(32, "0") });

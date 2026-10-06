@@ -927,24 +927,29 @@ export function getCard(id: CardId): Card {
   return cardOverrides ? cardOverrides[id] : CARDS[id];
 }
 
-// Crazy mode rolls its scramble once, before the match and outside the
-// tick, so these are the only sanctioned unseeded rolls in src/game.
-const ri = (lo: number, hi: number): number => lo + Math.floor(Math.random() * (hi - lo + 1)); // purity-allow
-const rf = (lo: number, hi: number): number => lo + Math.random() * (hi - lo); // purity-allow
-const pick = <T>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)]; // purity-allow
 
 /**
  * "Crazy" mode: scramble every card — huge spawn counts, surprise spawners
  * (a Witch summoning Mini P.E.K.K.As), and randomised stats. Summoned units are
  * drawn from a pure pool (no further spawners) so spawn chains stay bounded.
  */
-export function crazyCards(): Record<CardId, Card> {
+export function crazyCards(rng: () => number = Math.random): Record<CardId, Card> { // purity-allow
+  // Crazy rolls its scramble once, before the match and outside the tick.
+  // Solo matches roll unseeded; online peers pass the same seeded rng so
+  // both scramble identically.
+  const ri = (lo: number, hi: number): number => lo + Math.floor(rng() * (hi - lo + 1));
+  const rf = (lo: number, hi: number): number => lo + rng() * (hi - lo);
+  const pick = <T>(arr: readonly T[]): T => arr[Math.floor(rng() * arr.length)];
   const out = structuredClone(CARDS) as Record<CardId, Card>;
   // Units that can be summoned. They come in small numbers and never summon
   // themselves, so spawn chains stay one level deep and bounded.
   const spawnPool: CardId[] = ["skeletons", "gargoyles", "bats", "mini-pekka"];
 
-  for (const id of Object.keys(out) as CardId[]) {
+  // The player-designed champion differs per player, so it rolls last:
+  // its draws can never shift the stock cards' scramble between peers.
+  const ids: CardId[] = (Object.keys(out) as CardId[]).filter((id) => id !== "champion");
+  if (out.champion) ids.push("champion");
+  for (const id of ids) {
     const card = out[id];
     if (card.kind === "spell") {
       card.damage = Math.round(card.damage * rf(1, 2.2));
@@ -955,7 +960,7 @@ export function crazyCards(): Record<CardId, Card> {
     const u = card.unit;
     u.damage = Math.max(10, Math.round(u.damage * rf(0.7, 1.9)));
     u.maxHp = Math.max(40, Math.round(u.maxHp * rf(0.7, 1.7)));
-    if (Math.random() < 0.3) u.splashRadius = Math.max(u.splashRadius, rf(0.9, 1.7)); // purity-allow
+    if (rng() < 0.3) u.splashRadius = Math.max(u.splashRadius, rf(0.9, 1.7));
 
     const inPool = spawnPool.includes(id);
     if (card.kind === "troop") {
@@ -970,7 +975,7 @@ export function crazyCards(): Record<CardId, Card> {
     if (inPool) {
       u.spawnUnitId = null;
       u.spawnInterval = 0;
-    } else if (card.kind === "building" || alreadySpawner || Math.random() < 0.3) { // purity-allow
+    } else if (card.kind === "building" || alreadySpawner || rng() < 0.3) {
       // Buildings + existing spawners always get a scrambled summon; ~30% of
       // other troops gain a surprise one (a Witch summoning Mini P.E.K.K.As).
       u.spawnUnitId = pick(spawnPool);

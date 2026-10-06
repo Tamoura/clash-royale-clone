@@ -413,6 +413,7 @@ export class RoomHub {
       guestLoadout: room.guest!.loadout,
       delay: room.delay,
       token: seat.token,
+      code: room.code,
     };
   }
 

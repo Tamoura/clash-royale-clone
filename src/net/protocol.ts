@@ -77,6 +77,11 @@ export interface StartMsg {
   delay: number;
   /** Secret resume token for this seat; only ever sent to its owner. */
   token: string;
+  /**
+   * The room code, needed to resume. Quick-match players never saw a
+   * `created`, so it comes with the start. Optional: older relays omit it.
+   */
+  code?: string;
 }
 
 /** Messages the relay sends to a client. */
