@@ -118,6 +118,10 @@ https://tamoura.github.io/clash-royale-clone/?relay=wss://quiet-river-1234.trycl
 * Check it from your computer:
   `node tools/relay-smoke.mjs wss://quiet-river-1234.trycloudflare.com/ws`
 * The address changes every time you restart `cloudflared`.
+* Through the tunnel, every player seems to come from your own computer, so
+  they share one IP's limits (8 sockets). For more than a few devices, start
+  the relay with `TRUST_PROXY=1 npm run relay:prod`. Then limits count per
+  player, using the tunnel's `X-Forwarded-For` header.
 
 ---
 
