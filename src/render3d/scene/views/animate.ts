@@ -27,6 +27,7 @@ import {
   archetypeFor,
   attackSwing as swingCurve,
   newSwingPose,
+  rigArchetype,
   setRigArchetype,
   type Archetype,
   type SwingPose,
@@ -365,7 +366,8 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
 
   if (view.isTroop && !view.anim) view.anim = initTroopAnim(b, view, e);
   const anim = view.anim;
-  if (view.defender && !view.anim) setRigArchetype(view.defender, TOWER_ARCHETYPE);
+  // Tower crews fire (towers.ts animates them without knowing a card).
+  if (view.defender && !rigArchetype(view.defender)) setRigArchetype(view.defender, TOWER_ARCHETYPE);
 
   // Smooth placement between sim ticks; long jumps snap, shoves ease.
   const maxStep = Math.max(0.12, e.speed * SIM_DT * RAGE_BOOST * 2.2);
