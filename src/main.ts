@@ -66,6 +66,7 @@ import { applyWaves, challengeStatus, type Challenge } from "./game/challenges";
 import { dailyDeck, dateKey } from "./game/daily";
 import { checkSeason, loadAchievements, loadSeason, saveSeason, seasonKey } from "./meta/achievements";
 import { loadQuests } from "./meta/quests";
+import { registerRewards } from "./meta/rewardsWire";
 import type { AppCtx, MetaState } from "./app/ctx";
 import {
   emit,
@@ -743,6 +744,8 @@ const ctx: AppCtx = {
     sandboxResetBtn.style.display = "none";
   },
 };
+// Reward loop (chests, Trophy Road, Crown Pass): hooks and Home slots.
+registerRewards(ctx);
 
 // Home / deck buttons in the top bar.
 const homeBtn = document.createElement("button");

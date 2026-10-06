@@ -2,7 +2,6 @@
   "src/main.ts": 19,
   "src/render3d/hud.ts": 9,
   "src/ui/screens/challenges.ts": 2,
-  "src/ui/screens/chests.ts": 7,
   "src/ui/screens/collection.ts": 7,
   "src/ui/screens/deckPicker.ts": 8,
   "src/ui/screens/home.ts": 5,
