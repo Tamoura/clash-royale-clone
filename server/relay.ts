@@ -25,8 +25,14 @@ const ALLOWED_ORIGINS = (env.ALLOWED_ORIGINS ?? (PRODUCTION ? "http://localhost:
   .filter(Boolean);
 const ANY_ORIGIN = ALLOWED_ORIGINS.includes("*");
 const MAX_CONN_PER_IP = Number(env.MAX_CONN_PER_IP ?? 8);
-/** Behind a proxy (Fly, Render, Caddy) the client IP is the first X-Forwarded-For entry. */
-const TRUST_PROXY = env.TRUST_PROXY === "1";
+/**
+ * Where the client IP comes from behind a proxy. "1": the right-most
+ * X-Forwarded-For entry (the one our proxy appended; anything left of it was
+ * sent by the client and can be forged). Any other value names a header the
+ * edge proxy sets itself, e.g. "fly-client-ip" or "cf-connecting-ip".
+ * Unset or "0": the socket address.
+ */
+const TRUST_PROXY = (env.TRUST_PROXY ?? "").trim().toLowerCase();
 const QUICK_MATCH = env.QUICK_MATCH !== "off";
 /** "debug" adds client IPs and per-message detail; never on by default. */
 const LOG_LEVEL = env.LOG_LEVEL === "debug" ? "debug" : "info";
@@ -78,10 +84,13 @@ const pairAttempts = new Map<string, number[]>();
 let nextId = 1;
 
 function clientIp(req: IncomingMessage): string {
-  if (TRUST_PROXY) {
-    const xff = req.headers["x-forwarded-for"];
-    const first = (Array.isArray(xff) ? xff[0] : xff)?.split(",")[0]?.trim();
-    if (first) return first;
+  if (TRUST_PROXY && TRUST_PROXY !== "0") {
+    const header = TRUST_PROXY === "1" ? "x-forwarded-for" : TRUST_PROXY;
+    const raw = req.headers[header];
+    // Repeated headers arrive as an array (or comma-joined); the last value is the proxy's.
+    const value = Array.isArray(raw) ? raw.join(",") : raw;
+    const ip = value?.split(",").pop()?.trim();
+    if (ip) return ip;
   }
   return req.socket.remoteAddress ?? "unknown";
 }
@@ -356,6 +365,6 @@ server.listen(PORT, () => {
     v: PROTOCOL_VERSION,
     origins: ALLOWED_ORIGINS,
     quickMatch: QUICK_MATCH,
-    trustProxy: TRUST_PROXY,
+    trustProxy: TRUST_PROXY || "off",
   });
 });

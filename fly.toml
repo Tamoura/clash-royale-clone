@@ -16,8 +16,8 @@ primary_region = "fra"
   NODE_ENV = "production"
   # The page origin(s) allowed to connect (scheme + host, no path).
   ALLOWED_ORIGINS = "https://tamoura.github.io"
-  # Fly's proxy puts the real client IP first in X-Forwarded-For.
-  TRUST_PROXY = "1"
+  # Fly's edge sets Fly-Client-IP itself, so clients cannot forge it.
+  TRUST_PROXY = "fly-client-ip"
 
 [http_service]
   internal_port = 8080

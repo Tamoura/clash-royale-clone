@@ -120,8 +120,9 @@ https://tamoura.github.io/clash-royale-clone/?relay=wss://quiet-river-1234.trycl
 * The address changes every time you restart `cloudflared`.
 * Through the tunnel, every player seems to come from your own computer, so
   they share one IP's limits (8 sockets). For more than a few devices, start
-  the relay with `TRUST_PROXY=1 npm run relay:prod`. Then limits count per
-  player, using the tunnel's `X-Forwarded-For` header.
+  the relay with `TRUST_PROXY=cf-connecting-ip npm run relay:prod`. Then
+  limits count per player, using the `CF-Connecting-IP` header that
+  Cloudflare sets itself.
 
 ---
 
@@ -174,7 +175,7 @@ real secrets. Its settings live in `fly.toml` under `[env]`:
 [env]
   NODE_ENV = "production"
   ALLOWED_ORIGINS = "https://tamoura.github.io"   # scheme + host only, no path
-  TRUST_PROXY = "1"
+  TRUST_PROXY = "fly-client-ip"                   # the client IP header Fly's edge sets
 ```
 
 To change a value without committing it, use a Fly secret. Secrets are also
@@ -342,7 +343,7 @@ needed at kid-and-friends scale.
 | `RELAY_PORT`       | relay env       | `3110`                                    | Older name for the port; `PORT` wins if both are set. |
 | `ALLOWED_ORIGINS`  | relay env       | `*`, or `http://localhost:3101` when `NODE_ENV=production` | Comma list of page origins (`https://host`, no path) allowed to connect; `*` allows any. Others get HTTP 403. |
 | `MAX_CONN_PER_IP`  | relay env       | `8`                                       | Open sockets per client IP. Raise it if a whole school shares one IP. |
-| `TRUST_PROXY`      | relay env       | off                                       | `1` = take the client IP from the first `X-Forwarded-For` entry. Only behind a proxy you control (Fly, Render, Caddy). |
+| `TRUST_PROXY`      | relay env       | off                                       | Where the per-IP limits get the client IP behind a proxy. `1` = the right-most `X-Forwarded-For` entry (the one your proxy appended; earlier entries come from the client and can be forged), for Render or Caddy. Any other value names a header the edge sets itself: `fly-client-ip` on Fly, `cf-connecting-ip` behind Cloudflare. Leave it off when nothing sits in front of the relay, or clients could pick their own IP. |
 | `QUICK_MATCH`      | relay env       | on                                        | `off` disables the quick-match queue; codes still work. |
 | `NODE_ENV`         | relay env       | unset                                     | `production` tightens the default `ALLOWED_ORIGINS`. |
 | `LOG_LEVEL`        | relay env       | `info`                                    | `debug` adds IPs and invalid-message detail. Use it briefly. |
