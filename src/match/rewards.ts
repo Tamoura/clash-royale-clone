@@ -196,14 +196,17 @@ export function settleMatch(ctx: AppCtx, m: SettleInput): Settlement {
   const solo = !m.online;
   const mine = m.mySide === "player" ? m.battle.player : m.battle.enemy;
   let recorded = false;
-  if (solo && !m.sandbox && !m.replaying) {
-    // Fold the match into today's quests (any real solo battle counts).
+  // The sandbox flag reflects the saved solo mode; it never applies online.
+  const practice = solo && m.sandbox;
+  if (!practice && !m.replaying) {
+    // Fold the match into today's quests and achievements: any real battle
+    // counts, online friendlies included (they never move trophies below).
     const today = dateKey(new Date());
     if (meta.quests.date !== today) meta.quests = loadQuests(today);
     meta.quests = recordQuestMatch(meta.quests, {
-      won: m.winner === "player",
+      won: m.winner === m.mySide,
       cardsPlayed: m.cardsPlayed,
-      damage: m.battle.player.stats.damageDealt,
+      damage: mine.stats.damageDealt,
     });
     saveQuests(meta.quests);
     meta.achievements = recordAchMatch(meta.achievements, {
