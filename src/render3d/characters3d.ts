@@ -2,6 +2,8 @@ import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import type { CardId } from "../game/cards";
 import { loadChampion, normalizeChampion, type ChampionDef } from "../game/customcard";
+import type { Side } from "../game/arena";
+import { applyTeam, teamPart } from "./teamColors";
 import { ARABIC, THEME } from "./theme";
 
 /**
@@ -317,19 +319,22 @@ export interface TroopRig {
 /**
  * A wrapped turban for the Arabic theme — layered cloth folds, a jewelled
  * front band, and a small peak. Centred on the head; the caller positions it.
+ * `team` dyes the cloth in the unit's team colour (the Islamic edition's
+ * most readable team cue: the top of the head faces the camera).
  */
-function turban(r: number, cloth: number, gem = 0xc0392b): THREE.Group {
+function turban(r: number, cloth: number, gem = 0xe8c45f, team = false): THREE.Group {
   const g = new THREE.Group();
   const wrap = sphere(r * 1.14, cloth, 0, r * 0.5, 0);
   wrap.scale.set(1, 0.72, 1);
-  g.add(wrap);
+  g.add(team ? teamPart(wrap) : wrap);
   const fold = sphere(r * 1.04, cloth, 0, r * 0.28, 0.04);
   fold.scale.set(1.06, 0.5, 1.06);
-  g.add(fold);
+  g.add(team ? teamPart(fold, "dark") : fold);
   const band = box(r * 0.5, r * 0.16, r * 0.06, gem, 0, r * 0.46, r * 1.0);
   g.add(band);
   g.add(sphere(r * 0.12, gem, 0, r * 0.46, r * 1.06)); // front jewel
-  g.add(cone(r * 0.16, r * 0.3, cloth, 0, r * 1.02, 0)); // top peak
+  const peak = cone(r * 0.16, r * 0.3, cloth, 0, r * 1.02, 0);
+  g.add(team ? teamPart(peak) : peak); // top peak
   return g;
 }
 
@@ -359,18 +364,19 @@ function diamond(r: number, color: number, x: number, y: number, z: number): THR
 
 function buildKnight(): TroopRig {
   const g = new THREE.Group();
-  const BLUE = 0x2f6bd8, BLUEDK = 0x244e9c, STEEL = 0xb9c4d2, GOLD = 0xf2c14e, LEATHER = 0x5a3a1c;
-  const legs = [makeLeg(BLUEDK, -0.16, 0.32, 0.18), makeLeg(BLUEDK, 0.16, 0.32, 0.18)];
+  // Steel tunic, not blue: the team colour lives on tabard, cape and shield.
+  const TUNIC = 0x7a8797, TUNICDK = 0x5b6675, STEEL = 0xb9c4d2, GOLD = 0xf2c14e, LEATHER = 0x5a3a1c;
+  const legs = [makeLeg(TUNICDK, -0.16, 0.32, 0.18), makeLeg(TUNICDK, 0.16, 0.32, 0.18)];
   for (const leg of legs) leg.add(sphere(0.1, GOLD, 0, -0.18, 0.12)); // knee rivet
   g.add(...legs);
 
   // Layered torso: tunic, breastplate, chainmail collar, belt, tabard, emblem.
-  g.add(cyl(0.3, 0.36, 0.5, BLUE, 0, 0.56, 0));
+  g.add(cyl(0.3, 0.36, 0.5, TUNIC, 0, 0.56, 0));
   g.add(box(0.56, 0.48, 0.42, STEEL, 0, 0.66, 0));
   g.add(cyl(0.28, 0.28, 0.12, 0x9aa6b5, 0, 0.92, 0));
   g.add(cyl(0.37, 0.37, 0.09, LEATHER, 0, 0.34, 0));
   g.add(box(0.13, 0.13, 0.06, GOLD, 0, 0.34, 0.28)); // buckle
-  g.add(box(0.24, 0.46, 0.04, BLUEDK, 0, 0.52, 0.25)); // tabard
+  g.add(teamPart(box(0.24, 0.46, 0.04, TUNICDK, 0, 0.52, 0.25))); // tabard
   g.add(diamond(0.1, GOLD, 0, 0.7, 0.27)); // chest emblem
   for (const sx of [-1, 1]) {
     g.add(sphere(0.18, STEEL, sx * 0.38, 0.82, 0)); // pauldron
@@ -410,17 +416,17 @@ function buildKnight(): TroopRig {
     g.add(crest);
     g.add(box(0.06, 0.12, 0.72, 0xfff2c8, 0, 1.98, -0.1)); // bright crest spine
   }
-  const cape = box(0.5, 0.7, 0.05, 0x1c2f66, 0, 0.62, -0.28);
+  const cape = teamPart(box(0.5, 0.7, 0.05, 0x1c2f66, 0, 0.62, -0.28), "dark");
   cape.rotation.x = 0.08;
   g.add(cape);
 
   // Shield arm: a gold-bordered kite shield with a boss + emblem.
   const offArm = new THREE.Group();
   offArm.position.set(-0.42, 0.82, 0);
-  offArm.add(box(0.14, 0.32, 0.14, BLUE, 0, -0.16, 0));
+  offArm.add(box(0.14, 0.32, 0.14, TUNIC, 0, -0.16, 0));
   offArm.add(sphere(0.11, STEEL, 0, -0.32, 0.02)); // gauntlet
   offArm.add(box(0.54, 0.72, 0.05, GOLD, -0.16, -0.3, 0.16)); // border
-  offArm.add(box(0.44, 0.62, 0.07, BLUEDK, -0.16, -0.3, 0.18)); // face
+  offArm.add(teamPart(box(0.44, 0.62, 0.07, TUNICDK, -0.16, -0.3, 0.18))); // face
   offArm.add(sphere(0.09, STEEL, -0.16, -0.22, 0.24)); // boss
   offArm.add(cone(0.08, 0.2, GOLD, -0.16, -0.44, 0.24)); // emblem
   g.add(offArm);
@@ -428,7 +434,7 @@ function buildKnight(): TroopRig {
   // Sword arm: gauntlet, crossguard, fullered blade, gold pommel.
   const arm = new THREE.Group();
   arm.position.set(0.42, 0.84, 0);
-  arm.add(box(0.15, 0.32, 0.15, BLUE, 0, -0.16, 0));
+  arm.add(box(0.15, 0.32, 0.15, TUNIC, 0, -0.16, 0));
   arm.add(sphere(0.12, STEEL, 0, -0.33, 0.02)); // gauntlet
   if (ARABIC) {
     const s = scimitar();
@@ -450,13 +456,13 @@ function buildArcher(): TroopRig {
   g.add(...legs);
   // Sleeveless green tunic (CR archer silhouette).
   g.add(cyl(0.22, 0.28, 0.42, 0x2e7d32, 0, 0.48, 0));
-  g.add(cyl(0.29, 0.29, 0.07, 0x6d4c41, 0, 0.3, 0)); // belt
+  g.add(teamPart(cyl(0.29, 0.29, 0.07, 0x6d4c41, 0, 0.3, 0))); // belt
   for (const s of [-1, 1]) g.add(box(0.08, 0.14, 0.1, 0x6d4c41, s * 0.18, 0.7, 0.1)); // bracers cue
   const head = sphere(0.32, SKIN, 0, 0.96, 0);
   addEyes(head, 0.32, 0.36, 0.1, "cute");
   g.add(head);
   if (ARABIC) {
-    const t = turban(0.32, 0x9c3848);
+    const t = turban(0.32, 0x9c3848, undefined, true);
     t.position.y = 0.96;
     g.add(t);
   } else {
@@ -474,11 +480,11 @@ function buildArcher(): TroopRig {
     g.add(braid);
   }
   // Quiver on the back.
-  const quiver = cyl(0.07, 0.07, 0.34, 0x6d4c41, -0.12, 0.62, -0.2);
+  const quiver = teamPart(cyl(0.07, 0.07, 0.34, 0x6d4c41, -0.12, 0.62, -0.2), "dark");
   quiver.rotation.z = 0.35;
   g.add(quiver);
-  g.add(cone(0.05, 0.1, 0xe53935, -0.18, 0.84, -0.2));
-  g.add(cone(0.05, 0.1, 0xe53935, -0.08, 0.86, -0.2));
+  g.add(cone(0.05, 0.1, 0xf5f2ea, -0.18, 0.84, -0.2)); // white fletching
+  g.add(cone(0.05, 0.1, 0xf5f2ea, -0.08, 0.86, -0.2));
 
   const offArm = new THREE.Group();
   offArm.position.set(0.3, 0.62, 0);
@@ -520,9 +526,9 @@ function buildPrincess(): TroopRig {
   const GOWN = 0xf6e7ef, GOWNDK = 0xe39ec4, GOLD = 0xf2c14e, HAIR = 0xffe082;
   const g = new THREE.Group();
   g.add(cyl(0.18, 0.46, 0.9, GOWN, 0, 0.46, 0)); // flowing gown
-  g.add(cyl(0.46, 0.48, 0.1, GOWNDK, 0, 0.05, 0)); // rose hem
+  g.add(teamPart(cyl(0.46, 0.48, 0.1, GOWNDK, 0, 0.05, 0), "dark")); // hem
   g.add(cyl(0.27, 0.3, 0.36, GOWNDK, 0, 0.78, 0)); // rose bodice
-  g.add(cyl(0.3, 0.3, 0.06, GOLD, 0, 0.62, 0)); // golden belt
+  g.add(teamPart(cyl(0.3, 0.3, 0.06, GOLD, 0, 0.62, 0))); // belt
   const head = sphere(0.27, SKIN, 0, 1.12, 0);
   addEyes(head, 0.27, 0.36, 0.1, "calm");
   g.add(head);
@@ -567,7 +573,7 @@ function buildPrincess(): TroopRig {
   const shaft = cyl(0.018, 0.018, 0.55, 0x6d4c41, 0, 0, 0);
   shaft.rotation.x = Math.PI / 2;
   nocked.add(shaft);
-  const flame = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), glow(0xff7043, 2));
+  const flame = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), glow(0xff9a3c, 2));
   flame.position.set(0, 0, 0.32);
   nocked.add(flame);
   arm.add(nocked);
@@ -591,9 +597,9 @@ function buildGiant(): TroopRig {
   belly.scale.set(1, 0.92, 0.85);
   g.add(belly);
   g.add(box(0.38, 0.3, 0.06, 0xa96f3d, 0.24, 0.9, 0.58)); // patch
-  g.add(cyl(0.74, 0.74, 0.13, 0x7a5230, 0, 0.5, 0)); // belt
+  g.add(teamPart(cyl(0.74, 0.74, 0.13, 0x7a5230, 0, 0.5, 0))); // belt
   g.add(sphere(0.12, 0xf2c14e, 0, 0.5, 0.71)); // buckle
-  g.add(cyl(0.58, 0.7, 0.36, 0x8a5a35, 0, 0.36, 0)); // loincloth skirt
+  g.add(teamPart(cyl(0.58, 0.7, 0.36, 0x8a5a35, 0, 0.36, 0), "dark")); // loincloth skirt
   const head = sphere(0.38, SKIN, 0, 1.86, 0);
   addEyes(head, 0.38, 0.34, 0.18, "calm");
   g.add(head);
@@ -705,7 +711,7 @@ function buildWarElephant(): TroopRig {
       g.add(cone(0.07, 0.18, GOLD, x, 0.78, s * 0.85)); // hem tassels
     }
   }
-  g.add(box(0.5, 0.4, 0.04, CLOTH2, 0, 1.5, 1.32)); // brow medallion cloth
+  g.add(teamPart(box(0.5, 0.4, 0.04, CLOTH2, 0, 1.5, 1.32), "dark")); // brow medallion cloth
   g.add(diamond(0.1, GOLD, 0, 1.5, 1.36)); // forehead jewel
 
   // Domed howdah (the carriage) seated on the back.
@@ -715,7 +721,7 @@ function buildWarElephant(): TroopRig {
     g.add(cyl(0.05, 0.05, 0.55, GOLD, sx * 0.42, 2.18, -0.15 + sz * 0.42)); // posts
   }
   g.add(box(0.92, 0.22, 0.92, CLOTH, 0, 2.06, -0.15)); // side panels
-  const dome = sphere(0.5, CLOTH2, 0, 2.5, -0.15); // canopy dome
+  const dome = teamPart(sphere(0.5, CLOTH2, 0, 2.5, -0.15)); // canopy dome
   dome.scale.set(1.1, 0.7, 1.1);
   g.add(dome);
   g.add(cyl(0.52, 0.52, 0.08, GOLD, 0, 2.34, -0.15)); // canopy rim
@@ -785,7 +791,8 @@ function buildWarElephant(): TroopRig {
 function buildRoyalGiant(): TroopRig {
   // A royal-armoured giant who hoists an enormous cannon and lobs
   // cannonballs at the enemy's towers.
-  const ARMOR = 0x2e4a8a, ARMORDK = 0x1c2f5e, GOLD = 0xf2c14e, IRON = 0x59626e, IRONDK = 0x2b3138;
+  // Steel plate, not royal blue: the team colour is the cape and breastplate.
+  const ARMOR = 0x7a8797, ARMORDK = 0x55606e, GOLD = 0xf2c14e, IRON = 0x59626e, IRONDK = 0x2b3138;
   const g = new THREE.Group();
   const legs = [makeLeg(ARMORDK, -0.26, 0.34, 0.26), makeLeg(ARMORDK, 0.26, 0.34, 0.26)];
   g.add(...legs);
@@ -794,13 +801,13 @@ function buildRoyalGiant(): TroopRig {
   const cuirass = sphere(0.6, ARMOR, 0, 0.96, 0);
   cuirass.scale.set(1, 1.0, 0.8);
   g.add(cuirass);
-  g.add(box(0.46, 0.76, 0.1, ARMORDK, 0, 0.96, 0.46)); // breastplate panel
+  g.add(teamPart(box(0.46, 0.76, 0.1, ARMORDK, 0, 0.96, 0.46), "dark")); // breastplate panel
   g.add(box(0.12, 0.76, 0.02, GOLD, 0, 0.96, 0.52)); // gold stripe
   g.add(cyl(0.62, 0.62, 0.12, GOLD, 0, 0.52, 0)); // gold belt
-  g.add(sphere(0.11, 0xff5252, 0, 0.52, 0.56)); // ruby buckle
+  g.add(sphere(0.11, 0x2fbf71, 0, 0.52, 0.56)); // emerald buckle
   g.add(cyl(0.5, 0.6, 0.34, ARMORDK, 0, 0.38, 0)); // armoured skirt
   // Long royal cape — a back-view silhouette no other heavy has.
-  const cape = box(0.74, 0.95, 0.07, 0x9c2430, 0, 1.02, -0.5);
+  const cape = teamPart(box(0.74, 0.95, 0.07, 0x9c2430, 0, 1.02, -0.5));
   cape.rotation.x = 0.08;
   g.add(cape);
   g.add(box(0.8, 0.12, 0.1, GOLD, 0, 1.5, -0.44)); // cape clasp bar
@@ -824,7 +831,7 @@ function buildRoyalGiant(): TroopRig {
       const a = (i / 5) * Math.PI * 2;
       g.add(cone(0.06, 0.18, GOLD, Math.cos(a) * 0.34, 2.22, Math.sin(a) * 0.34));
     }
-    g.add(sphere(0.06, 0xff5252, 0, 2.14, 0.4)); // crown ruby
+    g.add(sphere(0.06, 0x2fbf71, 0, 2.14, 0.4)); // crown emerald
   }
 
   // Off arm cradles the next cannonball.
@@ -865,10 +872,12 @@ function buildRoyalGiant(): TroopRig {
 
 function buildMusketeer(): TroopRig {
   const g = new THREE.Group();
-  const legs = [makeLeg(0x283593, -0.12, 0.28, 0.14), makeLeg(0x283593, 0.12, 0.28, 0.14)];
+  // Teal coat, not indigo: blue belongs to the team plume and sash.
+  const COAT = 0x2a7f7a, COATDK = 0x1d5a56;
+  const legs = [makeLeg(COATDK, -0.12, 0.28, 0.14), makeLeg(COATDK, 0.12, 0.28, 0.14)];
   g.add(...legs);
-  g.add(cyl(0.26, 0.38, 0.48, 0x3f51b5, 0, 0.52, 0)); // flared coat
-  g.add(cyl(0.34, 0.36, 0.08, 0x283593, 0, 0.36, 0)); // sash
+  g.add(cyl(0.26, 0.38, 0.48, COAT, 0, 0.52, 0)); // flared coat
+  g.add(teamPart(cyl(0.34, 0.36, 0.08, COATDK, 0, 0.36, 0), "dark")); // sash
   g.add(box(0.08, 0.36, 0.04, 0xf2c14e, 0.18, 0.56, 0.3)); // gold trim stripe
   g.add(sphere(0.07, 0xf2c14e, 0, 0.52, 0.31)); // button
   const head = sphere(0.32, SKIN, 0, 1.02, 0);
@@ -880,7 +889,7 @@ function buildMusketeer(): TroopRig {
     const t = turban(0.32, 0x3a2f7a, 0xf2c14e); // indigo turban, gold band
     t.position.y = 1.02;
     g.add(t);
-    const plume = cone(0.06, 0.32, 0x3b82f6, 0, 1.54, -0.02); // aigrette plume
+    const plume = teamPart(cone(0.06, 0.32, 0x3b82f6, 0, 1.54, -0.02)); // aigrette plume
     plume.rotation.z = -0.3;
     g.add(plume);
   } else {
@@ -890,13 +899,14 @@ function buildMusketeer(): TroopRig {
     }
     // Wide-brimmed cavalier hat with a swooping feather — reads
     // "musketeer" from any angle, unlike a low steel dome.
-    const brim = cyl(0.46, 0.5, 0.05, 0x2d3a8c, 0, 1.2, 0);
+    const brim = cyl(0.46, 0.5, 0.05, 0x1f4f4c, 0, 1.2, 0);
     brim.name = "helm";
     g.add(brim);
-    g.add(cyl(0.24, 0.3, 0.26, 0x3f51b5, 0, 1.34, 0)); // hat crown
+    g.add(cyl(0.24, 0.3, 0.26, COAT, 0, 1.34, 0)); // hat crown
     g.add(cyl(0.305, 0.315, 0.07, 0xf2c14e, 0, 1.25, 0)); // gold hatband
     const feather = cone(0.09, 0.52, 0x3b82f6, 0.32, 1.46, -0.1);
     feather.name = "feather";
+    teamPart(feather);
     feather.rotation.z = -0.85;
     g.add(feather);
   }
@@ -909,7 +919,7 @@ function buildMusketeer(): TroopRig {
 
   const offArm = new THREE.Group();
   offArm.position.set(-0.34, 0.72, 0);
-  offArm.add(box(0.12, 0.28, 0.12, 0x3f51b5, 0, -0.14, 0));
+  offArm.add(box(0.12, 0.28, 0.12, COAT, 0, -0.14, 0));
   g.add(offArm);
 
   const arm = new THREE.Group();
@@ -930,11 +940,12 @@ function buildMusketeer(): TroopRig {
 
 function buildMiniPekka(): TroopRig {
   const g = new THREE.Group();
-  const STEEL = 0x46628f, STEELDK = 0x2b4066, CYAN = 0x4fd8ff;
-  const legs = [makeLeg(0x1b2a44, -0.15, 0.3, 0.18), makeLeg(0x1b2a44, 0.15, 0.3, 0.18)];
+  // Gunmetal, not steel-blue: the team colour is the chest plate and pauldrons.
+  const STEEL = 0x5a6270, STEELDK = 0x3c424c, CYAN = 0x4fd8ff;
+  const legs = [makeLeg(0x2a2e36, -0.15, 0.3, 0.18), makeLeg(0x2a2e36, 0.15, 0.3, 0.18)];
   g.add(...legs);
   g.add(box(0.56, 0.44, 0.4, STEELDK, 0, 0.52, 0)); // chunky body
-  g.add(box(0.46, 0.16, 0.44, STEEL, 0, 0.66, 0.02)); // chest plate
+  g.add(teamPart(box(0.46, 0.16, 0.44, STEEL, 0, 0.66, 0.02))); // chest plate
   g.add(sphere(0.08, CYAN, 0, 0.52, 0.22)); // chest light
   // Smooth featureless helmet — only a cyan slit "face".
   const helm = sphere(0.36, STEEL, 0, 1.08, 0);
@@ -946,7 +957,7 @@ function buildMiniPekka(): TroopRig {
   eye.position.set(0, 1.08, 0.34);
   g.add(eye);
   for (const s of [-1, 1]) {
-    g.add(sphere(0.16, STEEL, s * 0.36, 0.72, 0)); // bulky pauldron
+    g.add(teamPart(sphere(0.16, STEEL, s * 0.36, 0.72, 0), "dark")); // bulky pauldron
     g.add(sphere(0.06, 0xb7c2cc, s * 0.36, 0.8, 0.1)); // bolt
   }
 
@@ -977,8 +988,8 @@ function buildSkeleton(): TroopRig {
   ];
   g.add(...legs);
   g.add(box(0.24, 0.22, 0.14, BONE, 0, 0.3, 0)); // tiny ribcage
-  g.add(box(0.26, 0.03, 0.16, BONEDK, 0, 0.3, 0));
-  g.add(box(0.26, 0.03, 0.16, BONEDK, 0, 0.38, 0));
+  g.add(teamPart(box(0.26, 0.03, 0.16, BONEDK, 0, 0.3, 0))); // team-dyed rib wraps
+  g.add(teamPart(box(0.26, 0.03, 0.16, BONEDK, 0, 0.38, 0)));
   // Exaggerated goofy skull — the swarm's readable silhouette.
   const skull = sphere(0.3, BONE, 0, 0.72, 0);
   skull.name = "skull";
@@ -1031,8 +1042,8 @@ interface WizardTheme {
  * the pale-blue Ice Wizard across a busy field.
  */
 const CLASSIC_WIZARD: WizardTheme = {
-  robe: 0xa82f35,
-  robeDk: 0x6e1a22,
+  robe: 0x84399a, // plum: crimson read as the red team
+  robeDk: 0x521f60,
   trim: 0xf2c14e,
   hair: 0x6b4a2e, // brown, per the CR reference (not white)
   beard: 0x6b4a2e,
@@ -1052,8 +1063,8 @@ function buildWizard(theme: WizardTheme = CLASSIC_WIZARD): TroopRig {
   const ROBE = theme.robe, ROBEDK = theme.robeDk, TRIM = theme.trim, HAIR = theme.hair;
   const g = new THREE.Group();
   g.add(cyl(0.26, 0.52, 0.92, ROBE, 0, 0.47, 0)); // flared robe
-  g.add(cyl(0.52, 0.54, 0.1, ROBEDK, 0, 0.05, 0)); // hem
-  g.add(cyl(0.4, 0.42, 0.08, 0x5a3a1c, 0, 0.76, 0)); // belt
+  g.add(teamPart(cyl(0.52, 0.54, 0.1, ROBEDK, 0, 0.05, 0), "dark")); // hem
+  g.add(teamPart(cyl(0.4, 0.42, 0.08, 0x5a3a1c, 0, 0.76, 0))); // belt
   g.add(box(0.1, 0.1, 0.05, TRIM, 0, 0.76, 0.42)); // buckle
   for (let i = 0; i < 3; i++) g.add(sphere(0.045, TRIM, 0, 0.62 - i * 0.17, 0.4)); // star buttons
   const head = sphere(0.32, theme.skin, 0, 1.12, 0);
@@ -1121,7 +1132,7 @@ function buildWizard(theme: WizardTheme = CLASSIC_WIZARD): TroopRig {
     const hat = cone(0.44, 1.0, ROBEDK, 0, 1.66, -0.05);
     hat.rotation.x = -0.1;
     g.add(hat);
-    g.add(cyl(0.46, 0.46, 0.1, ROBE, 0, 1.26, 0)); // brim band
+    g.add(teamPart(cyl(0.46, 0.46, 0.1, ROBE, 0, 1.26, 0))); // brim band
     const tip = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 10), glow(theme.tip, 1.8));
     tip.position.set(0.08, 2.12, -0.16);
     g.add(tip);
@@ -1226,7 +1237,7 @@ function buildIceWizard(): TroopRig {
 function buildWitch(): TroopRig {
   const g = new THREE.Group();
   g.add(cyl(0.26, 0.46, 0.7, 0x4a148c, 0, 0.4, 0)); // dark robe
-  g.add(cyl(0.37, 0.4, 0.08, 0x7b1fa2, 0, 0.5, 0)); // sash
+  g.add(teamPart(cyl(0.37, 0.4, 0.08, 0x7b1fa2, 0, 0.5, 0), "dark")); // sash
   g.add(sphere(0.07, 0x76ff03, 0, 0.62, 0.3)); // glowing brooch
   const head = sphere(0.29, 0xcfd4f1, 0, 1.04, 0); // pale skin
   addEyes(head, 0.29, 0.38, 0.1, "wicked");
@@ -1256,7 +1267,7 @@ function buildWitch(): TroopRig {
   hatTip.rotation.z = -0.9; // the tip flops over
   g.add(hatTip);
   g.add(sphere(0.06, 0x76ff03, 0.38, 1.94, -0.02)); // soul-green tip bauble
-  g.add(cyl(0.36, 0.38, 0.09, 0x2e7d32, 0, 1.33, -0.02)); // moss-green band
+  g.add(teamPart(cyl(0.36, 0.38, 0.09, 0x2e7d32, 0, 1.33, -0.02))); // hat band
   g.add(box(0.09, 0.09, 0.04, 0xd9a93f, 0, 1.33, 0.35)); // gold buckle
   for (const s of [-1, 1]) {
     const whiteHair = cyl(0.06, 0.045, 0.4, 0xe8e3d8, s * 0.24, 0.86, 0.12);
@@ -1321,7 +1332,7 @@ function buildBalloon(): TroopRig {
   envelope.scale.set(1, 1.15, 1);
   g.add(envelope);
   for (const a of [-0.6, 0.6]) {
-    const stripe = cyl(0.46, 0.46, 0.14, NAVYDK, 0, 1.5 + a * 0.45, 0);
+    const stripe = teamPart(cyl(0.46, 0.46, 0.14, NAVYDK, 0, 1.5 + a * 0.45, 0));
     stripe.scale.x = 1.2;
     g.add(stripe);
   }
@@ -1408,7 +1419,7 @@ function buildBabyDragon(): TroopRig {
     // Stubby teal membranes relative to chubby body (toy-like).
     const membrane = box(0.58, 0.05, 0.38, TEAL, s * 0.32, 0, 0);
     membrane.name = "wing-membrane";
-    wing.add(membrane);
+    wing.add(teamPart(membrane, "dark"));
     wing.add(box(0.56, 0.04, 0.06, TEALDK, s * 0.31, 0.03, 0.18));
     wing.rotation.z = s * 0.3;
     g.add(wing);
@@ -1468,7 +1479,7 @@ function buildGargoyle(): TroopRig {
     wing.position.set(s * 0.18, 0.64, -0.12);
     const membrane = box(0.48, 0.035, 0.32, MEMBRANE, s * 0.26, 0, 0);
     membrane.name = "wing-membrane";
-    wing.add(membrane);
+    wing.add(teamPart(membrane, "dark"));
     wing.rotation.z = s * 0.45;
     g.add(wing);
     wings.push({ obj: wing, base: s * 0.45, amp: s * 0.8 });
@@ -1489,14 +1500,14 @@ function buildValkyrie(): TroopRig {
   const g = new THREE.Group();
   const legs = [makeLeg(0x4e342e, -0.13, 0.26, 0.16), makeLeg(0x4e342e, 0.13, 0.26, 0.16)];
   g.add(...legs);
-  g.add(cyl(0.3, 0.5, 0.5, 0x8e1220, 0, 0.5, 0)); // deep crimson dress
+  g.add(cyl(0.3, 0.5, 0.5, 0xb5762a, 0, 0.5, 0)); // bronze dress (crimson read as the red team)
   g.add(cyl(0.5, 0.53, 0.1, 0xe8e3d8, 0, 0.28, 0)); // fur-trimmed hem
-  g.add(cyl(0.38, 0.4, 0.09, 0x6d4c41, 0, 0.34, 0)); // belt
+  g.add(teamPart(cyl(0.38, 0.4, 0.09, 0x6d4c41, 0, 0.34, 0))); // belt
   const head = sphere(0.3, SKIN, 0, 1.04, 0);
   addEyes(head, 0.3, 0.38, 0.1, "angry");
   g.add(head);
   if (ARABIC) {
-    const t = turban(0.3, 0x9c3848, 0xf2c14e); // crimson headscarf, gold band
+    const t = turban(0.3, 0x9c3848, 0xf2c14e, true); // team headscarf, gold band
     t.position.y = 1.04;
     g.add(t);
   } else {
@@ -1526,7 +1537,7 @@ function buildValkyrie(): TroopRig {
     g.add(sphere(0.17, 0xe8e3d8, s * 0.37, 0.78, 0)); // fur pauldron
     g.add(sphere(0.05, 0xf2c14e, s * 0.37, 0.9, 0.06)); // gold stud
   }
-  g.add(box(0.36, 0.3, 0.3, 0x6b4a2a, 0, 0.66, 0.06)); // chest guard
+  g.add(teamPart(box(0.36, 0.3, 0.3, 0x6b4a2a, 0, 0.66, 0.06), "dark")); // chest guard
   g.add(diamond(0.07, 0xf2c14e, 0, 0.7, 0.24)); // emblem
   g.add(cyl(0.31, 0.31, 0.06, 0xf2c14e, 0, 1.22, 0)); // headband
 
@@ -1595,7 +1606,7 @@ function buildPrince(): TroopRig {
   const tail = cone(0.08, 0.45, 0x5d4037, 0, 0.78, -0.7);
   tail.rotation.x = -Math.PI / 2.5;
   g.add(tail);
-  g.add(box(0.5, 0.08, 0.5, 0xb71c1c, 0, 1.0, -0.1)); // saddle blanket
+  g.add(teamPart(box(0.5, 0.08, 0.5, 0xb71c1c, 0, 1.0, -0.1))); // saddle blanket
 
   // Rider.
   g.add(cyl(0.2, 0.26, 0.4, 0xfafafa, 0, 1.28, -0.1)); // tabard
@@ -1608,8 +1619,8 @@ function buildPrince(): TroopRig {
   head.add(goatee);
   g.add(head);
   if (ARABIC) {
-    // Royal gold turban with a ruby jewel, in place of the helm.
-    const t = turban(0.31, 0xf2c14e, 0xb71c1c);
+    // Royal gold turban with an emerald jewel, in place of the helm.
+    const t = turban(0.31, 0xf2c14e, 0x2fbf71);
     t.position.set(0, 1.7, -0.1);
     g.add(t);
   } else {
@@ -1623,7 +1634,7 @@ function buildPrince(): TroopRig {
       g.add(box(0.07, 0.2, 0.18, 0xf2c14e, s * 0.3, 1.74, -0.04)); // cheek guard
     }
   }
-  const plume = cone(0.1, 0.48, 0x3b82f6, 0, 2.32, -0.16);
+  const plume = teamPart(cone(0.1, 0.48, 0x3b82f6, 0, 2.32, -0.16));
   plume.rotation.x = 0.25;
   g.add(plume); // team-colored feather
   const offArm = new THREE.Group();
@@ -1684,7 +1695,7 @@ function buildHogRider(): TroopRig {
   // Bare-chested rider with top-knot + roaring beard (CR hog personality).
   const RIDER = 0x9c6644; // darker skin
   g.add(cyl(0.2, 0.24, 0.36, RIDER, 0, 1.06, -0.12)); // torso
-  g.add(cyl(0.26, 0.26, 0.08, 0x4e342e, 0, 0.9, -0.12)); // belt
+  g.add(teamPart(cyl(0.26, 0.26, 0.08, 0x4e342e, 0, 0.9, -0.12), "dark")); // belt
   const head = sphere(0.28, RIDER, 0, 1.52, -0.12);
   addEyes(head, 0.28, 0.36, 0.08, "angry");
   g.add(head);
@@ -1712,7 +1723,7 @@ function buildHogRider(): TroopRig {
     g.add(sphere(0.05, 0xf2c14e, s * 0.26, 1.5, -0.1)); // gold earring
   }
   // Leather bandolier across the bare chest.
-  const strap = box(0.09, 0.46, 0.05, 0x4e342e, 0, 1.06, 0.06);
+  const strap = teamPart(box(0.09, 0.46, 0.05, 0x4e342e, 0, 1.06, 0.06));
   strap.rotation.z = 0.7;
   g.add(strap);
   g.add(sphere(0.045, 0xf2c14e, 0.12, 1.14, 0.1)); // strap stud
@@ -1790,7 +1801,7 @@ function buildCamelRaider(): TroopRig {
   g.add(neck);
 
   // Saddle cloth over the hump with a gold hem and tassels.
-  const drape = box(0.72, 0.34, 0.9, CLOTH, 0, 1.06, -0.12);
+  const drape = teamPart(box(0.72, 0.34, 0.9, CLOTH, 0, 1.06, -0.12));
   g.add(drape);
   g.add(box(0.76, 0.08, 0.94, GOLD, 0, 0.9, -0.12)); // gold hem
   for (const s of [-1, 1]) {
@@ -1802,7 +1813,7 @@ function buildCamelRaider(): TroopRig {
   // Turbaned desert raider seated on the saddle.
   const RIDER = 0x9c6644;
   g.add(cyl(0.17, 0.21, 0.34, THEME.cream, 0, 1.5, -0.12)); // robe
-  g.add(cyl(0.22, 0.22, 0.06, CLOTH2, 0, 1.34, -0.12)); // sash
+  g.add(teamPart(cyl(0.22, 0.22, 0.06, CLOTH2, 0, 1.34, -0.12), "dark")); // sash
   const head = sphere(0.24, RIDER, 0, 1.88, -0.12);
   addEyes(head, 0.24, 0.38, 0.1, "angry");
   const beard = sphere(0.16, 0x2d1b0e, 0, -0.14, 0.12);
@@ -1889,6 +1900,7 @@ function buildFireKite(): TroopRig {
   ] as const) {
     const tail = box(0.09, len, 0.03, color, dx, 0.52 - len / 2, -0.05);
     tail.name = "kite-tail";
+    if (color === CLOTH) teamPart(tail); // the two cloth tails fly team colours
     tails.push(tail);
     g.add(tail);
   }
@@ -1963,7 +1975,7 @@ function buildPekka(): TroopRig {
     hornTip.scale.z = 0.45;
     g.add(hornTip);
     // Pauldrons that ride level with the helmet sell the hunch.
-    const pauldron = sphere(0.3, 0x2a3752, s * 0.6, 1.16, 0.04);
+    const pauldron = teamPart(sphere(0.3, 0x2a3752, s * 0.6, 1.16, 0.04), "dark");
     pauldron.scale.y = 0.8;
     g.add(pauldron);
     g.add(cone(0.11, 0.3, 0xb7c2cc, s * 0.64, 1.4, 0.04)); // shoulder spike
@@ -2177,12 +2189,13 @@ function buildFirecracker(): TroopRig {
   g.add(pony);
   const band = cyl(0.31, 0.31, 0.1, 0x2f6bd8, 0, 1.0, 0);
   band.name = "headband";
+  teamPart(band);
   g.add(band);
 
   // Rocket backpack — spare fireworks poking over her shoulders give a
   // spiky back silhouette no other small troop has.
   g.add(box(0.32, 0.34, 0.16, 0x5a4a2a, 0, 0.6, -0.26));
-  for (const [i, col] of [0xd84e4e, 0x2f6bd8, 0xffd54f].entries()) {
+  for (const [i, col] of [0x9c4fd8, 0x3fbf6a, 0xffd54f].entries()) {
     const rx = -0.09 + i * 0.09;
     g.add(cyl(0.05, 0.05, 0.34, col, rx, 0.88, -0.26));
     g.add(cone(0.055, 0.12, 0xdde4ec, rx, 1.1, -0.26));
@@ -2202,8 +2215,8 @@ function buildFirecracker(): TroopRig {
   tube.name = "launcher";
   tube.rotation.x = Math.PI / 2;
   arm.add(tube);
-  arm.add(cyl(0.205, 0.205, 0.1, 0xd84e4e, 0, -0.24, 0.16).rotateX(Math.PI / 2)); // stripe
-  arm.add(cyl(0.205, 0.205, 0.1, 0xd84e4e, 0, -0.24, 0.56).rotateX(Math.PI / 2)); // stripe
+  arm.add(teamPart(cyl(0.205, 0.205, 0.1, 0xd84e4e, 0, -0.24, 0.16).rotateX(Math.PI / 2))); // stripe
+  arm.add(teamPart(cyl(0.205, 0.205, 0.1, 0xd84e4e, 0, -0.24, 0.56).rotateX(Math.PI / 2))); // stripe
   arm.add(cyl(0.23, 0.23, 0.07, 0xf2c14e, 0, -0.24, 0.86).rotateX(Math.PI / 2)); // gold rim
   arm.add(sphere(0.11, 0xffd54f, 0, -0.24, 0.94)); // packed firework
   const fuse = cyl(0.012, 0.012, 0.14, 0x4a4a4a, 0.0, -0.08, 0.24);
@@ -2218,7 +2231,7 @@ function buildMagicArcher(): TroopRig {
   const legs = [makeLeg(0x123c30, -0.12, 0.3, 0.14), makeLeg(0x123c30, 0.12, 0.3, 0.14)];
   g.add(...legs);
   g.add(cyl(0.24, 0.36, 0.56, 0x1f7a5f, 0, 0.56, 0)); // long mystic robe
-  g.add(cyl(0.3, 0.32, 0.07, 0x14523f, 0, 0.42, 0)); // sash
+  g.add(teamPart(cyl(0.3, 0.32, 0.07, 0x14523f, 0, 0.42, 0))); // sash
   const head = sphere(0.28, SKIN, 0, 1.06, 0);
   addEyes(head, 0.28, 0.36, 0.08, "calm");
   // Signature teal-glowing eyes over the pupils.
@@ -2252,6 +2265,7 @@ function buildMagicArcher(): TroopRig {
     new THREE.TorusGeometry(0.36, 0.035, 8, 16, Math.PI),
     toon(0x37206b),
   );
+  teamPart(bow, "dark");
   bow.castShadow = true;
   bow.position.set(0, -0.28, 0.16);
   bow.rotation.set(0, -Math.PI / 2, 0);
@@ -2284,7 +2298,7 @@ function buildBat(): TroopRig {
   for (const s of [-1, 1]) {
     const wing = new THREE.Group();
     wing.position.set(s * 0.12, 0.32, -0.04);
-    wing.add(box(0.34, 0.03, 0.22, 0x2c2338, s * 0.18, 0, 0));
+    wing.add(teamPart(box(0.34, 0.03, 0.22, 0x2c2338, s * 0.18, 0, 0), "dark"));
     wing.rotation.z = s * 0.4;
     g.add(wing);
     wings.push({ obj: wing, base: s * 0.4, amp: s * 0.9 });
@@ -2294,11 +2308,16 @@ function buildBat(): TroopRig {
 
 function buildMinion(): TroopRig {
   const g = new THREE.Group();
-  const body = sphere(0.2, 0x2f6fb0, 0, 0.36, 0);
+  // Violet imp, not blue: the team colour is the belly band.
+  const VIOLET = 0x6a4fb0, VIOLETDK = 0x4a3590;
+  const body = sphere(0.2, VIOLET, 0, 0.36, 0);
   body.scale.set(1, 1.15, 0.92);
   g.add(body);
-  g.add(sphere(0.17, 0x3f7fc0, 0, 0.66, 0.03)); // head
-  g.add(cone(0.05, 0.14, 0x9fd0ff, 0, 0.84, 0)); // horn
+  const band = teamPart(cyl(0.21, 0.21, 0.09, VIOLETDK, 0, 0.34, 0));
+  band.scale.z = 0.94; // hug the squashed body
+  g.add(band);
+  g.add(sphere(0.17, 0x7d63c4, 0, 0.66, 0.03)); // head
+  g.add(cone(0.05, 0.14, 0xd9ccff, 0, 0.84, 0)); // horn
   const beak = cone(0.05, 0.12, 0xffca28, 0, 0.64, 0.2);
   beak.rotation.x = Math.PI / 2;
   g.add(beak);
@@ -2309,17 +2328,17 @@ function buildMinion(): TroopRig {
   }
   const offArm = new THREE.Group();
   offArm.position.set(-0.18, 0.44, 0);
-  offArm.add(box(0.06, 0.18, 0.06, 0x2f6fb0, 0, -0.09, 0));
+  offArm.add(box(0.06, 0.18, 0.06, VIOLET, 0, -0.09, 0));
   g.add(offArm);
   const arm = new THREE.Group();
   arm.position.set(0.18, 0.44, 0.04);
-  arm.add(box(0.06, 0.18, 0.06, 0x2f6fb0, 0, -0.09, 0));
+  arm.add(box(0.06, 0.18, 0.06, VIOLET, 0, -0.09, 0));
   g.add(arm);
   const wings: Wing[] = [];
   for (const s of [-1, 1]) {
     const wing = new THREE.Group();
     wing.position.set(s * 0.16, 0.56, -0.1);
-    wing.add(box(0.4, 0.03, 0.26, 0x255f96, s * 0.22, 0, 0));
+    wing.add(box(0.4, 0.03, 0.26, VIOLETDK, s * 0.22, 0, 0));
     wing.rotation.z = s * 0.45;
     g.add(wing);
     wings.push({ obj: wing, base: s * 0.45, amp: s * 0.8 });
@@ -2332,7 +2351,7 @@ function buildExecutioner(): TroopRig {
   const legs = [makeLeg(0x2f3a2c, -0.16, 0.3, 0.18), makeLeg(0x2f3a2c, 0.16, 0.3, 0.18)];
   g.add(...legs);
   g.add(cyl(0.34, 0.42, 0.5, 0x3f7a4a, 0, 0.56, 0)); // burly tunic
-  g.add(cyl(0.44, 0.44, 0.1, 0x2c5836, 0, 0.36, 0)); // belt
+  g.add(teamPart(cyl(0.44, 0.44, 0.1, 0x2c5836, 0, 0.36, 0))); // belt
   const head = sphere(0.3, SKIN, 0, 1.06, 0);
   addEyes(head, 0.3, 0.34, 0.06, "angry");
   g.add(head);
@@ -2340,7 +2359,7 @@ function buildExecutioner(): TroopRig {
   hood.scale.set(1, 0.95, 1);
   g.add(hood);
   g.add(cone(0.18, 0.34, 0x2f5d3a, 0, 1.42, -0.06)); // hood point
-  for (const s of [-1, 1]) g.add(sphere(0.16, 0x2c5836, s * 0.4, 0.78, 0)); // shoulder pads
+  for (const s of [-1, 1]) g.add(teamPart(sphere(0.16, 0x2c5836, s * 0.4, 0.78, 0), "dark")); // shoulder pads
 
   const offArm = new THREE.Group();
   offArm.position.set(-0.42, 0.74, 0);
@@ -2377,7 +2396,7 @@ function buildMegaKnight(): TroopRig {
 
   // Spiked pauldrons.
   for (const sx of [-1, 1]) {
-    g.add(sphere(0.27, DARKSTEEL, sx * 0.52, 0.96, 0));
+    g.add(teamPart(sphere(0.27, DARKSTEEL, sx * 0.52, 0.96, 0), "dark"));
     for (const a of [-1, 0, 1]) {
       const sp = cone(0.08, 0.28, SPIKE, sx * 0.52, 1.14, a * 0.14);
       sp.rotation.z = -sx * 0.35;
@@ -2389,7 +2408,7 @@ function buildMegaKnight(): TroopRig {
   const head = sphere(0.34, DARKSTEEL, 0, 1.22, 0);
   addEyes(head, 0.34, 0.3, 0.06, "angry");
   g.add(head);
-  g.add(cyl(0.37, 0.4, 0.16, DARK, 0, 1.36, 0));
+  g.add(teamPart(cyl(0.37, 0.4, 0.16, DARK, 0, 1.36, 0))); // helm band
   for (const sx of [-1, 1]) {
     const horn = cone(0.08, 0.34, GOLD, sx * 0.24, 1.5, 0);
     horn.rotation.z = sx * 0.55;
@@ -2428,7 +2447,13 @@ function shade(color: number, f: number): number {
  * player's design — outfit colors, headgear, weapon, face, and wings for
  * flyers. Multi-unit designs shrink so squads read as squads.
  */
-export function buildChampionRig(raw: ChampionDef): TroopRig {
+export function buildChampionRig(raw: ChampionDef, side: Side = "player"): TroopRig {
+  const rig = championBody(raw);
+  applyTeam(rig.group, side);
+  return rig;
+}
+
+function championBody(raw: ChampionDef): TroopRig {
   const def = normalizeChampion(raw);
   const { look, abilities } = def;
   const BODY = look.body;
@@ -2442,7 +2467,7 @@ export function buildChampionRig(raw: ChampionDef): TroopRig {
 
   // Torso: tunic, belt + buckle, pauldrons, chest emblem.
   g.add(cyl(0.28, 0.34, 0.48, BODY, 0, 0.54, 0));
-  g.add(cyl(0.35, 0.35, 0.09, shade(TRIM, 0.8), 0, 0.33, 0));
+  g.add(teamPart(cyl(0.35, 0.35, 0.09, shade(TRIM, 0.8), 0, 0.33, 0), "dark")); // team belt
   g.add(box(0.12, 0.12, 0.05, TRIM, 0, 0.33, 0.29));
   for (const sx of [-1, 1]) g.add(sphere(0.16, TRIM, sx * 0.36, 0.78, 0));
   g.add(diamond(0.09, TRIM, 0, 0.64, 0.28));
@@ -2458,7 +2483,7 @@ export function buildChampionRig(raw: ChampionDef): TroopRig {
       dome.scale.set(1.04, 0.82, 1.02);
       g.add(dome);
       g.add(cyl(0.44, 0.44, 0.09, shade(STEEL, 0.8), 0, 1.34, 0));
-      g.add(box(0.12, 0.4, 0.16, TRIM, 0, 1.66, -0.05)); // plume
+      g.add(teamPart(box(0.12, 0.4, 0.16, TRIM, 0, 1.66, -0.05))); // plume
       break;
     }
     case "hood": {
@@ -2510,7 +2535,7 @@ export function buildChampionRig(raw: ChampionDef): TroopRig {
   offArm.add(box(0.14, 0.3, 0.14, BODY, 0, -0.15, 0));
   offArm.add(sphere(0.1, SKIN, 0, -0.32, 0.02));
   if (melee && look.weapon !== "none") {
-    const shield = cyl(0.26, 0.26, 0.06, BODY, -0.08, -0.24, 0.12);
+    const shield = teamPart(cyl(0.26, 0.26, 0.06, BODY, -0.08, -0.24, 0.12)); // team face
     shield.rotation.x = Math.PI / 2;
     offArm.add(shield);
     const rim = cyl(0.28, 0.28, 0.04, TRIM, -0.08, -0.24, 0.09);
@@ -2607,7 +2632,7 @@ export function buildChampionRig(raw: ChampionDef): TroopRig {
 }
 
 const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
-  champion: () => buildChampionRig(loadChampion()),
+  champion: () => championBody(loadChampion()),
   knight: buildKnight,
   archers: buildArcher,
   firecracker: buildFirecracker,
@@ -2643,11 +2668,12 @@ const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
  */
 function buildJanissary(): TroopRig {
   const g = new THREE.Group();
-  const COAT = THEME.deepBlue, TRIM = THEME.goldLight, HAT = 0xf5f0e6;
+  // Teal coat (deep blue read as the blue team); the sash is the team colour.
+  const COAT = 0x2a7f7a, TRIM = THEME.goldLight, HAT = 0xf5f0e6;
   const legs = [makeLeg(COAT, -0.12, 0.28, 0.14), makeLeg(COAT, 0.12, 0.28, 0.14)];
   g.add(...legs);
   g.add(cyl(0.26, 0.4, 0.5, COAT, 0, 0.52, 0));
-  g.add(cyl(0.36, 0.36, 0.08, THEME.terracotta, 0, 0.34, 0)); // sash
+  g.add(teamPart(cyl(0.36, 0.36, 0.08, THEME.terracotta, 0, 0.34, 0))); // sash
   g.add(box(0.1, 0.4, 0.04, TRIM, 0.16, 0.56, 0.32));
   const head = sphere(0.3, SKIN, 0, 1.02, 0);
   addEyes(head, 0.3, 0.36, 0.1, "brave");
@@ -2696,7 +2722,7 @@ function buildDuelist(): TroopRig {
   const head = sphere(0.28, SKIN, 0, 0.98, 0);
   addEyes(head, 0.28, 0.36, 0.1, "angry");
   g.add(head);
-  const t = turban(0.28, THEME.deepBlue, GOLD);
+  const t = turban(0.28, THEME.deepBlue, GOLD, true);
   t.position.y = 0.98;
   g.add(t);
   for (const s of [-1, 1]) g.add(sphere(0.12, MAIL, s * 0.32, 0.72, 0));
@@ -2729,7 +2755,7 @@ function buildWarDrummer(): TroopRig {
   const g = new THREE.Group();
   const ROBE = THEME.terracotta, ROBEDK = 0x8a3a22, GOLD = THEME.goldLight;
   g.add(cyl(0.26, 0.44, 0.68, ROBE, 0, 0.4, 0));
-  g.add(cyl(0.36, 0.38, 0.08, THEME.deepBlue, 0, 0.5, 0));
+  g.add(teamPart(cyl(0.36, 0.38, 0.08, THEME.deepBlue, 0, 0.5, 0))); // sash
   g.add(diamond(0.08, GOLD, 0, 0.62, 0.32));
   const head = sphere(0.3, SKIN, 0, 1.02, 0);
   addEyes(head, 0.3, 0.36, 0.1, "wicked");
@@ -2742,8 +2768,8 @@ function buildWarDrummer(): TroopRig {
   drum.name = "drum";
   drum.rotation.x = Math.PI / 2;
   g.add(drum);
-  g.add(cyl(0.34, 0.34, 0.05, GOLD, 0, 0.7, 0.6)); // drum rim
-  g.add(cyl(0.34, 0.34, 0.05, GOLD, 0, 0.7, 0.24));
+  g.add(teamPart(cyl(0.34, 0.34, 0.05, GOLD, 0, 0.7, 0.6), "dark")); // drum rim
+  g.add(teamPart(cyl(0.34, 0.34, 0.05, GOLD, 0, 0.7, 0.24), "dark"));
   g.add(box(0.08, 0.5, 0.04, 0x5d4037, -0.2, 0.85, 0.1));
 
   const offArm = new THREE.Group();
@@ -2787,7 +2813,7 @@ function buildAlchemist(): TroopRig {
   const beard = cone(0.18, 0.38, 0x6b4a2e, 0, 0.86, 0.12);
   beard.rotation.x = Math.PI;
   g.add(beard);
-  const t = turban(0.32, THEME.deepBlue, 0x76ff03);
+  const t = turban(0.32, THEME.deepBlue, 0x76ff03, true);
   t.position.y = 1.12;
   g.add(t);
 
@@ -2839,7 +2865,7 @@ function buildCataphract(): TroopRig {
   const horse = sphere(0.44, HORSE, 0, 0.72, 0);
   horse.scale.set(0.8, 0.72, 1.55);
   g.add(horse);
-  g.add(box(0.85, 0.5, 1.4, ARMOR, 0, 0.78, 0));
+  g.add(teamPart(box(0.85, 0.5, 1.4, ARMOR, 0, 0.78, 0), "dark")); // barding
   g.add(box(0.9, 0.1, 1.45, GOLD, 0, 0.55, 0));
   const hHead = sphere(0.26, HORSE, 0, 1.16, 0.7);
   g.add(hHead);
@@ -2852,7 +2878,7 @@ function buildCataphract(): TroopRig {
   }
 
   g.add(cyl(0.22, 0.28, 0.42, ARMOR, 0, 1.3, -0.05));
-  g.add(cyl(0.3, 0.3, 0.08, THEME.terracotta, 0, 1.14, -0.05));
+  g.add(teamPart(cyl(0.3, 0.3, 0.08, THEME.terracotta, 0, 1.14, -0.05))); // sash
   const head = sphere(0.28, SKIN, 0, 1.72, -0.05);
   addEyes(head, 0.28, 0.34, 0.1, "angry");
   g.add(head);
@@ -2891,15 +2917,16 @@ function buildCataphract(): TroopRig {
  */
 function buildMamlukAmir(): TroopRig {
   const g = new THREE.Group();
-  const PLATE = THEME.deepBlue, STEEL = 0x9aa6b5, GOLD = THEME.goldLight;
+  // Teal plate (deep blue read as the blue team); skirt and pauldrons carry it.
+  const PLATE = 0x1d6f74, STEEL = 0x9aa6b5, GOLD = THEME.goldLight;
   const legs = [makeLeg(PLATE, -0.2, 0.34, 0.22), makeLeg(PLATE, 0.2, 0.34, 0.22)];
   g.add(...legs);
   g.add(box(0.72, 0.55, 0.52, PLATE, 0, 0.64, 0));
   g.add(box(0.55, 0.4, 0.45, STEEL, 0, 0.68, 0.05));
   g.add(diamond(0.12, GOLD, 0, 0.78, 0.3));
-  g.add(cyl(0.42, 0.48, 0.12, THEME.terracotta, 0, 0.32, 0));
+  g.add(teamPart(cyl(0.42, 0.48, 0.12, THEME.terracotta, 0, 0.32, 0))); // skirt
   for (const sx of [-1, 1]) {
-    g.add(sphere(0.24, STEEL, sx * 0.48, 0.92, 0));
+    g.add(teamPart(sphere(0.24, STEEL, sx * 0.48, 0.92, 0), "dark"));
     g.add(cone(0.07, 0.22, GOLD, sx * 0.48, 1.1, 0));
   }
   const head = sphere(0.32, SKIN, 0, 1.2, 0);
@@ -2970,7 +2997,7 @@ function buildRocHatchling(): TroopRig {
     const feather = box(0.7, 0.06, 0.42, GOLD, s * 0.38, 0, 0);
     feather.name = "roc-wing";
     wing.add(feather);
-    wing.add(box(0.65, 0.04, 0.08, THEME.terracotta, s * 0.36, 0.04, 0.18));
+    wing.add(teamPart(box(0.65, 0.04, 0.08, THEME.terracotta, s * 0.36, 0.04, 0.18))); // team wing bar
     wing.rotation.z = s * 0.28;
     g.add(wing);
     wings.push({ obj: wing, base: s * 0.28, amp: s * 0.55 });
@@ -3031,7 +3058,7 @@ function buildWarFalcon(): TroopRig {
     wing.position.set(s * 0.14, 0.58, -0.08);
     const tip = box(0.5, 0.03, 0.22, PLUME, s * 0.28, 0, 0);
     tip.name = "falcon-wing";
-    wing.add(tip);
+    wing.add(teamPart(tip));
     wing.rotation.z = s * 0.5;
     g.add(wing);
     wings.push({ obj: wing, base: s * 0.5, amp: s * 0.75 });
@@ -3055,7 +3082,7 @@ function buildMilitia(): TroopRig {
   const head = sphere(0.16, SKIN, 0, 0.62, 0);
   addEyes(head, 0.16, 0.4, 0.08, "brave");
   g.add(head);
-  const t = turban(0.16, THEME.deepBlue, THEME.goldLight);
+  const t = turban(0.16, THEME.deepBlue, THEME.goldLight, true);
   t.position.y = 0.62;
   g.add(t);
 
@@ -3080,13 +3107,15 @@ function buildMilitia(): TroopRig {
  */
 function buildBombardier(): TroopRig {
   const g = new THREE.Group();
-  const BRONZE = 0xb87333, GOLD = THEME.goldLight, CLOTH = THEME.deepBlue;
+  // Terracotta cloth (deep blue read as the blue team); chest panel and
+  // turban carry the team colour.
+  const BRONZE = 0xb87333, GOLD = THEME.goldLight, CLOTH = THEME.terracotta;
   const legs = [makeLeg(0x7a5230, -0.26, 0.34, 0.26), makeLeg(0x7a5230, 0.26, 0.34, 0.26)];
   g.add(...legs);
   const belly = sphere(0.62, 0xc98850, 0, 0.95, 0);
   belly.scale.set(1, 0.95, 0.82);
   g.add(belly);
-  g.add(box(0.4, 0.7, 0.08, CLOTH, 0, 0.96, 0.5));
+  g.add(teamPart(box(0.4, 0.7, 0.08, CLOTH, 0, 0.96, 0.5))); // chest panel
   g.add(box(0.1, 0.7, 0.02, GOLD, 0, 0.96, 0.55));
   g.add(cyl(0.63, 0.63, 0.12, GOLD, 0, 0.55, 0));
   g.add(cyl(0.5, 0.6, 0.34, CLOTH, 0, 0.4, 0));
@@ -3096,7 +3125,7 @@ function buildBombardier(): TroopRig {
   const beard = sphere(0.4, 0x4a3526, 0, 1.56, 0.14);
   beard.scale.set(1, 0.62, 0.85);
   g.add(beard);
-  const t = turban(0.42, CLOTH, GOLD);
+  const t = turban(0.42, CLOTH, GOLD, true);
   t.position.y = 1.78;
   g.add(t);
 
@@ -3249,13 +3278,18 @@ function round2(v: number): number {
   return Math.round(v * 100) / 100;
 }
 
-export function buildTroop(cardId: CardId): TroopRig {
+/**
+ * Build a troop's rig for one side. Bodies are team-neutral; the parts
+ * tagged with teamPart() are painted in that side's team colour.
+ */
+export function buildTroop(cardId: CardId, side: Side = "player"): TroopRig {
   const builder = (ARABIC && ISLAMIC_BUILDERS[cardId]) || BUILDERS[cardId];
   if (!builder) throw new Error(`No 3D builder for ${cardId}`);
   const rig = builder();
   if (rig.arm) rig.arm.rotation.x = rig.armRest;
   articulate(rig);
   outlineRig(rig.group);
+  applyTeam(rig.group, side);
   return rig;
 }
 
