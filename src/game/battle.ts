@@ -212,7 +212,7 @@ export interface BattleResult {
  * layer drains this list each frame to trigger sounds and effects.
  */
 export type BattleEvent =
-  | { type: "deploy"; side: Side; cardId: CardId }
+  | { type: "deploy"; side: Side; cardId: CardId; x: number; y: number }
   | { type: "spell"; side: Side; cardId: CardId; x: number; y: number }
   | {
       type: "attack";
@@ -413,7 +413,11 @@ export function isBuilding(e: Entity): boolean {
 }
 
 export function distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
+  // sqrt is IEEE-exact on every engine; hypot is not, and a one-ulp
+  // difference would desync lockstep peers (iPhone vs Android).
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 /** Spawn offsets so multi-unit cards don't stack on one point. */
@@ -431,19 +435,56 @@ const SPAWN_OFFSETS: Record<number, Array<[number, number]>> = {
 };
 
 /**
+ * Unit vectors at successive golden-angle turns (i * 2.399963 rad), printed
+ * once and written as literals: engines may round cos/sin differently,
+ * and spawn positions must be bit-identical across devices.
+ */
+const GOLDEN_DIRS: readonly (readonly [number, number])[] = [
+  [1, 0],
+  [-0.7373687228988248, 0.6754904636562651],
+  [0.08742526701888792, -0.9961710810331106],
+  [0.6084394079172122, 0.7936003319639882],
+  [-0.9847136453733523, -0.17418104551162786],
+  [0.8437546783027774, -0.5367290217998061],
+  [-0.25960297378670444, 0.9657154322061441],
+  [-0.4609084518190998, -0.8874476880592571],
+  [0.9393219267689524, 0.3430369045613937],
+  [-0.9243447672458716, 0.3815583196120555],
+  [0.42384391431564666, -0.9057352462489194],
+  [0.2992862756311372, 0.9541633640099807],
+  [-0.8652125920021994, -0.5014051960648551],
+  [0.9766751323701531, -0.2147223458556279],
+  [-0.5751267980834411, 0.8180642799476632],
+  [-0.12851410715479883, -0.9917076808526819],
+  [0.7646513642178746, 0.6444441722909311],
+  [-0.9991458926375574, 0.04132172824917406],
+  [0.708826497469649, -0.7053828722650627],
+  [-0.04618708575452655, 0.9989328071044138],
+];
+
+/** UNIT_CIRCLE[n]: the n golden-angle directions used to pack n units (n = 1..20). */
+export const UNIT_CIRCLE: readonly (readonly [number, number])[][] = Array.from(
+  { length: GOLDEN_DIRS.length + 1 },
+  (_, n) => GOLDEN_DIRS.slice(0, n),
+);
+
+/**
  * Spawn offsets for a multi-unit card. Small counts use the hand-tuned
  * presets; bigger swarms (Bats, Skeleton Army…) pack into an even,
  * deterministic phyllotaxis spiral so they don't all stack on one tile.
+ * Counts past the table (none in the game; Crazy caps at 16) reuse its
+ * directions on wider rings.
  */
 function spawnOffsets(count: number): Array<[number, number]> {
   const preset = SPAWN_OFFSETS[count];
   if (preset) return preset;
+  const dirs = UNIT_CIRCLE[UNIT_CIRCLE.length - 1];
   const out: Array<[number, number]> = [];
   const spacing = 0.42;
   for (let i = 0; i < count; i++) {
     const r = spacing * Math.sqrt(i);
-    const a = i * 2.399963; // golden angle, for even packing
-    out.push([Math.cos(a) * r, Math.sin(a) * r]);
+    const [c, s] = dirs[i % dirs.length];
+    out.push([c * r, s * r]);
   }
   return out;
 }
@@ -787,10 +828,10 @@ export function deployCard(
       if (card.spawnUnit) spawnUnits(state, side, card.spawnUnit, x, y);
     }
   } else if (card.kind === "building") {
-    state.events.push({ type: "deploy", side, cardId: card.id });
+    state.events.push({ type: "deploy", side, cardId: card.id, x, y });
     spawnBuilding(state, side, card, x, y);
   } else {
-    state.events.push({ type: "deploy", side, cardId: card.id });
+    state.events.push({ type: "deploy", side, cardId: card.id, x, y });
     spawnTroops(state, side, card, x, y);
     // The Electro Wizard lands with a zap that stuns nearby enemies.
     if (card.id === "electro-wizard") {

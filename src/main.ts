@@ -194,8 +194,10 @@ const emoteBar = document.getElementById("emotes")!;
 // Solo ladder matches record the bot's seed/profile and the player's exact
 // deploy ticks; the sim is deterministic, so that's the whole match.
 const REPLAY_KEY = "cr-clone-replay";
+// v2: the sim became engine-exact (no hypot/sin/cos), so v1 tapes no
+// longer reproduce their match and are ignored.
 interface ReplayData {
-  v: 1;
+  v: 2;
   playerDeck: CardId[];
   enemyDeck: CardId[];
   playerLevels: CardLevels;
@@ -208,6 +210,16 @@ interface ReplayData {
   abilities: { player: AbilityId | null; enemy: AbilityId | null };
   abilityUses: number[];
   deploys: Array<{ t: number; c: CardId; x: number; y: number }>;
+}
+/** The saved tape, or null when there is none or it predates the current sim. */
+function storedReplay(): ReplayData | null {
+  try {
+    const raw = localStorage.getItem(REPLAY_KEY);
+    const rep = raw ? (JSON.parse(raw) as ReplayData) : null;
+    return rep && rep.v === 2 ? rep : null;
+  } catch {
+    return null;
+  }
 }
 // ---- Tower Troops: the player's chosen tower defender ---------------------
 let towerTroop: TowerTroopId = loadTowerTroop();
@@ -657,7 +669,7 @@ function startLadder(): void {
     isSandbox() || gameMode.id === "crazy"
       ? null
       : {
-          v: 1,
+          v: 2,
           playerDeck: [...myDeck],
           enemyDeck: [...foeDeck],
           playerLevels: { ...cardLevels },
@@ -678,15 +690,8 @@ function startLadder(): void {
 
 /** Rewatch the saved recording: same decks, same bot seed, same deploys. */
 function startReplay(): void {
-  let rep: ReplayData;
-  try {
-    const raw = localStorage.getItem(REPLAY_KEY);
-    if (!raw) return;
-    rep = JSON.parse(raw) as ReplayData;
-    if (rep.v !== 1) return;
-  } catch {
-    return;
-  }
+  const rep = storedReplay();
+  if (!rep) return;
   battleKind = "ladder";
   activeChallenge = null;
   mode = "solo";
@@ -1060,7 +1065,7 @@ function buildHomeShell(): void {
       () => startDaily(),
     );
     mk(g, "dice", tr("Draft", "انتقاء"), "battle-btn friend", () => openDraft());
-    if (localStorage.getItem(REPLAY_KEY)) {
+    if (storedReplay()) {
       mk(g, "tv", tr("Last Battle", "آخر معركة"), "battle-btn friend", () => {
         closeDeckPicker();
         startReplay();

@@ -274,7 +274,9 @@ function segmentDistance(
   const dy = by - ay;
   const len2 = dx * dx + dy * dy;
   const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
-  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+  const ex = px - (ax + dx * t);
+  const ey = py - (ay + dy * t);
+  return Math.sqrt(ex * ex + ey * ey);
 }
 
 /**
@@ -308,7 +310,7 @@ function tickProjectiles(state: BattleState, dt: number): void {
     if (!target || target.hp <= 0) return false; // fizzle mid-air
     const dx = target.x - p.x;
     const dy = target.y - p.y;
-    const d = Math.hypot(dx, dy);
+    const d = Math.sqrt(dx * dx + dy * dy);
     const step = p.speed * dt;
     if (d <= step + target.radius * 0.5) {
       // Impact: damage the target, splash around it.
@@ -494,13 +496,13 @@ function resolveCollisions(state: BattleState): void {
         const minDist = (a.radius + b.radius) * COLLISION_SLACK;
         let dx = b.x - a.x;
         let dy = b.y - a.y;
-        let d = Math.hypot(dx, dy);
+        let d = Math.sqrt(dx * dx + dy * dy);
         if (d >= minDist) continue;
         if (d < 1e-6) {
           // Perfectly stacked: nudge apart deterministically.
           dx = 0.01 * (((a.id + b.id) % 7) - 3 || 1);
           dy = 0.01 * (((a.id * 3 + b.id) % 5) - 2 || 1);
-          d = Math.hypot(dx, dy);
+          d = Math.sqrt(dx * dx + dy * dy);
         }
         const overlap = minDist - d;
         const nx = dx / d;

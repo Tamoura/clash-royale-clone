@@ -927,9 +927,11 @@ export function getCard(id: CardId): Card {
   return cardOverrides ? cardOverrides[id] : CARDS[id];
 }
 
-const ri = (lo: number, hi: number): number => lo + Math.floor(Math.random() * (hi - lo + 1));
-const rf = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
-const pick = <T>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)];
+// Crazy mode rolls its scramble once, before the match and outside the
+// tick, so these are the only sanctioned unseeded rolls in src/game.
+const ri = (lo: number, hi: number): number => lo + Math.floor(Math.random() * (hi - lo + 1)); // purity-allow
+const rf = (lo: number, hi: number): number => lo + Math.random() * (hi - lo); // purity-allow
+const pick = <T>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)]; // purity-allow
 
 /**
  * "Crazy" mode: scramble every card — huge spawn counts, surprise spawners
@@ -953,7 +955,7 @@ export function crazyCards(): Record<CardId, Card> {
     const u = card.unit;
     u.damage = Math.max(10, Math.round(u.damage * rf(0.7, 1.9)));
     u.maxHp = Math.max(40, Math.round(u.maxHp * rf(0.7, 1.7)));
-    if (Math.random() < 0.3) u.splashRadius = Math.max(u.splashRadius, rf(0.9, 1.7));
+    if (Math.random() < 0.3) u.splashRadius = Math.max(u.splashRadius, rf(0.9, 1.7)); // purity-allow
 
     const inPool = spawnPool.includes(id);
     if (card.kind === "troop") {
@@ -968,7 +970,7 @@ export function crazyCards(): Record<CardId, Card> {
     if (inPool) {
       u.spawnUnitId = null;
       u.spawnInterval = 0;
-    } else if (card.kind === "building" || alreadySpawner || Math.random() < 0.3) {
+    } else if (card.kind === "building" || alreadySpawner || Math.random() < 0.3) { // purity-allow
       // Buildings + existing spawners always get a scrambled summon; ~30% of
       // other troops gain a surprise one (a Witch summoning Mini P.E.K.K.As).
       u.spawnUnitId = pick(spawnPool);
