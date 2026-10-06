@@ -34,11 +34,14 @@ let glb: GlbModule | null = null;
  * the hand-built rigs, exactly as when the preload was still in flight.
  */
 export function loadGlbModels(): void {
-  if (ARABIC || !kaykitOptIn() || glb) return;
-  void import("../../glbModels").then((m) => {
-    glb = m;
-    m.preloadGlbModels();
-  });
+  const optIn = kaykitOptIn(); // always: it also remembers ?models=...
+  if (ARABIC || !optIn || glb) return;
+  import("../../glbModels")
+    .then((m) => {
+      glb = m;
+      m.preloadGlbModels();
+    })
+    .catch(() => {}); // offline / chunk missing: keep the rig roster
 }
 
 /** The loaded glTF module; only views that carry a `glb` unit need it. */
