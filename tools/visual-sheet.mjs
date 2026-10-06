@@ -63,11 +63,22 @@ async function openPage(query) {
 }
 
 async function startBattle(page) {
+  // One tap on Home starts the match. Older builds (or an unplayable saved
+  // deck) open the deck picker instead: if its visible Start button shows
+  // up within 1.5s, tap it; otherwise carry on.
   await page.evaluate(() => document.querySelector(".home-battle")?.click());
-  await wait(600);
-  await page.evaluate(() =>
-    document.querySelector('button[aria-label="Start a battle against the bot"]')?.click(),
-  );
+  const start = await page
+    .waitForFunction(
+      () => {
+        const b = [...document.querySelectorAll('button[aria-label="Start a battle against the bot"]')].find(
+          (el) => !el.classList.contains("home-battle") && el.offsetParent !== null,
+        );
+        return b ?? null;
+      },
+      { timeout: 1500 },
+    )
+    .catch(() => null);
+  if (start) await start.evaluate((b) => b.click());
   await page.waitForFunction(() => window.__cr.phase() === "playing", { timeout: 30000 });
   await page.evaluate(
     (player, enemy) => {
