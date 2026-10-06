@@ -14,7 +14,6 @@ import { ParticleField } from "./particles";
 import { QualityGovernor, qualityPinFromUrl } from "./quality";
 import { lookForArena } from "./arenaLooks";
 import type { TroopRig } from "./characters3d";
-import { preloadGlbModels } from "./glbModels";
 import type { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import type { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import type { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
@@ -61,6 +60,7 @@ import {
   buildBuildingMesh,
   buildGhost,
   buildTroopMesh,
+  loadGlbModels,
   makeLevelBadge,
 } from "./scene/views/troops";
 import { buildTowerMesh, towersOnEvent, updateTower, updateTowerDeath } from "./scene/views/towers";
@@ -190,7 +190,7 @@ export class Battle3D {
 
   constructor(container: HTMLElement) {
     this.container = container;
-    preloadGlbModels(); // start fetching real character models (KayKit)
+    loadGlbModels(); // real character models (KayKit), only when opted in
     this.renderer = createRenderer(container);
 
     this.scene = new THREE.Scene();

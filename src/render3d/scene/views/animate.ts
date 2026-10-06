@@ -7,7 +7,6 @@ import * as THREE from "three";
 import { DEPLOY_DELAY, distance, type BattleEvent, type Entity } from "../../../game/battle";
 import { isRaged, moveGoal } from "../../../game/sim";
 import { animateTroop } from "../../characters3d";
-import { playGlbAction } from "../../glbModels";
 import { damageLabel } from "../../popups";
 import { blobShadowScale, DUST_INTERVAL } from "../../ground";
 import { impactStyle } from "../../impactfx";
@@ -27,7 +26,7 @@ import {
 } from "../common";
 import { addShake } from "../camera";
 import { damagePopup, emitSparks, megaSlam } from "../fx/effects";
-import { hpBarVisible, makeStunSprite, setHpFill } from "./troops";
+import { glbModels, hpBarVisible, makeStunSprite, setHpFill } from "./troops";
 
 /**
  * Signed attack swing (animation principles): the arm cocks back as
@@ -306,7 +305,7 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
       !!target &&
       distance(e, target) - e.radius - target.radius <= e.attackRange + 0.05;
     const moving = !inRange && e.deployTimer <= 0;
-    playGlbAction(view.glb, inRange ? "attack" : moving ? "walk" : "idle");
+    glbModels()!.playGlbAction(view.glb, inRange ? "attack" : moving ? "walk" : "idle");
     view.glb.mixer.update(dt);
 
     if (moving && e.stunTimer <= 0) {

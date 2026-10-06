@@ -1,7 +1,7 @@
 /**
  * Unit meshes: troop and building views with their team ring, name chip,
  * contact shadow and HP bar, the shared HP/label/status sprites, and the
- * translucent deploy ghost.
+ * translucent deploy ghost. Optional KayKit glTF models load on demand.
  */
 import * as THREE from "three";
 import type { Side } from "../../../game/arena";
@@ -10,7 +10,8 @@ import type { CardId } from "../../../game/cards";
 import { cardDisplayName } from "../../../render/cardNames";
 import { buildTroop, toon, type TroopRig } from "../../characters3d";
 import { spawnRecipe } from "../../spawnfx";
-import { hasGlbModel, makeGlbUnit } from "../../glbModels";
+import { ARABIC } from "../../theme";
+import { kaykitOptIn } from "../../modelsOptIn";
 import {
   BAR_TILT,
   GAME_FONT,
@@ -21,6 +22,29 @@ import {
   type EntityView,
   type HpText,
 } from "../common";
+
+type GlbModule = typeof import("../../glbModels");
+/** The KayKit model module, once loaded (never in the default build path). */
+let glb: GlbModule | null = null;
+
+/**
+ * Fetch the KayKit glTF code and models only for players who opted in with
+ * `?models=kaykit` (remembered), and never in the Arabic edition: the loader
+ * stays out of the main bundle. Units built before the models arrive use
+ * the hand-built rigs, exactly as when the preload was still in flight.
+ */
+export function loadGlbModels(): void {
+  if (ARABIC || !kaykitOptIn() || glb) return;
+  void import("../../glbModels").then((m) => {
+    glb = m;
+    m.preloadGlbModels();
+  });
+}
+
+/** The loaded glTF module; only views that carry a `glb` unit need it. */
+export function glbModels(): GlbModule | null {
+  return glb;
+}
 
 export function makeHpText(y: number): { sprite: THREE.Sprite; text: HpText } {
   const c = document.createElement("canvas");
@@ -438,7 +462,7 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
   const root = new THREE.Group();
 
   // Real glTF model (KayKit) when this card has one; else the primitive rig.
-  const glbUnit = hasGlbModel(e.cardId!) ? makeGlbUnit(e.cardId!) : null;
+  const glbUnit = glb?.hasGlbModel(e.cardId!) ? glb.makeGlbUnit(e.cardId!) : null;
   let rig: TroopRig | null = null;
   let lift: number;
   if (glbUnit) {
