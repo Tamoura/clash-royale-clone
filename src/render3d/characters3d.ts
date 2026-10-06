@@ -639,10 +639,18 @@ function buildGiant(): TroopRig {
  * tank that walks past troops to smash the tower — but a wholly new silhouette.
  * The rider's spear is the rig's attack arm; the trunk and ears sway in idle.
  */
+/**
+ * Muted brick for the Islamic rigs' large untagged cloth. THEME.terracotta
+ * leaves toon() as a saturated orange (#bf5000) that reads as the
+ * colour-blind palette's enemy orange; brick stays a warm earth tone
+ * without claiming a team hue in either palette.
+ */
+const BRICK = 0x9a5a44, BRICK_DK = 0x5e3426;
+
 function buildWarElephant(): TroopRig {
   const g = new THREE.Group();
   const GRAY = 0x8d8f96, GRAYDK = 0x6d6f77, IVORY = 0xf1e7cf;
-  const GOLD = THEME.goldLight, CLOTH = THEME.terracotta, CLOTH2 = THEME.deepBlue;
+  const GOLD = THEME.goldLight, CLOTH = BRICK, CLOTH2 = THEME.deepBlue;
 
   // Four heavy pillar legs (front pair, back pair) for a quadruped gait.
   const legs = [
@@ -816,7 +824,7 @@ function buildRoyalGiant(): TroopRig {
   const head = sphere(0.42, SKIN, 0, 1.72, 0);
   addEyes(head, 0.42, 0.34, 0.18, "brave");
   g.add(head);
-  const beard = sphere(0.4, 0xb08038, 0, 1.56, 0.14); // golden beard
+  const beard = sphere(0.4, 0xd4a84a, 0, 1.56, 0.14); // golden beard (dark gold toons to cb orange)
   beard.scale.set(1, 0.62, 0.85);
   g.add(beard);
   g.add(box(0.5, 0.07, 0.06, 0x5d3d22, 0, 1.92, 0.36)); // heavy brow
@@ -1501,7 +1509,7 @@ function buildValkyrie(): TroopRig {
   const g = new THREE.Group();
   const legs = [makeLeg(0x4e342e, -0.13, 0.26, 0.16), makeLeg(0x4e342e, 0.13, 0.26, 0.16)];
   g.add(...legs);
-  g.add(cyl(0.3, 0.5, 0.5, 0xb5762a, 0, 0.5, 0)); // bronze dress (crimson read as the red team)
+  g.add(cyl(0.3, 0.5, 0.5, 0x9a7a4a, 0, 0.5, 0)); // khaki-bronze dress (crimson read as red, bright bronze as cb orange)
   g.add(cyl(0.5, 0.53, 0.1, 0xe8e3d8, 0, 0.28, 0)); // fur-trimmed hem
   g.add(cyl(0.38, 0.4, 0.09, 0x6d4c41, 0, 0.34, 0)); // belt
   const head = sphere(0.3, SKIN, 0, 1.04, 0);
@@ -1514,14 +1522,15 @@ function buildValkyrie(): TroopRig {
   } else {
     // Big wild mane with heavy outswept braids — her head outline stops
     // matching the Knight's smooth steel dome.
-    const hair = sphere(0.34, 0xe07b39, 0, 1.13, -0.03);
+    // Flaxen, not ginger: orange hair read as the colour-blind enemy orange.
+    const hair = sphere(0.34, 0xe9c46a, 0, 1.13, -0.03);
     hair.scale.set(1.08, 0.7, 1.05);
     g.add(hair);
     for (const s of [-1, 1]) {
-      const braid = cyl(0.11, 0.07, 0.68, 0xe07b39, s * 0.34, 0.78, -0.12);
+      const braid = cyl(0.11, 0.07, 0.68, 0xe9c46a, s * 0.34, 0.78, -0.12);
       braid.rotation.z = s * 0.48;
       g.add(braid);
-      g.add(sphere(0.09, 0xc75b28, s * 0.5, 0.5, -0.12)); // braid tie
+      g.add(sphere(0.09, 0x6b4226, s * 0.5, 0.5, -0.12)); // leather braid tie
     }
     // Broad gold valkyrie wings flaring from the circlet — matched to her
     // headband, not to steel, so nothing up top echoes the Knight's helm.
@@ -1755,7 +1764,7 @@ function buildHogRider(): TroopRig {
 function buildCamelRaider(): TroopRig {
   const g = new THREE.Group();
   const CAMEL = 0xc9a165, CAMELDK = 0xa9834e;
-  const GOLD = THEME.goldLight, CLOTH = THEME.terracotta, CLOTH2 = THEME.deepBlue;
+  const GOLD = THEME.goldLight, CLOTH = BRICK, CLOTH2 = THEME.deepBlue;
 
   // Four tall slender legs (front pair, back pair) for the quadruped gait.
   const legs = [
@@ -1860,7 +1869,7 @@ function buildCamelRaider(): TroopRig {
  */
 function buildFireKite(): TroopRig {
   const g = new THREE.Group();
-  const PAPER = THEME.terracotta;
+  const PAPER = BRICK;
   const GOLD = THEME.goldLight, CLOTH = THEME.deepBlue;
 
   // Diamond canopy: a flattened octahedron with gold spars.
@@ -2714,7 +2723,7 @@ function buildJanissary(): TroopRig {
  */
 function buildDuelist(): TroopRig {
   const g = new THREE.Group();
-  const MAIL = 0x5a6a78, CLOTH = THEME.terracotta, GOLD = THEME.goldLight, STEEL = 0xb7c2cc;
+  const MAIL = 0x5a6a78, CLOTH = BRICK, GOLD = THEME.goldLight, STEEL = 0xb7c2cc;
   const legs = [makeLeg(0x3a4550, -0.13, 0.28, 0.15), makeLeg(0x3a4550, 0.13, 0.28, 0.15)];
   g.add(...legs);
   g.add(cyl(0.24, 0.32, 0.44, MAIL, 0, 0.5, 0));
@@ -2754,7 +2763,7 @@ function buildDuelist(): TroopRig {
  */
 function buildWarDrummer(): TroopRig {
   const g = new THREE.Group();
-  const ROBE = THEME.terracotta, ROBEDK = 0x8a3a22, GOLD = THEME.goldLight;
+  const ROBE = BRICK, ROBEDK = BRICK_DK, GOLD = THEME.goldLight;
   g.add(cyl(0.26, 0.44, 0.68, ROBE, 0, 0.4, 0));
   g.add(teamPart(cyl(0.36, 0.38, 0.08, THEME.deepBlue, 0, 0.5, 0))); // sash
   g.add(diamond(0.08, GOLD, 0, 0.62, 0.32));
@@ -2764,8 +2773,9 @@ function buildWarDrummer(): TroopRig {
   const t = turban(0.3, THEME.emerald, GOLD);
   t.position.y = 1.02;
   g.add(t);
-  // Great copper drum strapped to the chest.
-  const drum = cyl(0.32, 0.32, 0.36, 0xc47a3a, 0, 0.7, 0.42);
+  // Great brass drum strapped to the chest (bright copper read as the
+  // colour-blind enemy orange).
+  const drum = cyl(0.32, 0.32, 0.36, 0x8a6d3b, 0, 0.7, 0.42);
   drum.name = "drum";
   drum.rotation.x = Math.PI / 2;
   g.add(drum);
@@ -3017,7 +3027,7 @@ function buildRocHatchling(): TroopRig {
  */
 function buildWarFalcon(): TroopRig {
   const g = new THREE.Group();
-  const PLUME = THEME.terracotta, GOLD = THEME.goldLight, BODY = 0xc9a165;
+  const PLUME = BRICK, GOLD = THEME.goldLight, BODY = 0xc9a165;
   const body = sphere(0.22, BODY, 0, 0.4, 0);
   body.scale.set(0.9, 1.15, 1.1);
   g.add(body);
@@ -3075,7 +3085,7 @@ function buildWarFalcon(): TroopRig {
  */
 function buildMilitia(): TroopRig {
   const g = new THREE.Group();
-  const CLOTH = THEME.cream, SASH = THEME.terracotta;
+  const CLOTH = THEME.cream, SASH = BRICK;
   const legs = [makeLeg(CLOTH, -0.08, 0.18, 0.08), makeLeg(CLOTH, 0.08, 0.18, 0.08)];
   g.add(...legs);
   g.add(cyl(0.14, 0.18, 0.28, CLOTH, 0, 0.34, 0));
@@ -3110,7 +3120,8 @@ function buildBombardier(): TroopRig {
   const g = new THREE.Group();
   // Emerald cloth (deep blue read as the blue team, terracotta as red or
   // colour-blind orange); chest panel and turban carry the team colour.
-  const BRONZE = 0xb87333, GOLD = THEME.goldLight, CLOTH = THEME.emerald;
+  // Dark bronze for the same reason: polished bronze toons to that orange.
+  const BRONZE = 0x8a6d3b, GOLD = THEME.goldLight, CLOTH = THEME.emerald;
   const legs = [makeLeg(0x7a5230, -0.26, 0.34, 0.26), makeLeg(0x7a5230, 0.26, 0.34, 0.26)];
   g.add(...legs);
   const belly = sphere(0.62, 0xc98850, 0, 0.95, 0);

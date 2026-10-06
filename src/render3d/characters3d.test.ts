@@ -543,7 +543,13 @@ const NEUTRAL_LIGHTNESS = (l: number): boolean => l >= 0.85 || l <= 0.15;
  * Keyed "<cardId>:#rrggbb" (sRGB of the final material colour).
  */
 const PALETTE_ALLOW: Record<string, string> = {
-  // (empty: every hit in the audit was recoloured or reads as white/black)
+  // Small unlit fire bits: they read as flame (glowing, flickering, a few
+  // pixels at phone size), never as a cloth or armour team cue.
+  "princess:#ff9a3c": "flame-arrow tip glow",
+  "wizard:#ff7a00": "fireball orb glow",
+  "balloon:#ffa000": "bomb fuse spark glow",
+  "balloon:#ff8a3c": "fire-kite brazier coals glow",
+  "balloon:#ffb300": "fire-kite fire-pot flame glow",
 };
 
 function hueDistance(a: number, b: number): number {
@@ -555,6 +561,31 @@ function hueOf(hex: number): number {
   const hsl = { h: 0, s: 0, l: 0 };
   new THREE.Color().setHex(hex).getHSL(hsl, THREE.SRGBColorSpace);
   return hsl.h * 360;
+}
+
+function lightnessOf(hex: number): number {
+  const hsl = { h: 0, s: 0, l: 0 };
+  new THREE.Color().setHex(hex).getHSL(hsl, THREE.SRGBColorSpace);
+  return hsl.l;
+}
+
+/**
+ * Team hues a body material must keep clear of, in BOTH palettes: a
+ * colour-blind player picks cb, so a body that reads as the cb enemy
+ * orange fails exactly the players who rely on it. Orange sits next to
+ * skin and gold, so its window is narrower and also bounded in lightness
+ * (pale skin and bright gold read as their own colours, not as the team
+ * orange); blue and red keep the original wide hue-only window.
+ */
+function paletteTargets(): { hue: number; window: number; l: number; band: number; minS: number }[] {
+  const wide = (hex: number) => ({ hue: hueOf(hex), window: 15, l: 0.5, band: 1, minS: 0 });
+  const orange = TEAM.cb.enemy.main;
+  return [
+    wide(TEAM.default.player.main),
+    wide(TEAM.default.enemy.main),
+    wide(TEAM.cb.player.main),
+    { hue: hueOf(orange), window: 10, l: lightnessOf(orange), band: 0.18, minS: 0.8 },
+  ];
 }
 
 for (const edition of ["classic", "islamic"] as const) {
@@ -610,10 +641,9 @@ for (const edition of ["classic", "islamic"] as const) {
       }
     });
 
-    it("no body material sits near team blue or red (palette audit)", async () => {
+    it("no body material sits near a team hue in either palette (palette audit)", async () => {
       const build = await editionBuilder(edition);
-      const blue = hueOf(TEAM.default.player.main);
-      const red = hueOf(TEAM.default.enemy.main);
+      const targets = paletteTargets();
       const hits: string[] = [];
       for (const id of rigIds(build)) {
         build(id, "player").group.traverse((o) => {
@@ -625,7 +655,9 @@ for (const edition of ["classic", "islamic"] as const) {
           mat.color.getHSL(hsl, THREE.SRGBColorSpace);
           if (hsl.s <= 0.55 || NEUTRAL_LIGHTNESS(hsl.l)) return;
           const h = hsl.h * 360;
-          if (hueDistance(h, blue) > 15 && hueDistance(h, red) > 15) return;
+          const near = (t: (typeof targets)[number]) =>
+            hueDistance(h, t.hue) <= t.window && Math.abs(hsl.l - t.l) <= t.band && hsl.s >= t.minS;
+          if (!targets.some(near)) return;
           const key = `${id}:#${mat.color.getHexString(THREE.SRGBColorSpace)}`;
           if (!(key in PALETTE_ALLOW)) hits.push(`${key} (${o.name || "unnamed"}, h=${h.toFixed(0)})`);
         });
