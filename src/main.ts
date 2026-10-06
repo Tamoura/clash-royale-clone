@@ -1038,9 +1038,6 @@ function flashImpact(): void {
   impactFlashEl.classList.add("show");
 }
 
-/** scene-split gives Battle3D.sync an optional alpha; until it lands this keeps the call compiling. */
-type SyncWithAlpha = { sync(state: BattleState, dt: number, alpha?: number): void };
-
 /** Settle a finished match (rewards, quests, streaks), then tell the hooks. */
 function finishMatch(winner: Side | "draw"): void {
   const online = onlineSession() !== null;
@@ -1193,7 +1190,7 @@ function frame(now: number): void {
     audio.setIntensity(battle.overtime ? 2 : isDoubleElixir(battle) ? 1 : 0);
   }
   const scaledDt = presentDt * presentTimeScale();
-  (scene as unknown as SyncWithAlpha).sync(battle, scaledDt, alpha);
+  scene.sync(battle, scaledDt, alpha);
   if (shouldRender(now)) scene.render(scaledDt);
   hud.update(battle, localSide());
   emit("frame", { dt, presentDt, alpha, phase: getPhase(), battle });
