@@ -32,7 +32,6 @@ import {
 } from "./game/battle";
 import { createBot, tickBot, type BotProfile, type BotState } from "./game/bot";
 import {
-  DECK,
   DEFAULT_DECK,
   crazyCards,
   getCard,
@@ -40,10 +39,9 @@ import {
   type CardId,
 } from "./game/cards";
 import type { Side } from "./game/arena";
-import { cardDisplayName } from "./render/cardNames";
-import { SANDBOX_ELIXIR_RATE, isDoubleElixir, tick } from "./game/sim";
+import { isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
-import { Battle3D, disposeDeep, setTowerFlair } from "./render3d/scene3d";
+import { Battle3D, setTowerFlair } from "./render3d/scene3d";
 import {
   ARENA_THEME_KEY,
   ARABIC,
@@ -51,108 +49,54 @@ import {
   STORED_EDITION,
   EDITION_CHOSEN,
 } from "./render3d/theme";
-import { RoomClient, type NetSocket } from "./net/roomClient";
-import { Lockstep } from "./net/lockstep";
-import { sideForRole, type Role, type MatchMode } from "./net/protocol";
 import { stateChecksum } from "./net/checksum";
-import {
-  loadMode as loadVariant,
-  saveMode as saveVariant,
-  type GameMode as GameVariant,
-} from "./launcher/mode";
-import { makeCardCanvas } from "./ui/cardFrame";
-import * as THREE from "three";
-import {
-  CHAMPION_LIMITS,
-  CHAMPION_PALETTE,
-  DEFAULT_CHAMPION,
-  MAX_CHAMPION_COST,
-  championCostInfo,
-  deleteChampion,
-  hasSavedChampion,
-  initChampion,
-  loadChampion,
-  normalizeChampion,
-  saveChampion,
-  type ChampionDef,
-} from "./game/customcard";
-import { animateTroop, buildChampionRig, type TroopRig } from "./render3d/characters3d";
-import { invalidatePortrait } from "./render3d/cardportraits";
-import {
-  loadProfile,
-  saveProfile,
-  applyMatchResult as applyMetaMatchResult,
-  tryUpgradeCard,
-  tryOpenChest,
-  ownedSet,
-  isOwnedDeck,
-  clampDeckToOwned,
-  MAX_CARD_LEVEL,
-  type PlayerProfile,
-} from "./meta/progress";
-import {
-  ARENAS,
-  arenaIndexAt,
-  arenaNameForUnlock,
-  arenaArForUnlock,
-  cardsAvailableAt,
-  trophyProgress,
-} from "./meta/arenas";
-import { addShards, canPutInDeck, isUnlockedAt } from "./meta/collection";
-import {
-  TOWER_TROOPS,
-  TOWER_TROOP_IDS,
-  loadTowerTroop,
-  saveTowerTroop,
-  type TowerTroopId,
-} from "./game/towers";
+import { loadMode as loadVariant, type GameMode as GameVariant } from "./launcher/mode";
+import { hasSavedChampion, initChampion } from "./game/customcard";
+import { loadProfile, saveProfile } from "./meta/progress";
+import { ARENAS, arenaIndexAt, cardsAvailableAt } from "./meta/arenas";
+import { TOWER_TROOP_IDS, loadTowerTroop, type TowerTroopId } from "./game/towers";
 import {
   ABILITIES,
   ABILITY_IDS,
   loadAbility,
-  saveAbility,
   useAbility,
   type AbilityId,
 } from "./game/abilities";
-import { isChestReady } from "./meta/chests";
-import { CHEST_SKIP_GEMS, SHARD_GOLD_PRICE, spendGold, upgradeCost } from "./meta/economy";
-import {
-  DRAFT_ROUNDS,
-  createDraft,
-  isDraftComplete,
-  pickCard as pickDraftCard,
-  type DraftState,
-} from "./game/draft";
-import {
-  CHALLENGES,
-  applyWaves,
-  challengeStatus,
-  type Challenge,
-} from "./game/challenges";
+import { applyWaves, challengeStatus, type Challenge } from "./game/challenges";
 import { dailyDeck, dateKey } from "./game/daily";
+import { checkSeason, loadAchievements, loadSeason, saveSeason, seasonKey } from "./meta/achievements";
+import { loadQuests } from "./meta/quests";
+import type { AppCtx, MetaState } from "./app/ctx";
 import {
-  ACHIEVEMENTS,
-  achievementProgress,
-  checkSeason,
-  claimAchievement,
-  isEarned,
-  loadAchievements,
-  loadSeason,
-  recordChest as recordChestAch,
-  recordMatch as recordAchMatch,
-  saveAchievements,
-  saveSeason,
-  seasonKey,
-  type SeasonState,
-} from "./meta/achievements";
+  emit,
+  presentTimeScale,
+  shouldRender,
+  simHeld,
+  type BattleKind,
+} from "./app/hooks";
+import { DIFFICULTIES, botLevels, loadDifficulty } from "./match/difficulty";
+import { loadMode } from "./match/modes";
+import { clearOnline, onlineSession, stepOnline } from "./match/online";
+import { CHAMPION_BONUS_GOLD, currentStreak, settleMatch } from "./match/rewards";
 import {
-  claimQuest,
-  isComplete,
-  loadQuests,
-  questDef,
-  recordMatch as recordQuestMatch,
-  saveQuests,
-} from "./meta/quests";
+  checkBanners,
+  getPhase,
+  reduceMotion,
+  setPhase,
+  showBanner,
+  showVersus,
+  startCountdown,
+  tickCountdown,
+} from "./ui/banner";
+import { tr } from "./ui/i18n";
+import { openChallenges } from "./ui/screens/challenges";
+import { openChests } from "./ui/screens/chests";
+import { openCollection } from "./ui/screens/collection";
+import { openDeckPicker } from "./ui/screens/deckPicker";
+import { openDraft } from "./ui/screens/draft";
+import { buildHome } from "./ui/screens/home";
+import { openFriendLobby } from "./ui/screens/lobby";
+import { openStudio } from "./ui/screens/studio";
 
 // Apply edition-aware CSS variables before any DOM is rendered.
 applyEditionTokens(STORED_EDITION);
@@ -164,9 +108,6 @@ if (ARABIC) {
 
 // Make the saved Studio champion live before any card art or sim uses it.
 initChampion();
-
-/** Edition-aware UI string: English, or Arabic in the Arabic edition. */
-const tr = (en: string, ar: string): string => (ARABIC ? ar : en);
 
 const stage = document.getElementById("stage")!;
 
@@ -185,7 +126,6 @@ if (gallerySubject) {
 const topbar = document.getElementById("topbar")!;
 const hudRoot = document.getElementById("hud")!;
 const overlay = document.getElementById("overlay")!;
-const bannerEl = document.getElementById("banner")!;
 const emoteBar = document.getElementById("emotes")!;
 
 // Sandbox-only in-battle reset (wired to sandboxReset() further down,
@@ -210,28 +150,27 @@ interface ReplayData {
   deploys: Array<{ t: number; c: CardId; x: number; y: number }>;
 }
 // ---- Tower Troops: the player's chosen tower defender ---------------------
-let towerTroop: TowerTroopId = loadTowerTroop();
 function botTowerTroop(): TowerTroopId {
   return TOWER_TROOP_IDS[Math.floor(Math.random() * TOWER_TROOP_IDS.length)];
 }
 
 // ---- King's Ability: the player's chosen power ----------------------------
-let abilityChoice: AbilityId = loadAbility();
 function botAbility(): AbilityId {
   return ABILITY_IDS[Math.floor(Math.random() * ABILITY_IDS.length)];
 }
 
 /** Fire the local King's Ability (button / "Q"); replays are watch-only. */
 function triggerAbility(): void {
-  if (replaying || battle.result || phase === "countdown") return;
-  if (online) return; // not lockstep-synced yet
+  if (replaying || battle.result || getPhase() === "countdown") return;
+  if (onlineSession()) return; // not lockstep-synced yet
   if (!useAbility(battle, localSide())) {
     hud.flashError("elixir");
     audio.error();
     return;
   }
-  if (recording && mode === "solo") recording.abilityUses.push(soloTick);
-  showBanner(tr(ABILITIES[abilityChoice].name, ABILITIES[abilityChoice].ar));
+  if (recording && mode() === "solo") recording.abilityUses.push(soloTick);
+  showBanner(tr(ABILITIES[meta.abilityChoice].name, ABILITIES[meta.abilityChoice].ar));
+  emit("input", { kind: "ability" });
 }
 
 let replaying = false;
@@ -262,45 +201,48 @@ sandboxResetBtn.style.display = "none";
 stage.appendChild(sandboxResetBtn);
 stage.appendChild(replaySpeedBtn);
 
-
 // ---- Meta progression (gold/gems/owned/chests) --------------------------
+// One shared object: screens read and update it through ctx.meta.
 
-let profile: PlayerProfile = loadProfile(localStorage);
-let playerDeck: CardId[] = profile.deck;
-let cardLevels: CardLevels = profile.levels;
-
-// ---- Daily quests ---------------------------------------------------------
-let quests = loadQuests(dateKey(new Date()));
+const loadedProfile = loadProfile(localStorage);
+// ---- Seasons: monthly soft-reset above the 1000-trophy floor ------------
+const seasonRoll = checkSeason(loadSeason(), seasonKey(new Date()), loadedProfile.trophies);
+const meta: MetaState = {
+  profile: loadedProfile,
+  playerDeck: loadedProfile.deck,
+  cardLevels: loadedProfile.levels,
+  // ---- Daily quests
+  quests: loadQuests(dateKey(new Date())),
+  achievements: loadAchievements(),
+  season: seasonRoll.state,
+  difficulty: loadDifficulty(),
+  gameMode: loadMode(),
+  towerTroop: loadTowerTroop(),
+  abilityChoice: loadAbility(),
+};
 let battleCardsPlayed = 0;
 const towerTimeline: string[] = [];
 let questsBattleRef: BattleState | null = null;
-let achievements = loadAchievements();
 
-// ---- Seasons: monthly soft-reset above the 1000-trophy floor ------------
-let season: SeasonState;
-{
-  const roll = checkSeason(loadSeason(), seasonKey(new Date()), profile.trophies);
-  season = roll.state;
-  saveSeason(season);
-  if (roll.reset) {
-    const from = profile.trophies;
-    profile = { ...profile, trophies: roll.trophies };
-    saveProfile(localStorage, profile);
-    // Banner once the UI exists — boot runs before the stage is built.
-    window.setTimeout(() => {
-      showBanner(
-        tr(
-          `New season! Trophies: ${from} → ${roll.trophies}`,
-          `موسم جديد! الكؤوس: ${from} ← ${roll.trophies}`,
-        ),
-      );
-    }, 1200);
-  }
+saveSeason(meta.season);
+if (seasonRoll.reset) {
+  const from = meta.profile.trophies;
+  meta.profile = { ...meta.profile, trophies: seasonRoll.trophies };
+  saveProfile(localStorage, meta.profile);
+  // Banner once the UI exists — boot runs before the stage is built.
+  window.setTimeout(() => {
+    showBanner(
+      tr(
+        `New season! Trophies: ${from} → ${seasonRoll.trophies}`,
+        `موسم جديد! الكؤوس: ${from} ← ${seasonRoll.trophies}`,
+      ),
+    );
+  }, 1200);
 }
 
 function persistProfile(): void {
-  profile = { ...profile, deck: playerDeck, levels: cardLevels };
-  saveProfile(localStorage, profile);
+  meta.profile = { ...meta.profile, deck: meta.playerDeck, levels: meta.cardLevels };
+  saveProfile(localStorage, meta.profile);
   refreshMetaChips();
   applyTowerFlair();
 }
@@ -313,12 +255,12 @@ function persistProfile(): void {
 function battleArenaId(): string {
   const forced = new URLSearchParams(location.search).get("arena");
   if (forced && ARENAS.some((a) => a.id === forced)) return forced;
-  return ARENAS[arenaIndexAt(profile.trophies)].id;
+  return ARENAS[arenaIndexAt(meta.profile.trophies)].id;
 }
 
 /** Cosmetic tower tiers unlocked by climbing: 600 gilded, 1200 jeweled. */
 function applyTowerFlair(): void {
-  setTowerFlair(profile.trophies >= 1200 ? 2 : profile.trophies >= 600 ? 1 : 0);
+  setTowerFlair(meta.profile.trophies >= 1200 ? 2 : meta.profile.trophies >= 600 ? 1 : 0);
 }
 applyTowerFlair();
 
@@ -338,7 +280,7 @@ function pickArchetype(): ArchetypeId {
 
 /** Bot drafts from cards unlocked at the player's arena (fair ladder). */
 function botDeck(archetype: ArchetypeId = "balanced"): CardId[] {
-  const available = cardsAvailableAt(profile.trophies);
+  const available = cardsAvailableAt(meta.profile.trophies);
   let pool = available.length >= 8 ? [...available] : [...DEFAULT_DECK];
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -365,122 +307,30 @@ function botDeck(archetype: ArchetypeId = "balanced"): CardId[] {
   }
   const deck = pool.slice(0, 8);
   // The twist: hard bots sometimes wield YOUR champion design against you.
-  if (difficulty === "hard" && hasSavedChampion() && !deck.includes("champion") && Math.random() < 0.5) {
+  if (meta.difficulty === "hard" && hasSavedChampion() && !deck.includes("champion") && Math.random() < 0.5) {
     deck[deck.length - 1] = "champion";
   }
   return deck;
 }
 
-// ---- Win/loss streaks: open rubber-banding ------------------------------
-// 3 straight losses quietly ease the next bot; 3 straight wins summon a
+// ---- Win/loss streaks (match/rewards.ts): 3 straight wins summon a
 // crowned "Champion Bot" that thinks faster but pays bonus gold.
-const STREAK_KEY = "cr-clone-streak";
-let streak = { wins: 0, losses: 0 };
-try {
-  const raw = localStorage.getItem(STREAK_KEY);
-  if (raw) streak = { wins: 0, losses: 0, ...JSON.parse(raw) };
-} catch {
-  // fresh streak
-}
-function saveStreak(): void {
-  try {
-    localStorage.setItem(STREAK_KEY, JSON.stringify(streak));
-  } catch {
-    // storage unavailable
-  }
-}
-const CHAMPION_BONUS_GOLD = 40;
 let championBotMatch = false;
-
-// ---- Bot difficulty ------------------------------------------------------
-
-const DIFF_KEY = "cr-clone-difficulty";
-const DIFFICULTIES: Record<string, BotProfile> = {
-  easy: { thinkInterval: 1.8, pushAt: 9 },
-  normal: { thinkInterval: 1.0, pushAt: 8 },
-  hard: { thinkInterval: 0.55, pushAt: 6 },
-};
-
-function loadDifficulty(): string {
-  const saved = localStorage.getItem(DIFF_KEY) ?? "normal";
-  return saved in DIFFICULTIES ? saved : "normal";
-}
-
-let difficulty = loadDifficulty();
-const DIFF_AR: Record<string, string> = { easy: "سهل", normal: "عادي", hard: "صعب" };
 
 // ---- Game modes ----------------------------------------------------------
 
-interface GameMode {
-  id: string;
-  name: string;
-  nameAr: string;
-  blurb: string;
-  blurbAr: string;
-  /** Flat elixir rate (1 normal, 3 triple, 7 mega). */
-  elixirRate: number;
-  /** Both players battle with the same random deck. */
-  mirror: boolean;
-}
-
-const GAME_MODES: GameMode[] = [
-  { id: "classic", name: "Classic", nameAr: "كلاسيكي", blurb: "Your deck, normal elixir", blurbAr: "مجموعتك، وإكسير عادي", elixirRate: 1, mirror: false },
-  { id: "triple", name: "Triple Elixir ⚡3", nameAr: "إكسير ثلاثي ⚡3", blurb: "3× elixir the whole match", blurbAr: "إكسير مضاعف ٣ مرات طوال المباراة", elixirRate: 3, mirror: false },
-  { id: "mega", name: "Mega Elixir ⚡7", nameAr: "إكسير هائل ⚡7", blurb: "7× elixir — total chaos", blurbAr: "إكسير مضاعف ٧ مرات — فوضى كاملة", elixirRate: 7, mirror: false },
-  { id: "mirror", name: "Mirror Match", nameAr: "مباراة المرآة", blurb: "Both get the same random deck", blurbAr: "كلاكما بنفس المجموعة العشوائية", elixirRate: 1, mirror: true },
-  { id: "crazy", name: "Crazy 🎲", nameAr: "جنون 🎲", blurb: "Every card scrambled — counts, spawns & stats go wild", blurbAr: "كل البطاقات مخلوطة — الأعداد والقدرات تجنّ", elixirRate: 1, mirror: false },
-  { id: "sandbox", name: "Sandbox 🛠️", nameAr: "ساحة التجربة 🛠️", blurb: "Practice: infinite elixir, sleeping bot, reset anytime — no rewards", blurbAr: "تدريب: إكسير لا ينفد، روبوت نائم، إعادة في أي وقت — بلا جوائز", elixirRate: SANDBOX_ELIXIR_RATE, mirror: false },
-];
-
 function isSandbox(): boolean {
-  return gameMode.id === "sandbox";
+  return meta.gameMode.id === "sandbox";
 }
 
 // ---- Special solo battles (draft / challenge / daily) --------------------
 // "ladder" is the normal bot match that moves trophies/chests; the special
 // kinds replay themselves on "Play again" and never touch the ladder.
 
-type BattleKind = "ladder" | "draft" | "challenge" | "daily";
 let battleKind: BattleKind = "ladder";
 let activeChallenge: Challenge | null = null;
 let waveCursor = { next: 0 };
-let draftState: DraftState | null = null;
 let draftDecks: { mine: CardId[]; bot: CardId[] } | null = null;
-
-const CHALLENGES_DONE_KEY = "cr-clone-challenges-done";
-const DAILY_DONE_KEY = "cr-clone-daily-done";
-
-function challengesDone(): Set<string> {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(CHALLENGES_DONE_KEY) ?? "[]"));
-  } catch {
-    return new Set();
-  }
-}
-
-function markChallengeDone(id: string): void {
-  const done = challengesDone();
-  done.add(id);
-  localStorage.setItem(CHALLENGES_DONE_KEY, JSON.stringify([...done]));
-}
-
-function isDailyDone(): boolean {
-  return localStorage.getItem(DAILY_DONE_KEY) === dateKey(new Date());
-}
-
-/** Sandbox is a solo practice space; friend matches fall back to Classic. */
-function netGameMode(): GameMode {
-  return gameMode.id === "sandbox" ? GAME_MODES[0] : gameMode;
-}
-
-const MODE_KEY = "cr-clone-mode";
-
-function loadMode(): GameMode {
-  const id = localStorage.getItem(MODE_KEY);
-  return GAME_MODES.find((m) => m.id === id) ?? GAME_MODES[0];
-}
-
-let gameMode = loadMode();
 
 // ---- Game variant (Clash Royale clone vs Islamic version) ---------------
 // The variant is the arena theme under the hood; switching reloads the page.
@@ -488,39 +338,21 @@ let gameMode = loadMode();
 // Null until the player picks an edition in the lobby.
 const variant: GameVariant | null = loadVariant(localStorage);
 
-/** The bot levels up with your trophies, one level per 150. */
-function botLevels(): CardLevels {
-  const lvl = Math.min(MAX_CARD_LEVEL, 1 + Math.floor(profile.trophies / 150));
-  const out: CardLevels = {};
-  for (const id of DECK) out[id] = lvl;
-  return out;
-}
-
-let battle: BattleState = createBattle(playerDeck, botDeck(), {
-  player: cardLevels,
-  enemy: botLevels(),
+let battle: BattleState = createBattle(meta.playerDeck, botDeck(), {
+  player: meta.cardLevels,
+  enemy: botLevels(meta.profile.trophies),
 });
-let bot: BotState = createBot(Date.now() & 0xffff, DIFFICULTIES[difficulty]);
+let bot: BotState = createBot(Date.now() & 0xffff, DIFFICULTIES[meta.difficulty]);
 let selectedCard: CardId | null = null;
 
-// ---- Online 1v1 (LAN lockstep) -----------------------------------------
+// ---- Online 1v1 (LAN lockstep) lives in match/online.ts -----------------
 
-const INPUT_DELAY = 4; // ticks of input latency hidden (~133ms at 30Hz)
-const SYNC_EVERY = 30; // exchange a drift checksum once a second
-
-let mode: "solo" | "online" = "solo";
-interface OnlineSession {
-  client: RoomClient;
-  ls: Lockstep;
-  side: Side;
-  tick: number;
-  sums: Map<number, number>; // my checksum per sync tick, for drift detection
-}
-let online: OnlineSession | null = null;
+/** "online" while a networked match runs, else "solo". */
+const mode = (): "solo" | "online" => (onlineSession() ? "online" : "solo");
 
 /** Which side the local player controls (host=player, guest=enemy, solo=player). */
 function localSide(): Side {
-  return online ? online.side : "player";
+  return onlineSession()?.side ?? "player";
 }
 
 /** The local player's side-state (hand, elixir) in the current battle. */
@@ -556,6 +388,7 @@ if (import.meta.env.DEV) {
 function selectCard(id: CardId | null): void {
   if (replaying) id = null; // replays are watch-only
   selectedCard = id;
+  if (id !== null) emit("input", { kind: "select", cardId: id });
   hud.setSelected(id);
   scene.setZoneVisible(id !== null && getCard(id).kind === "troop");
 }
@@ -581,27 +414,26 @@ function restart(): void {
 function startLadder(): void {
   battleKind = "ladder";
   activeChallenge = null;
-  mode = "solo";
-  online = null;
+  clearOnline();
   // Crazy mode rerolls a scrambled card set each match; other modes use stock.
-  setCardOverrides(gameMode.id === "crazy" ? crazyCards() : null);
+  setCardOverrides(meta.gameMode.id === "crazy" ? crazyCards() : null);
   const archetype = pickArchetype();
   // Mirror mode: player and bot share one random deck for a pure-skill match.
-  const shared = gameMode.mirror ? botDeck() : null;
-  const myDeck = shared ?? playerDeck;
+  const shared = meta.gameMode.mirror ? botDeck() : null;
+  const myDeck = shared ?? meta.playerDeck;
   const foeDeck = shared ?? botDeck(archetype);
-  const foeLevels = botLevels();
-  const towers = { player: towerTroop, enemy: botTowerTroop() };
-  const abilities = { player: abilityChoice, enemy: botAbility() };
+  const foeLevels = botLevels(meta.profile.trophies);
+  const towers = { player: meta.towerTroop, enemy: botTowerTroop() };
+  const abilities = { player: meta.abilityChoice, enemy: botAbility() };
   battle = createBattle(
     myDeck,
     foeDeck,
-    { player: cardLevels, enemy: foeLevels },
-    gameMode.elixirRate,
+    { player: meta.cardLevels, enemy: foeLevels },
+    meta.gameMode.elixirRate,
     towers,
     abilities,
   );
-  const base = DIFFICULTIES[difficulty];
+  const base = DIFFICULTIES[meta.difficulty];
   // Personality tweaks: beatdown banks bigger pushes, cycle plays faster,
   // siege turtles behind buildings and only commits when fully loaded.
   const tuned: BotProfile =
@@ -612,6 +444,7 @@ function startLadder(): void {
         : archetype === "siege"
           ? { thinkInterval: base.thinkInterval * 1.1, pushAt: 10 }
           : base;
+  const streak = currentStreak();
   championBotMatch = !isSandbox() && streak.wins >= 3;
   const mercy = !isSandbox() && streak.losses >= 3;
   const banded: BotProfile = championBotMatch
@@ -654,15 +487,15 @@ function startLadder(): void {
   replaySpeedBtn.style.display = "none";
   // Crazy mode scrambles card stats each match, so it can't replay.
   recording =
-    isSandbox() || gameMode.id === "crazy"
+    isSandbox() || meta.gameMode.id === "crazy"
       ? null
       : {
           v: 1,
           playerDeck: [...myDeck],
           enemyDeck: [...foeDeck],
-          playerLevels: { ...cardLevels },
+          playerLevels: { ...meta.cardLevels },
           enemyLevels: { ...foeLevels },
-          elixirRate: gameMode.elixirRate ?? 1,
+          elixirRate: meta.gameMode.elixirRate ?? 1,
           botSeed,
           botProfile: banded,
           opponent: baseName,
@@ -671,9 +504,16 @@ function startLadder(): void {
           abilityUses: [],
           deploys: [],
         };
-  if (!isSandbox()) showVersus(championBotMatch ? `👑 ${baseName}` : baseName);
+  if (!isSandbox()) {
+    showVersus(championBotMatch ? `👑 ${baseName}` : baseName, {
+      trophies: meta.profile.trophies,
+      towerTroop: meta.towerTroop,
+      ability: meta.abilityChoice,
+    });
+  }
   startCountdown(!isSandbox());
   maybeShowFirstBattleTips();
+  announceMatchStart();
 }
 
 /** Rewatch the saved recording: same decks, same bot seed, same deploys. */
@@ -689,8 +529,7 @@ function startReplay(): void {
   }
   battleKind = "ladder";
   activeChallenge = null;
-  mode = "solo";
-  online = null;
+  clearOnline();
   setCardOverrides(null);
   battle = createBattle(
     rep.playerDeck,
@@ -725,6 +564,7 @@ function startReplay(): void {
     () => showBanner(tr("REPLAY — ⏩ to speed up", "إعادة — ⏩ للتسريع")),
     2600,
   );
+  announceMatchStart();
 }
 
 /** Three timed hints during the very first battle, then never again. */
@@ -756,15 +596,14 @@ function startSpecialBattle(
   opponentName: string,
 ): void {
   battleKind = kind;
-  mode = "solo";
-  online = null;
+  clearOnline();
   setCardOverrides(null);
   // Level playing field: no card levels in special modes.
-  battle = createBattle(mine, theirs, {}, 1, { player: towerTroop, enemy: botTowerTroop() }, { player: abilityChoice, enemy: botAbility() });
+  battle = createBattle(mine, theirs, {}, 1, { player: meta.towerTroop, enemy: botTowerTroop() }, { player: meta.abilityChoice, enemy: botAbility() });
   recording = null;
   replaying = false;
   replaySpeedBtn.style.display = "none";
-  bot = createBot(Date.now() & 0xffff, DIFFICULTIES[difficulty]);
+  bot = createBot(Date.now() & 0xffff, DIFFICULTIES[meta.difficulty]);
   selectCard(null);
   hud.setReward(null);
   hud.setOpponentName(opponentName);
@@ -776,6 +615,7 @@ function startSpecialBattle(
   sandboxResetBtn.style.display = "none";
   closeDeckPicker();
   startCountdown();
+  announceMatchStart();
 }
 
 function startChallenge(ch: Challenge): void {
@@ -793,7 +633,7 @@ function startDaily(): void {
 /** Instant sandbox restart — no countdown between experiments. */
 function sandboxReset(): void {
   restart();
-  phase = "playing";
+  setPhase("playing");
   showBanner("Reset!", true);
 }
 sandboxResetBtn.addEventListener("click", () => {
@@ -801,1705 +641,35 @@ sandboxResetBtn.addEventListener("click", () => {
   sandboxResetBtn.blur();
 });
 
-/** Begin a networked match once the relay pairs both players. */
-function startOnlineMatch(
-  client: RoomClient,
-  role: Role,
-  hostDeck: CardId[],
-  guestDeck: CardId[],
-  matchMode: MatchMode,
-): void {
-  const side = sideForRole(role);
-  mode = "online";
-  sandboxResetBtn.style.display = "none";
-  const session: OnlineSession = {
-    client,
-    ls: new Lockstep(side, INPUT_DELAY),
-    side,
-    tick: 0,
-    sums: new Map(),
-  };
-  online = session;
-  // Identical canonical battle on both peers: host=player, guest=enemy.
-  // No card levels online — a fair, fully-deterministic match. Mirror mode
-  // has both sides battle the host's deck. Never crazy (it uses Math.random,
-  // which would desync the lockstep).
-  setCardOverrides(null);
-  const enemyDeck = matchMode.mirror ? hostDeck : guestDeck;
-  battle = createBattle(hostDeck, enemyDeck, {}, matchMode.elixirRate);
-  selectCard(null);
-  hud.setReward(null);
-  hud.setOpponentName("Friend");
-  scene.setArenaLook(battleArenaId());
-  scene.setViewpoint(side);
-  scene.reset();
-  audio.setIntensity(0);
-  audio.restartMusic();
-
-  // In-match networking: if the peer drops, the lockstep would stall forever,
-  // so end gracefully; compare drift checksums to catch desync early.
-  client.onFrame = (frame) => session.ls.receive(frame);
-  client.onPeerLeft = () => endOnlineMatch("Your friend left the game.");
-  client.onClose = () => endOnlineMatch("Lost connection to your friend.");
-  client.onSync = (tick, checksum) => {
-    const mine = session.sums.get(tick);
-    if (mine !== undefined && mine !== checksum) {
-      showBanner("Connection out of sync");
-    }
-  };
-
-  // Opening frames unblock the first ticks before any deploy can be scheduled.
-  for (const f of session.ls.bootstrap()) client.sendFrame(f);
-  startCountdown();
+/** Tell the hooks a solo match (ladder, special or replay) just started. */
+function announceMatchStart(): void {
+  emit("matchStart", { kind: battleKind, battle, mySide: localSide(), online: false, replay: replaying });
 }
 
-/** Tear down a networked match and return to the menu with a message. */
-function endOnlineMatch(message: string): void {
-  if (mode !== "online") return;
-  online?.client.leave();
-  online = null;
-  mode = "solo";
-  showBanner(message);
-  scene.setArenaLook(battleArenaId());
-  scene.setViewpoint("player");
-  hud.setOpponentName("Bot");
-  setTimeout(openHome, 1800);
-}
-
-// ---- Meta chips (top bar) + home / collection / chests / deck ----------
+// ---- Screens (src/ui/screens/*) -----------------------------------------
 
 const pickerRoot = document.getElementById("deckpicker")!;
 
-/** Card tile canvas reused in the deck tray and collection grid. */
-function cardTileCanvas(id: CardId): HTMLCanvasElement {
-  return makeCardCanvas(id, { style: "tile", size: 128 });
-}
-
-function formatRemain(ms: number): string {
-  if (ms <= 0) return "Ready!";
-  const s = Math.ceil(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${sec}s`;
-  return `${sec}s`;
-}
-
-function appendEditionToggle(parent: HTMLElement): void {
-  const editionRow = document.createElement("div");
-  editionRow.className = "edition-row";
-  editionRow.setAttribute("role", "group");
-  editionRow.setAttribute("aria-label", "Choose edition");
-  const MODE_LABEL: Record<GameVariant, string> = {
-    clash: "⚔️ Clash Royale",
-    islamic: "🌙 Islamic",
-  };
-  for (const v of ["clash", "islamic"] as GameVariant[]) {
-    const btn = document.createElement("button");
-    btn.className = "edition-btn";
-    btn.textContent = MODE_LABEL[v];
-    const chosen = variant === v;
-    btn.setAttribute("aria-pressed", String(chosen));
-    btn.classList.toggle("chosen", chosen);
-    btn.addEventListener("click", () => {
-      if (v === variant) return;
-      saveVariant(localStorage, v);
-      location.reload();
-    });
-    editionRow.appendChild(btn);
-  }
-  parent.appendChild(editionRow);
-  const editionNote = document.createElement("div");
-  editionNote.className = "edition-note";
-  editionNote.textContent = variant
-    ? variant === "islamic"
-      ? "Islamic Golden Age — Faris, camels, war elephants & crescents."
-      : "The classic clone — Western knights, wizards, P.E.K.K.A."
-    : "Pick Clash Royale or Islamic Golden Age to begin.";
-  parent.appendChild(editionNote);
-}
-
-type HomeTab = "shop" | "cards" | "battle" | "events" | "profile";
-let homeTab: HomeTab = "battle";
-
-function buildHome(): void {
-  pickerRoot.innerHTML = "";
-  if (EDITION_CHOSEN && variant) {
-    buildHomeShell();
-    return;
-  }
-
-  const crest = document.createElement("div");
-  crest.className = "cr-crest";
-  crest.setAttribute("aria-hidden", "true");
-  crest.textContent = !EDITION_CHOSEN ? "⚔️" : ARABIC ? "🌙" : "👑";
-  pickerRoot.appendChild(crest);
-
-  const title = document.createElement("h2");
-  title.textContent = !EDITION_CHOSEN
-    ? "Choose your edition"
-    : ARABIC
-      ? "ساحة التدريب"
-      : "Home";
-  pickerRoot.appendChild(title);
-
-  appendEditionToggle(pickerRoot);
-
-  if (!EDITION_CHOSEN || !variant) {
-    const gate = document.createElement("div");
-    gate.className = "edition-gate";
-    gate.textContent = "Select an edition above to enter the arena.";
-    pickerRoot.appendChild(gate);
-    return;
-  }
-
-}
-
-/**
- * The CR-style home: resource bar, a window onto your current arena (the
- * live 3D scene behind a transparent cut-out, slowly orbiting), the
- * trophy-road banner, a tab panel, and a bottom tab bar.
- */
-function buildHomeShell(): void {
-  const shell = document.createElement("div");
-  shell.className = "home-shell";
-  pickerRoot.appendChild(shell);
-
-  // Stage the diorama: your arena, swaying behind the window.
-  scene.setArenaLook(battleArenaId());
-  scene.setShowcase(true, 0.5);
-
-  // ---- Resource bar -----------------------------------------------------
-  const top = document.createElement("div");
-  top.className = "home-top";
-  top.innerHTML =
-    `<span class="home-chip trophies">${icon("trophy")}<b>${profile.trophies}</b></span>` +
-    `<span class="home-chip gold">${icon("coin")}<b>${profile.gold}</b></span>` +
-    `<span class="home-chip gems">${icon("gem")}<b>${profile.gems}</b></span>`;
-  shell.appendChild(top);
-
-  // ---- Arena window + trophy road banner --------------------------------
-  const win = document.createElement("div");
-  win.className = "home-window";
-  const prog = trophyProgress(profile.trophies);
-  const banner = document.createElement("div");
-  banner.className = "home-arena-banner";
-  banner.innerHTML =
-    `<div class="home-arena-name">${tr(prog.current.name, prog.current.ar)}</div>` +
-    `<div class="home-road"><div class="home-road-fill" style="width:${Math.round(prog.ratio * 100)}%"></div>` +
-    `<span>${icon("trophy")} ${profile.trophies}${prog.next ? ` / ${prog.next.trophies}` : ""}</span></div>` +
-    (prog.next ? `<div class="home-arena-next">${tr("Next", "التالي")}: ${tr(prog.next.name, prog.next.ar)}</div>` : "");
-  win.appendChild(banner);
-  shell.appendChild(win);
-  // Fit the diorama to the window once the home screen is laid out.
-  requestAnimationFrame(() => {
-    const bottom = banner.getBoundingClientRect().top;
-    const h = stage.clientHeight || 1;
-    if (bottom > 0) scene.setShowcase(true, Math.min(0.9, Math.max(0.3, bottom / h)));
-  });
-
-  // ---- Tab panel ---------------------------------------------------------
-  const panel = document.createElement("div");
-  panel.className = "home-panel";
-  shell.appendChild(panel);
-  const mk = (parent: HTMLElement, iconName: Parameters<typeof icon>[0], label: string, cls: string, fn: () => void): HTMLButtonElement => {
-    const btn = document.createElement("button");
-    btn.className = cls;
-    btn.innerHTML = `${icon(iconName)}<span>${label}</span>`;
-    btn.addEventListener("click", fn);
-    parent.appendChild(btn);
-    return btn;
-  };
-  const grid = (): HTMLElement => {
-    const g = document.createElement("div");
-    g.className = "home-grid";
-    panel.appendChild(g);
-    return g;
-  };
-
-  const questHost = document.createElement("div");
-  questHost.className = "home-boards";
-  const achHost = document.createElement("div");
-  achHost.className = "home-boards";
-
-  if (homeTab === "battle") {
-    mk(panel, "sword", tr("Battle", "قتال"), "battle-btn home-battle", () => openDeckPicker({ mode: "battle" }));
-    panel.appendChild(chestRow());
-    panel.appendChild(questHost);
-  } else if (homeTab === "cards") {
-    const g = grid();
-    mk(g, "cards", tr("Deck", "المجموعة"), "battle-btn friend", () => openDeckPicker({ mode: "deck" }));
-    mk(g, "book", tr("Collection", "المقتنيات"), "battle-btn friend", () => openCollection());
-    mk(
-      g,
-      "hammer",
-      hasSavedChampion() ? tr("Edit Champion", "تعديل البطل") : tr("Create Champion", "إنشاء البطل"),
-      "battle-btn friend",
-      () => openStudio(),
-    );
-  } else if (homeTab === "shop") {
-    panel.appendChild(chestRow());
-    const g = grid();
-    mk(g, "chest", tr("Chest room", "غرفة الصناديق"), "battle-btn friend", () => openChests());
-    const note = document.createElement("div");
-    note.className = "collect-label";
-    note.textContent = tr(
-      "Win ladder battles to earn chests. Craft missing shards with gold in Collection.",
-      "افز بمعارك السلم لتربح صناديق. اصنع الشظايا الناقصة بالذهب في المقتنيات.",
-    );
-    panel.appendChild(note);
-  } else if (homeTab === "events") {
-    const g = grid();
-    mk(g, "puzzle", tr("Challenges", "تحديات"), "battle-btn friend", () => openChallenges());
-    mk(
-      g,
-      "calendar",
-      isDailyDone() ? tr("Daily ✓ done", "اليومية ✓") : tr("Daily Battle", "المعركة اليومية"),
-      "battle-btn friend",
-      () => startDaily(),
-    );
-    mk(g, "dice", tr("Draft", "انتقاء"), "battle-btn friend", () => openDraft());
-    if (localStorage.getItem(REPLAY_KEY)) {
-      mk(g, "tv", tr("Last Battle", "آخر معركة"), "battle-btn friend", () => {
-        closeDeckPicker();
-        startReplay();
-      });
-    }
-  } else {
-    appendEditionToggle(panel);
-    panel.appendChild(achHost);
-  }
-
-  // ---- Bottom tab bar -----------------------------------------------------
-  const tabs = document.createElement("nav");
-  tabs.className = "home-tabs";
-  const TABS: Array<[HomeTab, Parameters<typeof icon>[0], string, string]> = [
-    ["shop", "shop", "Shop", "المتجر"],
-    ["cards", "cards", "Cards", "البطاقات"],
-    ["battle", "sword", "Battle", "قتال"],
-    ["events", "events", "Events", "فعاليات"],
-    ["profile", "profile", "Profile", "الملف"],
-  ];
-  for (const [id, ic, en, ar] of TABS) {
-    const b = document.createElement("button");
-    b.className = "home-tab" + (id === homeTab ? " active" : "");
-    b.innerHTML = `${icon(ic)}<span>${tr(en, ar)}</span>`;
-    b.setAttribute("aria-current", id === homeTab ? "page" : "false");
-    b.addEventListener("click", () => {
-      homeTab = id;
-      buildHome();
-    });
-    tabs.appendChild(b);
-  }
-  shell.appendChild(tabs);
-
-  const pickerRoot2 = { questHost, achHost };
-  buildHomeBoards(pickerRoot2);
-}
-
-/** Chest slots under the Battle button (tap to open the chest room). */
-function chestRow(): HTMLElement {
-  const row = document.createElement("div");
-  row.className = "home-chests";
-  const now = Date.now();
-  for (let i = 0; i < 4; i++) {
-    const slot = profile.chests[i] ?? null;
-    const cell = document.createElement("button");
-    cell.className = "home-chest" + (slot ? ` ${slot.rarity}` : " empty");
-    if (!slot) {
-      cell.innerHTML = `<span class="home-chest-label">${tr("Empty", "فارغ")}</span>`;
-    } else {
-      const left = slot.readyAt - now;
-      const label =
-        left <= 0
-          ? tr("Open!", "افتح!")
-          : left < 3_600_000
-            ? `${Math.ceil(left / 60000)}m`
-            : `${Math.ceil(left / 3_600_000)}h`;
-      cell.innerHTML = `${icon("chest")}<span class="home-chest-label">${label}</span>`;
-      if (left <= 0) cell.classList.add("ready");
-    }
-    cell.addEventListener("click", () => openChests());
-    row.appendChild(cell);
-  }
-  return row;
-}
-
-/** Daily quests and achievements, rendered into the tab that shows them. */
-function buildHomeBoards(hosts: { questHost: HTMLElement; achHost: HTMLElement }): void {
-  const { questHost, achHost } = hosts;
-
-  // Daily quest board: three goals, gold on claim, fresh every day.
-  const today = dateKey(new Date());
-  if (quests.date !== today) {
-    quests = loadQuests(today);
-    saveQuests(quests);
-  }
-  const board = document.createElement("div");
-  board.className = "quest-board";
-  const qTitle = document.createElement("div");
-  qTitle.className = "quest-title";
-  qTitle.innerHTML = `${icon("book")} ${tr("Daily Quests", "مهام اليوم")}`;
-  board.appendChild(qTitle);
-  for (const id of quests.active) {
-    const def = questDef(id);
-    if (!def) continue;
-    const row = document.createElement("div");
-    row.className = "quest-row";
-    const label = document.createElement("div");
-    label.className = "quest-label";
-    label.textContent = tr(def.en, def.ar);
-    row.appendChild(label);
-    const done = isComplete(quests, id);
-    const claimed = quests.claimed.includes(id);
-    const bar = document.createElement("div");
-    bar.className = "quest-bar";
-    const fill = document.createElement("div");
-    fill.className = "quest-fill";
-    fill.style.width = `${Math.round(Math.min(1, (quests.progress[id] ?? 0) / def.target) * 100)}%`;
-    bar.appendChild(fill);
-    const count = document.createElement("span");
-    count.className = "quest-count";
-    count.textContent = `${Math.min(def.target, Math.round(quests.progress[id] ?? 0))}/${def.target}`;
-    bar.appendChild(count);
-    row.appendChild(bar);
-    const btn = document.createElement("button");
-    btn.className = "quest-claim";
-    if (claimed) {
-      btn.textContent = "✓";
-      btn.disabled = true;
-    } else if (done) {
-      btn.innerHTML = `${icon("coin")} ${def.reward}`;
-      btn.addEventListener("click", () => {
-        const res = claimQuest(quests, id);
-        if (!res) return;
-        quests = res.state;
-        saveQuests(quests);
-        profile = { ...profile, gold: profile.gold + res.reward };
-        persistProfile();
-        buildHome(); // refresh board + currency
-      });
-    } else {
-      btn.innerHTML = `${icon("coin")} ${def.reward}`;
-      btn.disabled = true;
-    }
-    row.appendChild(btn);
-    board.appendChild(row);
-  }
-  questHost.appendChild(board);
-
-  // Achievements board: lifetime goals under the daily quests, with the
-  // current season's badge in the title row.
-  const aBoard = document.createElement("div");
-  aBoard.className = "quest-board ach-board";
-  const aTitle = document.createElement("div");
-  aTitle.className = "quest-title";
-  aTitle.innerHTML = `${icon("star")} ${tr("Achievements", "الإنجازات")}`;
-  const seasonChip = document.createElement("span");
-  seasonChip.className = "season-chip";
-  seasonChip.textContent = tr(
-    `Season ${season.key} · best 🏆 ${Math.max(season.best, profile.trophies)}`,
-    `موسم ${season.key} · أفضل 🏆 ${Math.max(season.best, profile.trophies)}`,
-  );
-  aTitle.appendChild(seasonChip);
-  aBoard.appendChild(aTitle);
-  // Unclaimed-first, then in-progress by closeness, claimed last.
-  const sorted = [...ACHIEVEMENTS].sort((a, b) => {
-    const rank = (d: (typeof ACHIEVEMENTS)[number]): number =>
-      achievements.claimed.includes(d.id) ? 2 : isEarned(achievements, d) ? 0 : 1;
-    return rank(a) - rank(b) ||
-      achievementProgress(achievements, b) / b.target -
-      achievementProgress(achievements, a) / a.target;
-  });
-  for (const def of sorted) {
-    const row = document.createElement("div");
-    row.className = "quest-row";
-    const label = document.createElement("div");
-    label.className = "quest-label";
-    label.textContent = tr(def.en, def.ar);
-    row.appendChild(label);
-    const progress = achievementProgress(achievements, def);
-    const earned = isEarned(achievements, def);
-    const claimed = achievements.claimed.includes(def.id);
-    const bar = document.createElement("div");
-    bar.className = "quest-bar";
-    const fill = document.createElement("div");
-    fill.className = "quest-fill";
-    fill.style.width = `${Math.round((progress / def.target) * 100)}%`;
-    bar.appendChild(fill);
-    const count = document.createElement("span");
-    count.className = "quest-count";
-    count.textContent = `${Math.round(progress)}/${def.target}`;
-    bar.appendChild(count);
-    row.appendChild(bar);
-    const btn = document.createElement("button");
-    btn.className = "quest-claim";
-    if (claimed) {
-      btn.textContent = "✓";
-      btn.disabled = true;
-    } else if (earned) {
-      btn.innerHTML = `${icon("coin")} ${def.reward}`;
-      btn.addEventListener("click", () => {
-        const res = claimAchievement(achievements, def.id);
-        if (!res) return;
-        achievements = res.state;
-        saveAchievements(achievements);
-        profile = { ...profile, gold: profile.gold + res.reward };
-        persistProfile();
-        buildHome(); // refresh board + currency
-      });
-    } else {
-      btn.innerHTML = `${icon("coin")} ${def.reward}`;
-      btn.disabled = true;
-    }
-    row.appendChild(btn);
-    aBoard.appendChild(row);
-  }
-  achHost.appendChild(aBoard);
-}
-
-// ---- Character Studio ----------------------------------------------------
-// Design a card: pick stats, capabilities, and a look. Elixir cost is not
-// chosen — it's computed live from what the design can do (customcard.ts).
-
-let studioAnim = 0;
-let studioCleanup: (() => void) | null = null;
-
-function openStudio(): void {
-  buildStudio(loadChampion());
-  showPicker();
-}
-
-function closeStudio(): void {
-  cancelAnimationFrame(studioAnim);
-  studioCleanup?.();
-  studioCleanup = null;
-}
-
-function buildStudio(def: ChampionDef): void {
-  closeStudio();
-  pickerRoot.innerHTML = "";
-  let cur = normalizeChampion(def);
-
-  const title = document.createElement("h2");
-  title.textContent = tr("Character Studio", "ورشة البطل");
-  pickerRoot.appendChild(title);
-
-  const hint = document.createElement("div");
-  hint.className = "collect-label";
-  hint.textContent = hasSavedChampion()
-    ? tr("You have one champion — saving replaces it.", "لديك بطل واحد — الحفظ يستبدله.")
-    : tr(
-        "Design your one champion — its elixir price follows its power.",
-        "صمّم بطلك الواحد — سعر الإكسير يتبع قوته.",
-      );
-  pickerRoot.appendChild(hint);
-
-  const wrap = document.createElement("div");
-  wrap.className = "studio-wrap";
-  pickerRoot.appendChild(wrap);
-
-  // -- Live 3D preview + computed cost --------------------------------
-  const previewPane = document.createElement("div");
-  previewPane.className = "studio-preview";
-  wrap.appendChild(previewPane);
-
-  const costBadge = document.createElement("div");
-  costBadge.className = "studio-cost";
-  costBadge.title = tr("Elixir cost — computed from the design", "تكلفة الإكسير — محسوبة من التصميم");
-  previewPane.appendChild(costBadge);
-
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  renderer.setSize(230, 250);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.12;
-  previewPane.appendChild(renderer.domElement);
-
-  const summary = document.createElement("div");
-  summary.className = "studio-summary";
-  previewPane.appendChild(summary);
-
-  const scene = new THREE.Scene();
-  scene.add(new THREE.HemisphereLight(0xdfeaff, 0x4a5070, 1.3));
-  const key = new THREE.DirectionalLight(0xfff2d8, 2.2);
-  key.position.set(3, 5, 5);
-  scene.add(key);
-  const rim = new THREE.DirectionalLight(0x8fb6ff, 1.2);
-  rim.position.set(-4, 3, -3);
-  scene.add(rim);
-  const pivot = new THREE.Group();
-  scene.add(pivot);
-  const camera = new THREE.PerspectiveCamera(30, 230 / 250, 0.1, 30);
-
-  let rig: TroopRig | null = null;
-  function rebuildRig(): void {
-    if (rig) {
-      pivot.remove(rig.group);
-      disposeDeep(rig.group);
-    }
-    rig = buildChampionRig(cur);
-    pivot.add(rig.group);
-    const h = (rig.hover ?? 0) + rig.height;
-    camera.position.set(0, h * 0.62, h * 2.5);
-    camera.lookAt(0, h * 0.5, 0);
-  }
-
-  let walking = true;
-  const t0 = performance.now();
-  const loop = (): void => {
-    studioAnim = requestAnimationFrame(loop);
-    const t = (performance.now() - t0) / 1000;
-    if (rig) animateTroop(rig, { moving: walking, swing: 0, time: t, phase: 0 });
-    pivot.rotation.y = 0.55 + t * 0.5;
-    renderer.render(scene, camera);
-  };
-  loop();
-  studioCleanup = () => {
-    if (rig) disposeDeep(rig.group);
-    renderer.dispose();
-  };
-
-  // -- Controls --------------------------------------------------------
-  const controls = document.createElement("div");
-  controls.className = "studio-controls";
-  wrap.appendChild(controls);
-
-  const refreshers: (() => void)[] = [];
-  function refresh(): void {
-    cur = normalizeChampion(cur);
-    const info = championCostInfo(cur);
-    // Over budget: show the HONEST price in red — a design worth more
-    // than the elixir bar can pay is blocked, never discounted to 10.
-    costBadge.textContent = String(info.overBudget ? info.raw : info.cost);
-    costBadge.classList.toggle("over", info.overBudget);
-    const bits = [
-      `${cur.count > 1 ? `×${cur.count} · ` : ""}${cur.hp} HP · ${cur.damage} dmg`,
-      `every ${cur.hitSpeed.toFixed(1)}s · ${cur.range <= 1 ? "melee" : `range ${cur.range}`} · ${cur.speed}`,
-    ];
-    const caps = Object.entries(cur.abilities)
-      .filter(([, on]) => on)
-      .map(([k]) => capLabel(k as keyof ChampionDef["abilities"]));
-    if (caps.length) bits.push(caps.join(" · "));
-    if (info.overBudget) {
-      bits.push(
-        `<span class="studio-warning">` +
-          tr(
-            `⚠️ Worth ${info.raw} elixir — the bar only holds ${MAX_CHAMPION_COST}. Tone it down to save.`,
-            `⚠️ يستحق ${info.raw} إكسير — الحد الأقصى ${MAX_CHAMPION_COST}. خفّف القوة للحفظ.`,
-          ) +
-          `</span>`,
-      );
-    }
-    summary.innerHTML = bits.map((b) => `<div>${b}</div>`).join("");
-    saveBtn.disabled = info.overBudget;
-    saveBtn.textContent = info.overBudget
-      ? tr(`🚫 Too powerful (worth ${info.raw})`, `🚫 قوي جدًا (${info.raw})`)
-      : tr("💾 Save Champion", "💾 حفظ البطل");
-    for (const r of refreshers) r();
-    rebuildRig();
-  }
-
-  function row(label: string): HTMLElement {
-    const r = document.createElement("label");
-    r.className = "studio-row";
-    const l = document.createElement("span");
-    l.textContent = label;
-    r.appendChild(l);
-    controls.appendChild(r);
-    return r;
-  }
-
-  // Name.
-  {
-    const r = row(tr("Name", "الاسم"));
-    const input = document.createElement("input");
-    input.type = "text";
-    input.maxLength = CHAMPION_LIMITS.nameLength;
-    input.value = cur.name;
-    input.addEventListener("input", () => {
-      cur.name = input.value || "Champion"; // name never affects the price
-    });
-    r.appendChild(input);
-  }
-
-  function slider(
-    label: string,
-    min: number,
-    max: number,
-    step: number,
-    get: () => number,
-    set: (v: number) => void,
-    fmt: (v: number) => string = (v) => String(v),
-  ): void {
-    const r = row(label);
-    const out = document.createElement("b");
-    const input = document.createElement("input");
-    input.type = "range";
-    input.min = String(min);
-    input.max = String(max);
-    input.step = String(step);
-    input.value = String(get());
-    input.addEventListener("input", () => {
-      set(Number(input.value));
-      refresh();
-    });
-    refreshers.push(() => {
-      out.textContent = fmt(get());
-      input.value = String(get());
-    });
-    r.appendChild(input);
-    r.appendChild(out);
-  }
-
-  // One-tap starting points — each showcases a different corner of the
-  // pricing model; Surprise rerolls until the design fits the budget.
-  {
-    const r = row(tr("Presets", "قوالب"));
-    const rowEl = document.createElement("div");
-    rowEl.className = "studio-presets";
-    const preset = (label: string, apply: () => void): void => {
-      const b = document.createElement("button");
-      b.className = "studio-walk";
-      b.textContent = label;
-      b.addEventListener("click", (e) => {
-        e.preventDefault();
-        apply();
-        refresh();
-      });
-      rowEl.appendChild(b);
-    };
-    const setAll = (p: Partial<ChampionDef>, caps: Partial<ChampionDef["abilities"]>): void => {
-      Object.assign(cur, p);
-      cur.abilities = { ...normalizeChampion(DEFAULT_CHAMPION).abilities, ...caps };
-    };
-    preset(tr("🛡 Tank", "🛡 درع"), () =>
-      setAll(
-        { count: 1, hp: 3400, damage: 230, hitSpeed: 1.6, range: 0.8, speed: "slow" },
-        { buildingsOnly: true },
-      ),
-    );
-    preset(tr("🎯 Sniper", "🎯 قنّاص"), () =>
-      setAll(
-        { count: 1, hp: 380, damage: 170, hitSpeed: 1.4, range: 8, speed: "medium" },
-        { targetsAir: true },
-      ),
-    );
-    preset(tr("👥 Swarm", "👥 حشد"), () =>
-      setAll(
-        { count: 5, hp: 160, damage: 80, hitSpeed: 1.0, range: 0.8, speed: "fast" },
-        {},
-      ),
-    );
-    preset(tr("🎲 Surprise", "🎲 مفاجأة"), () => {
-      const L = CHAMPION_LIMITS;
-      const ri = (lo: number, hi: number): number => lo + Math.floor(Math.random() * (hi - lo + 1));
-      for (let tries = 0; tries < 40; tries++) {
-        setAll(
-          {
-            count: ri(1, 5),
-            hp: ri(L.hp.min / 50, 3000 / 50) * 50,
-            damage: ri(L.damage.min / 10, 50) * 10,
-            hitSpeed: 0.9 + ri(0, 17) * 0.1,
-            range: Math.random() < 0.5 ? 0.8 : ri(3, 8),
-            speed: (["slow", "medium", "fast"] as const)[ri(0, 2)],
-          },
-          {},
-        );
-        for (const k of Object.keys(cur.abilities) as (keyof ChampionDef["abilities"])[]) {
-          cur.abilities[k] = Math.random() < 0.22;
-        }
-        cur = normalizeChampion(cur);
-        if (!championCostInfo(cur).overBudget) break;
-      }
-    });
-    r.appendChild(rowEl);
-  }
-
-  slider(tr("Units", "الوحدات"), CHAMPION_LIMITS.count.min, CHAMPION_LIMITS.count.max, 1,
-    () => cur.count, (v) => (cur.count = v));
-  slider(tr("HP", "الصحة"), CHAMPION_LIMITS.hp.min, CHAMPION_LIMITS.hp.max, 50,
-    () => cur.hp, (v) => (cur.hp = v));
-  slider(tr("Damage", "الضرر"), CHAMPION_LIMITS.damage.min, CHAMPION_LIMITS.damage.max, 10,
-    () => cur.damage, (v) => (cur.damage = v));
-  slider(tr("Hit every", "يضرب كل"), CHAMPION_LIMITS.hitSpeed.min, CHAMPION_LIMITS.hitSpeed.max, 0.1,
-    () => cur.hitSpeed, (v) => (cur.hitSpeed = v), (v) => `${v.toFixed(1)}s`);
-
-  function select<T extends string | number>(
-    label: string,
-    options: { value: T; text: string }[],
-    get: () => T,
-    set: (v: T) => void,
-  ): void {
-    const r = row(label);
-    const sel = document.createElement("select");
-    for (const o of options) {
-      const opt = document.createElement("option");
-      opt.value = String(o.value);
-      opt.textContent = o.text;
-      sel.appendChild(opt);
-    }
-    sel.value = String(get());
-    sel.addEventListener("change", () => {
-      const v = options.find((o) => String(o.value) === sel.value)!.value;
-      set(v);
-      refresh();
-    });
-    refreshers.push(() => (sel.value = String(get())));
-    r.appendChild(sel);
-  }
-
-  select<number>(
-    tr("Reach", "المدى"),
-    [
-      { value: 0.8, text: tr("Melee", "التحام") },
-      ...[3, 4, 5, 6, 7, 8].map((n) => ({ value: n, text: tr(`${n} tiles`, `${n} بلاطات`) })),
-    ],
-    () => cur.range,
-    (v) => (cur.range = v),
-  );
-  select<ChampionDef["speed"]>(
-    tr("Speed", "السرعة"),
-    [
-      { value: "slow", text: tr("Slow", "بطيء") },
-      { value: "medium", text: tr("Medium", "متوسط") },
-      { value: "fast", text: tr("Fast", "سريع") },
-    ],
-    () => cur.speed,
-    (v) => (cur.speed = v),
-  );
-
-  // Capabilities — each priced into the elixir cost.
-  const capsHead = document.createElement("div");
-  capsHead.className = "studio-section";
-  capsHead.textContent = tr("Capabilities (each adds to the price)", "القدرات (كل قدرة تزيد السعر)");
-  controls.appendChild(capsHead);
-  const capsGrid = document.createElement("div");
-  capsGrid.className = "studio-caps";
-  controls.appendChild(capsGrid);
-  for (const cap of Object.keys(cur.abilities) as (keyof ChampionDef["abilities"])[]) {
-    const lab = document.createElement("label");
-    lab.className = "studio-cap";
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = cur.abilities[cap];
-    cb.addEventListener("change", () => {
-      cur.abilities[cap] = cb.checked;
-      refresh();
-    });
-    refreshers.push(() => {
-      cb.checked = cur.abilities[cap];
-      // Pierce needs reach; flyers ignore the river on their own.
-      cb.disabled =
-        (cap === "pierce" && cur.range <= 1) ||
-        (cap === "jumpsRiver" && cur.abilities.flying);
-      lab.classList.toggle("off", cb.disabled);
-    });
-    lab.appendChild(cb);
-    lab.appendChild(document.createTextNode(capLabel(cap)));
-    capsGrid.appendChild(lab);
-  }
-
-  // Appearance.
-  const lookHead = document.createElement("div");
-  lookHead.className = "studio-section";
-  lookHead.textContent = tr("Appearance (free — style is never priced)", "المظهر (مجاني — لا يؤثر في السعر)");
-  controls.appendChild(lookHead);
-
-  function swatches(label: string, get: () => number, set: (v: number) => void): void {
-    const r = row(label);
-    const rowEl = document.createElement("div");
-    rowEl.className = "studio-swatches";
-    for (const c of CHAMPION_PALETTE) {
-      const b = document.createElement("button");
-      b.className = "studio-swatch";
-      b.style.background = `#${c.toString(16).padStart(6, "0")}`;
-      b.setAttribute("aria-label", `#${c.toString(16).padStart(6, "0")}`);
-      b.addEventListener("click", (e) => {
-        e.preventDefault();
-        set(c);
-        refresh();
-      });
-      refreshers.push(() => b.classList.toggle("sel", get() === c));
-      rowEl.appendChild(b);
-    }
-    r.appendChild(rowEl);
-  }
-  swatches(tr("Outfit", "الزي"), () => cur.look.body, (v) => (cur.look.body = v));
-  swatches(tr("Trim", "الزخرفة"), () => cur.look.trim, (v) => (cur.look.trim = v));
-
-  select<ChampionDef["look"]["headgear"]>(
-    tr("Headgear", "غطاء الرأس"),
-    [
-      { value: "helmet", text: tr("Helmet", "خوذة") },
-      { value: "hood", text: tr("Hood", "قلنسوة") },
-      { value: "crown", text: tr("Crown", "تاج") },
-      { value: "horns", text: tr("Horns", "قرون") },
-      { value: "turban", text: tr("Turban", "عمامة") },
-      { value: "none", text: tr("None", "بدون") },
-    ],
-    () => cur.look.headgear,
-    (v) => (cur.look.headgear = v),
-  );
-  select<ChampionDef["look"]["weapon"]>(
-    tr("Weapon", "السلاح"),
-    [
-      { value: "sword", text: tr("Sword", "سيف") },
-      { value: "axe", text: tr("Axe", "فأس") },
-      { value: "hammer", text: tr("Hammer", "مطرقة") },
-      { value: "spear", text: tr("Spear", "رمح") },
-      { value: "bow", text: tr("Bow", "قوس") },
-      { value: "staff", text: tr("Staff", "عصا") },
-      { value: "none", text: tr("Fists", "قبضات") },
-    ],
-    () => cur.look.weapon,
-    (v) => (cur.look.weapon = v),
-  );
-  select<ChampionDef["look"]["mood"]>(
-    tr("Face", "الوجه"),
-    [
-      { value: "brave", text: tr("Brave", "شجاع") },
-      { value: "angry", text: tr("Angry", "غاضب") },
-      { value: "cute", text: tr("Cute", "لطيف") },
-      { value: "wicked", text: tr("Wicked", "شرير") },
-      { value: "calm", text: tr("Calm", "هادئ") },
-    ],
-    () => cur.look.mood,
-    (v) => (cur.look.mood = v),
-  );
-
-  {
-    const r = row(tr("Preview", "المعاينة"));
-    const b = document.createElement("button");
-    b.className = "studio-walk";
-    b.textContent = tr("🚶 Walking", "🚶 يمشي");
-    b.addEventListener("click", (e) => {
-      e.preventDefault();
-      walking = !walking;
-      b.textContent = walking ? tr("🚶 Walking", "🚶 يمشي") : tr("🧍 Standing", "🧍 واقف");
-    });
-    r.appendChild(b);
-  }
-
-  const saveBtn = document.createElement("button");
-  saveBtn.className = "battle-btn";
-  saveBtn.textContent = tr("💾 Save Champion", "💾 احفظ البطل");
-  saveBtn.addEventListener("click", () => {
-    cur.name = cur.name.trim() || "Champion";
-    if (!saveChampion(cur)) return; // over budget — the guardrail refused
-    invalidatePortrait("champion");
-    if (!profile.owned.includes("champion")) {
-      profile = { ...profile, owned: [...profile.owned, "champion"] };
-    }
-    persistProfile();
-    closeStudio();
-    openDeckPicker({ mode: "deck" }); // slot it straight into the deck
-  });
-  pickerRoot.appendChild(saveBtn);
-
-  // Delete the (single) champion: two taps to confirm, then it's removed
-  // from the save, the collection, and the deck.
-  if (hasSavedChampion()) {
-    const delBtn = document.createElement("button");
-    delBtn.className = "back-btn studio-delete";
-    delBtn.textContent = tr("🗑️ Delete Champion", "🗑️ حذف البطل");
-    let armed = false;
-    delBtn.addEventListener("click", () => {
-      if (!armed) {
-        armed = true;
-        delBtn.textContent = tr("⚠️ Tap again to delete", "⚠️ اضغط مجددًا للحذف");
-        delBtn.classList.add("armed");
-        return;
-      }
-      deleteChampion();
-      invalidatePortrait("champion");
-      const owned = profile.owned.filter((id) => id !== "champion");
-      playerDeck = clampDeckToOwned(
-        playerDeck.filter((id) => id !== "champion"),
-        ownedSet(owned),
-      );
-      profile = { ...profile, owned, deck: playerDeck };
-      persistProfile();
-      closeStudio();
-      openHome();
-    });
-    pickerRoot.appendChild(delBtn);
-  }
-
-  const backBtn = document.createElement("button");
-  backBtn.className = "back-btn";
-  backBtn.textContent = tr("← Home", "← الرئيسية");
-  backBtn.addEventListener("click", () => {
-    closeStudio();
-    openHome();
-  });
-  pickerRoot.appendChild(backBtn);
-
-  refresh();
-}
-
-function capLabel(cap: keyof ChampionDef["abilities"]): string {
-  const labels: Record<keyof ChampionDef["abilities"], [string, string]> = {
-    flying: ["🕊️ Flies", "🕊️ يطير"],
-    targetsAir: ["🎯 Hits air", "🎯 يضرب الجو"],
-    splash: ["💥 Splash", "💥 ضرر منطقة"],
-    charge: ["🐎 Charge (2x)", "🐎 شحنة (×2)"],
-    stun: ["⚡ Stunning hits", "⚡ ضربات صاعقة"],
-    chill: ["❄️ Chilling hits", "❄️ ضربات مجمّدة"],
-    pierce: ["🏹 Piercing shots", "🏹 سهام خارقة"],
-    jumpsRiver: ["🌊 River jump", "🌊 قفز النهر"],
-    deathBomb: ["💣 Death bomb", "💣 قنبلة موت"],
-    buildingsOnly: ["🏰 Building hunter (cheaper!)", "🏰 صائد المباني (أرخص!)"],
-    summoner: ["💀 Summons skeletons", "💀 يستدعي الميليشيا"],
-  };
-  return tr(labels[cap][0], labels[cap][1]);
-}
-
-// ---- Draft screen --------------------------------------------------------
-
-function openDraft(): void {
-  draftState = createDraft(Date.now() | 0);
-  buildDraft();
-  showPicker();
-}
-
-function buildDraft(): void {
-  const d = draftState;
-  if (!d) return;
-  pickerRoot.innerHTML = "";
-  const title = document.createElement("h2");
-  title.textContent = tr(
-    `Draft — pick ${d.picks.length + 1} of ${DRAFT_ROUNDS}`,
-    `الاختيار — ${d.picks.length + 1} من ${DRAFT_ROUNDS}`,
-  );
-  pickerRoot.appendChild(title);
-
-  const hint = document.createElement("div");
-  hint.className = "collect-label";
-  hint.textContent = tr("Keep one card — the bot grabs one of the others!", "احتفظ ببطاقة — والروبوت يأخذ إحدى البقية!");
-  pickerRoot.appendChild(hint);
-
-  const row = document.createElement("div");
-  row.className = "picker-grid draft-row";
-  for (const id of d.offers) {
-    const card = getCard(id);
-    const btn = document.createElement("button");
-    btn.className = "pick";
-    btn.dataset.rarity = card.rarity;
-    btn.setAttribute(
-      "aria-label",
-      `Keep ${cardDisplayName(id)}, ${card.cost} elixir`,
-    );
-    btn.appendChild(cardTileCanvas(id));
-    const name = document.createElement("div");
-    name.textContent = cardDisplayName(id);
-    btn.appendChild(name);
-    const cost = document.createElement("div");
-    cost.className = "pcost";
-    cost.setAttribute("aria-hidden", "true");
-    cost.textContent = String(card.cost);
-    btn.appendChild(cost);
-    btn.addEventListener("click", () => {
-      const next = pickDraftCard(d, id);
-      if (!next) return;
-      draftState = next;
-      if (isDraftComplete(next)) {
-        draftDecks = { mine: next.picks, bot: next.botPicks };
-        draftState = null;
-        startSpecialBattle("draft", next.picks, next.botPicks, "Draft Bot");
-      } else {
-        buildDraft();
-      }
-    });
-    row.appendChild(btn);
-  }
-  pickerRoot.appendChild(row);
-
-  if (d.picks.length > 0) {
-    const mine = document.createElement("div");
-    mine.className = "collect-label";
-    mine.textContent = `${tr("Your deck so far", "مجموعتك حتى الآن")}: ${d.picks.map(cardDisplayName).join(" · ")}`;
-    pickerRoot.appendChild(mine);
-  }
-
-  const back = document.createElement("button");
-  back.className = "battle-btn friend";
-  back.textContent = tr("← Home", "→ الرئيسية");
-  back.addEventListener("click", () => openHome());
-  pickerRoot.appendChild(back);
-}
-
-// ---- Challenges screen ---------------------------------------------------
-
-function openChallenges(): void {
-  pickerRoot.innerHTML = "";
-  const title = document.createElement("h2");
-  title.textContent = tr("Challenges", "التحديات");
-  pickerRoot.appendChild(title);
-
-  const done = challengesDone();
-  for (const ch of CHALLENGES) {
-    const row = document.createElement("div");
-    row.className = "challenge-row";
-    const info = document.createElement("div");
-    info.className = "challenge-info";
-    info.innerHTML =
-      `<div class="challenge-name">${done.has(ch.id) ? "✅ " : ""}${tr(ch.name, ch.nameAr)}</div>` +
-      `<div class="challenge-blurb">${tr(ch.blurb, ch.blurbAr)}</div>`;
-    row.appendChild(info);
-    const play = document.createElement("button");
-    play.className = "battle-btn challenge-play";
-    play.textContent = done.has(ch.id) ? "Replay" : `Play · +${ch.goldReward} 🪙`;
-    play.setAttribute("aria-label", `Play challenge ${ch.name}`);
-    play.addEventListener("click", () => startChallenge(ch));
-    row.appendChild(play);
-    pickerRoot.appendChild(row);
-  }
-
-  const back = document.createElement("button");
-  back.className = "battle-btn friend";
-  back.textContent = tr("← Home", "→ الرئيسية");
-  back.addEventListener("click", () => openHome());
-  pickerRoot.appendChild(back);
-  showPicker();
-}
-
-function buildCollection(): void {
-  pickerRoot.innerHTML = "";
-  const title = document.createElement("h2");
-  title.textContent = tr("Collection", "المجموعة");
-  pickerRoot.appendChild(title);
-
-  const currency = document.createElement("div");
-  currency.className = "home-currency";
-  currency.innerHTML =
-    `<span class="chip gold">🪙 ${profile.gold}</span>` +
-    `<span class="chip gems">💎 ${profile.gems}</span>`;
-  pickerRoot.appendChild(currency);
-
-  const detail = document.createElement("div");
-  detail.className = "collect-detail";
-  detail.textContent = tr("Tap a card to upgrade", "اضغط على بطاقة لترقيتها");
-  pickerRoot.appendChild(detail);
-
-  const grid = document.createElement("div");
-  grid.className = "picker-grid collection-grid";
-  pickerRoot.appendChild(grid);
-
-  const owned = ownedSet(profile.owned);
-  for (const id of DECK) {
-    const card = getCard(id);
-    const have = owned.has(id);
-    const unlocked = isUnlockedAt(id, profile.trophies);
-    const btn = document.createElement("button");
-    btn.className = "pick" + (have ? "" : " locked");
-    btn.dataset.card = id;
-    btn.dataset.rarity = card.rarity;
-    const level = cardLevels[id] ?? 1;
-    const shards = profile.shards[id] ?? 0;
-    if (have) {
-      btn.appendChild(cardTileCanvas(id));
-      const name = document.createElement("div");
-      name.textContent = `${cardDisplayName(id)} · ${tr("Lv.", "مستوى ")}${level}`;
-      btn.appendChild(name);
-      const cost = document.createElement("div");
-      cost.className = "pcost";
-      cost.textContent = String(card.cost);
-      btn.appendChild(cost);
-      const shardBar = document.createElement("div");
-      shardBar.className = "shard-bar";
-      const upc = upgradeCost(card.rarity, level);
-      const need = upc?.shards ?? 0;
-      shardBar.textContent = upc ? `${shards}/${need} shards` : "MAX";
-      btn.appendChild(shardBar);
-      btn.addEventListener("click", () => {
-        const upc2 = upgradeCost(card.rarity, cardLevels[id] ?? 1);
-        if (!upc2) {
-          detail.textContent = tr(`${cardDisplayName(id)} is max level.`, `${cardDisplayName(id)} في أعلى مستوى.`);
-          return;
-        }
-        const result = tryUpgradeCard(
-          { ...profile, deck: playerDeck, levels: cardLevels },
-          id,
-        );
-        if (!result.ok) {
-          const shardsHave = profile.shards[id] ?? 0;
-          const missing = Math.max(0, upc2.shards - shardsHave);
-          const craftPrice = missing * SHARD_GOLD_PRICE;
-          detail.textContent =
-            result.reason === "afford"
-              ? `Need ${upc2.gold} gold + ${upc2.shards} shards`
-              : "Can't upgrade";
-          // Agency: short on shards but flush on gold? Craft them on the spot.
-          if (
-            result.reason === "afford" &&
-            missing > 0 &&
-            profile.gold >= upc2.gold + craftPrice
-          ) {
-            const craft = document.createElement("button");
-            craft.className = "quest-claim craft-btn";
-            craft.textContent = tr(
-              `⚒️ Craft ${missing} shard${missing > 1 ? "s" : ""} — 🪙 ${craftPrice}`,
-              `⚒️ اصنع ${missing} شظية — 🪙 ${craftPrice}`,
-            );
-            craft.addEventListener("click", () => {
-              const left = spendGold(profile.gold, craftPrice);
-              if (left === null) return;
-              profile = {
-                ...profile,
-                gold: left,
-                shards: addShards(profile.shards, id, missing),
-              };
-              persistProfile();
-              buildCollection();
-            });
-            detail.appendChild(document.createTextNode(" "));
-            detail.appendChild(craft);
-          }
-          return;
-        }
-        profile = result.profile;
-        cardLevels = profile.levels;
-        persistProfile();
-        buildCollection();
-      });
-    } else {
-      const sil = document.createElement("div");
-      sil.className = "pick-silhouette";
-      sil.textContent = "❔";
-      btn.appendChild(sil);
-      const name = document.createElement("div");
-      name.textContent = unlocked
-        ? cardDisplayName(id)
-        : tr(`Unlock at ${arenaNameForUnlock(id)}`, `يُفتح في ${arenaArForUnlock(id)}`);
-      btn.appendChild(name);
-      btn.disabled = true;
-    }
-    grid.appendChild(btn);
-  }
-
-  const back = document.createElement("button");
-  back.className = "back-btn";
-  back.textContent = tr("← Home", "→ الرئيسية");
-  back.addEventListener("click", () => openHome());
-  pickerRoot.appendChild(back);
-}
-
-function buildChests(): void {
-  pickerRoot.innerHTML = "";
-  const title = document.createElement("h2");
-  title.textContent = tr("Chests", "الصناديق");
-  pickerRoot.appendChild(title);
-
-  const currency = document.createElement("div");
-  currency.className = "home-currency";
-  currency.innerHTML =
-    `<span class="chip gold">🪙 ${profile.gold}</span>` +
-    `<span class="chip gems">💎 ${profile.gems}</span>`;
-  pickerRoot.appendChild(currency);
-
-  const note = document.createElement("div");
-  note.className = "collect-label";
-  note.textContent = tr(
-    `Win battles to fill slots · Skip timer for ${CHEST_SKIP_GEMS} 💎`,
-    `انتصر لتملأ الخانات · تخطَّ المؤقت بـ ${CHEST_SKIP_GEMS} 💎`,
-  );
-  pickerRoot.appendChild(note);
-
-  const reveal = document.createElement("div");
-  reveal.className = "chest-reveal";
-  pickerRoot.appendChild(reveal);
-
-  const row = document.createElement("div");
-  row.className = "chest-slots";
-  pickerRoot.appendChild(row);
-
-  const now = Date.now();
-  profile.chests.forEach((slot, i) => {
-    const cell = document.createElement("div");
-    cell.className = "chest-slot" + (slot ? "" : " empty");
-    if (!slot) {
-      cell.textContent = tr("Empty", "فارغ");
-      row.appendChild(cell);
-      return;
-    }
-    const ready = isChestReady(slot, now);
-    if (ready) cell.classList.add("ready");
-    // CSS-art chest: banded wooden trunk with a gold lock; wobbles when ready.
-    const art = document.createElement("div");
-    art.className = "chest-art" + (slot.rarity === "rare" ? " rare" : "");
-    art.innerHTML =
-      '<div class="chest-base"></div><div class="chest-lid"></div>' +
-      '<div class="chest-band"></div><div class="chest-lock"></div>';
-    cell.appendChild(art);
-    const label = document.createElement("div");
-    label.className = "chest-rarity";
-    label.textContent = slot.rarity === "rare" ? tr("Rare", "نادر") : tr("Free", "مجاني");
-    cell.appendChild(label);
-    const timer = document.createElement("div");
-    timer.className = "chest-timer";
-    timer.textContent = ready ? "Ready!" : formatRemain(slot.readyAt - now);
-    cell.appendChild(timer);
-    const openBtn = document.createElement("button");
-    openBtn.className = "chest-open-btn";
-    openBtn.textContent = ready ? "Open" : `Open (${CHEST_SKIP_GEMS}💎)`;
-    openBtn.addEventListener("click", () => {
-      const result = tryOpenChest(
-        { ...profile, deck: playerDeck, levels: cardLevels },
-        i,
-        Date.now(),
-        undefined,
-        { skipWithGems: !ready },
-      );
-      if (!result.ok || !result.rewards) {
-        reveal.textContent =
-          result.reason === "gems"
-            ? "Not enough gems"
-            : result.reason === "locked"
-              ? "Still locked"
-              : "Can't open";
-        return;
-      }
-      profile = result.profile;
-      persistProfile();
-      const r = result.rewards;
-      const bits: string[] = [`+${r.gold} 🪙`];
-      if (r.gems) bits.push(`+${r.gems} 💎`);
-      if (r.newCard) bits.push(`New: ${cardDisplayName(r.newCard)}!`);
-      const shardBits = Object.entries(r.shards)
-        .map(([id, n]) => `${cardDisplayName(id as CardId)} +${n}`)
-        .join(", ");
-      if (shardBits) bits.push(shardBits);
-      // Lid-pop first, then the loot reveal bursts out of the open chest.
-      cell.classList.add("opening");
-      achievements = recordChestAch(achievements);
-      saveAchievements(achievements);
-      openBtn.disabled = true;
-      window.setTimeout(() => {
-        reveal.textContent = bits.join(" · ");
-        reveal.classList.remove("burst");
-        void reveal.offsetWidth;
-        reveal.classList.add("burst");
-      }, 350);
-      // Rebuild after a beat so the player can read the reveal.
-      window.setTimeout(() => buildChests(), 1600);
-    });
-    cell.appendChild(openBtn);
-    row.appendChild(cell);
-  });
-
-  const back = document.createElement("button");
-  back.className = "back-btn";
-  back.textContent = tr("← Home", "→ الرئيسية");
-  back.addEventListener("click", () => openHome());
-  pickerRoot.appendChild(back);
-}
-
-function buildDeckPicker(opts: { mode: "battle" | "deck" }): void {
-  pickerRoot.innerHTML = "";
-
-  const crest = document.createElement("div");
-  crest.className = "cr-crest";
-  crest.setAttribute("aria-hidden", "true");
-  crest.textContent = ARABIC ? "🌙" : "👑";
-  pickerRoot.appendChild(crest);
-
-  const title = document.createElement("h2");
-  title.textContent =
-    opts.mode === "battle"
-      ? ARABIC
-        ? "ابنِ سطحك الحربي"
-        : "Battle deck"
-      : ARABIC
-        ? "عدّل سطحك"
-        : "Edit deck";
-  pickerRoot.appendChild(title);
-
-  const owned = ownedSet(profile.owned);
-  const deck: CardId[] = playerDeck.filter((id) => owned.has(id)).slice(0, 8);
-
-  const deckRow = document.createElement("div");
-  deckRow.className = "deck-slots";
-  pickerRoot.appendChild(deckRow);
-
-  const count = document.createElement("div");
-  count.className = "deck-count";
-  pickerRoot.appendChild(count);
-
-  const collectLabel = document.createElement("div");
-  collectLabel.className = "collect-label";
-  collectLabel.textContent = tr("Owned cards — tap to add", "بطاقاتك — اضغط للإضافة");
-  pickerRoot.appendChild(collectLabel);
-
-  const grid = document.createElement("div");
-  grid.className = "picker-grid";
-  pickerRoot.appendChild(grid);
-
-  if (opts.mode === "battle") {
-    const diffRow = document.createElement("div");
-    diffRow.className = "diff-row";
-    for (const level of Object.keys(DIFFICULTIES)) {
-      const btn = document.createElement("button");
-      btn.className = "diff-btn";
-      btn.textContent = tr(level[0].toUpperCase() + level.slice(1), DIFF_AR[level] ?? level);
-      btn.classList.toggle("chosen", level === difficulty);
-      btn.addEventListener("click", () => {
-        difficulty = level;
-        localStorage.setItem(DIFF_KEY, level);
-        diffRow
-          .querySelectorAll("button")
-          .forEach((b) => b.classList.toggle("chosen", b === btn));
-      });
-      diffRow.appendChild(btn);
-    }
-    pickerRoot.appendChild(diffRow);
-
-    const modeLabel = document.createElement("div");
-    modeLabel.className = "collect-label";
-    modeLabel.textContent = tr("Game mode", "نمط اللعب");
-    pickerRoot.appendChild(modeLabel);
-
-    const modeRow = document.createElement("div");
-    modeRow.className = "mode-row";
-    const modeBlurb = document.createElement("div");
-    modeBlurb.className = "mode-blurb";
-    for (const m of GAME_MODES) {
-      const btn = document.createElement("button");
-      btn.className = "mode-btn";
-      btn.textContent = tr(m.name, m.nameAr);
-      btn.classList.toggle("chosen", m.id === gameMode.id);
-      btn.addEventListener("click", () => {
-        gameMode = m;
-        localStorage.setItem(MODE_KEY, m.id);
-        modeRow.querySelectorAll("button").forEach((b) => b.classList.toggle("chosen", b === btn));
-        modeBlurb.textContent = tr(m.blurb, m.blurbAr);
-      });
-      modeRow.appendChild(btn);
-    }
-    modeBlurb.textContent = tr(gameMode.blurb, gameMode.blurbAr);
-    pickerRoot.appendChild(modeRow);
-
-    // Tower Troop: who defends your princess towers.
-    const ttLabel = document.createElement("div");
-    ttLabel.className = "collect-label";
-    ttLabel.textContent = tr("Tower troop", "حامي الأبراج");
-    pickerRoot.appendChild(ttLabel);
-    const ttRow = document.createElement("div");
-    ttRow.className = "mode-row";
-    const ttBlurb = document.createElement("div");
-    ttBlurb.className = "mode-blurb";
-    for (const id of TOWER_TROOP_IDS) {
-      const def = TOWER_TROOPS[id];
-      const btn = document.createElement("button");
-      btn.className = "mode-btn";
-      btn.textContent = tr(def.name, def.ar);
-      btn.classList.toggle("chosen", id === towerTroop);
-      btn.addEventListener("click", () => {
-        towerTroop = id;
-        saveTowerTroop(id);
-        ttRow.querySelectorAll("button").forEach((b) => b.classList.toggle("chosen", b === btn));
-        ttBlurb.textContent = tr(def.blurb, def.blurbAr);
-      });
-      ttRow.appendChild(btn);
-    }
-    ttBlurb.textContent = tr(TOWER_TROOPS[towerTroop].blurb, TOWER_TROOPS[towerTroop].blurbAr);
-    pickerRoot.appendChild(ttRow);
-    pickerRoot.appendChild(ttBlurb);
-
-    // King's Ability: the charged power for this match.
-    const abLabel = document.createElement("div");
-    abLabel.className = "collect-label";
-    abLabel.textContent = tr("King's ability", "قدرة الملك");
-    pickerRoot.appendChild(abLabel);
-    const abRow = document.createElement("div");
-    abRow.className = "mode-row";
-    const abBlurb = document.createElement("div");
-    abBlurb.className = "mode-blurb";
-    for (const id of ABILITY_IDS) {
-      const def = ABILITIES[id];
-      const btn = document.createElement("button");
-      btn.className = "mode-btn";
-      btn.textContent = `${def.icon} ${tr(def.name, def.ar)}`;
-      btn.classList.toggle("chosen", id === abilityChoice);
-      btn.addEventListener("click", () => {
-        abilityChoice = id;
-        saveAbility(id);
-        abRow.querySelectorAll("button").forEach((b) => b.classList.toggle("chosen", b === btn));
-        abBlurb.textContent = tr(def.blurb, def.blurbAr);
-      });
-      abRow.appendChild(btn);
-    }
-    abBlurb.textContent = tr(ABILITIES[abilityChoice].blurb, ABILITIES[abilityChoice].blurbAr);
-    pickerRoot.appendChild(abRow);
-    pickerRoot.appendChild(abBlurb);
-    pickerRoot.appendChild(modeBlurb);
-  }
-
-  const startBtn = document.createElement("button");
-  startBtn.className = "battle-btn";
-  startBtn.textContent =
-    opts.mode === "battle"
-      ? tr("⚔️ Battle the Bot", "⚔️ قتال الروبوت")
-      : tr("💾 Save deck", "💾 حفظ المجموعة");
-  startBtn.setAttribute(
-    "aria-label",
-    opts.mode === "battle" ? "Start a battle against the bot" : "Save deck",
-  );
-  pickerRoot.appendChild(startBtn);
-
-  let friendBtn: HTMLButtonElement | null = null;
-  if (opts.mode === "battle") {
-    friendBtn = document.createElement("button");
-    friendBtn.className = "battle-btn friend";
-    friendBtn.textContent = tr("🤝 Play a Friend", "🤝 اللعب مع صديق");
-    friendBtn.setAttribute("aria-label", "Start an online match with a friend");
-    pickerRoot.appendChild(friendBtn);
-  }
-
-  const backBtn = document.createElement("button");
-  backBtn.className = "back-btn";
-  backBtn.textContent = tr("← Home", "← الرئيسية");
-  backBtn.addEventListener("click", () => openHome());
-  pickerRoot.appendChild(backBtn);
-
-  const remove = (id: CardId): void => {
-    const i = deck.indexOf(id);
-    if (i >= 0) deck.splice(i, 1);
-    sync();
-  };
-  const add = (id: CardId): void => {
-    if (!canPutInDeck(id, owned)) return;
-    if (!deck.includes(id) && deck.length < 8) deck.push(id);
-    else if (deck.includes(id)) remove(id);
-    sync();
-  };
-
-  function sync(): void {
-    deckRow.innerHTML = "";
-    for (let i = 0; i < 8; i++) {
-      const id = deck[i];
-      const slot = document.createElement("button");
-      slot.className = id ? "deck-slot filled" : "deck-slot empty";
-      if (id) {
-        slot.appendChild(cardTileCanvas(id));
-        const cost = document.createElement("div");
-        cost.className = "pcost";
-        cost.textContent = String(getCard(id).cost);
-        slot.appendChild(cost);
-        slot.title = `Remove ${cardDisplayName(id)}`;
-        slot.addEventListener("click", () => remove(id));
-      }
-      deckRow.appendChild(slot);
-    }
-    const costs = deck.map((id) => getCard(id).cost);
-    const avg = costs.length
-      ? (costs.reduce((s, c) => s + c, 0) / costs.length).toFixed(1)
-      : "0.0";
-    count.textContent = tr(
-      `${deck.length} / 8 cards · average ${avg} elixir`,
-      `${deck.length} / 8 بطاقات · متوسط الإكسير ${avg}`,
-    );
-    const legal = isOwnedDeck(deck, owned);
-    startBtn.disabled = !legal;
-    if (friendBtn) {
-      // The Studio champion exists only in this player's save — the other
-      // client can't reproduce it, so online play would desync. Bot-only.
-      const hasChampion = deck.includes("champion");
-      friendBtn.disabled = !legal || hasChampion;
-      friendBtn.title = hasChampion
-        ? tr(
-            "Your Champion is bot-battles only — remove it to play a friend.",
-            "بطلك لمعارك الروبوت فقط — أزله للعب مع صديق.",
-          )
-        : "";
-    }
-    grid.querySelectorAll<HTMLButtonElement>("button.pick").forEach((btn) => {
-      btn.classList.toggle("chosen", deck.includes(btn.dataset.card as CardId));
-    });
-  }
-
-  for (const id of DECK) {
-    if (!owned.has(id)) continue;
-    const card = getCard(id);
-    const btn = document.createElement("button");
-    btn.className = "pick";
-    btn.dataset.card = id;
-    btn.dataset.rarity = card.rarity;
-    btn.setAttribute(
-      "aria-label",
-      `${cardDisplayName(id)}, ${card.rarity}, ${card.cost} elixir`,
-    );
-    btn.appendChild(cardTileCanvas(id));
-    const name = document.createElement("div");
-    name.textContent = cardDisplayName(id);
-    btn.appendChild(name);
-    const cost = document.createElement("div");
-    cost.className = "pcost";
-    cost.setAttribute("aria-hidden", "true");
-    cost.textContent = String(card.cost);
-    btn.appendChild(cost);
-    btn.addEventListener("click", () => add(id));
-    grid.appendChild(btn);
-  }
-  sync();
-
-  function commitDeck(): boolean {
-    if (!isOwnedDeck(deck, owned)) return false;
-    playerDeck = deck.slice();
-    profile = { ...profile, deck: playerDeck };
-    persistProfile();
-    return true;
-  }
-
-  startBtn.addEventListener("click", () => {
-    if (!commitDeck()) return;
-    if (opts.mode === "battle") {
-      closeDeckPicker();
-      startLadder();
-    } else {
-      openHome();
-    }
-  });
-
-  friendBtn?.addEventListener("click", () => {
-    if (!commitDeck()) return;
-    openFriendLobby(deck.slice());
-  });
-}
-
-// ---- Friend lobby (create / join a LAN room) ---------------------------
-
-function connectRoom(): RoomClient {
-  const sock = new WebSocket(`ws://${location.hostname}:3110`) as unknown as NetSocket;
-  return new RoomClient(sock);
-}
-
-function openFriendLobby(deck: CardId[]): void {
-  pickerRoot.innerHTML = "";
-  const title = document.createElement("h2");
-  title.textContent = tr("Play a Friend", "العب مع صديق");
-  pickerRoot.appendChild(title);
-
-  const hint = document.createElement("p");
-  hint.className = "lobby-hint";
-  hint.innerHTML = tr(
-    `Mode: <b>${netGameMode().name}</b><br/>You both need to be on the same Wi-Fi.`,
-    `النمط: <b>${netGameMode().nameAr}</b><br/>يجب أن تكونا على شبكة الواي فاي نفسها.`,
-  );
-  pickerRoot.appendChild(hint);
-
-  const status = document.createElement("div");
-  status.className = "lobby-status";
-  pickerRoot.appendChild(status);
-
-  const createBtn = document.createElement("button");
-  createBtn.className = "battle-btn";
-  createBtn.textContent = tr("Create a game", "أنشئ مباراة");
-  pickerRoot.appendChild(createBtn);
-
-  const joinRow = document.createElement("div");
-  joinRow.className = "join-row";
-  const codeInput = document.createElement("input");
-  codeInput.className = "code-input";
-  codeInput.placeholder = tr("CODE", "الرمز");
-  codeInput.maxLength = 5;
-  codeInput.autocapitalize = "characters";
-  const joinBtn = document.createElement("button");
-  joinBtn.className = "battle-btn join";
-  joinBtn.textContent = tr("Join", "انضم");
-  joinRow.append(codeInput, joinBtn);
-  pickerRoot.appendChild(joinRow);
-
-  const backBtn = document.createElement("button");
-  backBtn.className = "back-btn";
-  backBtn.textContent = tr("← Back", "→ رجوع");
-  pickerRoot.appendChild(backBtn);
-
-  let client: RoomClient | null = null;
-  const wire = (c: RoomClient): void => {
-    client = c;
-    c.onCreated = (code) => {
-      status.innerHTML =
-        `Your code: <b class="big-code">${code}</b><br/>Tell your friend, then wait…`;
-    };
-    c.onStart = (p) => {
-      closeDeckPicker();
-      startOnlineMatch(c, p.role, p.hostDeck, p.guestDeck, p.mode);
-    };
-    c.onError = (reason) => {
-      createBtn.disabled = false;
-      status.textContent =
-        reason === "no-such-room"
-          ? "No game with that code."
-          : reason === "room-full"
-            ? "That game is already full."
-            : "Couldn't join that game.";
-    };
-    c.onPeerLeft = () => {
-      status.textContent = tr("Your friend left the game.", "غادر صديقك المباراة.");
-    };
-    c.onClose = () => {
-      if (mode !== "online") status.textContent = tr("Couldn't reach the game server.", "تعذّر الوصول إلى خادم اللعبة.");
-    };
-  };
-
-  createBtn.addEventListener("click", () => {
-    if (client) return;
-    status.textContent = tr("Connecting…", "جارٍ الاتصال…");
-    createBtn.disabled = true;
-    const c = connectRoom();
-    wire(c);
-    const netMode = netGameMode();
-    const hostDeck = netMode.mirror ? botDeck() : deck;
-    c.create(hostDeck, { elixirRate: netMode.elixirRate, mirror: netMode.mirror });
-  });
-  joinBtn.addEventListener("click", () => {
-    const code = codeInput.value.trim().toUpperCase();
-    if (!code) {
-      status.textContent = tr("Type your friend's code first.", "اكتب رمز صديقك أولًا.");
-      return;
-    }
-    status.textContent = tr("Connecting…", "جارٍ الاتصال…");
-    const c = connectRoom();
-    wire(c);
-    c.join(code, deck);
-  });
-  backBtn.addEventListener("click", () => {
-    client?.leave();
-    openDeckPicker({ mode: "battle" });
-  });
-}
-
-function showPicker(): void {
+/** Show the (already built) picker as screen `id`. */
+function showPicker(id: string): void {
   pickerRoot.classList.add("show");
   topbar.style.display = "none";
   sandboxResetBtn.style.display = "none";
+  // The home shell is a cut-out onto the live arena; every other screen is opaque.
+  const diorama = pickerRoot.querySelector(":scope > .home-shell") !== null;
+  emit("screen", { id, sceneMode: diorama ? "diorama" : "none" });
 }
 
 function openHome(): void {
-  buildHome();
-  showPicker();
-}
-
-function openCollection(): void {
-  buildCollection();
-  showPicker();
-}
-
-function openChests(): void {
-  buildChests();
-  showPicker();
-}
-
-function openDeckPicker(opts: { mode: "battle" | "deck" } = { mode: "deck" }): void {
-  buildDeckPicker(opts);
-  showPicker();
+  buildHome(ctx);
+  showPicker("home");
 }
 
 /** Restore the in-battle HUD bar when leaving the deck picker. */
 function closeDeckPicker(): void {
   pickerRoot.classList.remove("show");
   topbar.style.display = "";
+  emit("screen", { id: "battle", sceneMode: "battle" });
 }
 
 const hud = new Hud(topbar, hudRoot, overlay, {
@@ -2517,6 +687,46 @@ const hud = new Hud(topbar, hudRoot, overlay, {
 // Audio can only start from a user gesture.
 window.addEventListener("pointerdown", () => audio.resume(), { once: false });
 
+const ctx: AppCtx = {
+  startLadder,
+  startDaily,
+  startDraft: (mine, bot) => {
+    draftDecks = { mine, bot };
+    startSpecialBattle("draft", mine, bot, "Draft Bot");
+  },
+  startChallenge,
+  startReplay,
+  openHome,
+  openDeckPicker: (opts) => openDeckPicker(ctx, opts),
+  openCollection: () => openCollection(ctx),
+  openChests: () => openChests(ctx),
+  openChallenges: () => openChallenges(ctx),
+  openDraft: () => openDraft(ctx),
+  openStudio: () => openStudio(ctx),
+  openLobby: (opts) => openFriendLobby(ctx, meta.playerDeck.slice(), opts),
+  scene,
+  sound: audio,
+  hud,
+  tr,
+  meta,
+  persistProfile,
+  variant,
+  pickerRoot,
+  stage,
+  showPicker,
+  closeDeckPicker,
+  battleArenaId,
+  botDeck: () => botDeck(),
+  hasReplay: () => !!localStorage.getItem(REPLAY_KEY),
+  setBattle: (b) => {
+    battle = b;
+  },
+  selectCard,
+  hideSandboxReset: () => {
+    sandboxResetBtn.style.display = "none";
+  },
+};
+
 // Home / deck buttons in the top bar.
 const homeBtn = document.createElement("button");
 homeBtn.className = "mute";
@@ -2529,7 +739,7 @@ const deckBtn = document.createElement("button");
 deckBtn.className = "mute";
 deckBtn.innerHTML = icon("cards");
 deckBtn.title = tr("Edit deck", "تعديل المجموعة");
-deckBtn.addEventListener("click", () => openDeckPicker({ mode: "deck" }));
+deckBtn.addEventListener("click", () => ctx.openDeckPicker({ mode: "deck" }));
 
 // CR-style battle chrome: sound, home and deck live behind one menu
 // button instead of a second toolbar row eating the arena.
@@ -2575,179 +785,11 @@ trophyChip.className = "crowns player meta-chip";
 
 function refreshMetaChips(): void {
   trophyChip.innerHTML =
-    `🏆 <span>${profile.trophies}</span>` +
-    ` · 🪙 <span>${profile.gold}</span>` +
-    ` · 💎 <span>${profile.gems}</span>`;
+    `🏆 <span>${meta.profile.trophies}</span>` +
+    ` · 🪙 <span>${meta.profile.gold}</span>` +
+    ` · 💎 <span>${meta.profile.gems}</span>`;
 }
 refreshMetaChips();
-
-/** First-time gold for beating a challenge / the daily (never trophies). */
-function applySpecialReward(): void {
-  if (battleKind === "challenge" && activeChallenge) {
-    if (challengesDone().has(activeChallenge.id)) return;
-    markChallengeDone(activeChallenge.id);
-    profile = { ...profile, gold: profile.gold + activeChallenge.goldReward };
-    persistProfile();
-    hud.setReward(tr(`First clear! +${activeChallenge.goldReward} 🪙`, `أول إنجاز! +${activeChallenge.goldReward} 🪙`));
-  } else if (battleKind === "daily") {
-    if (isDailyDone()) return;
-    localStorage.setItem(DAILY_DONE_KEY, dateKey(new Date()));
-    profile = { ...profile, gold: profile.gold + 100 };
-    persistProfile();
-    hud.setReward(tr("Daily complete! +100 🪙", "أنجزت التحدي اليومي! +100 🪙"));
-  }
-}
-
-function applyMatchResult(winner: "player" | "enemy" | "draw"): void {
-  const arenaBefore = arenaIndexAt(profile.trophies);
-  const { profile: next, summary } = applyMetaMatchResult(
-    { ...profile, deck: playerDeck, levels: cardLevels },
-    winner,
-  );
-  const arenaAfter = arenaIndexAt(next.trophies);
-  if (arenaAfter > arenaBefore) {
-    window.setTimeout(() => showArenaUp(ARENAS[arenaAfter]), 900);
-  }
-  profile = next;
-  cardLevels = profile.levels;
-  playerDeck = profile.deck;
-  persistProfile();
-  hud.setRewardChest(summary.chestGranted ? summary.chestRarity : null);
-  season = { ...season, best: Math.max(season.best, profile.trophies) };
-  saveSeason(season);
-  achievements = {
-    ...achievements,
-    counters: {
-      ...achievements.counters,
-      bestTrophies: Math.max(achievements.counters.bestTrophies, profile.trophies),
-    },
-  };
-  saveAchievements(achievements);
-  // The chest shows as its own badge on the result screen.
-  const d = summary.trophiesDelta;
-  hud.setReward(
-    [
-      d === 0 ? tr("🏆 unchanged", "🏆 بلا تغيير") : `${d > 0 ? "+" : ""}${d} 🏆`,
-      `+${summary.goldDelta} 🪙`,
-    ].join(" · "),
-  );
-}
-
-/** Full-screen "NEW ARENA" celebration with the newly findable cards. */
-function showArenaUp(arena: (typeof ARENAS)[number]): void {
-  document.getElementById("arena-up")?.remove();
-  const wrap = document.createElement("div");
-  wrap.id = "arena-up";
-  const inner = document.createElement("div");
-  inner.className = "arena-up-card";
-  const crown = document.createElement("div");
-  crown.className = "arena-up-crown";
-  crown.textContent = "🏟️";
-  inner.appendChild(crown);
-  const title = document.createElement("h2");
-  title.textContent = tr("NEW ARENA!", "ساحة جديدة!");
-  inner.appendChild(title);
-  const name = document.createElement("div");
-  name.className = "arena-up-name";
-  name.textContent = tr(arena.name, arena.ar);
-  inner.appendChild(name);
-  if (arena.unlocks.length > 0) {
-    const label = document.createElement("div");
-    label.className = "arena-up-label";
-    label.textContent = tr("New cards now drop from chests:", ":بطاقات جديدة في الصناديق");
-    inner.appendChild(label);
-    const row = document.createElement("div");
-    row.className = "arena-up-cards";
-    for (const id of arena.unlocks.slice(0, 4)) {
-      const cell = document.createElement("div");
-      cell.className = "arena-up-cardcell";
-      cell.appendChild(cardTileCanvas(id));
-      const n = document.createElement("span");
-      n.textContent = cardDisplayName(id);
-      cell.appendChild(n);
-      row.appendChild(cell);
-    }
-    inner.appendChild(row);
-  }
-  const hint = document.createElement("div");
-  hint.className = "arena-up-hint";
-  hint.textContent = tr("Tap to continue", "اضغط للمتابعة");
-  inner.appendChild(hint);
-  wrap.appendChild(inner);
-  wrap.addEventListener("pointerdown", () => wrap.remove());
-  document.body.appendChild(wrap);
-  audio.sting();
-}
-
-// ---- Banners & match phases -------------------------------------------
-
-let phase: "countdown" | "playing" = "countdown";
-let countdownStep = 4; // 3, 2, 1, FIGHT!
-let countdownTimer = 0;
-let lastMinuteShown = false;
-let overtimeShown = false;
-
-function showBanner(text: string, big = false): void {
-  bannerEl.textContent = text;
-  bannerEl.classList.remove("show");
-  bannerEl.classList.toggle("countdown", big);
-  void bannerEl.offsetWidth; // restart the CSS animation
-  bannerEl.classList.add("show");
-}
-
-/** CR-style "VS" splash before a match: you vs the opponent, 1.6 s. */
-function showVersus(opponent: string): void {
-  if (reduceMotion()) return;
-  document.querySelector(".versus")?.remove();
-  const vs = document.createElement("div");
-  vs.className = "versus";
-  vs.setAttribute("aria-hidden", "true");
-  const ability = ABILITIES[abilityChoice];
-  vs.innerHTML =
-    `<div class="versus-side foe"><div class="versus-name">${opponent}</div>` +
-    `<div class="versus-meta">${icon("trophy")} ${Math.max(0, profile.trophies + Math.round((Math.random() - 0.5) * 60))}</div></div>` +
-    `<div class="versus-vs">VS</div>` +
-    `<div class="versus-side me"><div class="versus-name">${tr("You", "أنت")}</div>` +
-    `<div class="versus-meta">${icon("trophy")} ${profile.trophies} ${icon("shield")} ${tr(TOWER_TROOPS[towerTroop].name, TOWER_TROOPS[towerTroop].ar)} · ${tr(ability.name, ability.ar)}</div></div>`;
-  document.body.appendChild(vs);
-  window.setTimeout(() => vs.remove(), 1650);
-}
-
-function startCountdown(withVersus = false): void {
-  phase = "countdown";
-  countdownStep = 4;
-  countdownTimer = withVersus && !reduceMotion() ? 1.7 : 0;
-  lastMinuteShown = false;
-  overtimeShown = false;
-}
-
-function tickCountdown(dt: number): void {
-  countdownTimer -= dt;
-  if (countdownTimer > 0) return;
-  countdownTimer = 0.85;
-  countdownStep -= 1;
-  if (countdownStep > 0) {
-    showBanner(String(countdownStep), true);
-    audio.countdownBeep(false);
-  } else {
-    showBanner("FIGHT!", true);
-    audio.countdownBeep(true);
-    phase = "playing";
-  }
-}
-
-function checkBanners(): void {
-  if (!lastMinuteShown && battle.time >= 120 && !battle.result) {
-    lastMinuteShown = true;
-    showBanner("Last minute — 2x elixir!");
-    audio.sting();
-  }
-  if (!overtimeShown && battle.overtime && !battle.result) {
-    overtimeShown = true;
-    showBanner("OVERTIME!");
-    audio.sting();
-  }
-}
 
 // ---- Emotes ------------------------------------------------------------
 
@@ -2775,6 +817,7 @@ for (const emoji of EMOTES) {
     scene.showEmote(localSide(), emoji);
     audio.emotePop();
     setEmotesOpen(false);
+    emit("input", { kind: "emote" });
   });
   emoteTray.appendChild(btn);
 }
@@ -2820,8 +863,6 @@ function showPreview(clientX: number, clientY: number): void {
   scene.setGhost(card.kind === "spell" ? null : card.id, pos);
 }
 
-const reduceMotion = (): boolean =>
-  !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 /** The played card flies from its hand slot to the drop point and shrinks. */
 function flyCardToField(cardId: CardId, clientX: number, clientY: number): void {
@@ -2888,9 +929,11 @@ function tryDeployAt(clientX: number, clientY: number): void {
   const side = localSide();
   const verdict = checkDeploy(battle, side, selectedCard, pos.x, pos.y);
   if (verdict === "ok") {
+    const online = onlineSession();
     if (online) {
       // Lockstep: schedule the deploy; both peers apply it at the same tick.
       online.ls.queue({ side, cardId: selectedCard, x: pos.x, y: pos.y });
+      emit("input", { kind: "deploy", cardId: selectedCard });
       flyCardToField(selectedCard, clientX, clientY);
       scene.deployFlash(pos.x, pos.y);
       selectCard(null);
@@ -2899,9 +942,10 @@ function tryDeployAt(clientX: number, clientY: number): void {
     }
     if (deployCard(battle, side, selectedCard, pos.x, pos.y)) {
       // Replay tape: remember the card and the exact tick it went down.
-      if (recording && mode === "solo") {
+      if (recording && mode() === "solo") {
         recording.deploys.push({ t: soloTick, c: selectedCard, x: pos.x, y: pos.y });
       }
+      emit("input", { kind: "deploy", cardId: selectedCard });
       flyCardToField(selectedCard, clientX, clientY);
       scene.deployFlash(pos.x, pos.y);
       selectCard(null);
@@ -2910,6 +954,9 @@ function tryDeployAt(clientX: number, clientY: number): void {
     }
   }
   // Tell the player why the play was refused.
+  if (verdict === "no-elixir" || verdict === "bad-spot") {
+    emit("input", { kind: "invalid", cardId: selectedCard });
+  }
   if (verdict === "no-elixir") {
     hud.flashError("elixir");
     audio.error();
@@ -2974,6 +1021,44 @@ function flashImpact(): void {
   impactFlashEl.classList.add("show");
 }
 
+/** scene-split gives Battle3D.sync an optional alpha; until it lands this keeps the call compiling. */
+type SyncWithAlpha = { sync(state: BattleState, dt: number, alpha?: number): void };
+
+/** Settle a finished match (rewards, quests, streaks), then tell the hooks. */
+function finishMatch(winner: Side | "draw"): void {
+  const online = onlineSession() !== null;
+  const mySide = localSide();
+  const settled = settleMatch(ctx, {
+    winner,
+    kind: battleKind,
+    online,
+    sandbox: isSandbox(),
+    replaying,
+    championBotMatch,
+    activeChallenge,
+    battle,
+    mySide,
+    cardsPlayed: battleCardsPlayed,
+  });
+  if (settled.recorded) battleCardsPlayed = 0;
+  if (settled.ladder) botEmote(winner === "enemy" ? "🎉" : "😭");
+  const mine = mySide === "player" ? battle.player : battle.enemy;
+  const theirs = mySide === "player" ? battle.enemy : battle.player;
+  emit("matchEnd", {
+    // Friendlies have no BattleKind of their own; they count as ladder-style 1v1s.
+    kind: online ? "ladder" : battleKind,
+    winner,
+    mySide,
+    myCrowns: mine.crowns,
+    theirCrowns: theirs.crowns,
+    trophyDelta: settled.trophyDelta,
+    online,
+    battle,
+    replay: replaying,
+    sandbox: !online && isSandbox(),
+  });
+}
+
 function frame(now: number): void {
   const dt = Math.min(0.25, (now - last) / 1000);
   last = now;
@@ -2981,40 +1066,27 @@ function frame(now: number): void {
   // Hit-stop drains on wall-clock time. Solo matches freeze presentation +
   // sim accrual for juice; online lockstep never stalls the sim clock.
   scene.hitStop.update(dt);
-  const frozen = scene.hitStop.active && mode === "solo";
+  const frozen = scene.hitStop.active && mode() === "solo";
   const presentDt = scene.hitStop.active ? Math.min(dt, 0.008) : dt;
 
   // The world holds its breath while the deck picker is open.
   if (pickerRoot.classList.contains("show")) {
     scene.sync(battle, 0); // towers etc. exist for the home diorama
-    scene.render(dt);
+    if (shouldRender(now)) scene.render(dt);
+    emit("frame", { dt, presentDt, alpha: 1, phase: getPhase(), battle });
     requestAnimationFrame(frame);
     return;
   }
 
-  if (phase === "countdown") {
-    tickCountdown(dt);
+  const online = onlineSession();
+  let alpha = 1;
+  if (!online && simHeld()) {
+    // A feature (pause menu, tutorial…) holds the solo sim, countdown included.
+  } else if (getPhase() === "countdown") {
+    tickCountdown(dt, audio);
   } else if (!frozen) {
-    if (mode === "online" && online) {
-      acc += dt;
-      while (acc >= SIM_DT) {
-        // Lockstep: advance only when the peer's frame for this tick is in hand.
-        if (!online.ls.ready()) break;
-        const { commands, outgoing } = online.ls.step();
-        for (const c of commands) deployCard(battle, c.side, c.cardId, c.x, c.y);
-        tick(battle, SIM_DT);
-        online.client.sendFrame(outgoing);
-        online.tick++;
-        if (online.tick % SYNC_EVERY === 0) {
-          const cs = stateChecksum(battle);
-          online.sums.set(online.tick, cs);
-          if (online.sums.size > 10) online.sums.delete([...online.sums.keys()][0]);
-          online.client.sendSync(online.tick, cs);
-        }
-        acc -= SIM_DT;
-      }
-      // While stalled on the peer, don't bank a backlog that bursts on resume.
-      acc = Math.min(acc, SIM_DT * 3);
+    if (online) {
+      alpha = stepOnline(dt);
     } else {
       acc += dt * (replaying ? replaySpeed : 1);
       while (acc >= SIM_DT) {
@@ -3055,6 +1127,7 @@ function frame(now: number): void {
       }
     }
   }
+  if (!online) alpha = Math.min(1, Math.max(0, acc / SIM_DT));
   botEmoteCooldown = Math.max(0, botEmoteCooldown - dt);
   // New battle object → fresh quest counters + report timeline.
   if (questsBattleRef !== battle) {
@@ -3066,38 +1139,17 @@ function frame(now: number): void {
   for (const ev of battle.events.splice(0)) {
     audio.onEvent(ev);
     scene.onEvent(ev);
+    emit("battleEvent", { ev, mySide: localSide() });
     if ((ev.type === "deploy" || ev.type === "spell") && ev.side === localSide()) {
       battleCardsPlayed++;
     }
-    if (ev.type === "finish" && recording && mode === "solo" && battleKind === "ladder" && !isSandbox()) {
+    if (ev.type === "finish" && recording && mode() === "solo" && battleKind === "ladder" && !isSandbox()) {
       try {
         localStorage.setItem(REPLAY_KEY, JSON.stringify(recording));
       } catch {
         // tape too big / storage unavailable — skip silently
       }
       recording = null;
-    }
-    if (ev.type === "finish" && mode === "solo" && !isSandbox() && !replaying) {
-      // Fold the match into today's quests (any real solo battle counts).
-      const today = dateKey(new Date());
-      if (quests.date !== today) quests = loadQuests(today);
-      quests = recordQuestMatch(quests, {
-        won: ev.winner === "player",
-        cardsPlayed: battleCardsPlayed,
-        damage: battle.player.stats.damageDealt,
-      });
-      saveQuests(quests);
-      achievements = recordAchMatch(achievements, {
-        won: ev.winner === localSide(),
-        crowns: mySideState().crowns,
-        cardsPlayed: battleCardsPlayed,
-        damage: mySideState().stats.damageDealt,
-        durationSec: battle.time,
-        deckHadChampion: playerDeck.includes("champion"),
-        trophiesAfter: profile.trophies,
-      });
-      saveAchievements(achievements);
-      battleCardsPlayed = 0;
     }
     if (ev.type === "death" && (ev.kind === "princess-tower" || ev.kind === "king-tower")) {
       flashImpact();
@@ -3115,38 +1167,19 @@ function frame(now: number): void {
         }`,
       );
     }
-    if (ev.type === "crown" && mode === "solo") botEmote(ev.winner === "enemy" ? "😂" : "😭");
-    if (ev.type === "finish") {
-      // Only ladder matches move trophies/levels/chests — online friendlies,
-      // sandbox, and the special modes can't farm the ladder.
-      if (mode === "solo" && battleKind === "ladder" && !isSandbox() && !replaying) {
-        botEmote(ev.winner === "enemy" ? "🎉" : "😭");
-        applyMatchResult(ev.winner);
-        if (ev.winner === "player") {
-          streak = { wins: streak.wins + 1, losses: 0 };
-          if (championBotMatch) {
-            profile = { ...profile, gold: profile.gold + CHAMPION_BONUS_GOLD };
-            persistProfile();
-            showBanner(tr(`Champion beaten! +${CHAMPION_BONUS_GOLD} 🪙`, `هزمت البطل! +${CHAMPION_BONUS_GOLD} 🪙`));
-            streak = { wins: 0, losses: 0 }; // the gauntlet resets after the boss
-          }
-        } else if (ev.winner === "enemy") {
-          streak = { wins: 0, losses: streak.losses + 1 };
-        }
-        saveStreak();
-      } else if (mode === "solo" && ev.winner === "player" && !replaying) {
-        applySpecialReward();
-      }
-    }
+    if (ev.type === "crown" && mode() === "solo") botEmote(ev.winner === "enemy" ? "😂" : "😭");
+    if (ev.type === "finish") finishMatch(ev.winner);
   }
-  checkBanners();
+  checkBanners(battle, audio);
   // Music tension follows the match: double elixir, then overtime.
   if (!battle.result) {
     audio.setIntensity(battle.overtime ? 2 : isDoubleElixir(battle) ? 1 : 0);
   }
-  scene.sync(battle, presentDt);
-  scene.render(presentDt);
+  const scaledDt = presentDt * presentTimeScale();
+  (scene as unknown as SyncWithAlpha).sync(battle, scaledDt, alpha);
+  if (shouldRender(now)) scene.render(scaledDt);
   hud.update(battle, localSide());
+  emit("frame", { dt, presentDt, alpha, phase: getPhase(), battle });
   requestAnimationFrame(frame);
 }
 
@@ -3156,14 +1189,15 @@ requestAnimationFrame(frame);
 if (import.meta.env.DEV) {
   (window as unknown as { __cr: unknown }).__cr = {
     sum: () => stateChecksum(battle),
-    tick: () => online?.tick ?? 0,
-    mode: () => mode,
+    tick: () => onlineSession()?.tick ?? 0,
+    mode: () => mode(),
     entities: () => battle.entities.length,
     battle: () => battle,
     scene: () => scene,
     spawn: (side: "player" | "enemy", id: CardId, x: number, y: number) =>
       spawnUnits(battle, side, id, x, y).length,
     arenas: () => ARENAS.map((a) => a.id),
-    phase: () => phase,
+    phase: () => getPhase(),
   };
 }
+
