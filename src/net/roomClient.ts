@@ -1,6 +1,14 @@
 import type { CardId } from "../game/cards";
 import type { InputFrame } from "./lockstep";
-import type { ClientMsg, MatchMode, Role, ServerMsg } from "./protocol";
+import {
+  PROTOCOL_VERSION,
+  type ClientMsg,
+  type Loadout,
+  type MatchMode,
+  type Role,
+  type ServerMsg,
+  type StartMsg,
+} from "./protocol";
 
 /** Minimal subset of the browser WebSocket the client needs (mockable). */
 export interface NetSocket {
@@ -17,40 +25,139 @@ export interface StartPayload {
   hostDeck: CardId[];
   guestDeck: CardId[];
   mode: MatchMode;
+  /** Loadouts, or null for a side whose client did not send one. */
+  hostLoadout: Loadout | null;
+  guestLoadout: Loadout | null;
+  /** Input delay in ticks chosen by the relay; identical for both peers. */
+  delay: number;
+  /** This seat's resume token. Keep it private. */
+  token: string;
+}
+
+export interface RoomClientOptions {
+  /** Millisecond clock for RTT measurement (default performance.now). */
+  now?: () => number;
+  /** Give up if the socket has not opened by then (default 8s). */
+  connectTimeoutMs?: number;
+}
+
+export const CONNECT_TIMEOUT_MS = 8000;
+/** Pings sent right after connecting, to seed the relay's RTT estimate. */
+const BURST_PINGS = 5;
+const BURST_GAP_MS = 250;
+const PING_EVERY_MS = 5000;
+const RTT_SAMPLES = 5;
+
+function toPayload(msg: StartMsg): StartPayload {
+  return {
+    role: msg.role,
+    hostDeck: msg.hostDeck,
+    guestDeck: msg.guestDeck,
+    mode: msg.mode,
+    hostLoadout: msg.hostLoadout ?? null,
+    guestLoadout: msg.guestLoadout ?? null,
+    delay: msg.delay ?? 4,
+    token: msg.token ?? "",
+  };
 }
 
 /**
  * Browser-side wrapper over the relay connection. Buffers sends until the
- * socket is open and fans incoming server messages out to typed handlers.
+ * socket is open, fans incoming server messages out to typed handlers, and
+ * keeps the relay's RTT estimate fresh with periodic pings.
+ *
+ * Messages carry the protocol version `v` only when the caller passes v2 data
+ * (a loadout, or a quick match); calls without one stay v1-shaped, so the
+ * relay keeps treating that client as an old LAN client (word-only codes,
+ * immediate peer-left on a drop).
  */
 export class RoomClient {
-  onCreated: ((code: string) => void) | null = null;
+  onCreated: ((code: string, token: string) => void) | null = null;
   onStart: ((p: StartPayload) => void) | null = null;
   onFrame: ((frame: InputFrame) => void) | null = null;
   onSync: ((tick: number, checksum: number) => void) | null = null;
+  onQueued: ((position: number) => void) | null = null;
+  onPeerDropped: ((graceSec: number) => void) | null = null;
+  onPeerBack: (() => void) | null = null;
   onPeerLeft: (() => void) | null = null;
+  onPeerPaused: ((paused: boolean) => void) | null = null;
+  onResumed: ((frames: InputFrame[], start: StartPayload) => void) | null = null;
+  onRematchWait: (() => void) | null = null;
+  onPong: ((rtt: number) => void) | null = null;
   onError: ((reason: string) => void) | null = null;
+  /** Fired once: the socket closed, errored, or never opened in time. */
   onClose: (() => void) | null = null;
 
   private open = false;
+  private closed = false;
   private readonly backlog: ClientMsg[] = [];
+  private readonly rtts: number[] = [];
+  private readonly now: () => number;
+  private connectTimer: ReturnType<typeof setTimeout> | null = null;
+  private pingTimers: ReturnType<typeof setTimeout>[] = [];
+  private pingInterval: ReturnType<typeof setInterval> | null = null;
 
-  constructor(private readonly socket: NetSocket) {
+  constructor(
+    private readonly socket: NetSocket,
+    opts: RoomClientOptions = {},
+  ) {
+    this.now = opts.now ?? (() => performance.now());
+    this.connectTimer = setTimeout(() => {
+      if (this.open) return;
+      try {
+        this.socket.close();
+      } catch {
+        // already closing
+      }
+      this.finish();
+    }, opts.connectTimeoutMs ?? CONNECT_TIMEOUT_MS);
+
     socket.onopen = () => {
+      if (this.closed) return;
       this.open = true;
+      this.clearConnectTimer();
       for (const msg of this.backlog) this.socket.send(JSON.stringify(msg));
       this.backlog.length = 0;
+      this.startPinging();
     };
-    socket.onmessage = (ev) => this.handle(JSON.parse(ev.data) as ServerMsg);
-    socket.onclose = () => this.onClose?.();
+    socket.onmessage = (ev) => {
+      let msg: ServerMsg;
+      try {
+        msg = JSON.parse(ev.data) as ServerMsg;
+      } catch {
+        return; // ignore malformed input
+      }
+      this.handle(msg);
+    };
+    socket.onclose = () => this.finish();
+    socket.onerror = () => this.finish();
   }
 
-  create(deck: CardId[], mode: MatchMode): void {
-    this.send({ t: "create", deck, mode });
+  /** Median of the last few measured round trips (ms), or null before any. */
+  get rtt(): number | null {
+    if (this.rtts.length === 0) return null;
+    const s = [...this.rtts].sort((a, b) => a - b);
+    const mid = s.length >> 1;
+    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
   }
 
-  join(code: string, deck: CardId[]): void {
-    this.send({ t: "join", code: code.toUpperCase(), deck });
+  create(deck: CardId[], mode: MatchMode, loadout?: Loadout): void {
+    this.send(loadout ? { t: "create", v: PROTOCOL_VERSION, deck, mode, loadout } : { t: "create", deck, mode });
+  }
+
+  join(code: string, deck: CardId[], loadout?: Loadout): void {
+    const c = code.toUpperCase();
+    this.send(loadout ? { t: "join", v: PROTOCOL_VERSION, code: c, deck, loadout } : { t: "join", code: c, deck });
+  }
+
+  /** Enter the quick-match queue for `mode`. */
+  quick(deck: CardId[], loadout: Loadout, mode: MatchMode): void {
+    this.send({ t: "quick", v: PROTOCOL_VERSION, deck, loadout, mode });
+  }
+
+  /** Leave the quick-match queue (or close a room nobody joined yet). */
+  cancel(): void {
+    this.send({ t: "cancel" });
   }
 
   sendFrame(frame: InputFrame): void {
@@ -61,27 +168,73 @@ export class RoomClient {
     this.send({ t: "sync", tick, checksum });
   }
 
+  /** Send a ping now (also done automatically); the reply updates {@link rtt}. */
+  ping(): void {
+    if (!this.open) return;
+    const rtt = this.rtts.length > 0 ? Math.round(this.rtts[this.rtts.length - 1]) : undefined;
+    this.send(rtt === undefined ? { t: "ping", at: this.now() } : { t: "ping", at: this.now(), rtt });
+  }
+
+  rematch(): void {
+    this.send({ t: "rematch" });
+  }
+
+  /** Re-claim a seat after a reconnect, asking for every frame after `haveTick`. */
+  resume(code: string, token: string, haveTick: number): void {
+    this.send({ t: "resume", code: code.toUpperCase(), token, haveTick });
+  }
+
+  pause(paused: boolean): void {
+    this.send({ t: "pause", paused });
+  }
+
+  /** Leave on purpose: the peer is told at once (no resume grace), then close. */
   leave(): void {
+    if (this.open && !this.closed) this.socket.send(JSON.stringify({ t: "leave" } satisfies ClientMsg));
     this.socket.close();
   }
 
   private send(msg: ClientMsg): void {
+    if (this.closed) return;
     if (this.open) this.socket.send(JSON.stringify(msg));
     else this.backlog.push(msg);
+  }
+
+  private startPinging(): void {
+    for (let i = 0; i < BURST_PINGS; i++) {
+      this.pingTimers.push(setTimeout(() => this.ping(), i * BURST_GAP_MS));
+    }
+    this.pingInterval = setInterval(() => this.ping(), PING_EVERY_MS);
+  }
+
+  private clearConnectTimer(): void {
+    if (this.connectTimer !== null) clearTimeout(this.connectTimer);
+    this.connectTimer = null;
+  }
+
+  /** Stop timers and report the close exactly once. */
+  private finish(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.open = false;
+    this.clearConnectTimer();
+    for (const t of this.pingTimers) clearTimeout(t);
+    this.pingTimers = [];
+    if (this.pingInterval !== null) clearInterval(this.pingInterval);
+    this.pingInterval = null;
+    this.onClose?.();
   }
 
   private handle(msg: ServerMsg): void {
     switch (msg.t) {
       case "created":
-        this.onCreated?.(msg.code);
+        this.onCreated?.(msg.code, msg.token);
         break;
       case "start":
-        this.onStart?.({
-          role: msg.role,
-          hostDeck: msg.hostDeck,
-          guestDeck: msg.guestDeck,
-          mode: msg.mode,
-        });
+        this.onStart?.(toPayload(msg));
+        break;
+      case "queued":
+        this.onQueued?.(msg.position);
         break;
       case "frame":
         this.onFrame?.(msg.frame);
@@ -89,8 +242,30 @@ export class RoomClient {
       case "sync":
         this.onSync?.(msg.tick, msg.checksum);
         break;
+      case "pong": {
+        const rtt = Math.max(0, this.now() - msg.at);
+        this.rtts.push(rtt);
+        if (this.rtts.length > RTT_SAMPLES) this.rtts.shift();
+        this.onPong?.(rtt);
+        break;
+      }
+      case "peer-dropped":
+        this.onPeerDropped?.(msg.graceSec);
+        break;
+      case "peer-back":
+        this.onPeerBack?.();
+        break;
       case "peer-left":
         this.onPeerLeft?.();
+        break;
+      case "peer-paused":
+        this.onPeerPaused?.(msg.paused);
+        break;
+      case "resumed":
+        this.onResumed?.(msg.frames, toPayload(msg.start));
+        break;
+      case "rematch-wait":
+        this.onRematchWait?.();
         break;
       case "error":
         this.onError?.(msg.reason);

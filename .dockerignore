@@ -1,0 +1,18 @@
+# Only package*.json, tsconfig.json, server/ and src/ are needed to build the relay.
+.git
+.github
+node_modules
+dist
+dist-server
+docs
+notes
+public
+tools
+scripts
+visual-sheet
+Clash-Royale-Kids-Presentation
+*.png
+*.jpg
+*.md
+*.html
+.DS_Store
