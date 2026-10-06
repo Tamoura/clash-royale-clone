@@ -169,6 +169,9 @@ export function makeTeamDisc(side: Side, radius: number): THREE.Mesh {
       map: teamDiscTexture(side),
       transparent: true,
       depthWrite: false,
+      // A readability marker, like the HP bar: distance haze must not
+      // wash the far side's discs out to white.
+      fog: false,
     }),
   );
   disc.name = "teamDisc";

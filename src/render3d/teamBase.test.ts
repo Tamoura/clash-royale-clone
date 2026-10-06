@@ -103,6 +103,7 @@ describe("team disc mesh", () => {
     expect(disc.rotation.x).toBeCloseTo(-Math.PI / 2);
     expect(mat.depthWrite).toBe(false);
     expect(mat.transparent).toBe(true);
+    expect(mat.fog).toBe(false); // haze never washes the far side's discs out
     expect(disc.renderOrder).toBeGreaterThan(-1); // contact shadow sits at -1
     expect(disc.scale.x).toBeCloseTo(0.6 * DISC_OUTER * 2);
   });
