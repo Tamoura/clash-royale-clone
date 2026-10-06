@@ -24,6 +24,8 @@ export interface Challenge {
   waves: ChallengeWave[];
   /** Gold granted the first time the challenge is beaten. */
   goldReward: number;
+  /** Scripted battles only: the opponent's King tower starts with this much HP. */
+  enemyKingHp?: number;
 }
 
 const L = 3.5; // left lane / bridge x
@@ -110,6 +112,32 @@ export const CHALLENGES: Challenge[] = [
     goldReward: 60,
   },
 ];
+
+/**
+ * The guided first battle (src/game/tutorial.ts drives it). It is not in
+ * CHALLENGES, so it never shows in the Challenges list. Its waves are the
+ * scripted lessons: a Giant to defend, then a cluster worth a Fireball.
+ * The tutorial's held steps freeze the clock, so these times line up with
+ * the lessons however long the player takes on each one.
+ */
+export const TUTORIAL_CHALLENGE: Challenge = {
+  id: "tutorial",
+  // Shown as the opponent's name in the battle's top bar.
+  name: "Trainer",
+  nameAr: "المدرّب",
+  blurb: "Learn to deploy, defend, cast spells and win.",
+  blurbAr: "تعلّم النشر والدفاع والتعاويذ والفوز.",
+  deck: ["knight", "musketeer", "fireball", "giant", "archers", "mini-pekka", "arrows", "valkyrie"],
+  // Never "won" by the clock: the tutorial ends when a King tower falls.
+  surviveFor: 1e9,
+  waves: [
+    { at: 1, cardId: "giant", x: R, y: 12 },
+    { at: 15, cardId: "archers", x: 4.2, y: 11 },
+    { at: 15, cardId: "archers", x: 5.2, y: 11.6 },
+  ],
+  goldReward: 0,
+  enemyKingHp: 1400,
+};
 
 /**
  * Spawn every wave whose time has come. `cursor.next` is the index of the

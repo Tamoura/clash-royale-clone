@@ -108,6 +108,7 @@ import { openDraft } from "./ui/screens/draft";
 import { buildHome } from "./ui/screens/home";
 import { openFriendLobby } from "./ui/screens/lobby";
 import { openStudio } from "./ui/screens/studio";
+import { startTutorial, tutorialDone } from "./ui/tutorialOverlay";
 
 // Apply edition-aware CSS variables before any DOM is rendered.
 applyEditionTokens(STORED_EDITION);
@@ -801,7 +802,9 @@ if (clockEl) clockEl.dataset.label = tr("Time left", "الوقت المتبقي"
 new ResizeObserver(() => scene.setTopInset(topbar.offsetHeight)).observe(topbar);
 
 installAutoDifficulty(() => meta.profile.trophies);
-openHome();
+// A first-time player (edition picked) learns in the guided battle first.
+if (EDITION_CHOSEN && !tutorialDone()) startTutorial(ctx);
+else openHome();
 
 // Trophy + currency live on the home screen now; the chip is kept (not
 // mounted) so refreshMetaChips() stays a cheap no-op in battle.

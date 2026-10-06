@@ -1,0 +1,348 @@
+/* ============================================================
+   Guided first battle (src/ui/tutorialOverlay.ts): dim mask with
+   cut-outs, glowing target tile, animated hand and coach bubble.
+   Tokens only, so both editions restyle through their remaps.
+   ============================================================ */
+
+.tut {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  pointer-events: none;
+  font-family: var(--cr-font);
+  color: var(--on-surface);
+  --tut-top: 0px;
+  --tut-bottom: 0px;
+}
+.tut[hidden] {
+  display: none;
+}
+/* A tap-through callout: the whole screen is the "continue" button. */
+.tut[data-tap="1"] {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* ── Mask: one even-odd path; the holes pass touches to the game ── */
+.tut-mask {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.tut-mask-fill {
+  fill: var(--scrim);
+  opacity: 0;
+  transition: opacity var(--dur-slow) var(--ease-out);
+}
+.tut-mask.on .tut-mask-fill {
+  opacity: 1;
+  pointer-events: visiblePainted;
+}
+/* The ending card sits on a near-opaque backdrop over the result screen. */
+.tut.ending .tut-mask-fill {
+  fill: var(--surface-0);
+}
+.tut.ending .tut-mask.on .tut-mask-fill {
+  opacity: 0.86;
+}
+.tut-ring {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  opacity: 0;
+  filter: drop-shadow(0 0 6px var(--accent));
+}
+.tut-mask.on /* The ending card sits on a near-opaque backdrop over the result screen. */
+.tut.ending .tut-mask-fill {
+  fill: var(--surface-0);
+}
+.tut.ending .tut-mask.on .tut-mask-fill {
+  opacity: 0.86;
+}
+.tut-ring {
+  opacity: 1;
+  animation: tut-ring 1.2s var(--ease-out) infinite alternate;
+}
+.tut-trail {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 2 10;
+  opacity: 0.85;
+  animation: tut-march 0.8s linear infinite;
+}
+
+/* ── The glowing tile ── */
+.tut-tile {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 45%, transparent) 0%, transparent 70%);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent),
+    0 0 24px 6px color-mix(in srgb, var(--accent) 55%, transparent);
+  pointer-events: none;
+}
+.tut-tile[hidden] {
+  display: none;
+}
+.tut-tile::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  animation: tut-ping 1.4s var(--ease-out) infinite;
+}
+
+/* ── Hand and the card riding under it ── */
+.tut-hand,
+.tut-ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.tut-hand {
+  z-index: 2;
+  color: var(--accent);
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.45));
+}
+.tut-hand svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.tut-hand-cuff {
+  fill: currentColor;
+}
+.tut-hand[hidden],
+.tut-ghost[hidden] {
+  display: none;
+}
+.tut-ghost {
+  z-index: 1;
+  border-radius: var(--r-sm);
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 0 0 2px var(--accent), var(--elev-2);
+}
+
+/* ── Coach bubble ── */
+.tut-coach {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--tut-top) + var(--sp-3));
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  width: min(360px, calc(100vw - 2 * var(--sp-4)));
+  display: flex;
+  gap: var(--sp-3);
+  align-items: flex-start;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  border: 2px solid var(--accent);
+  box-shadow: var(--elev-3);
+  pointer-events: auto;
+  cursor: default;
+}
+.tut[data-tap="1"] .tut-coach {
+  cursor: pointer;
+}
+/* Free play: a compact bubble docked above the hand, out of the action. */
+.tut-coach[data-place="bottom"] {
+  top: auto;
+  bottom: calc(var(--tut-bottom) + var(--sp-2));
+  align-items: center;
+  padding: var(--sp-2) var(--sp-3);
+  gap: var(--sp-2);
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+}
+.tut-coach[data-place="bottom"] .tut-coach-avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+}
+.tut-coach[data-place="bottom"] .tut-coach-text {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+.tut-coach[data-place="bottom"] .tut-dots {
+  display: none;
+}
+.tut-coach[data-place="center"] {
+  top: 50%;
+  transform: translate(-50%, -50%);
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--sp-6) var(--sp-5) var(--sp-5);
+}
+.tut-coach.pop {
+  animation: tut-pop var(--dur-slow) var(--ease-pop) both;
+}
+.tut-coach[data-place="center"].pop {
+  animation-name: tut-pop-center;
+}
+.tut-coach-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 2px var(--accent);
+  font-size: 26px;
+}
+.tut-coach[data-place="center"] .tut-coach-avatar {
+  width: 72px;
+  height: 72px;
+  font-size: 44px;
+}
+.tut-coach-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.tut-dots {
+  display: flex;
+  gap: var(--sp-1);
+}
+.tut-coach[data-place="center"] .tut-dots {
+  justify-content: center;
+}
+.tut-dots i {
+  width: 18px;
+  height: 5px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+}
+.tut-dots i.done {
+  background: var(--success);
+}
+.tut-dots i.now {
+  background: var(--accent);
+}
+.tut-coach-text {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  letter-spacing: calc(0.01em * var(--tracking));
+}
+.tut-coach[data-place="center"] .tut-coach-text {
+  font-size: var(--fs-lg);
+  line-height: var(--lh-lg);
+}
+.tut-coach-hint {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  color: var(--accent);
+  animation: tut-blink 1.6s ease-in-out infinite;
+}
+.tut-coach-hint[hidden] {
+  display: none;
+}
+.tut-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+  align-items: center;
+}
+.tut-coach[data-place="center"] .tut-actions {
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  margin-top: var(--sp-3);
+}
+.tut-skip {
+  min-height: 44px;
+  padding: 0 var(--sp-2);
+  margin-block: calc(-1 * var(--sp-2));
+  margin-inline-end: calc(-1 * var(--sp-2));
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--on-surface-dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.tut-coach[data-place="center"] .tut-skip {
+  margin: 0;
+}
+.tut-skip:hover,
+.tut-skip:focus-visible {
+  color: var(--on-surface);
+}
+
+@keyframes tut-pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -10px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+@keyframes tut-pop-center {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+@keyframes tut-ring {
+  to {
+    stroke-width: 5;
+  }
+}
+@keyframes tut-march {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+@keyframes tut-ping {
+  from {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+@keyframes tut-blink {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Reduced motion (OS or the in-game setting): everything holds still. */
+@media (prefers-reduced-motion: reduce) {
+  .tut *,
+  .tut *::after {
+    animation: none !important;
+  }
+}
+.tut.still *,
+.tut.still *::after {
+  animation: none !important;
+}
