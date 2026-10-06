@@ -1235,6 +1235,10 @@ if (import.meta.env.DEV) {
   (window as unknown as { __cr: unknown }).__cr = {
     sum: () => stateChecksum(battle),
     tick: () => onlineSession()?.tick ?? 0,
+    net: () => {
+      const s = onlineSession();
+      return s && { view: s.view(), side: s.side, rtt: s.rtt, agreed: s.agreedSyncs, reserved: s.reserved() };
+    },
     mode: () => mode(),
     entities: () => battle.entities.length,
     battle: () => battle,

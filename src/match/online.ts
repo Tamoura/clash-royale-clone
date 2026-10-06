@@ -44,6 +44,10 @@ export function relayTarget(): RelayTarget {
       store = undefined;
     }
     relay = resolveRelayUrl(location, import.meta.env, store);
+    // Dev aid: ?relay=none previews a site with no relay configured.
+    if (import.meta.env.DEV && new URLSearchParams(location.search).get("relay") === "none") {
+      relay = { url: null, lan: false };
+    }
   }
   return relay;
 }

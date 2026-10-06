@@ -351,6 +351,14 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
         () => {
           foundTimer = 0;
           if (session !== s) return;
+          if (s.view().t === "ended") {
+            // They cancelled while we were showing "opponent found".
+            leaveOnline();
+            session = null;
+            found = null;
+            showProblem(tr("Your opponent left before the match started.", "غادر خصمك قبل بدء المباراة."));
+            return;
+          }
           s.onMatch = (next) => beginOnlineMatch(ctx, next);
           beginOnlineMatch(ctx, m);
         },

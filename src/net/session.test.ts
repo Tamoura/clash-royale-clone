@@ -308,6 +308,21 @@ describe("emotes", () => {
 });
 
 describe("stalls", () => {
+  it("are not counted while a slow device keeps making progress", () => {
+    const p = pair();
+    // 4 fps: every frame runs several ticks and uses up all the peer's input.
+    for (let i = 0; i < 4 * 40; i++) {
+      p.relay.clock += 250;
+      p.host.step(0.25);
+      p.guest.step(0.25);
+      p.relay.pump();
+    }
+    expect(p.host.view().t).not.toBe("ended");
+    expect(p.guest.view().t).not.toBe("ended");
+    // Slow, but moving: lockstep runs at most `delay` ticks per peer frame.
+    expect(p.host.tick).toBeGreaterThan(500);
+  });
+
   it("end as opponent-left (a win) after 25 s without the peer", () => {
     const p = pair();
     runUntil(p, 30);

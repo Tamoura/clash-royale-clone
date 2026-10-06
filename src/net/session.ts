@@ -179,6 +179,8 @@ export class OnlineSession {
   private lastEmoteAt = -Infinity;
   private readonly mySums = new Map<number, number>();
   private readonly peerSums = new Map<number, number>();
+  /** Drift checks this match that both peers agreed on. */
+  agreedSyncs = 0;
 
   // ---- Peer and connection health
   private peerDroppedAt: number | null = null;
@@ -398,7 +400,10 @@ export class OnlineSession {
     }
     const ready = ls.ready();
     if (!ready) this.catchingUp = false;
-    if (ready || this.reconnectAttempt > 0) {
+    // A stall is time without progress. Using up every frame in hand is
+    // normal on a slow device (one render frame runs several ticks), so
+    // any tick run this frame clears it.
+    if (ready || ran > 0 || this.reconnectAttempt > 0) {
       this.stallMs = 0;
     } else {
       this.stallMs += dt * 1000;
@@ -525,6 +530,7 @@ export class OnlineSession {
     this.abilityTick = undefined;
     this.mySums.clear();
     this.peerSums.clear();
+    this.agreedSyncs = 0;
     this.peerDroppedAt = null;
     this.peerPaused = false;
     this.phase = "match";
@@ -670,6 +676,7 @@ export class OnlineSession {
     for (const map of [this.mySums, this.peerSums]) {
       for (const k of map.keys()) if (k < tickNo - SYNC_EVERY * 20) map.delete(k);
     }
+    if (mine === theirs) this.agreedSyncs++;
     if (mine === theirs || this.phase !== "match") return;
     this.end("desync");
     // Stay a moment so the peer sees our checksum and calls it too.
