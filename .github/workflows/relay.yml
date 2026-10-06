@@ -1,0 +1,56 @@
+name: Relay
+
+# Tests and bundles the multiplayer relay whenever its code changes, then
+# deploys it to Fly.io — but only if the FLY_API_TOKEN secret is set, so the
+# workflow stays green on forks and before Fly is configured.
+# (Setup: docs/deploy-multiplayer.md, "Automatic relay deploys".)
+on:
+  push:
+    branches: [main, claude/game-visuals-character-balance-w122wb]
+    paths:
+      - "server/**"
+      - "src/net/**"
+      - "fly.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never run two Fly deploys at once.
+concurrency:
+  group: relay
+  cancel-in-progress: false
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Test
+        run: npx vitest run
+      - name: Bundle the relay
+        run: npm run build:relay
+
+      - name: Check for a Fly.io token
+        id: fly
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -n "$FLY_API_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::FLY_API_TOKEN is not set; skipping the Fly.io deploy."
+          fi
+      - if: steps.fly.outputs.enabled == 'true'
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy to Fly.io
+        if: steps.fly.outputs.enabled == 'true'
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

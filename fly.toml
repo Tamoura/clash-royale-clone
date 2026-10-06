@@ -1,0 +1,44 @@
+# Fly.io config for the multiplayer relay (docs/deploy-multiplayer.md).
+#
+# IMPORTANT: keep this app at a SINGLE machine (`fly scale count 1`). Rooms and
+# the quick-match queue live in memory, so two machines would split players
+# who are trying to find each other.
+
+# Placeholder: app names are global on Fly; pick your own if this one is taken.
+app = "clash-royale-clone-relay"
+# Closest region to your players; `fly platform regions` lists them all.
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  # The page origin(s) allowed to connect (scheme + host, no path).
+  ALLOWED_ORIGINS = "https://tamoura.github.io"
+  # Fly's proxy puts the real client IP first in X-Forwarded-For.
+  TRUST_PROXY = "1"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Sleep when idle (free-tier friendly); the first visitor wakes it in ~2s.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 400
+    hard_limit = 500
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
