@@ -211,16 +211,28 @@ interface ReplayData {
   abilityUses: number[];
   deploys: Array<{ t: number; c: CardId; x: number; y: number }>;
 }
-/** The saved tape, or null when there is none or it predates the current sim. */
+/** The saved tape, or null when there is none or it predates the current
+ *  sim. A stale (pre-v2 or unreadable) tape is deleted on sight. */
 function storedReplay(): ReplayData | null {
   try {
     const raw = localStorage.getItem(REPLAY_KEY);
-    const rep = raw ? (JSON.parse(raw) as ReplayData) : null;
-    return rep && rep.v === 2 ? rep : null;
+    if (!raw) return null;
+    let rep: ReplayData | null = null;
+    try {
+      rep = JSON.parse(raw) as ReplayData;
+    } catch {
+      /* corrupt: dropped below */
+    }
+    if (rep && rep.v === 2) return rep;
+    localStorage.removeItem(REPLAY_KEY);
   } catch {
-    return null;
+    /* storage blocked */
   }
+  return null;
 }
+// Purge a stale tape at boot, so any plain `getItem(REPLAY_KEY)` presence
+// check (e.g. the home screen's Last Battle entry) stays truthful.
+storedReplay();
 // ---- Tower Troops: the player's chosen tower defender ---------------------
 let towerTroop: TowerTroopId = loadTowerTroop();
 function botTowerTroop(): TowerTroopId {
