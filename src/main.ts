@@ -30,7 +30,7 @@ import {
   type BattleState,
   type CardLevels,
 } from "./game/battle";
-import { createBot, tickBot, type BotProfile, type BotState } from "./game/bot";
+import { BOT_PROFILE_DEFAULTS, createBot, tickBot, type BotProfile, type BotState } from "./game/bot";
 import {
   DEFAULT_DECK,
   crazyCards,
@@ -74,7 +74,18 @@ import {
   simHeld,
   type BattleKind,
 } from "./app/hooks";
-import { DIFFICULTIES, botLevels, loadDifficulty } from "./match/difficulty";
+import {
+  POLITE_MATCHES,
+  avgDeckLevel,
+  botLevels,
+  installAutoDifficulty,
+  ladderMatchesPlayed,
+  loadAutoState,
+  loadDifficulty,
+  resolveTier,
+  tierProfile,
+  type Tier,
+} from "./match/difficulty";
 import { loadMode } from "./match/modes";
 import { clearOnline, onlineSession, stepOnline } from "./match/online";
 import { CHAMPION_BONUS_GOLD, currentStreak, settleMatch } from "./match/rewards";
@@ -288,6 +299,16 @@ function applyTowerFlair(): void {
 }
 applyTowerFlair();
 
+/** The tier the next bot plays at (the "auto" option follows your results). */
+function currentTier(): Tier {
+  return resolveTier(meta.difficulty, loadAutoState(meta.profile.trophies));
+}
+
+/** Bots keep their taunts to themselves while a player finds their feet. */
+function politeBot(): boolean {
+  return ladderMatchesPlayed(meta.profile.trophies) < POLITE_MATCHES;
+}
+
 // ---- Bot archetypes: each ladder opponent has a personality -------------
 type ArchetypeId = "balanced" | "beatdown" | "cycle" | "siege";
 const ARCHETYPE_NAMES: Record<ArchetypeId, [string, string]> = {
@@ -364,9 +385,9 @@ const variant: GameVariant | null = loadVariant(localStorage);
 
 let battle: BattleState = createBattle(meta.playerDeck, botDeck(), {
   player: meta.cardLevels,
-  enemy: botLevels(meta.profile.trophies),
+  enemy: botLevels(avgDeckLevel(meta.playerDeck, meta.cardLevels), currentTier()),
 });
-let bot: BotState = createBot(Date.now() & 0xffff, DIFFICULTIES[meta.difficulty]);
+let bot: BotState = createBot(Date.now() & 0xffff, tierProfile(currentTier()));
 let selectedCard: CardId | null = null;
 
 // ---- Online 1v1 (LAN lockstep) lives in match/online.ts -----------------
@@ -446,7 +467,14 @@ function startLadder(): void {
   const shared = meta.gameMode.mirror ? botDeck() : null;
   const myDeck = shared ?? meta.playerDeck;
   const foeDeck = shared ?? botDeck(archetype);
-  const foeLevels = botLevels(meta.profile.trophies);
+  const tier = currentTier();
+  const streak = currentStreak();
+  championBotMatch = !isSandbox() && streak.wins >= 3;
+  // Auto difficulty replaces the 3-loss mercy: it steps down on its own.
+  const mercy = !isSandbox() && streak.losses >= 3 && meta.difficulty !== "auto";
+  // The bot's cards sit at your deck's level (shifted by tier), so a
+  // freshly unlocked card never meets a bot that outgrew it.
+  const foeLevels = botLevels(avgDeckLevel(myDeck, meta.cardLevels), tier, championBotMatch ? 1 : 0);
   const towers = { player: meta.towerTroop, enemy: botTowerTroop() };
   const abilities = { player: meta.abilityChoice, enemy: botAbility() };
   battle = createBattle(
@@ -457,24 +485,24 @@ function startLadder(): void {
     towers,
     abilities,
   );
-  const base = DIFFICULTIES[meta.difficulty];
+  const base = tierProfile(tier);
   // Personality tweaks: beatdown banks bigger pushes, cycle plays faster,
   // siege turtles behind buildings and only commits when fully loaded.
+  // The rookie is calibrated as a whole, so it keeps its own pace.
   const tuned: BotProfile =
-    archetype === "beatdown"
-      ? { thinkInterval: base.thinkInterval, pushAt: Math.min(10, base.pushAt + 1) }
-      : archetype === "cycle"
-        ? { thinkInterval: base.thinkInterval * 0.85, pushAt: Math.max(4, base.pushAt - 2) }
-        : archetype === "siege"
-          ? { thinkInterval: base.thinkInterval * 1.1, pushAt: 10 }
-          : base;
-  const streak = currentStreak();
-  championBotMatch = !isSandbox() && streak.wins >= 3;
-  const mercy = !isSandbox() && streak.losses >= 3;
+    tier === "rookie"
+      ? base
+      : archetype === "beatdown"
+        ? { ...base, thinkInterval: base.thinkInterval, pushAt: Math.min(10, base.pushAt + 1) }
+        : archetype === "cycle"
+          ? { ...base, thinkInterval: base.thinkInterval * 0.85, pushAt: Math.max(4, base.pushAt - 2) }
+          : archetype === "siege"
+            ? { ...base, thinkInterval: base.thinkInterval * 1.1, pushAt: 10 }
+            : base;
   const banded: BotProfile = championBotMatch
-    ? { thinkInterval: tuned.thinkInterval * 0.85, pushAt: Math.max(4, tuned.pushAt - 1) }
+    ? { ...tuned, thinkInterval: tuned.thinkInterval * 0.85, pushAt: Math.max(4, tuned.pushAt - 1) }
     : mercy
-      ? { thinkInterval: tuned.thinkInterval * 1.35, pushAt: Math.min(10, tuned.pushAt + 1) }
+      ? { ...tuned, thinkInterval: tuned.thinkInterval * 1.35, pushAt: Math.min(10, tuned.pushAt + 1) }
       : tuned;
   const botSeed = Date.now() & 0xffff;
   bot = createBot(botSeed, banded);
@@ -536,7 +564,6 @@ function startLadder(): void {
     });
   }
   startCountdown(!isSandbox());
-  maybeShowFirstBattleTips();
   announceMatchStart();
 }
 
@@ -558,7 +585,8 @@ function startReplay(): void {
   );
   replayAbilityUses = rep.abilityUses ?? [];
   abilityCursor = 0;
-  bot = createBot(rep.botSeed, rep.botProfile);
+  // Tapes from before the optional bot knobs carry only the first two.
+  bot = createBot(rep.botSeed, { ...BOT_PROFILE_DEFAULTS, ...rep.botProfile });
   replaying = true;
   recording = null;
   soloTick = 0;
@@ -584,27 +612,6 @@ function startReplay(): void {
   announceMatchStart();
 }
 
-/** Three timed hints during the very first battle, then never again. */
-function maybeShowFirstBattleTips(): void {
-  try {
-    if (localStorage.getItem("cr-clone-tutored")) return;
-    localStorage.setItem("cr-clone-tutored", "1");
-  } catch {
-    return;
-  }
-  const tipBattle = battle;
-  const tips: [number, string][] = [
-    [5000, tr("Tap a card, then tap your half to deploy!", "اضغط بطاقة ثم اضغط نصفك لتنشرها!")],
-    [10000, tr("Destroy their towers — protect your own!", "دمّر أبراجهم واحمِ أبراجك!")],
-    [15000, tr("Full elixir wastes away — keep spending!", "الإكسير الممتلئ يُهدر — واصل الإنفاق!")],
-  ];
-  for (const [delay, text] of tips) {
-    window.setTimeout(() => {
-      if (battle === tipBattle && !battle.result) showBanner(text);
-    }, delay);
-  }
-}
-
 /** Solo battle with explicit decks; never moves trophies/chests. */
 function startSpecialBattle(
   kind: BattleKind,
@@ -620,7 +627,7 @@ function startSpecialBattle(
   recording = null;
   replaying = false;
   replaySpeedBtn.style.display = "none";
-  bot = createBot(Date.now() & 0xffff, DIFFICULTIES[meta.difficulty]);
+  bot = createBot(Date.now() & 0xffff, tierProfile(currentTier()));
   selectCard(null);
   hud.setReward(null);
   hud.setOpponentName(opponentName);
@@ -793,6 +800,7 @@ if (clockEl) clockEl.dataset.label = tr("Time left", "الوقت المتبقي"
 // The top bar floats over the arena; tell the camera how much it covers.
 new ResizeObserver(() => scene.setTopInset(topbar.offsetHeight)).observe(topbar);
 
+installAutoDifficulty(() => meta.profile.trophies);
 openHome();
 
 // Trophy + currency live on the home screen now; the chip is kept (not
@@ -845,8 +853,9 @@ window.addEventListener("pointerdown", (ev) => {
 
 let botEmoteCooldown = 0;
 
-function botEmote(emoji: string): void {
-  if (botEmoteCooldown > 0) return;
+/** The bot's chat bubble; `force` skips the cooldown (the post-match goodwill). */
+function botEmote(emoji: string, force = false): void {
+  if (botEmoteCooldown > 0 && !force) return;
   botEmoteCooldown = 6;
   scene.showEmote("enemy", emoji);
   audio.emotePop();
@@ -1055,7 +1064,9 @@ function finishMatch(winner: Side | "draw"): void {
     cardsPlayed: battleCardsPlayed,
   });
   if (settled.recorded) battleCardsPlayed = 0;
-  if (settled.ladder) botEmote(winner === "enemy" ? "🎉" : "😭");
+  // Manners: a friendly thumbs-up when you win; no gloating while you're new.
+  if (settled.ladder && winner === "player") botEmote(EMOTES[2], true);
+  else if (settled.ladder && winner === "enemy" && !politeBot()) botEmote("🎉");
   const mine = mySide === "player" ? battle.player : battle.enemy;
   const theirs = mySide === "player" ? battle.enemy : battle.player;
   emit("matchEnd", {
@@ -1181,7 +1192,9 @@ function frame(now: number): void {
         }`,
       );
     }
-    if (ev.type === "crown" && mode() === "solo") botEmote(ev.winner === "enemy" ? "😂" : "😭");
+    if (ev.type === "crown" && mode() === "solo" && (ev.winner !== "enemy" || !politeBot())) {
+      botEmote(ev.winner === "enemy" ? "😂" : "😭");
+    }
     if (ev.type === "finish") finishMatch(ev.winner);
   }
   checkBanners(battle, audio);
