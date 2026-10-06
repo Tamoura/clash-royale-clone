@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createBattle, deployCard, type BattleState } from "../game/battle";
+import { useAbility } from "../game/abilities";
 import { tick } from "../game/sim";
 import type { CardId } from "../game/cards";
-import { Lockstep, type DeployCommand } from "./lockstep";
+import { Lockstep, type DeployCommand, type InputFrame } from "./lockstep";
 import { stateChecksum } from "./checksum";
 
 const DT = 1 / 30;
@@ -65,5 +66,65 @@ describe("networked match determinism", () => {
 
     // The deploys actually produced a live battle, not two idle boards.
     expect(hostBattle.entities.length).toBeGreaterThan(4);
+  });
+
+  it("fires King's abilities on the same tick on both peers, despite duplicate and stale frames", () => {
+    const host = new Lockstep("player", DELAY);
+    const guest = new Lockstep("enemy", DELAY);
+    const abilities = { player: "salvo", enemy: "restore" } as const;
+    const hostBattle = createBattle(HOST_DECK, GUEST_DECK, {}, 1, {}, abilities);
+    const guestBattle = createBattle(HOST_DECK, GUEST_DECK, {}, 1, {}, abilities);
+
+    // A flaky link: every frame arrives twice, and an old frame is replayed
+    // late (as a resume would). The scheduler must ignore all of it.
+    const sent: InputFrame[] = [];
+    const deliver = (to: Lockstep, f: InputFrame): void => {
+      to.receive(f);
+      to.receive({ ...f, commands: [] }); // duplicate with different contents
+      if (sent.length > 3) to.receive(sent[sent.length - 3]); // stale replay
+      sent.push(f);
+    };
+    for (const f of host.bootstrap()) deliver(guest, f);
+    for (const f of guest.bootstrap()) deliver(host, f);
+
+    const fired: { host: string[]; guest: string[] }[] = [];
+    for (let i = 0; i < 90; i++) {
+      if (i === 3) host.queue({ side: "player", cardId: "knight", x: 9, y: 17.5 });
+      if (i === 4) guest.queue({ side: "enemy", cardId: "valkyrie", x: 9, y: 14 });
+      if (i === 40) {
+        // Both kings are charged; the guest fires on the same tick as the host.
+        for (const b of [hostBattle, guestBattle]) {
+          b.player.abilityCharge = 1;
+          b.enemy.abilityCharge = 1;
+        }
+        host.queueAbility();
+        guest.queueAbility();
+      }
+
+      const t = host.tick;
+      expect(guest.tick).toBe(t);
+      const ra = host.step();
+      const rb = guest.step();
+      deliver(guest, ra.outgoing);
+      deliver(host, rb.outgoing);
+      expect(ra.commands).toEqual(rb.commands);
+
+      // Driver order: deploys, then abilities (player first), then the tick.
+      apply(hostBattle, ra.commands);
+      apply(guestBattle, rb.commands);
+      const hostFired = host.abilitiesAt(t).filter((s) => useAbility(hostBattle, s));
+      const guestFired = guest.abilitiesAt(t).filter((s) => useAbility(guestBattle, s));
+      fired.push({ host: hostFired, guest: guestFired });
+      tick(hostBattle, DT);
+      tick(guestBattle, DT);
+      expect(stateChecksum(hostBattle)).toBe(stateChecksum(guestBattle));
+    }
+
+    // Queued during tick 40 → applied on tick 40 + DELAY, by both, together.
+    const firedTicks = fired.flatMap((f, i) => (f.host.length ? [i] : []));
+    expect(firedTicks).toEqual([40 + DELAY]);
+    expect(fired[40 + DELAY]).toEqual({ host: ["player", "enemy"], guest: ["player", "enemy"] });
+    expect(hostBattle.player.abilityCharge).toBeLessThan(1);
+    expect(guestBattle.enemy.abilityCharge).toBeLessThan(1);
   });
 });

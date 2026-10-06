@@ -90,4 +90,77 @@ describe("Lockstep scheduler", () => {
     ls.bootstrap();
     expect(() => ls.step()).toThrow();
   });
+
+  it("ignores duplicate and stale peer frames (first frame wins)", () => {
+    const ls = new Lockstep("player", 2);
+    ls.bootstrap();
+    ls.receive({ tick: 0, side: "enemy", commands: [deploy("enemy", "knight")] });
+    // A replayed copy with different contents must not overwrite the slot.
+    ls.receive({ tick: 0, side: "enemy", commands: [deploy("enemy", "giant")] });
+    ls.receive({ tick: 1, side: "enemy", commands: [] });
+    expect(ls.step().commands).toEqual([deploy("enemy", "knight")]);
+    // Tick 0 is simulated: a late copy of it is stale and dropped.
+    ls.receive({ tick: 0, side: "enemy", commands: [deploy("enemy", "pekka")] });
+    expect(ls.step().commands).toEqual([]);
+    expect(ls.tick).toBe(2);
+  });
+
+  it("ignores frames claiming to be from the local side", () => {
+    const ls = new Lockstep("enemy", 1);
+    ls.bootstrap();
+    ls.receive({ tick: 0, side: "enemy", commands: [deploy("enemy", "giant")] });
+    ls.receive({ tick: 0, side: "player", commands: [] });
+    expect(ls.step().commands).toEqual([]);
+  });
+
+  it("carries a queued ability on the outgoing frame and reports it on that tick for both peers", () => {
+    const a = new Lockstep("player", 2);
+    const b = new Lockstep("enemy", 2);
+    relay(a, b);
+    relay(b, a);
+    a.queueAbility();
+    b.queueEmote(3);
+
+    const firedA: string[][] = [];
+    const firedB: string[][] = [];
+    const emotesB: unknown[] = [];
+    for (let i = 0; i < 5; i++) {
+      const t = a.tick;
+      const ra = a.step();
+      const rb = b.step();
+      if (i === 0) {
+        expect(ra.outgoing.ability).toBe(true);
+        expect(rb.outgoing.emotes).toEqual([3]);
+      } else {
+        expect(ra.outgoing.ability).toBeUndefined(); // the flag is one-shot
+        expect(rb.outgoing.emotes).toBeUndefined();
+      }
+      b.receive(ra.outgoing);
+      a.receive(rb.outgoing);
+      firedA.push(a.abilitiesAt(t));
+      firedB.push(b.abilitiesAt(t));
+      emotesB.push(b.emotesAt(t));
+    }
+    // Queued while simulating tick 0 → lands on tick 0 + delay on both peers.
+    expect(firedA).toEqual([[], [], ["player"], [], []]);
+    expect(firedB).toEqual(firedA);
+    expect(emotesB[2]).toEqual([{ side: "enemy", emote: 3 }]);
+  });
+
+  it("orders simultaneous abilities player first and caps emotes per frame", () => {
+    const ls = new Lockstep("enemy", 1);
+    ls.queueAbility();
+    for (const e of [1, 2, 3]) ls.queueEmote(e);
+    ls.bootstrap();
+    ls.receive({ tick: 0, side: "player", commands: [] });
+    const { outgoing } = ls.step();
+    expect(outgoing.emotes).toEqual([1, 2]);
+    ls.receive({ tick: 1, side: "player", commands: [], ability: true, emotes: [7] });
+    expect(ls.abilitiesAt(1)).toEqual(["player", "enemy"]);
+    expect(ls.emotesAt(1)).toEqual([
+      { side: "player", emote: 7 },
+      { side: "enemy", emote: 1 },
+      { side: "enemy", emote: 2 },
+    ]);
+  });
 });
