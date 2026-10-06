@@ -152,19 +152,18 @@ function buildSilhouettes(look: ArenaLook, mat: THREE.MeshBasicMaterial): THREE.
   const horizon = new THREE.Color(look.skyHorizon);
   const ground = new THREE.Color(look.far);
   const layers: Array<{ z: number; base: number; profile: Profile; tint: number }> = [
-    { z: -36, base: 17.1, profile: far, tint: 0.32 },
-    { z: -27, base: 16.4, profile: near, tint: 0.58 },
+    { z: -36, base: 16.5, profile: far, tint: 0.28 },
+    { z: -27, base: 15.9, profile: near, tint: 0.5 },
   ];
   for (const L of layers) {
+    // Aerial perspective: the far layer is mostly sky, the near one mostly land.
     const top = new THREE.Color().copy(horizon).lerp(ground, L.tint);
-    // Keep a little of the sky's hue so the layers sit in the same air.
-    top.getHSL(HSL);
-    top.setHSL(HSL.h, Math.min(1, HSL.s * 0.85), HSL.l);
     const bottom = new THREE.Color().copy(top).lerp(horizon, 0.55);
     const yBottom = yForScreen(L.base - 3, L.z);
     for (let x = -42; x < 42; x += 0.5) {
-      const u0 = Math.min(21.5, L.base + L.profile(x, r));
-      const u1 = Math.min(21.5, L.base + L.profile(x + 0.5, r));
+      // Kept low: the sky must still show above them under the HUD.
+      const u0 = Math.min(21.5, L.base + 0.75 * L.profile(x, r));
+      const u1 = Math.min(21.5, L.base + 0.75 * L.profile(x + 0.5, r));
       const y0 = yForScreen(u0, L.z);
       const y1 = yForScreen(u1, L.z);
       pos.push(x, yBottom, L.z, x + 0.5, yBottom, L.z, x + 0.5, y1, L.z);

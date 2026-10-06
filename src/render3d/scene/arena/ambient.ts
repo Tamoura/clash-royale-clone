@@ -4,7 +4,7 @@
  * only writes a few uniforms per frame (no allocation, no buffer uploads).
  * Fireflies blink, snow falls, embers rise, sand drifts low, petals and
  * leaves tumble, stars twinkle. Counts scale with particleScale(); reduced
- * motion slows everything and stops the blinking.
+ * motion slows everything down.
  */
 import * as THREE from "three";
 import type { AmbientKind, ArenaLook } from "../../arenaLooks";

@@ -223,11 +223,11 @@ function castle(k: Kit): void {
   for (const x of [-0.5, 0, 0.5]) k.part("portcullis", box(0.07, 2.5, 0.06), 0x3a3a44, { x, y: 1.2, z: Z + 1.38 });
   for (const sx of [-1, 1]) {
     const x = sx * 2.5;
-    k.part("gate tower", cyl(1.05, 1.2, 4.6), stone, { x, y: 2.24, z: Z + 0.8 });
-    k.part("tower ring", cyl(1.25, 1.25, 0.4), stoneDk, { x, y: 4.7, z: Z + 0.8 });
-    k.part("tower roof", cone(1.45, 1.9), roof, { x, y: 5.85, z: Z + 0.8 });
-    k.part("flagpole", cyl(0.04, 0.04, 1, 4), wood, { x, y: 7.2, z: Z + 0.8 });
-    k.part("flag", box(0.7, 0.4, 0.04), TEAM, { x: x + 0.36, y: 7.45, z: Z + 0.8 }, { team: true });
+    k.part("gate tower", cyl(1.05, 1.2, 4.0), stone, { x, y: 1.94, z: Z + 0.8 });
+    k.part("tower ring", cyl(1.25, 1.25, 0.4), stoneDk, { x, y: 4.1, z: Z + 0.8 });
+    k.part("tower roof", cone(1.45, 1.7), roof, { x, y: 5.15, z: Z + 0.8 });
+    k.part("flagpole", cyl(0.04, 0.04, 1, 4), wood, { x, y: 6.4, z: Z + 0.8 });
+    k.part("flag", box(0.7, 0.4, 0.04), TEAM, { x: x + 0.36, y: 6.65, z: Z + 0.8 }, { team: true });
     k.part("tower window", box(0.24, 0.5, 0.05), 0xffc86b, { x, y: 3.1, z: Z + 1.98 }, { glow: true });
     // Two hanging banners flank the gate.
     k.part("banner", box(0.75, 1.9, 0.06), TEAM, { x: sx * 1.25, y: 2.2, z: Z + 1.34 }, { team: true });

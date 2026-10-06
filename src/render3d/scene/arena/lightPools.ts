@@ -37,8 +37,8 @@ export function poolIntensity(dayPhase: number, nightNative = false): number {
 }
 
 /** Pool peak opacity: well under the deploy overlay's read. */
-const POOL_OPACITY = 0.5;
-const HALO_OPACITY = 0.9;
+const POOL_OPACITY = 0.42;
+const HALO_OPACITY = 0.6;
 
 let radialTex: THREE.DataTexture | null = null;
 /** A shared soft radial falloff (white centre to clear edge). */
@@ -187,7 +187,7 @@ export class LightPools {
       M.compose(POS, FLAT, SCL);
       this.pools.setMatrixAt(i, M);
       POS.set(s.x * flip, s.y, s.z * flip);
-      SCL.setScalar(1.15 * k);
+      SCL.setScalar(0.85 * k);
       M.compose(POS, Q.identity(), SCL);
       this.halos.setMatrixAt(i, M);
     });

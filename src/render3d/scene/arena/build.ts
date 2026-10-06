@@ -33,7 +33,7 @@ interface ArenaArt {
 const ART = new WeakMap<Battle3D, ArenaArt>();
 
 /** Side stands stand this far out; in portrait they sit just off-frame. */
-const STAND_X = 11;
+const STAND_X = 11.25;
 /** The stands' field-side face: past this the crowd is off-screen. */
 const STAND_INNER_X = STAND_X - 0.8;
 

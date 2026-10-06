@@ -319,7 +319,7 @@ export function gradeSky(b: Battle3D, dt: number): void {
   rig.time += dt;
   followCamera(b, rig);
   const lit = poolIntensity(p, LOOK.nightPools);
-  for (const lamp of rig.bridgeLights) lamp.intensity = qualityIndex(b) === 0 ? 7 * lit : 0;
+  for (const lamp of rig.bridgeLights) lamp.intensity = qualityIndex(b) === 0 ? 3 * lit : 0;
   // Moon and stars: always over night-native sets, otherwise from dusk.
   const night = LOOK.nightPools ? 1 : lit;
   rig.stars.uniforms["uTime"].value = rig.time;

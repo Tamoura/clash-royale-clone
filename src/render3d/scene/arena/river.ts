@@ -127,12 +127,12 @@ const RIVER_FRAG = /* glsl */ `
       vec2 v = rVoronoi(p * vec2(1.1, 1.8) + 3.7);
       float crack = 1.0 - smoothstep(0.0, 0.045, v.y);
       float fr = rFbm(p * 2.2);
-      col = mix(uShallow, uDeep, clamp(0.35 + fr * 0.4 + (1.0 - across) * 0.3, 0.0, 1.0));
-      col = mix(col, vec3(1.0), crack * 0.6);
+      col = mix(uShallow, uDeep, clamp(0.45 + fr * 0.4 + (1.0 - across) * 0.35, 0.0, 1.0));
+      col = mix(col, vec3(1.0), crack * 0.45);
       float sweep = fract(p.x * 0.06 + p.y * 0.05 - t * 0.07);
       col += vec3(0.85, 0.93, 1.0) * smoothstep(0.0, 0.05, sweep) * (1.0 - smoothstep(0.05, 0.14, sweep)) * 0.4;
       col = mix(col, uSky, 0.1);
-      col = mix(col, vec3(1.0), smoothstep(0.8, 1.0, across) * 0.5);
+      col = mix(col, vec3(1.0), smoothstep(0.8, 1.0, across) * 0.35);
     } else if (uMode < 3.5) {
       float depth = 1.0 - across;
       col = mix(uShallow * 0.55, uDeep * 0.1, smoothstep(0.0, 0.75, depth));
