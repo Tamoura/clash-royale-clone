@@ -3,6 +3,8 @@ import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeom
 import type { CardId } from "../game/cards";
 import { loadChampion, normalizeChampion, type ChampionDef } from "../game/customcard";
 import { ARABIC, THEME } from "./theme";
+import { rigArchetype, type AttackStyle, type QuadGait, type Weight } from "./anim/archetypes";
+import { BASE_CADENCE, hopScale, legPhase, stepSquash } from "./anim/gait";
 
 /**
  * Chunky cel-shaded characters built from primitives — big heads,
@@ -241,23 +243,47 @@ const BROW_TILT: Record<Mood, number> = {
   cute: -0.18, // raised, innocent
 };
 
+/** Face options: `eyeScale` sizes the eyes (1.25 humanoids, 1 skeletons/robots). */
+export interface EyeOpts {
+  eyeScale?: number;
+}
+
+/** Eye size for humanoid faces: big toy eyes read at phone size. */
+export const HUMANOID_EYE_SCALE = 1.25;
+
 /**
  * Expressive face: white-sclera eyes with pupils, mood-angled brows,
- * and a simple mouth (smile for cute, line otherwise).
+ * and a simple mouth (smile for cute, line otherwise). Eye, pupil, brow
+ * and mouth stay separate named meshes: the face animation (blinks,
+ * squints, KO X-eyes) drives them individually.
  */
-function addEyes(head: Ctx3, r: number, spread = 0.38, up = 0.1, mood: Mood = "brave"): void {
+function addEyes(
+  head: Ctx3,
+  r: number,
+  spread = 0.38,
+  up = 0.1,
+  mood: Mood = "brave",
+  opts: EyeOpts = {},
+): void {
+  const k = opts.eyeScale ?? HUMANOID_EYE_SCALE;
+  // Radii grow with k; the depths keep each layer's front just ahead of
+  // the one behind it (rim < sclera < pupil), so nothing z-fights.
+  const rimR = r * round3(0.2 * k);
+  const eyeR = r * round3(0.17 * k);
+  const pupilR = r * round3(0.09 * k);
   for (const s of [-1, 1]) {
     // Dark rim so white sclera reads even on pale heads.
-    const rim = sphere(r * 0.2, 0x2b2333, s * r * spread, r * up, r * 0.78);
+    const rim = sphere(rimR, 0x2b2333, s * r * spread, r * up, r * 0.78);
     rim.name = "eyerim";
     head.add(rim);
-    const eye = sphere(r * 0.17, 0xffffff, s * r * spread, r * up, r * 0.82);
+    const eye = sphere(eyeR, 0xffffff, s * r * spread, r * up, r * (0.78 + 0.04 * k));
     eye.name = "eye";
     head.add(eye);
-    const pupil = sphere(r * 0.09, 0x1f2430, s * r * spread, r * up, r * 0.95);
+    const pupil = sphere(pupilR, 0x1f2430, s * r * spread, r * up, r * (0.78 + 0.17 * k));
     pupil.name = "pupil";
     head.add(pupil);
-    const brow = box(r * 0.3, r * 0.07, r * 0.07, 0x2b2118, s * r * spread, r * (up + 0.27), r * 0.86);
+    const browUp = up + 0.27 + 0.17 * (k - 1);
+    const brow = box(r * 0.3, r * 0.07, r * 0.07, 0x2b2118, s * r * spread, r * browUp, r * 0.86);
     brow.name = "brow";
     brow.rotation.z = -s * BROW_TILT[mood];
     head.add(brow);
@@ -278,6 +304,11 @@ function addEyes(head: Ctx3, r: number, spread = 0.38, up = 0.1, mood: Mood = "b
     if (mood === "angry" || mood === "wicked") mouth.rotation.z = 0.12;
     head.add(mouth);
   }
+}
+
+/** Stable geometry-cache keys for scaled face radii. */
+function round3(v: number): number {
+  return Math.round(v * 1000) / 1000;
 }
 
 /** Hip-pivot leg: group at the hip, limb hanging below. */
@@ -3259,70 +3290,210 @@ export function buildTroop(cardId: CardId): TroopRig {
   return rig;
 }
 
+/** Everything animateTroop reads; only the first four are required. */
+export interface AnimateOpts {
+  moving: boolean;
+  /**
+   * Signed attack swing: negative while cocking back (anticipation),
+   * 1 the instant a blow lands, decaying to 0 through the follow-through.
+   */
+  swing: number;
+  time: number;
+  phase: number;
+  /** Fully charged (e.g. the Prince): couch the weapon, lean in. */
+  charging?: boolean;
+  /** Strike pose (default: the rig's registered archetype, else a chop). */
+  style?: AttackStyle;
+  /** Weight class: scales the hop and waddle (default medium). */
+  weight?: Weight;
+  /** Four-legged leg order (default trot for four-legged rigs). */
+  quad?: QuadGait;
+  /** Walk-cycle angle in radians (default: time * 10 + phase). */
+  stride?: number;
+  /** Anticipation 0..1 (default: derived from a negative swing). */
+  windup?: number;
+  /** 1 between blows while engaged: a 2 Hz weapon bob and a weight shift. */
+  ready?: number;
+}
+
+/** The scale a rig was built at, remembered so per-frame squash never drifts. */
+function restScale(rig: TroopRig): number {
+  const ud = rig.group.userData as { restScale?: number };
+  if (ud.restScale === undefined) ud.restScale = rig.group.scale.x;
+  return ud.restScale;
+}
+
+/**
+ * The caster's orb (named 'orb'; older rigs get their glowing hand sphere
+ * tagged on first use) and its built scale. Cached per rig.
+ */
+const ORBS = new WeakMap<TroopRig, { mesh: THREE.Object3D; base: number } | null>();
+
+function orbOf(rig: TroopRig): { mesh: THREE.Object3D; base: number } | null {
+  let hit = ORBS.get(rig);
+  if (hit !== undefined) return hit;
+  let found: THREE.Object3D | null = rig.group.getObjectByName("orb") ?? null;
+  if (!found && rig.arm) {
+    rig.arm.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (found || !mesh.isMesh) return;
+      const geo = mesh.geometry as THREE.BufferGeometry & { type: string };
+      if ((mesh.material as THREE.Material).type === "MeshBasicMaterial" && geo.type === "SphereGeometry") {
+        found = mesh;
+      }
+    });
+    if (found) (found as THREE.Object3D).name = "orb";
+  }
+  hit = found ? { mesh: found, base: (found as THREE.Object3D).scale.x } : null;
+  ORBS.set(rig, hit);
+  return hit;
+}
+
+const TAU = Math.PI * 2;
+
 /**
  * Full character animation: walk cycle (legs swing, arms counter-sway,
  * body hops with squash & stretch), idle breathing, hover + wing flap
- * for flyers, and the attack swing with a forward lunge.
- * swing is 1 right after a hit, decaying to 0.
+ * for flyers, and the attack in the unit's own style — a chop's arc, a
+ * lance's lunge, a whirling spin, a gun's kickback, a caster's raised
+ * arms, a bruiser's overhead slam — with the ready stance between blows.
+ * Every channel is written absolutely each call, so the same inputs
+ * always give the same pose (a frozen unit holds perfectly still).
  */
-export function animateTroop(
-  rig: TroopRig,
-  opts: {
-    moving: boolean;
-    swing: number;
-    time: number;
-    phase: number;
-    /** Fully charged (e.g. the Prince): couch the weapon, lean in. */
-    charging?: boolean;
-  },
-): void {
+export function animateTroop(rig: TroopRig, opts: AnimateOpts): void {
   const t = opts.time;
-  const walk = Math.sin(t * 10 + opts.phase);
-  const baseScale = rig.group.scale.x;
+  const arch = rigArchetype(rig);
+  const style: AttackStyle = opts.style ?? arch?.attackStyle ?? "chop";
+  const weight: Weight = opts.weight ?? arch?.weight ?? "medium";
+  const legCount = rig.legs?.length ?? 0;
+  const quad = opts.quad ?? arch?.quad;
+  const stride = opts.stride ?? t * BASE_CADENCE + opts.phase;
+  const walk = Math.sin(stride);
+  const base = restScale(rig);
+  const g = rig.group;
+  const s = opts.swing;
+  const strike = s > 0 ? s : 0;
+  const wind = opts.windup ?? Math.min(1, Math.max(0, -s) / 0.7);
+  const ready = opts.moving ? 0 : (opts.ready ?? 0);
   const lean = opts.charging ? 0.16 : 0;
-  // Body english on a strike: wind-up twists away, the blow whips through.
-  const twist = opts.swing * 0.2;
+  const hopK = hopScale(weight);
+
+  // Body channels, built up below and written once at the end.
+  let posY = 0;
+  let pitch = 0;
+  let roll = 0;
+  let yaw = 0;
+  let fwd = 0; // body offset along facing (+z)
+  let sx = 1;
+  let sy = 1;
+  let sz = 1;
 
   if (rig.hover) {
     // Flyers bob on two mixed frequencies so the float never reads as a loop.
-    rig.group.position.y =
+    posY =
       rig.hover +
       Math.sin(t * 3 + opts.phase) * 0.1 +
       Math.sin(t * 4.7 + opts.phase * 1.3) * 0.035;
-    rig.group.rotation.x = (opts.moving ? 0.14 : 0) + opts.swing * 0.25 + lean;
-    rig.group.rotation.z = Math.sin(t * 2.1 + opts.phase) * 0.05; // lazy banking sway
-    rig.group.rotation.y = twist;
+    pitch = (opts.moving ? 0.14 : 0) + lean;
+    roll = Math.sin(t * 2.1 + opts.phase) * 0.05; // lazy banking sway
   } else if (opts.moving) {
     const hop = Math.abs(walk);
-    rig.group.position.y = hop * 0.09;
+    posY = hop * 0.09 * hopK;
     // Squash on landing, stretch at the top of the hop.
-    rig.group.scale.y = baseScale * (0.95 + hop * 0.09);
-    rig.group.rotation.x = 0.09 + opts.swing * 0.22 + lean;
+    sy = 0.95 + hop * 0.09;
+    // Heavies sink into every footfall.
+    const land = (1 - hop) * (1 - hop) * (1 - hop);
+    const sq = stepSquash(weight) * land;
+    sy -= sq;
+    sx = sz = 1 + sq * 0.5;
+    pitch = 0.09 + lean;
     // Waddle: the torso rolls onto each stride like a marching toy.
-    rig.group.rotation.z = walk * 0.07;
-    rig.group.rotation.y = twist;
+    roll = walk * 0.07 * hopK;
+    if (legCount === 4 && quad === "bound") pitch += Math.sin(stride + Math.PI / 2) * 0.07;
   } else {
-    // Idle: gentle breathing, squashing under a heavy strike.
-    rig.group.position.y = 0;
-    const squash = opts.swing > 0 ? opts.swing * 0.05 : 0;
-    rig.group.scale.y =
-      baseScale * (1 + Math.sin(t * 2.2 + opts.phase) * 0.012 - squash);
-    rig.group.rotation.x = opts.swing * 0.22 + lean;
-    // Alive at rest: a slow weight-shift instead of a frozen statue.
-    rig.group.rotation.z = Math.sin(t * 1.4 + opts.phase) * 0.02;
-    rig.group.rotation.y = twist;
+    // Idle: gentle breathing; a slow weight-shift instead of a statue.
+    sy = 1 + Math.sin(t * 2.2 + opts.phase) * 0.012;
+    pitch = lean;
+    roll = Math.sin(t * 1.4 + opts.phase) * 0.02;
+    if (ready > 0) {
+      // Ready stance: weight rocks foot to foot between blows.
+      roll += Math.sin(t * TAU + opts.phase) * 0.035 * ready;
+      posY += Math.abs(Math.sin(t * TAU + opts.phase)) * 0.015 * ready;
+    }
   }
 
+  // Attack body language per style.
+  let armX = rig.armRest - (opts.charging ? 0.55 : 0); // weapon couched for the charge
+  let offX = 0;
+  let offRaised = false;
+  switch (style) {
+    case "chop":
+      armX -= rig.swingAmp * s;
+      pitch += s * 0.22;
+      yaw = s * 0.2; // wind-up twists away, the blow whips through
+      if (!opts.moving && !rig.hover && strike > 0) sy -= strike * 0.05;
+      break;
+    case "thrust":
+      // The arm barely moves: the whole body lunges along the lance.
+      armX += 0.3 * wind - rig.swingAmp * 0.55 * strike;
+      fwd = 0.15 * strike - 0.06 * wind;
+      pitch += 0.12 * strike - 0.08 * wind;
+      yaw = s * 0.1;
+      break;
+    case "spin": {
+      // Coil away, then one full whirl through the strike, blade held out.
+      const strikeT = strike > 0.35 ? (1 - strike) / 0.65 : strike > 0 ? 1 : 0;
+      yaw = -0.6 * wind + TAU * strikeT;
+      armX -= rig.swingAmp * 0.55 * Math.min(1, strike * 3) - 0.35 * wind;
+      pitch += 0.05 * strike;
+      break;
+    }
+    case "shoot":
+      // Aim steady (no arm pitch); the shot kicks the body back.
+      fwd = -0.1 * strike;
+      pitch += -0.08 * strike + 0.04 * wind;
+      sy -= 0.06 * strike;
+      sx += 0.03 * strike;
+      sz += 0.03 * strike;
+      break;
+    case "cast":
+      // Both arms rise through the windup, then push the spell out.
+      armX -= 1.8 * wind + rig.swingAmp * 0.8 * strike;
+      offX = -1.6 * wind - 0.6 * strike;
+      offRaised = true;
+      pitch += -0.06 * wind + 0.1 * strike;
+      sy += 0.03 * wind;
+      break;
+    case "slam":
+      // Overhead heave with a stretch, then a crushing squash on impact.
+      armX += rig.swingAmp * 0.9 * wind - rig.swingAmp * 1.1 * strike;
+      offX = rig.swingAmp * 0.9 * wind - rig.swingAmp * 1.1 * strike;
+      offRaised = true;
+      pitch += -0.12 * wind + 0.18 * strike;
+      sy += 0.06 * wind - 0.12 * strike;
+      sx += -0.03 * wind + 0.06 * strike;
+      sz += -0.03 * wind + 0.06 * strike;
+      break;
+  }
+
+  g.position.y = posY;
+  g.position.z = fwd;
+  g.scale.set(base * sx, base * sy, base * sz);
+  g.rotation.x = pitch;
+  g.rotation.z = roll;
+  g.rotation.y = yaw;
+
   if (rig.legs) {
-    for (let i = 0; i < rig.legs.length; i++) {
-      const dir = i % 2 === 0 ? 1 : -1;
-      rig.legs[i].rotation.x = opts.moving ? walk * 0.7 * dir : 0;
+    for (let i = 0; i < legCount; i++) {
+      rig.legs[i].rotation.x = opts.moving
+        ? Math.sin(stride + legPhase(i, legCount, quad)) * 0.7
+        : 0;
     }
   }
   if (rig.offArm) {
     // Overlapping action: the free arm trails the leg cycle slightly.
-    const lagged = Math.sin(t * 10 + opts.phase - 0.55);
-    rig.offArm.rotation.x = opts.moving ? -lagged * 0.55 : 0;
+    const lagged = Math.sin(stride - 0.55);
+    rig.offArm.rotation.x = (opts.moving ? -lagged * 0.55 : 0) + (offRaised ? offX : 0);
   }
   if (rig.wings) {
     for (const wing of rig.wings) {
@@ -3331,10 +3502,15 @@ export function animateTroop(
   }
   if (rig.arm) {
     rig.arm.rotation.x =
-      rig.armRest -
-      rig.swingAmp * opts.swing +
-      (opts.moving ? walk * 0.3 : 0) -
-      (opts.charging ? 0.55 : 0); // weapon couched for the charge
+      armX +
+      (opts.moving ? walk * 0.3 : 0) +
+      Math.sin(t * 2 * TAU + opts.phase) * 0.08 * ready; // 2 Hz weapon bob
   }
+
+  // Idle quirks run last; the caster's orb swells through the windup on
+  // top of whatever pulse the quirk gives it.
+  const orb = style === "cast" ? orbOf(rig) : null;
+  if (orb) orb.mesh.scale.setScalar(orb.base);
   rig.extras?.(t, opts.phase);
+  if (orb && wind > 0) orb.mesh.scale.multiplyScalar(1 + 0.4 * wind);
 }
