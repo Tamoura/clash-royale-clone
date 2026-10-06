@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   GRACE_SEC,
+  LOG_TICKS,
   MATCH_TTL_MS,
   QUEUE_TTL_MS,
   RoomHub,
@@ -411,7 +412,36 @@ describe("RoomHub drop and resume", () => {
     expect(hub.relayFrame("host1", frame(0))).toEqual([]); // the stale socket is unbound
     expect(hub.relayFrame("host2", frame(0))).toHaveLength(1);
   });
+
+  it("keeps only the recent frames a resume can need, however long a match runs", () => {
+    const { hub, start } = match();
+    const cmd = [{ cardId: "knight" as CardId, side: "player" as const, x: 9, y: 9 }];
+    // A client flooding frames for 12 minutes' worth of ticks, peer silent.
+    const total = 12 * 60 * 30;
+    let longest = 0;
+    for (let t = 0; t < total; t++) {
+      hub.relayFrame("host1", frame(t, "player", cmd));
+      longest = Math.max(longest, logSize(hub));
+    }
+    expect(longest).toBeLessThanOrEqual(3 * LOG_TICKS);
+    hub.drop("guest1");
+    // A resume from a tick the log no longer covers would miss frames.
+    expect(msgFor(hub.resume("g2", "LION42", start.guest.token, -1), "g2")).toEqual({
+      t: "error",
+      reason: "resume-failed",
+    });
+    const out = hub.resume("g2", "LION42", start.guest.token, total - 10);
+    const resumed = msgFor(out, "g2");
+    if (resumed?.t !== "resumed") throw new Error("expected resumed");
+    expect(resumed.frames.map((f) => f.tick)).toEqual([...Array(9)].map((_, i) => total - 9 + i));
+  });
 });
+
+/** Frames held in the hub's only room (reaches past the private field for the memory bound). */
+function logSize(hub: RoomHub): number {
+  const rooms = (hub as unknown as { rooms: Map<string, { log: unknown[] }> }).rooms;
+  return [...rooms.values()][0].log.length;
+}
 
 describe("RoomHub sweep", () => {
   it("expires waiting rooms after 10 minutes", () => {

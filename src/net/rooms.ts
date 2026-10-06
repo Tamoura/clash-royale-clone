@@ -39,6 +39,15 @@ export const DEFAULT_DELAY = 4;
 const MAX_CODE_TRIES = 10;
 const RTT_SAMPLES = 5;
 const TICK_MS = 1000 / 30;
+/**
+ * Ticks of history a resume can need: the grace plus a margin. Lockstep keeps
+ * the two sides within a few ticks of each other, so a resuming player is
+ * never further behind than this. Older frames are trimmed, which bounds a
+ * room's memory however fast (or long) a client sends.
+ */
+export const LOG_TICKS = (GRACE_SEC + 10) * 30;
+/** Trim once the log holds this many frames (amortises the copy). */
+const LOG_TRIM_AT = 3 * LOG_TICKS;
 
 /**
  * Lockstep input delay (ticks) for two players' round-trip times: half the
@@ -71,8 +80,10 @@ interface Room {
   createdAt: number;
   startedAt: number;
   delay: number;
-  /** Every relayed frame of the current match, for resumes. */
+  /** Recent relayed frames of the current match, for resumes. */
   log: InputFrame[];
+  /** Highest tick trimmed from the log; a resume from before it would miss frames. */
+  logFloor: number;
   rematch: Set<Role>;
 }
 
@@ -130,6 +141,7 @@ export class RoomHub {
       startedAt: now,
       delay: DEFAULT_DELAY,
       log: [],
+      logFloor: -1,
       rematch: new Set(),
     });
     this.connRoom.set(conn, code);
@@ -173,6 +185,7 @@ export class RoomHub {
       startedAt: this.deps.now(),
       delay: DEFAULT_DELAY,
       log: [],
+      logFloor: -1,
       rematch: new Set(),
     };
     this.rooms.set(code, room);
@@ -216,7 +229,8 @@ export class RoomHub {
    * Forward a frame to the peer. The sender's role decides the side (a client
    * cannot speak for the other player), ticks must advance within
    * {@link TICK_WINDOW}, and commands for cards outside the sender's deck are
-   * dropped. Accepted frames are logged for resumes.
+   * dropped. Accepted frames are logged for resumes; only the last
+   * {@link LOG_TICKS} ticks are kept.
    */
   relayFrame(conn: string, frame: InputFrame): Outbound[] {
     const at = this.locate(conn);
@@ -235,6 +249,7 @@ export class RoomHub {
     if (frame.emotes && frame.emotes.length > 0) clean.emotes = [...frame.emotes];
     seat.lastTick = frame.tick;
     room.log.push(clean);
+    if (room.log.length >= LOG_TRIM_AT) trimLog(room);
     const peer = at.peer?.conn;
     return peer ? [{ to: peer, msg: { t: "frame", frame: clean } }] : [];
   }
@@ -311,7 +326,8 @@ export class RoomHub {
     const room = this.rooms.get(code);
     const role: Role | null =
       room?.host.token === token ? "host" : room?.guest?.token === token ? "guest" : null;
-    if (!room || !room.guest || role === null) {
+    // Frames before the trimmed floor are gone, so that client could not catch up.
+    if (!room || !room.guest || role === null || haveTick < room.logFloor) {
       return [{ to: conn, msg: { t: "error", reason: "resume-failed" } }];
     }
     const out = this.connRoom.get(conn) === code ? [] : this.leave(conn);
@@ -371,6 +387,7 @@ export class RoomHub {
     const guest = room.guest!;
     room.startedAt = this.deps.now();
     room.log = [];
+    room.logFloor = -1;
     room.rematch.clear();
     room.host.lastTick = -1;
     guest.lastTick = -1;
@@ -453,6 +470,17 @@ export class RoomHub {
   private peerOf(conn: string): string | null {
     return this.locate(conn)?.peer?.conn ?? null;
   }
+}
+
+/**
+ * Drop frames more than {@link LOG_TICKS} behind the leading side. Ticks are
+ * strictly increasing per side, so each side keeps at most LOG_TICKS frames.
+ */
+function trimLog(room: Room): void {
+  const cutoff = Math.max(room.host.lastTick, room.guest?.lastTick ?? -1) - LOG_TICKS;
+  if (cutoff <= room.logFloor) return;
+  room.log = room.log.filter((f) => f.tick > cutoff);
+  room.logFloor = cutoff;
 }
 
 function base16(rng: () => number, len: number): string {
