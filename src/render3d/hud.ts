@@ -448,15 +448,17 @@ export class Hud {
     const label = this.cb.opponentLabel?.() ?? null;
     const foeName = label?.name || this.opponentName || tr("Bot", "الروبوت");
     this.enemyName.textContent = foeName;
-    if (label?.crest !== undefined && label.crest >= 0 && label.crest < 12) {
-      this.enemyBadge.innerHTML = icon(`crest-${label.crest as CrestIndex}`);
+    const crest = label?.crest;
+    if (crest !== undefined && Number.isInteger(crest) && crest >= 0 && crest < 12) {
+      this.enemyBadge.innerHTML = icon(`crest-${crest as CrestIndex}`);
       this.enemyBadge.classList.remove("text");
+      this.enemyBadge.hidden = false;
     } else {
+      // No crest: the arena number in a ring, or nothing at all.
       this.enemyBadge.textContent = label?.badge ?? "";
       this.enemyBadge.classList.add("text");
       this.enemyBadge.hidden = !label?.badge;
     }
-    if (label?.crest !== undefined) this.enemyBadge.hidden = false;
     this.setTrophies(this.enemyTrophies, label?.trophies ?? null);
     this.playerCrownsWrap.setAttribute("aria-label", tr(`${this.playerName.textContent}: crowns`, `${this.playerName.textContent}: التيجان`));
     this.enemyCrownsWrap.setAttribute("aria-label", tr(`${foeName}: crowns`, `${foeName}: التيجان`));
@@ -524,8 +526,8 @@ export class Hud {
       this.elixirBar.classList.toggle("x2", m.mult !== "");
     }
     if (m.leak !== p?.leak) {
-      this.elixirBar.classList.toggle("leak", m.leak);
-      this.elixirNum.classList.toggle("leak", m.leak);
+      // One class on the row drives both the bar and the droplet pulse.
+      this.elixirRow.classList.toggle("leak", m.leak);
       if (m.leak && p) this.cb.onElixirLeak?.();
     }
 

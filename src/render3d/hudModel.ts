@@ -141,14 +141,14 @@ export class TowerDamageTracker {
   readonly bySide: TowerDamage = { player: {}, enemy: {} };
   private readonly hp = new Map<number, number>();
   private recent: { tower: number; side: Side; cardId: CardId; t: number }[] = [];
-  private towers: Entity[] = [];
+  private readonly towers: Entity[] = [];
 
   reset(): void {
     this.bySide.player = {};
     this.bySide.enemy = {};
     this.hp.clear();
     this.recent = [];
-    this.towers = [];
+    this.towers.length = 0;
   }
 
   /** Feed a battle event (call before observe() for the same frame). */
@@ -172,20 +172,24 @@ export class TowerDamageTracker {
   /** Compare tower HP with the last frame and credit each drop. */
   observe(state: BattleState): void {
     const time = state.time;
-    this.recent = this.recent.filter((r) => time - r.t <= ATTACKER_WINDOW);
-    const alive = new Set<number>();
-    this.towers = state.entities.filter(isTower);
+    if (this.recent.length && time - this.recent[0].t > ATTACKER_WINDOW) {
+      this.recent = this.recent.filter((r) => time - r.t <= ATTACKER_WINDOW);
+    }
+    // Runs every frame: reuse the arrays, allocate nothing on a quiet frame.
+    this.towers.length = 0;
+    for (const e of state.entities) if (isTower(e)) this.towers.push(e);
     for (const t of this.towers) {
-      alive.add(t.id);
       const before = this.hp.get(t.id);
       if (before !== undefined && t.hp < before) this.credit(t.id, before - t.hp);
       this.hp.set(t.id, t.hp);
     }
-    // A tower that vanished lost the rest of its HP.
-    for (const [id, before] of this.hp) {
-      if (alive.has(id)) continue;
-      if (before > 0) this.credit(id, before);
-      this.hp.delete(id);
+    if (this.hp.size > this.towers.length) {
+      // A tower that vanished lost the rest of its HP.
+      for (const [id, before] of this.hp) {
+        if (this.towers.some((t) => t.id === id)) continue;
+        if (before > 0) this.credit(id, before);
+        this.hp.delete(id);
+      }
     }
   }
 
