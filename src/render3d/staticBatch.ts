@@ -26,7 +26,8 @@ export interface BatchOptions {
    * node, never across group boundaries, so animated groups keep moving
    * their own parts. A part's ink-outline hulls (children named "outline")
    * merge into one hull per node along with it; named meshes (eye, team...)
-   * and meshes with any other children stay as they are.
+   * other than joint balls, and meshes with any other children, stay as
+   * they are.
    */
   local?: boolean;
 }
@@ -209,9 +210,13 @@ export function batchStatic(
   return removed;
 }
 
-/** A rig part local mode may merge: unnamed, and with only outline hulls under it. */
+/**
+ * A rig part local mode may merge: unnamed (or one of articulate()'s joint
+ * balls, which only ever move with their limb), with only outline hulls
+ * under it.
+ */
 function localEligible(o: THREE.Object3D): o is THREE.Mesh {
-  if (!eligible(o) || o.name !== "") return false;
+  if (!eligible(o) || (o.name !== "" && !o.name.startsWith("joint-"))) return false;
   return o.children.every((c) => c.name === "outline" && eligible(c) && c.children.length === 0);
 }
 

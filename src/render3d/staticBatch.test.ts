@@ -182,7 +182,9 @@ describe("root-local batching (rigs)", () => {
     body.add(team);
     const arm = new THREE.Group();
     arm.position.set(0.4, 0.8, 0);
-    arm.add(part(0xffcc99, 0, -0.1), part(0x888888, 0, -0.4));
+    const shoulder = part(0xffcc99, 0, 0);
+    shoulder.name = "joint-shoulder"; // articulate()'s balls move with their limb
+    arm.add(part(0xffcc99, 0, -0.1), part(0x888888, 0, -0.4), shoulder);
     body.add(arm);
     return { body, arm, head, eye, outline };
   }
