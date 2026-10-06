@@ -197,6 +197,7 @@
 /* Setup chip row under the Battle button */
 .v2-setup-row {
   position: relative;
+  overflow: visible;
   display: flex;
   align-items: center;
   gap: var(--sp-1);
@@ -204,7 +205,6 @@
   min-height: 48px;
   padding: var(--sp-1);
   padding-inline-end: var(--sp-1);
-  overflow: hidden;
   border: 2px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--r-pill);
   background: rgba(4, 10, 32, 0.5);
@@ -239,10 +239,19 @@
   background: var(--accent);
 }
 .v2-setup-more .ui-icon { width: 22px; height: 22px; }
-.v2-setup-row .v2-new {
+.v2-setup-chip.is-icon { padding: 6px 8px; }
+.v2-setup-more { position: relative; }
+.v2-setup-more.has-new::after {
+  content: "";
   position: absolute;
-  top: 2px;
-  inset-inline-end: 34px;
+  top: -1px;
+  inset-inline-end: -1px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: v2Bob 1.6s ease-in-out infinite;
 }
 .v2-setup-holder { width: 100%; }
 
@@ -1252,7 +1261,8 @@
   position: absolute;
   inset: 7px 2px;
   border-radius: var(--r-pill);
-  background: var(--surface-3);
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.14);
   transition: background var(--dur-fast) var(--ease-out);
 }
 .v2-switch::after {
@@ -1436,6 +1446,7 @@
   content: "";
   position: absolute;
   inset: 0;
+  opacity: 0.55;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 44 44'%3E%3Cg fill='none' stroke='%23e8c060' stroke-opacity='0.16' stroke-width='1.3' stroke-linejoin='round'%3E%3Crect x='12' y='12' width='20' height='20'/%3E%3Cpath d='M22 7.9 36.1 22 22 36.1 7.9 22z'/%3E%3C/g%3E%3C/svg%3E");
 }
 .v2-skyline {

@@ -151,9 +151,12 @@ export function toastNewUnlocks(ctx: AppCtx): void {
   const due = pendingToasts(state, arena);
   if (due.length === 0) return;
   saveSeen(st, markToasted(state, due));
-  due.forEach((f, i) => {
-    const [en, ar] = FEATURE_LABEL[f];
-    window.setTimeout(() => toast(ctx.tr(`Unlocked: ${en}!`, `فُتح: ${ar}!`), "accent"), 500 + i * 700);
+  // Up to two arrive one by one; a bigger jump is summed up in one toast.
+  const groups: Feature[][] = due.length <= 2 ? due.map((f) => [f]) : [due];
+  groups.forEach((fs, i) => {
+    const en = fs.map((f) => FEATURE_LABEL[f][0]).join(", ");
+    const ar = fs.map((f) => FEATURE_LABEL[f][1]).join("، ");
+    window.setTimeout(() => toast(ctx.tr(`Unlocked: ${en}!`, `فُتح: ${ar}!`), "accent"), 500 + i * 900);
   });
 }
 

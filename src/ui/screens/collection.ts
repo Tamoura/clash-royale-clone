@@ -105,7 +105,7 @@ export function cardTile(ctx: AppCtx, id: CardId, onTap: () => void): HTMLButton
     lock.className = "v2-tile-lock" + (findable ? " is-findable" : "");
     lock.innerHTML = icon(findable ? "chest" : "lock");
     const t = document.createElement("span");
-    t.textContent = findable ? tr("In chests", "في الصناديق") : arenaLabel(ctx, where.index);
+    t.textContent = findable ? tr("In chests", "صناديق") : arenaLabel(ctx, where.index);
     lock.appendChild(t);
     b.appendChild(lock);
     b.setAttribute("aria-label", tr(`${name}, not found yet. ${t.textContent}`, `${name}، لم تُعثر عليها بعد. ${t.textContent}`));
@@ -119,12 +119,13 @@ export function buildCollectionGroups(ctx: AppCtx, host: HTMLElement, redraw: ()
   const { tr, meta } = ctx;
   const owned = new Set(meta.profile.owned);
   const found = DECK.filter((id) => owned.has(id));
-  const locked = DECK.filter((id) => !owned.has(id)).sort((a, b) => unlockArena(a).index - unlockArena(b).index);
+  // The champion is made in the Studio, never found: it is not "locked".
+  const locked = DECK.filter((id) => !owned.has(id) && id !== "champion").sort((a, b) => unlockArena(a).index - unlockArena(b).index);
   const open = (id: CardId): void => openCardInfo(ctx, id, { onChange: redraw });
 
   const count = document.createElement("span");
   count.className = "v2-count";
-  count.textContent = `${fmtNum(found.length)} / ${fmtNum(DECK.length)}`;
+  count.textContent = `${fmtNum(found.length)} / ${fmtNum(found.length + locked.length)}`;
   const f = section(tr("Found", "مكتشفة"), count);
   f.el.classList.add("v2-found");
   const fg = document.createElement("div");

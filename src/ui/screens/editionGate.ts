@@ -94,16 +94,16 @@ const CREST: Record<GameVariant, string> = {
 
 const SKYLINE: Record<GameVariant, string> = {
   clash:
-    `<svg class="v2-skyline" viewBox="0 0 200 80" preserveAspectRatio="xMidYMax slice" aria-hidden="true">` +
-    `<path fill="#16244a" d="M0 80V52h12v-6h6v6h8v-6h6v6h8V28h4v-6h6v6h4v-6h6v6h4v24h12V26L100 12l24 14v26h12V28h4v-6h6v6h4v-6h6v6h4v24h8v-6h6v6h8v-6h6v6h12v28z"/>` +
-    `<path fill="#0b142e" d="M92 80V67a8 8 0 0 1 16 0v13zM47 40h4v6h-4zM149 40h4v6h-4zM98 30h4v7h-4z"/>` +
-    `<path fill="none" stroke="#16244a" stroke-width="2" d="M100 13V1"/><path fill="#e8413b" d="M101 1l11 3.5-11 3.5z"/>` +
+    `<svg class="v2-skyline" viewBox="0 0 120 90" preserveAspectRatio="xMidYMax slice" aria-hidden="true">` +
+    `<path fill="#16244a" d="M0 90V62h4V40h3v-5h4v5h3v-5h4v5h3v22h19V34l20-18 20 18v28h19V40h3v-5h4v5h3v-5h4v5h3v22h4v28z"/>` +
+    `<path fill="#0b142e" d="M52 90V78a8 8 0 0 1 16 0v12zM10 48h4v6h-4zM106 48h4v6h-4zM58 38h4v7h-4z"/>` +
+    `<path fill="none" stroke="#16244a" stroke-width="1.6" d="M60 17V4"/><path fill="#e8413b" d="M61 4l10 3.5-10 3.5z"/>` +
     `</svg>`,
   islamic:
-    `<svg class="v2-skyline" viewBox="0 0 200 80" preserveAspectRatio="xMidYMax slice" aria-hidden="true">` +
-    `<path fill="#05303a" d="M0 80V70h14V30h-3l5-12 5 12h-3v40h37V56h8c0-16 14-28 37-40 23 12 37 24 37 40h8v14h20V60c0-8 7-13 13-16 6 3 13 8 13 16v10h-3V26h-3l5-12 5 12h-3v54z"/>` +
-    `<path fill="#e8c060" d="M102 10.5a3.5 3.5 0 1 0 0 5 2.6 2.6 0 1 1 0-5z"/>` +
-    `<path fill="#021c24" d="M92 80V68a8 8 0 0 1 16 0v12zM70 62a4 4 0 0 1 8 0v8h-8zM122 62a4 4 0 0 1 8 0v8h-8z"/>` +
+    `<svg class="v2-skyline" viewBox="0 0 120 90" preserveAspectRatio="xMidYMax slice" aria-hidden="true">` +
+    `<path fill="#05303a" d="M0 90V80h8V36H6l6-14 6 14h-2v44h14V62h4c0-18 12-30 26-40 14 10 26 22 26 40h4v18h14V36h-2l6-14 6 14h-2v44h8v10z"/>` +
+    `<path fill="#e8c060" d="M62 11a4 4 0 1 0 0 6.5 3.2 3.2 0 1 1 0-6.5z"/>` +
+    `<path fill="#021c24" d="M54 90V78a6 6 0 0 1 12 0v12zM38 90v-9a3 3 0 0 1 6 0v9zM76 90v-9a3 3 0 0 1 6 0v9zM10.5 44h3v5h-3zM106.5 44h3v5h-3z"/>` +
     `</svg>`,
 };
 

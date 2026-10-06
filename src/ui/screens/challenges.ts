@@ -45,8 +45,8 @@ export function openChallenges(ctx: AppCtx): void {
         row.appendChild(info);
         const play = button({
           variant: cleared ? "secondary" : "cta",
-          icon: cleared ? "play" : "coin",
-          label: cleared ? tr("Replay", "أعد اللعب") : tr(`Play · +${fmtNum(ch.goldReward)}`, `العب · +${fmtNum(ch.goldReward)}`),
+          icon: "play",
+          label: cleared ? tr("Replay", "أعد اللعب") : tr(`Play · +${fmtNum(ch.goldReward)} gold`, `العب (+${fmtNum(ch.goldReward)} ذهب)`),
           ariaLabel: cleared
             ? tr(`Replay challenge ${ch.name}`, `أعد تحدي ${ch.nameAr}`)
             : tr(`Play challenge ${ch.name} for ${ch.goldReward} gold`, `العب تحدي ${ch.nameAr} مقابل ${ch.goldReward} ذهب`),

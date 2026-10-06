@@ -125,20 +125,24 @@ export function setupChipRow(ctx: AppCtx, onChange: () => void): HTMLButtonEleme
   row.type = "button";
   row.className = "v2-setup-row";
   row.setAttribute("aria-label", tr("Battle setup: difficulty, mode and loadout", "إعداد المعركة: الصعوبة والنمط والتجهيز"));
-  const chip = (ic: IconName, text: string): string =>
-    `<span class="v2-setup-chip">${icon(ic)}<span>${escapeHtml(text)}</span></span>`;
+  const chip = (ic: IconName, text: string, iconOnly = false): string =>
+    iconOnly
+      ? `<span class="v2-setup-chip is-icon" title="${escapeHtml(text)}">${icon(ic)}</span>`
+      : `<span class="v2-setup-chip">${icon(ic)}<span>${escapeHtml(text)}</span></span>`;
   let html = chip("gauge", difficultyLabel(ctx, meta.difficulty)) + chip(modeIcon(meta.gameMode), modeLabel(ctx, meta.gameMode));
+  // Loadout picks show as icons, so the row never truncates.
   if (isUnlocked(ctx, "towerTroops")) {
     const t = TOWER_TROOPS[meta.towerTroop];
-    html += chip(TOWER_ICON[meta.towerTroop], tr(t.name, t.ar));
+    html += chip(TOWER_ICON[meta.towerTroop], tr(t.name, t.ar), true);
   }
   if (isUnlocked(ctx, "abilities")) {
     const a = ABILITIES[meta.abilityChoice];
-    html += chip(ABILITY_ICON[meta.abilityChoice], tr(a.name, a.ar));
+    html += chip(ABILITY_ICON[meta.abilityChoice], tr(a.name, a.ar), true);
   }
-  html += `<span class="v2-setup-more">${icon("sliders")}</span>`;
+  const fresh = SETUP_FEATURES.some((f) => isFeatureNew(ctx, f));
+  html += `<span class="v2-setup-more${fresh ? " has-new" : ""}">${icon("sliders")}</span>`;
   row.innerHTML = html;
-  if (SETUP_FEATURES.some((f) => isFeatureNew(ctx, f))) row.appendChild(newBadge(ctx));
+  if (fresh) row.setAttribute("aria-description", tr("New options unlocked", "خيارات جديدة مفتوحة"));
   row.addEventListener("click", () => {
     sfx(ctx, "uiTap");
     openBattleSetup(ctx, onChange);
