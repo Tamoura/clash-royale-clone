@@ -97,6 +97,20 @@ function trackTeam(entry: TeamLive): void {
 }
 
 /**
+ * The team a unit WEARS, relative to the viewer: "player" (blue, plain
+ * disc, green HP, bar only once hurt) always means yours and "enemy"
+ * (red or orange, notched disc, bar always on) your opponent, also for an
+ * online guest who plays the sim's "enemy" side. Every team cue built
+ * here (rig parts, disc, HP fill, name tint, level shield) goes through
+ * it, so colour and the notch can never disagree with the HP-bar rule.
+ * viewSide is set before the scene resets, so views are built with the
+ * final viewpoint.
+ */
+export function teamSide(side: Side): Side {
+  return side === viewSide ? "player" : "enemy";
+}
+
+/**
  * HP fill for troops and buildings: the classic green-for-yours and
  * red-for-theirs, or the colour-blind blue/orange team pair (green and
  * orange collide under deuteranopia).
@@ -228,8 +242,12 @@ function drawLevelBadge(b: LevelBadge, palette: TeamPalette): void {
   b.tex.needsUpdate = true;
 }
 
-/** CR-style level shield capping an HP bar (towers and troops). */
-export function makeLevelBadge(side: Side, level = 9): THREE.Sprite {
+/**
+ * CR-style level shield capping an HP bar (towers and troops). `simSide`
+ * is the entity's sim side; the shield wears the viewer-relative team.
+ */
+export function makeLevelBadge(simSide: Side, level = 9): THREE.Sprite {
+  const side = teamSide(simSide);
   const key = `${side}:${level}`;
   let badge = levelBadges.get(key);
   if (!badge) {
@@ -429,13 +447,14 @@ export function buildTombstoneMesh(e: Entity): EntityView {
   glowOrb.position.set(0, 1.02, 0.02);
   root.add(glowOrb);
 
-  const bar = makeHpBar(1.4, unitHpColor(e.side), 1.6);
+  const team = teamSide(e.side);
+  const bar = makeHpBar(1.4, unitHpColor(team), 1.6);
   root.add(bar.group);
-  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
+  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, team));
   label.scale.set(2.0, 0.5, 1);
   label.position.y = 1.95;
   root.add(label);
-  trackTeam({ root, side: e.side, hpFill: bar.fill });
+  trackTeam({ root, side: team, hpFill: bar.fill });
   return {
     root,
     rig: null,
@@ -483,13 +502,14 @@ export function buildCollectorMesh(e: Entity): EntityView {
   drop.position.y = 1.25;
   root.add(drop);
 
-  const bar = makeHpBar(1.4, unitHpColor(e.side), 1.7);
+  const team = teamSide(e.side);
+  const bar = makeHpBar(1.4, unitHpColor(team), 1.7);
   root.add(bar.group);
-  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
+  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, team));
   label.scale.set(2.0, 0.5, 1);
   label.position.y = 2.05;
   root.add(label);
-  trackTeam({ root, side: e.side, hpFill: bar.fill });
+  trackTeam({ root, side: team, hpFill: bar.fill });
   return {
     root,
     rig: null,
@@ -531,13 +551,14 @@ export function buildBuildingMesh(e: Entity): EntityView {
   barrel.add(breech);
   root.add(barrel);
 
-  const bar = makeHpBar(1.4, unitHpColor(e.side), 1.15);
+  const team = teamSide(e.side);
+  const bar = makeHpBar(1.4, unitHpColor(team), 1.15);
   root.add(bar.group);
-  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
+  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, team));
   label.scale.set(2.0, 0.5, 1);
   label.position.y = 1.5;
   root.add(label);
-  trackTeam({ root, side: e.side, hpFill: bar.fill });
+  trackTeam({ root, side: team, hpFill: bar.fill });
   return {
     root,
     rig: null,
@@ -554,6 +575,7 @@ export function buildBuildingMesh(e: Entity): EntityView {
 
 export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
   const root = new THREE.Group();
+  const team = teamSide(e.side);
 
   // Real glTF model (KayKit) when this card has one; else the primitive rig.
   const glbUnit = glb?.hasGlbModel(e.cardId!) ? glb.makeGlbUnit(e.cardId!) : null;
@@ -563,7 +585,7 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
     root.add(glbUnit.group);
     lift = glbUnit.height;
   } else {
-    rig = buildTroop(e.cardId!, e.side);
+    rig = buildTroop(e.cardId!, team);
     // CR readability comes from silhouette CONTRAST: tanks tower, swarm
     // units stay small, everyone else sits between.
     const scale =
@@ -581,13 +603,13 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
   // Bold team disc: at phone size this is the primary "whose unit is
   // that" read, so it has to pop off grass and cream tile alike. Enemy
   // discs are notched, so the side also reads by shape.
-  const disc = makeTeamDisc(e.side, e.radius);
+  const disc = makeTeamDisc(team, e.radius);
   root.add(disc);
 
   // Name chip so cards are tellable apart mid-fight. The caller labels
   // only one unit per deployed group — a flock gets one label, not three.
   if (withLabel) {
-    const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
+    const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, team));
     label.name = "unitLabel";
     label.scale.set(1.7, 0.42, 1);
     label.position.y = lift + 0.62;
@@ -620,10 +642,10 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
   // the shadow-map pass for ~40 parts per unit halves a busy fight's cost.
   root.traverse((o) => (o.castShadow = false));
 
-  const bar = makeHpBar(0.9, unitHpColor(e.side), lift + 0.25);
-  bar.group.visible = e.side !== viewSide; // opponents always; yours once damaged
+  const bar = makeHpBar(0.9, unitHpColor(team), lift + 0.25);
+  bar.group.visible = team === "enemy"; // opponents always; yours once damaged
   root.add(bar.group);
-  trackTeam({ root, side: e.side, disc, hpFill: bar.fill });
+  trackTeam({ root, side: team, disc, hpFill: bar.fill });
 
   const deploy = spawnRecipe(e.cardId);
   return {
@@ -652,7 +674,7 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
  */
 export function hpBarVisible(view: EntityView, e: Entity): boolean {
   return (
-    view.hpGroup.visible || (e.kind === "troop" && (e.side !== viewSide || e.hp < e.maxHp))
+    view.hpGroup.visible || (e.kind === "troop" && (teamSide(e.side) === "enemy" || e.hp < e.maxHp))
   );
 }
 

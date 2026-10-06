@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import type { Entity } from "../../../game/battle";
-import { TEAM } from "../../teamColors";
-import { HP_COLOR, type EntityView } from "../common";
-import { hpBarVisible, unitHpColor } from "./troops";
+import { TEAM, isTeamPart } from "../../teamColors";
+import { HP_COLOR, setViewSide, type EntityView } from "../common";
+import { buildTroopMesh, hpBarVisible, teamSide, unitHpColor } from "./troops";
 
 function view(visible = false): EntityView {
   const hpGroup = new THREE.Group();
@@ -36,5 +36,51 @@ describe("troop HP bars", () => {
     expect(unitHpColor("enemy", "default")).toBe(HP_COLOR.enemy);
     expect(unitHpColor("player", "cb")).toBe(TEAM.cb.player.main);
     expect(unitHpColor("enemy", "cb")).toBe(TEAM.cb.enemy.main);
+  });
+});
+
+describe("viewer-relative team (online guest)", () => {
+  it("the host sees sim sides as they are", () => {
+    expect(teamSide("player")).toBe("player");
+    expect(teamSide("enemy")).toBe("enemy");
+  });
+
+  it("a guest wears blue on their own units and bars the host's", () => {
+    setViewSide("enemy");
+    try {
+      // The guest's own units (sim 'enemy') wear the player team: blue,
+      // plain disc, bar only once hurt; the host's wear the opponent team.
+      expect(teamSide("enemy")).toBe("player");
+      expect(teamSide("player")).toBe("enemy");
+      expect(hpBarVisible(view(), troop("player"))).toBe(true);
+      expect(hpBarVisible(view(), troop("enemy"))).toBe(false);
+      expect(hpBarVisible(view(), troop("enemy", 99))).toBe(true);
+    } finally {
+      setViewSide("player");
+    }
+  });
+
+  it("a guest's own knight is built in the player team colour", () => {
+    // Node test env: a no-op 2D canvas for the shared contact-shadow texture.
+    const ctx = new Proxy({}, { get: () => () => ({ addColorStop() {} }), set: () => true });
+    vi.stubGlobal("document", {
+      createElement: () => ({ width: 0, height: 0, getContext: () => ctx }),
+    });
+    setViewSide("enemy");
+    try {
+      const e = { ...troop("enemy"), cardId: "knight", radius: 0.5 } as Entity;
+      const v = buildTroopMesh(e, false);
+      const colours = new Set<number>();
+      v.root.traverse((o) => {
+        if (isTeamPart(o) && o.userData.team === "main") {
+          colours.add(((o as THREE.Mesh).material as THREE.MeshToonMaterial).color.getHex());
+        }
+      });
+      expect(colours).toEqual(new Set([TEAM.default.player.main]));
+      expect(v.hpGroup.visible).toBe(false);
+    } finally {
+      setViewSide("player");
+      vi.unstubAllGlobals();
+    }
   });
 });
