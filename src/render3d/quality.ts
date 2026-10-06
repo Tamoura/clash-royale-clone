@@ -33,6 +33,14 @@ export const WARMUP = 5;
 /** A step must cut the average frame time by at least this share to stay. */
 export const MIN_GAIN = 0.12;
 
+/**
+ * Multiplier for particle counts at the current quality (contract stub:
+ * always 1 until the render-quality work scales effects per device).
+ */
+export function particleScale(): number {
+  return 1;
+}
+
 export type QualityPin = "auto" | "high" | "low";
 
 export function qualityPinFromUrl(search: string): QualityPin {

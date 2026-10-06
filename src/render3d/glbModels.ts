@@ -3,6 +3,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { ARABIC } from "./theme";
+import { MODELS_KEY, kaykitOptIn } from "./modelsOptIn";
 
 /**
  * Real rigged character models (CC0 KayKit), loaded as glTF and animated with
@@ -20,18 +21,10 @@ interface LoadedGlb {
  * (audited for distinct silhouettes and colours) unless the player opts in
  * to the KayKit models with `?models=kaykit` (remembered). The free packs
  * only cover 13 humanoid cards, so mixing them in split the field into two
- * styles — and cost ~27 MB of downloads on every visit.
+ * styles — and cost ~27 MB of downloads on every visit. The scene imports
+ * this module dynamically, only after that opt-in (see modelsOptIn.ts).
  */
-export const MODELS_KEY = "cr-clone-models";
-function kaykitOptIn(): boolean {
-  try {
-    const q = new URLSearchParams(location.search).get("models");
-    if (q === "kaykit" || q === "rigs") localStorage.setItem(MODELS_KEY, q);
-    return localStorage.getItem(MODELS_KEY) === "kaykit";
-  } catch {
-    return false; // node / no storage: the rig roster
-  }
-}
+export { MODELS_KEY };
 const USE_KAYKIT = kaykitOptIn();
 
 const loaded = new Map<string, LoadedGlb>();
