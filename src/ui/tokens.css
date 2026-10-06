@@ -185,6 +185,8 @@
   --accent-ink: #2a1806;
   --cta: #f5b52e;
   --cta-ink: #2a1806;
+  --primary: #2a72d4;
+  --primary-ink: #ffffff;
   --success: #34c759;
   --danger: #ef4444;
   /* Team colours carry gameplay meaning and never change per edition;
@@ -193,6 +195,7 @@
   --team-enemy: #e53935;
   --team-player-cb: #2f80ff;
   --team-enemy-cb: #ff8a00;
+  --scrim: rgba(3, 7, 16, 0.62);
 
   /* CR text: white, dark outline, hard drop. */
   --cr-outline:
@@ -213,8 +216,11 @@
   --accent-ink: #1f1604;
   --cta: #caa23f;
   --cta-ink: #1f1604;
+  --primary: #13827e;
+  --primary-ink: #ffffff;
   --success: #3ccf8e;
   --danger: #f05252;
+  --scrim: rgba(2, 14, 18, 0.64);
   --tracking: 0;
 }
 
