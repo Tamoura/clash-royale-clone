@@ -121,6 +121,7 @@ export class DecalLayer {
       fragmentShader: FRAG,
       transparent: true,
       depthWrite: false,
+      side: THREE.DoubleSide, // the guest's flipped camera sees the other winding
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -2,

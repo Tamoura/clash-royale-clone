@@ -143,15 +143,20 @@ export const PRESETS: Record<string, readonly Layer[]> = {
   ],
   // Green plus signs floating up.
   "heal-plus": [
-    { pool: "add", cell: CELL.PLUS, count: 14, life: [0.9, 1.3], delay: [0, 0.7], dir: "up", spread: 0.25, speed: [1.1, 1.8], area: 0.85, height: [0.1, 0.6], drag: 0.5, size0: [0.32, 0.42], size1: [0.22, 0.28], color0: 0x7dffa8, color1: 0x3ddc84, hdr0: 2, hdr1: 1.2, alpha0: 1, alpha1: 0 },
+    { pool: "alpha", cell: CELL.PLUS, count: 14, life: [0.9, 1.3], delay: [0, 0.7], dir: "up", spread: 0.25, speed: [1.1, 1.8], area: 0.85, height: [0.1, 0.6], drag: 0.5, size0: [0.5, 0.62], size1: [0.34, 0.42], color0: 0x5dff8f, color1: 0x2fd46f, alpha0: 1, alpha1: 0, push: 1 },
+    { pool: "add", cell: CELL.SOFT, count: 6, life: [0.7, 1], delay: [0, 0.6], dir: "up", spread: 0.3, speed: [1, 1.6], area: 0.8, height: [0.1, 0.5], size0: 0.7, size1: 0.3, color0: 0x7dffa8, hdr0: 1.6, alpha0: 0.6, alpha1: 0 },
   ],
   // Purple rage embers rising.
   "rage-ember": [
-    { pool: "add", cell: CELL.EMBER, count: 10, life: [0.8, 1.3], dir: "up", spread: 0.3, speed: [0.9, 1.7], area: 0.9, height: [0, 0.4], drag: 0.6, size0: [0.14, 0.22], size1: 0.05, color0: 0xd36bff, color1: 0xff4db8, hdr0: 2.8, hdr1: 1.4, alpha0: 1, alpha1: 0 },
+    { pool: "add", cell: CELL.EMBER, count: 10, life: [0.8, 1.3], dir: "up", spread: 0.3, speed: [0.9, 1.7], area: 0.9, height: [0, 0.4], drag: 0.6, size0: [0.22, 0.32], size1: 0.06, color0: 0xd36bff, color1: 0xff4db8, hdr0: 3, hdr1: 1.5, alpha0: 1, alpha1: 0 },
   ],
   // A flat ring snapping outward to 2 x radius.
   ring: [
     { pool: "add", cell: CELL.RING, count: 1, life: 0.3, dir: "none", speed: 0, height: 0.06, size0: 0.5, size1: 2, ground: true, color0: 0xffffff, hdr0: 1.6, alpha0: 0.95, alpha1: 0 },
+  ],
+  // Melee contact: a soft, quick ring (many land per second in a brawl).
+  contact: [
+    { pool: "add", cell: CELL.RING, count: 1, life: 0.24, dir: "none", speed: 0, height: 0.06, size0: 0.6, size1: 2, ground: true, color0: 0xffffff, hdr0: 1.15, alpha0: 0.7, alpha1: 0 },
   ],
   // Celebration confetti.
   confetti: [
@@ -171,15 +176,16 @@ export const PRESETS: Record<string, readonly Layer[]> = {
   ],
   // Impact flash quad.
   flash: [
-    { pool: "add", cell: CELL.FLARE, count: 1, life: 0.14, dir: "none", speed: 0, height: 0.6, size0: 2.6, size1: 1.4, color0: 0xffd08a, hdr0: 3, hdr1: 1, alpha0: 1, alpha1: 0, push: 2 },
+    { pool: "add", cell: CELL.FLARE, count: 1, life: 0.2, dir: "none", speed: 0, height: 0.6, size0: 2.6, size1: 1.4, color0: 0xffd08a, hdr0: 3, hdr1: 1, alpha0: 1, alpha1: 0, push: 2 },
   ],
   // Ground shockwave to 2 x radius.
   shockwave: [
-    { pool: "add", cell: CELL.RING, count: 1, life: 0.36, dir: "none", speed: 0, height: 0.07, size0: 0.3, size1: 2, ground: true, color0: 0xffb15c, hdr0: 2.4, hdr1: 1, alpha0: 1, alpha1: 0 },
+    { pool: "add", cell: CELL.RING, count: 1, life: 0.45, dir: "none", speed: 0, height: 0.07, size0: 0.4, size1: 2, ground: true, color0: 0xffc27a, hdr0: 3.2, hdr1: 2, alpha0: 1, alpha1: 0 },
+    { pool: "add", cell: CELL.SOFT, count: 1, life: 0.3, dir: "none", speed: 0, height: 0.05, size0: 1.2, size1: 2.2, ground: true, color0: 0xff9a40, hdr0: 1.4, alpha0: 0.6, alpha1: 0 },
   ],
   // Fireball billows: warm, then sooty.
   "fire-billow": [
-    { pool: "alpha", cell: SMOKE, count: 7, life: [0.9, 1.3], dir: "out", speed: [1.2, 2.2], vy: [0.8, 1.6], area: 0.45, height: 0.35, drag: 2.2, gravity: -0.6, size0: [0.6, 0.8], size1: [1.4, 1.9], spin: [-0.7, 0.7], color0: 0xffa65a, color1: 0x4a4038, alpha0: 0.95, alpha1: 0, push: 0.45 },
+    { pool: "alpha", cell: SMOKE, count: 7, life: [1, 1.4], dir: "out", speed: [1.6, 2.6], vy: [0.9, 1.7], area: 0.5, height: 0.4, drag: 2, gravity: -0.6, size0: [0.9, 1.1], size1: [2.1, 2.7], spin: [-0.7, 0.7], color0: 0xffc07a, color1: 0x6d635a, alpha0: 1, alpha1: 0, push: 0.45 },
   ],
   // Fire core of the blast (additive tongues).
   "fire-core": [
@@ -191,12 +197,12 @@ export const PRESETS: Record<string, readonly Layer[]> = {
   ],
   // Electric ground ring.
   "zap-ring": [
-    { pool: "add", cell: CELL.RING, count: 1, life: 0.32, dir: "none", speed: 0, height: 0.07, size0: 1.2, size1: 2, ground: true, color0: 0xfff38a, hdr0: 3, hdr1: 1.2, alpha0: 1, alpha1: 0 },
+    { pool: "add", cell: CELL.RING, count: 1, life: 0.36, dir: "none", speed: 0, height: 0.07, size0: 1.3, size1: 2, ground: true, color0: 0xfff38a, hdr0: 3.4, hdr1: 1.6, alpha0: 1, alpha1: 0 },
     { pool: "add", cell: CELL.SOFT, count: 1, life: 0.22, dir: "none", speed: 0, height: 0.05, size0: 2.1, size1: 2.3, ground: true, color0: 0x9fe7ff, hdr0: 1.4, alpha0: 0.55, alpha1: 0 },
   ],
   // Arrow landing kick.
   "dust-kick": [
-    { pool: "alpha", cell: SMOKE, count: 2, life: [0.35, 0.5], dir: "up", spread: 1.1, speed: [0.8, 1.4], height: 0.1, drag: 3, size0: 0.2, size1: [0.5, 0.65], spin: [-1, 1], color0: 0xd9ccb4, alpha0: 0.75, alpha1: 0, push: 0.5 },
+    { pool: "alpha", cell: SMOKE, count: 2, life: [0.4, 0.55], dir: "up", spread: 1.1, speed: [0.8, 1.4], height: 0.1, drag: 3, size0: 0.3, size1: [0.7, 0.85], spin: [-1, 1], color0: 0xb9a582, color1: 0xa18e6e, alpha0: 0.85, alpha1: 0, push: 0.5 },
     { pool: "add", cell: CELL.STREAK, count: 2, life: 0.18, dir: "up", spread: 0.8, speed: [2.5, 4], gravity: 10, size0: 0.07, size1: 0.03, stretch: 0.8, color0: 0xfff1c4, hdr0: 2, alpha0: 1, alpha1: 0 },
   ],
   // Tornado debris whipped around (the spiral is placed by the recipe).

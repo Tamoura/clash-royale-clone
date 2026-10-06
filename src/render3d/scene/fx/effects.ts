@@ -105,7 +105,7 @@ export function puff(b: Battle3D, ax: number, ay: number, color: number, size = 
 /** Fast, low contact ring for melee readability without obscuring units. */
 export function contactRing(b: Battle3D, ax: number, ay: number, radius: number, color: number): void {
   if (radius <= 0) return;
-  V(b).emit("ring", ax, ay, { radius, color });
+  V(b).emit("contact", ax, ay, { radius, color });
 }
 
 /** Throw a burst of glowing sparks at an arena point. */
@@ -479,7 +479,7 @@ export function fxOnEvent(b: Battle3D, ev: BattleEvent): void {
         const w = toWorld(ev.targetX, ev.targetY);
         v.emitWorld("hitSpark", w.x, 0.8, w.z, { color: s.color, count: Math.max(2, Math.round(s.particles * 0.6)), radius: Math.max(0.7, s.size * 9) });
         contactRing(b, ev.targetX, ev.targetY, s.ringRadius, s.accent);
-        if (s.kind === "crush") v.emitWorld("dust", w.x, 0, w.z, { radius: 2 });
+        if (s.kind === "crush") v.emitWorld("dust", w.x, 0, w.z, { radius: 1.3 });
       }
       break;
     case "death":

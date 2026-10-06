@@ -119,6 +119,7 @@ export function fireball(v: VfxPool, x: number, y: number, r: number): void {
   v.emitWorld("shockwave", w.x, 0, w.z, { delay: d, radius: r });
   v.emitWorld("fire-core", w.x, 0, w.z, { delay: d, radius: k });
   v.emitWorld("fire-billow", w.x, 0, w.z, { delay: d, radius: Math.max(0.6, k) });
+  v.emitWorld("debris", w.x, 0, w.z, { delay: d, radius: Math.max(0.5, k * 0.8), color: 0x6b5a48, count: 6 });
   v.emitWorld("embers", w.x, 0, w.z, { delay: d, radius: Math.max(0.6, k) });
   v.decal("scorch", x, y, r * 0.9, { delay: d, life: 7 });
   v.shake(k >= 0.9 ? 0.45 : 0.22, d);
@@ -152,10 +153,10 @@ function bolt(
       s.life = life;
       s.delay = delay;
       s.cell = layer === 0 ? CELL.BOLT : CELL.SOFT;
-      const sz = layer === 0 ? width * wMul : width * wMul * 3.2;
+      const sz = layer === 0 ? width * wMul : width * wMul * 2.4;
       s.size0 = s.size1 = sz;
-      if (layer === 0) color(s, 0xf4fdff, 4, 1, 0xbfe9ff, 2, 0);
-      else color(s, 0x7fd4ff, 1.5, 0.55, 0x7fd4ff, 1, 0);
+      if (layer === 0) color(s, 0xf4fdff, 3.2, 1, 0xbfe9ff, 1.8, 0);
+      else color(s, 0x6cc8ff, 1.3, 0.42, 0x6cc8ff, 1, 0);
       v.spawn("add", s);
     }
   };
@@ -194,11 +195,11 @@ function bolt(
   s.z = gz;
   s.life = 0.2;
   s.delay = delay;
-  s.size0 = 1.3;
-  s.size1 = 0.6;
+  s.size0 = 0.9;
+  s.size1 = 0.5;
   s.cell = CELL.FLARE;
   s.push = 1.5;
-  color(s, 0xeefcff, 3.5, 1, 0x9fe7ff, 1.5, 0);
+  color(s, 0xeefcff, 2.6, 1, 0x9fe7ff, 1.2, 0);
   v.spawn("add", s);
 }
 
@@ -289,13 +290,13 @@ export function arrows(v: VfxPool, x: number, y: number, r: number, side: Side):
       s.life = T;
       s.cell = CELL.STREAK;
       if (layer === 0) {
-        s.size0 = s.size1 = 0.16;
-        s.stretch = 0.32;
-        color(s, 0xfff3d0, 2.4, 1, 0xffe9a8, 2.2, 1);
+        s.size0 = s.size1 = 0.24;
+        s.stretch = 0.3;
+        color(s, 0xfff6dc, 3, 1, 0xffe9a8, 2.6, 1);
       } else {
-        s.size0 = s.size1 = 0.42;
-        s.stretch = 0.14;
-        color(s, 0xffc46b, 1.2, 0.45, 0xffc46b, 1, 0.45);
+        s.size0 = s.size1 = 0.7;
+        s.stretch = 0.12;
+        color(s, 0xffb84d, 1.6, 0.55, 0xffb84d, 1.3, 0.5);
       }
       v.spawn("add", s);
     }
@@ -326,7 +327,7 @@ export function heal(v: VfxPool, x: number, y: number, r: number): void {
 /** Rage: a rune circle for the zone's life, pulsing rings and purple embers. */
 export function rage(v: VfxPool, x: number, y: number, r: number, seconds: number): void {
   const w = toWorld(x, y);
-  v.decal("rune", x, y, r, { color: 0xd36bff, hdr: 1.5, life: seconds, alpha: 0.9 });
+  v.decal("rune", x, y, r, { color: 0xe07bff, hdr: 2, life: seconds, alpha: 1 });
   v.emitWorld("flash", w.x, 0, w.z, { radius: r / 3, color: 0xd36bff });
   const PULSE = 0.6;
   const pulses = Math.max(1, Math.floor(seconds / PULSE));

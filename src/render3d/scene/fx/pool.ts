@@ -275,6 +275,9 @@ export function particleMaterial(map: THREE.Texture, uTime: { value: number }, a
     transparent: true,
     depthWrite: false,
     depthTest: true,
+    // Ground-mode quads face up; seen from either end of the arena (host
+    // or flipped guest view) their winding differs, so draw both faces.
+    side: THREE.DoubleSide,
     blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
   });
   mat.toneMapped = !additive; // hot colours stay hot
