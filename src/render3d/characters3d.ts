@@ -594,17 +594,18 @@ function buildGiant(): TroopRig {
   g.add(...legs);
   // The belly IS the character: a barrel wider than the head is tall,
   // with a small head perched on top and heavy slouched shoulders.
-  const belly = sphere(0.74, 0xc98850, 0, 0.98, 0);
+  // Muted tan leather: the old saturated tan lit up as the cb enemy orange.
+  const belly = sphere(0.74, 0xb08a62, 0, 0.98, 0);
   belly.scale.set(1, 0.92, 0.85);
   g.add(belly);
-  g.add(box(0.38, 0.3, 0.06, 0xa96f3d, 0.24, 0.9, 0.58)); // patch
+  g.add(box(0.38, 0.3, 0.06, 0x8a6d4a, 0.24, 0.9, 0.58)); // patch
   g.add(teamPart(cyl(0.74, 0.74, 0.13, 0x7a5230, 0, 0.5, 0))); // belt
   g.add(sphere(0.12, 0xf2c14e, 0, 0.5, 0.71)); // buckle
   g.add(teamPart(cyl(0.58, 0.7, 0.36, 0x8a5a35, 0, 0.36, 0), "dark")); // loincloth skirt
   const head = sphere(0.38, SKIN, 0, 1.86, 0);
   addEyes(head, 0.38, 0.34, 0.18, "calm");
   g.add(head);
-  const beard = sphere(0.37, 0x8a5a35, 0, 1.7, 0.13);
+  const beard = sphere(0.37, 0x6b4a32, 0, 1.7, 0.13);
   beard.scale.set(1, 0.62, 0.85);
   g.add(beard);
   g.add(box(0.46, 0.07, 0.06, 0x5d3d22, 0, 2.04, 0.32)); // heavy brow
@@ -3124,7 +3125,7 @@ function buildBombardier(): TroopRig {
   const BRONZE = 0x8a6d3b, GOLD = THEME.goldLight, CLOTH = THEME.emerald;
   const legs = [makeLeg(0x7a5230, -0.26, 0.34, 0.26), makeLeg(0x7a5230, 0.26, 0.34, 0.26)];
   g.add(...legs);
-  const belly = sphere(0.62, 0xc98850, 0, 0.95, 0);
+  const belly = sphere(0.62, 0xb08a62, 0, 0.95, 0); // muted tan (see buildGiant)
   belly.scale.set(1, 0.95, 0.82);
   g.add(belly);
   g.add(teamPart(box(0.4, 0.7, 0.08, CLOTH, 0, 0.96, 0.5))); // chest panel

@@ -575,7 +575,9 @@ function lightnessOf(hex: number): number {
  * orange fails exactly the players who rely on it. Orange sits next to
  * skin and gold, so its window is narrower and also bounded in lightness
  * (pale skin and bright gold read as their own colours, not as the team
- * orange); blue and red keep the original wide hue-only window.
+ * orange). Its saturation floor is low because scene lighting pushes a
+ * mid tan (s 0.63 here) to a clear orange on screen. Blue and red keep
+ * the original wide hue-only window.
  */
 function paletteTargets(): { hue: number; window: number; l: number; band: number; minS: number }[] {
   const wide = (hex: number) => ({ hue: hueOf(hex), window: 15, l: 0.5, band: 1, minS: 0 });
@@ -584,7 +586,7 @@ function paletteTargets(): { hue: number; window: number; l: number; band: numbe
     wide(TEAM.default.player.main),
     wide(TEAM.default.enemy.main),
     wide(TEAM.cb.player.main),
-    { hue: hueOf(orange), window: 10, l: lightnessOf(orange), band: 0.18, minS: 0.8 },
+    { hue: hueOf(orange), window: 10, l: lightnessOf(orange), band: 0.18, minS: 0.6 },
   ];
 }
 
