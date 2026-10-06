@@ -3,6 +3,10 @@ import { RIVER_Y } from "./arena";
 import { createBattle, spawnUnits } from "./battle";
 import { botThink, createBot, tickBot } from "./bot";
 import { createHand } from "./hand";
+import { DEFAULT_DECK, type CardId } from "./cards";
+import { createPilot, tickPilot } from "./pilot";
+import { BATTLE_DURATION, OVERTIME_DURATION, tick } from "./sim";
+import { stateChecksum } from "../net/checksum";
 
 function troopsOf(b: ReturnType<typeof createBattle>, side: "player" | "enemy") {
   return b.entities.filter((e) => e.side === side && e.kind === "troop");
@@ -247,5 +251,116 @@ describe("difficulty", () => {
     c.enemy.elixir = { amount: 6 };
     botThink(c, createBot(42)); // default waits for 8
     expect(troopsOf(c, "enemy")).toHaveLength(0);
+  });
+});
+
+/**
+ * Snapshot: whole seeded matches against the normal and hard bot profiles,
+ * sampled with stateChecksum every 300 ticks. The fixture was captured
+ * BEFORE the bot learned to play either side and to make mistakes, so it
+ * proves the default profiles (and every saved replay, which re-creates
+ * its bot from seed + profile) still make exactly the same plays.
+ */
+describe("bot snapshot", () => {
+  const DT = 1 / 30;
+  const SAMPLE = 300;
+  const MAX_TICKS = 30 * (BATTLE_DURATION + OVERTIME_DURATION) + 30;
+  const DECKS: CardId[][] = [
+    DEFAULT_DECK,
+    ["cannon", "freeze", "rage", "mirror", "giant", "musketeer", "skeletons", "arrows"],
+    ["heal", "skeleton-barrel", "elixir-collector", "tornado", "balloon", "valkyrie", "zap", "bats"],
+  ];
+  const PROFILES = {
+    normal: { thinkInterval: 1.0, pushAt: 8 },
+    hard: { thinkInterval: 0.55, pushAt: 6 },
+  } as const;
+
+  function trace(i: number, tier: keyof typeof PROFILES): { sums: number[]; winner: string; ticks: number } {
+    const b = createBattle(DEFAULT_DECK, DECKS[i], {}, 1, {}, { player: "rally", enemy: (["rally", "restore", "salvo"] as const)[i] });
+    const bot = createBot(9000 + i, PROFILES[tier]);
+    const pilot = createPilot(500 + i);
+    const sums: number[] = [];
+    let t = 0;
+    for (; t < MAX_TICKS && !b.result; t++) {
+      tickPilot(b, pilot, DT);
+      tick(b, DT);
+      tickBot(b, bot, DT);
+      b.events.length = 0;
+      if ((t + 1) % SAMPLE === 0) sums.push(stateChecksum(b));
+    }
+    sums.push(stateChecksum(b));
+    return { sums, winner: b.result?.winner ?? "none", ticks: t };
+  }
+
+  const FIXTURE: Record<string, { sums: number[]; winner: string; ticks: number }> = {
+    "normal-0": {
+      sums: [
+        2331464826, 4242004129, 545071692, 3343785850, 2214328479, 1049432801,
+        2395278456, 4235287843, 2721297228, 964647001, 1445801226, 1939704935,
+        1814757781, 386127648, 2611807727, 3299237802, 1771682291, 1125510365,
+        3944289167,
+      ],
+      winner: "enemy",
+      ticks: 5401,
+    },
+    "normal-1": {
+      sums: [
+        3967589965, 325270354, 2787626439, 2428838500, 1061971610, 2774141507,
+        1542481325, 799943695, 2417825047, 2390044206, 570180802, 2237770336,
+        1306084008, 1141453084, 4020109919, 723439349, 2411544843, 1970993356,
+        3762502254,
+      ],
+      winner: "player",
+      ticks: 5401,
+    },
+    "normal-2": {
+      sums: [
+        359395313, 555699469, 2734517376, 345896709, 2102799540, 2267085366,
+        2067040913, 3575477480, 3474240845, 3992425148, 122525595, 1719967134,
+        3394359913, 194696013, 2576697584, 2304957474, 3577586674, 3572431994,
+        3391449889,
+      ],
+      winner: "enemy",
+      ticks: 5401,
+    },
+    "hard-0": {
+      sums: [
+        490951617, 3957263388, 3772914039, 4255100035, 2255575832, 1345588746,
+        3424243933, 943990520, 955929095, 46627719, 2982324542, 2943398919,
+        4251526780, 1955110677, 2573542688, 2930378967, 592499545, 198469274,
+        3603919868, 155680441, 2719583634, 4239723538, 2006814732, 3476235176,
+        201977768, 2933341317, 1132816612, 534416944,
+      ],
+      winner: "enemy",
+      ticks: 8353,
+    },
+    "hard-1": {
+      sums: [
+        1348659352, 2142287434, 1602244527, 2082842734, 3372899854, 2875259080,
+        3092173492, 3220729939, 822385063, 3990523397, 1555073234, 3110842047,
+        2724314560, 259937880, 2449943032, 2549435741, 2058467834, 1376325056,
+        1369421312,
+      ],
+      winner: "player",
+      ticks: 5401,
+    },
+    "hard-2": {
+      sums: [
+        1174139870, 2920872792, 2095528310, 3107492375, 1824511351, 2810084895,
+        739663375, 2756575446, 1897029291, 3383164516, 2870425010, 2234295396,
+        2092099689, 2178050029, 2955491477, 2383587513, 1242847736, 2689157739,
+        404779126,
+      ],
+      winner: "enemy",
+      ticks: 5401,
+    },
+  };
+
+  it("default profiles replay the pre-refactor matches exactly", () => {
+    const got: typeof FIXTURE = {};
+    for (const tier of ["normal", "hard"] as const) {
+      for (let i = 0; i < 3; i++) got[`${tier}-${i}`] = trace(i, tier);
+    }
+    expect(got).toEqual(FIXTURE);
   });
 });
