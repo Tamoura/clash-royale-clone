@@ -208,7 +208,21 @@ function finish(s: Session): void {
   s.machine.skip();
   markTutorialDone();
   const ctx = s.ctx;
+  const won = s.ended === "won";
   stopTutorial();
+  // The HUD only clears its result panel on its next battle frame; Home
+  // shows before that, so clear it here the way the HUD does.
+  const result = document.getElementById("overlay");
+  result?.classList.remove("show");
+  result?.querySelector(".confetti-box")?.remove();
+  if (won) {
+    try {
+      // Ask Home to draw the eye to the chest just earned.
+      sessionStorage.setItem("cr-clone-pulse-chest", "1");
+    } catch {
+      // storage blocked: no pulse
+    }
+  }
   ctx.openHome();
 }
 
