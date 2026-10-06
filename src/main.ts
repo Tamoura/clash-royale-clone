@@ -134,8 +134,10 @@ const emoteBar = document.getElementById("emotes")!;
 // Solo ladder matches record the bot's seed/profile and the player's exact
 // deploy ticks; the sim is deterministic, so that's the whole match.
 const REPLAY_KEY = "cr-clone-replay";
+// v2: the sim became engine-exact (no hypot/sin/cos), so v1 tapes no
+// longer reproduce their match and are ignored.
 interface ReplayData {
-  v: 1;
+  v: 2;
   playerDeck: CardId[];
   enemyDeck: CardId[];
   playerLevels: CardLevels;
@@ -149,6 +151,28 @@ interface ReplayData {
   abilityUses: number[];
   deploys: Array<{ t: number; c: CardId; x: number; y: number }>;
 }
+/** The saved tape, or null when there is none or it predates the current
+ *  sim. A stale (pre-v2 or unreadable) tape is deleted on sight. */
+function storedReplay(): ReplayData | null {
+  try {
+    const raw = localStorage.getItem(REPLAY_KEY);
+    if (!raw) return null;
+    let rep: ReplayData | null = null;
+    try {
+      rep = JSON.parse(raw) as ReplayData;
+    } catch {
+      /* corrupt: dropped below */
+    }
+    if (rep && rep.v === 2) return rep;
+    localStorage.removeItem(REPLAY_KEY);
+  } catch {
+    /* storage blocked */
+  }
+  return null;
+}
+// Purge a stale tape at boot, so any plain `getItem(REPLAY_KEY)` presence
+// check (e.g. the home screen's Last Battle entry) stays truthful.
+storedReplay();
 // ---- Tower Troops: the player's chosen tower defender ---------------------
 function botTowerTroop(): TowerTroopId {
   return TOWER_TROOP_IDS[Math.floor(Math.random() * TOWER_TROOP_IDS.length)];
@@ -490,7 +514,7 @@ function startLadder(): void {
     isSandbox() || meta.gameMode.id === "crazy"
       ? null
       : {
-          v: 1,
+          v: 2,
           playerDeck: [...myDeck],
           enemyDeck: [...foeDeck],
           playerLevels: { ...meta.cardLevels },
@@ -518,15 +542,8 @@ function startLadder(): void {
 
 /** Rewatch the saved recording: same decks, same bot seed, same deploys. */
 function startReplay(): void {
-  let rep: ReplayData;
-  try {
-    const raw = localStorage.getItem(REPLAY_KEY);
-    if (!raw) return;
-    rep = JSON.parse(raw) as ReplayData;
-    if (rep.v !== 1) return;
-  } catch {
-    return;
-  }
+  const rep = storedReplay();
+  if (!rep) return;
   battleKind = "ladder";
   activeChallenge = null;
   clearOnline();
@@ -717,7 +734,7 @@ const ctx: AppCtx = {
   closeDeckPicker,
   battleArenaId,
   botDeck: () => botDeck(),
-  hasReplay: () => !!localStorage.getItem(REPLAY_KEY),
+  hasReplay: () => !!storedReplay(),
   setBattle: (b) => {
     battle = b;
   },

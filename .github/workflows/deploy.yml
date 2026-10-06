@@ -1,7 +1,8 @@
 name: Deploy to GitHub Pages
 
-# Builds the game and publishes the static site to GitHub Pages.
-# Runs on pushes to the current theme branch and on manual dispatch.
+# Verifies (typecheck + tests), builds the game and publishes the static
+# site to GitHub Pages. A failing test or a sim drift blocks the deploy.
+# Runs on pushes to the listed branches and on manual dispatch.
 # (Requires: repo public + Settings → Pages → Source: "GitHub Actions".)
 on:
   push:
@@ -19,13 +20,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx vitest run --silent
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
           cache: npm
       - run: npm ci
       - name: Build
@@ -33,6 +47,8 @@ jobs:
         env:
           # Project Pages live under /<repo>/, so assets need that base.
           VITE_BASE: /clash-royale-clone/
+          # Multiplayer relay (wss://...), set under Settings → Variables.
+          VITE_RELAY_URL: ${{ vars.RELAY_URL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

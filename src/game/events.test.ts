@@ -1,18 +1,49 @@
 import { describe, expect, it } from "vitest";
 import { createBattle, deployCard, spawnUnits } from "./battle";
 import { BATTLE_DURATION, tick } from "./sim";
+import { stateChecksum } from "../net/checksum";
 
 const TICK = 1 / 20;
 
 describe("battle events", () => {
-  it("deploying a troop records a deploy event", () => {
+  it("deploying a troop records a deploy event with its location", () => {
     const b = createBattle();
     deployCard(b, "player", "knight", 9, 24);
     expect(b.events).toContainEqual({
       type: "deploy",
       side: "player",
       cardId: "knight",
+      x: 9,
+      y: 24,
     });
+  });
+
+  it("deploying a building records a deploy event with its location", () => {
+    const b = createBattle(["cannon", "knight", "archers", "giant", "fireball", "musketeer", "arrows", "zap"]);
+    deployCard(b, "player", "cannon", 6, 22);
+    expect(b.events).toContainEqual({
+      type: "deploy",
+      side: "player",
+      cardId: "cannon",
+      x: 6,
+      y: 22,
+    });
+  });
+
+  it("events stay outside the checksum: draining them changes nothing", () => {
+    const a = createBattle();
+    const b = createBattle();
+    for (const s of [a, b]) {
+      deployCard(s, "player", "knight", 9, 24);
+      deployCard(s, "enemy", "archers", 9, 8);
+    }
+    for (let i = 0; i < 90; i++) {
+      tick(a, TICK);
+      tick(b, TICK);
+      a.events.length = 0; // a consumer drains every frame; b never does
+      expect(stateChecksum(a)).toBe(stateChecksum(b));
+    }
+    expect(b.events.length).toBeGreaterThan(0);
   });
 
   it("casting a spell records a spell event with its location", () => {

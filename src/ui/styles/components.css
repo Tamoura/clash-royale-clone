@@ -1,0 +1,348 @@
+/* ============================================================
+   UI kit styles for src/ui/components.ts.
+   Selectors are scoped to .ui-*; values come from tokens.css only,
+   so both editions restyle through their token remaps.
+   ============================================================ */
+
+/* Kit elements size by their border box (style.css has no global reset). */
+:where([class^="ui-"], [class*=" ui-"]) {
+  box-sizing: border-box;
+}
+
+/* ── Button ── */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-width: 44px;
+  min-height: 44px;
+  padding: var(--sp-2) var(--sp-4);
+  border: 0;
+  border-radius: var(--r-md);
+  font: inherit;
+  font-family: var(--cr-font);
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  letter-spacing: calc(0.02em * var(--tracking));
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    filter var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+.ui-btn:active {
+  transform: scale(0.96);
+}
+.ui-btn:disabled {
+  cursor: default;
+  filter: grayscale(0.7) brightness(0.8);
+  transform: none;
+}
+.ui-btn .ui-icon {
+  width: 1.3em;
+  height: 1.3em;
+  flex: none;
+}
+.ui-btn--lg {
+  min-height: 56px;
+  padding: var(--sp-3) var(--sp-6);
+  font-size: var(--fs-lg);
+  line-height: var(--lh-lg);
+  border-radius: var(--r-lg);
+}
+.ui-btn--cta {
+  background: var(--cta);
+  color: var(--cta-ink);
+  box-shadow: var(--elev-2);
+}
+.ui-btn--primary {
+  background: var(--primary);
+  color: var(--primary-ink);
+  box-shadow: var(--elev-2);
+}
+.ui-btn--danger {
+  background: var(--danger);
+  color: var(--primary-ink);
+}
+.ui-btn--secondary {
+  background: var(--surface-2);
+  color: var(--on-surface);
+  box-shadow: inset 0 0 0 2px var(--surface-3), var(--elev-1);
+}
+.ui-btn--ghost {
+  background: transparent;
+  color: var(--on-surface);
+}
+.ui-btn--icon {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--on-surface);
+  box-shadow: var(--elev-1);
+}
+.ui-btn--icon .ui-icon {
+  width: 24px;
+  height: 24px;
+}
+
+/* Directional icons point toward the inline start in RTL too. */
+[dir="rtl"] .icon-back {
+  transform: scaleX(-1);
+}
+
+/* ── Segmented picker ── */
+.ui-seg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.ui-seg__group {
+  display: flex;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  box-shadow: inset 0 0 0 1px var(--surface-3);
+}
+.ui-seg__opt {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  min-height: 44px;
+  padding: var(--sp-1) var(--sp-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--on-surface-dim);
+  font: inherit;
+  font-family: var(--cr-font);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.ui-seg__opt .ui-icon {
+  width: 1.2em;
+  height: 1.2em;
+}
+.ui-seg__opt.is-selected {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: var(--elev-1);
+}
+.ui-seg__blurb {
+  margin: 0;
+  color: var(--on-surface-dim);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+/* ── Bottom sheet ── */
+.ui-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.ui-sheet__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  opacity: 0;
+  transition: opacity var(--dur-med) var(--ease-out);
+}
+.ui-sheet__panel {
+  position: relative;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  background: var(--surface-1);
+  color: var(--on-surface);
+  box-shadow: var(--elev-3);
+  outline: none;
+  transform: translateY(100%);
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+.ui-sheet__panel.is-dragging {
+  transition: none;
+}
+.ui-sheet.is-open .ui-sheet__scrim {
+  opacity: 1;
+}
+.ui-sheet.is-open .ui-sheet__panel {
+  transform: translateY(0);
+}
+.ui-sheet__grab {
+  padding: var(--sp-2) var(--sp-4) var(--sp-3);
+  touch-action: none;
+  cursor: grab;
+}
+.ui-sheet__handle {
+  width: 40px;
+  height: 5px;
+  margin: 0 auto var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+}
+.ui-sheet__title {
+  margin: 0;
+  text-align: center;
+  font-size: var(--fs-lg);
+  line-height: var(--lh-lg);
+  color: var(--on-surface);
+}
+.ui-sheet__body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--sp-4) var(--sp-5);
+}
+
+/* ── Screen header ── */
+.ui-header {
+  display: grid;
+  grid-template-columns: 44px 1fr minmax(44px, auto);
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  padding-top: max(var(--sp-2), env(safe-area-inset-top, 0px));
+}
+.ui-header__title {
+  margin: 0;
+  text-align: center;
+  font-size: var(--fs-xl);
+  line-height: var(--lh-xl);
+  color: var(--accent);
+  text-shadow: var(--cr-outline);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-header__spacer {
+  width: 44px;
+  height: 44px;
+}
+
+/* ── Toast ── */
+.ui-toast-host {
+  position: fixed;
+  inset-inline: var(--sp-4);
+  top: max(var(--sp-4), env(safe-area-inset-top, 0px));
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  pointer-events: none;
+}
+.ui-toast {
+  max-width: 100%;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--on-surface);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  box-shadow: inset 0 0 0 2px var(--surface-3), var(--elev-2);
+  animation: uiToastIn var(--dur-med) var(--ease-pop) both;
+  transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
+}
+.ui-toast--accent { box-shadow: inset 0 0 0 2px var(--accent), var(--elev-2); }
+.ui-toast--success { box-shadow: inset 0 0 0 2px var(--success), var(--elev-2); }
+.ui-toast--danger { box-shadow: inset 0 0 0 2px var(--danger), var(--elev-2); }
+.ui-toast.is-leaving {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+@keyframes uiToastIn {
+  from { opacity: 0; transform: translateY(-12px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ── Confirm modal ── */
+.ui-modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  place-items: center;
+  padding: var(--sp-4);
+  background: var(--scrim);
+}
+.ui-modal__box {
+  width: min(100%, 360px);
+  padding: var(--sp-5);
+  border-radius: var(--r-lg);
+  background: var(--surface-1);
+  color: var(--on-surface);
+  box-shadow: inset 0 0 0 2px var(--surface-3), var(--elev-3);
+  animation: uiToastIn var(--dur-med) var(--ease-pop) both;
+}
+.ui-modal__title {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-lg);
+  line-height: var(--lh-lg);
+}
+.ui-modal__body {
+  margin: 0 0 var(--sp-5);
+  color: var(--on-surface-dim);
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+}
+.ui-modal__actions {
+  display: flex;
+  gap: var(--sp-3);
+}
+.ui-modal__actions .ui-btn {
+  flex: 1 1 0;
+}
+
+/* ── Progress bar ── */
+.ui-progress {
+  position: relative;
+  height: 20px;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--surface-0);
+  box-shadow: inset 0 0 0 1px var(--surface-3);
+}
+.ui-progress__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur-slow) var(--ease-out);
+}
+.ui-progress__label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--on-surface);
+  font-size: var(--fs-xs);
+  line-height: 1;
+  text-shadow: var(--cr-outline);
+}
+
+/* ── Badge ── */
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  color: var(--on-surface);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+}
+.ui-badge--accent { background: var(--accent); color: var(--accent-ink); }
+.ui-badge--success { background: var(--success); color: var(--accent-ink); }
+.ui-badge--danger { background: var(--danger); color: var(--primary-ink); }
