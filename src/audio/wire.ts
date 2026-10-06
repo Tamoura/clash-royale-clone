@@ -2,8 +2,8 @@
  * Audio and haptics wiring: subscribes the sound engine and buzz() to the
  * app hooks, so main.ts only has to import this module.
  *
- * - screen: the menu theme on the home diorama and the other menus, nothing
- *   while a battle screen waits for its countdown.
+ * - screen: the menu theme on the home diorama and the other menus; back on
+ *   the arena, a match in progress resumes its track.
  * - matchStart: remember the local side (the online guest is 'enemy'), then
  *   start the battle track the frame the countdown ends.
  * - frame: the clock ticks in the last 10 seconds, and a tap of haptics
@@ -43,7 +43,11 @@ function towerHp(b: BattleState, side: Side): number {
 }
 
 let mySide: Side = "player";
-let inMatch = false;
+/** A menu screen covers the arena. */
+let onMenu = false;
+/** A match is in progress (matchStart until matchEnd). */
+let live = false;
+/** Start the battle track on the next frame that is 'playing'. */
 let armed = false;
 let replay = false;
 let lastTick = -1;
@@ -53,8 +57,13 @@ let lastHp = 0;
 on("screen", ({ sceneMode }) => {
   const s = existingSoundEngine();
   const music = musicForScreen(sceneMode);
-  if (music === null) return; // the battle track follows the countdown
-  inMatch = false;
+  if (music === null) {
+    // Back on the arena: a match still in progress picks its track back up.
+    onMenu = false;
+    if (live) armed = true;
+    return;
+  }
+  onMenu = true;
   armed = false;
   s?.duck(false);
   s?.playMusic(music);
@@ -63,7 +72,7 @@ on("screen", ({ sceneMode }) => {
 on("matchStart", ({ mySide: side, battle, replay: isReplay }) => {
   const s = existingSoundEngine();
   mySide = side;
-  inMatch = true;
+  live = true;
   armed = true;
   replay = isReplay;
   lastTick = -1;
@@ -76,7 +85,7 @@ on("matchStart", ({ mySide: side, battle, replay: isReplay }) => {
 });
 
 on("frame", ({ phase, battle }) => {
-  if (!inMatch || !battle) return;
+  if (onMenu || !live || !battle) return;
   const s = existingSoundEngine();
   if (battle.result) {
     armed = false;
@@ -110,7 +119,7 @@ on("battleEvent", ({ ev }) => {
 
 on("matchEnd", ({ winner, mySide: side, replay: isReplay }) => {
   const s = existingSoundEngine();
-  inMatch = false;
+  live = false;
   armed = false;
   s?.playMusic("none");
   s?.duck(true);
