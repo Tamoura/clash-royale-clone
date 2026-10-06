@@ -903,8 +903,8 @@ function buildMusketeer(): TroopRig {
     const brim = cyl(0.46, 0.5, 0.05, 0x1f4f4c, 0, 1.2, 0);
     brim.name = "helm";
     g.add(brim);
-    g.add(cyl(0.24, 0.3, 0.26, COAT, 0, 1.34, 0)); // hat crown
-    g.add(teamPart(cyl(0.305, 0.315, 0.07, 0xf2c14e, 0, 1.25, 0))); // hatband
+    g.add(teamPart(cyl(0.24, 0.3, 0.26, COAT, 0, 1.34, 0))); // hat crown
+    g.add(cyl(0.305, 0.315, 0.07, 0xf2c14e, 0, 1.25, 0)); // gold hatband
     const feather = cone(0.09, 0.52, 0x3b82f6, 0.32, 1.46, -0.1);
     feather.name = "feather";
     teamPart(feather);
@@ -1503,7 +1503,7 @@ function buildValkyrie(): TroopRig {
   g.add(...legs);
   g.add(cyl(0.3, 0.5, 0.5, 0xb5762a, 0, 0.5, 0)); // bronze dress (crimson read as the red team)
   g.add(cyl(0.5, 0.53, 0.1, 0xe8e3d8, 0, 0.28, 0)); // fur-trimmed hem
-  g.add(teamPart(cyl(0.38, 0.4, 0.09, 0x6d4c41, 0, 0.34, 0))); // belt
+  g.add(cyl(0.38, 0.4, 0.09, 0x6d4c41, 0, 0.34, 0)); // belt
   const head = sphere(0.3, SKIN, 0, 1.04, 0);
   addEyes(head, 0.3, 0.38, 0.1, "angry");
   g.add(head);
@@ -1532,10 +1532,10 @@ function buildValkyrie(): TroopRig {
       g.add(wing);
     }
   }
-  // Fur-mantled shoulders (matching the hem) and a leather chest guard —
-  // no steel up top, that's the Knight's material.
+  // Team-dyed fur mantle on the shoulders (seen from every side) and a
+  // leather chest guard — no steel up top, that's the Knight's material.
   for (const s of [-1, 1]) {
-    g.add(sphere(0.17, 0xe8e3d8, s * 0.37, 0.78, 0)); // fur pauldron
+    g.add(teamPart(sphere(0.17, 0xe8e3d8, s * 0.37, 0.78, 0))); // team-dyed fur pauldron
     g.add(sphere(0.05, 0xf2c14e, s * 0.37, 0.9, 0.06)); // gold stud
   }
   g.add(teamPart(box(0.36, 0.3, 0.3, 0x6b4a2a, 0, 0.66, 0.06), "dark")); // chest guard
