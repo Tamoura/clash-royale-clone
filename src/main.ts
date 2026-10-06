@@ -454,7 +454,6 @@ function startLadder(): void {
   leaveOnline();
   battleKind = "ladder";
   activeChallenge = null;
-  clearOnline();
   // Crazy mode rerolls a scrambled card set each match; other modes use stock.
   setCardOverrides(meta.gameMode.id === "crazy" ? crazyCards() : null);
   const archetype = pickArchetype();
