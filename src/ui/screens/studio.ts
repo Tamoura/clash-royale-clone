@@ -21,7 +21,11 @@ import { clampDeckToOwned, ownedSet } from "../../meta/progress";
 import { invalidatePortrait } from "../../render3d/cardportraits";
 import { animateTroop, buildChampionRig, type TroopRig } from "../../render3d/characters3d";
 import { disposeDeep } from "../../render3d/scene3d";
-import { tr } from "../i18n";
+import { on } from "../../app/hooks";
+import { button } from "../components";
+import { fmtNum, tr } from "../i18n";
+import { icon, type IconName } from "../icons";
+import { ask, mountSubscreen } from "./frame";
 
 // ---- Character Studio ----------------------------------------------------
 // Design a card: pick stats, capabilities, and a look. Elixir cost is not
@@ -32,8 +36,12 @@ let studioCleanup: (() => void) | null = null;
 
 export function openStudio(ctx: AppCtx): void {
   buildStudio(ctx, loadChampion());
-  ctx.showPicker("studio");
 }
+
+// Leaving the Studio by any route stops its preview renderer.
+on("screen", (s) => {
+  if (s.id !== "studio") closeStudio();
+});
 
 function closeStudio(): void {
   cancelAnimationFrame(studioAnim);
@@ -42,22 +50,50 @@ function closeStudio(): void {
 }
 
 function buildStudio(ctx: AppCtx, def: ChampionDef): void {
-  const { pickerRoot, meta } = ctx;
+  const { meta } = ctx;
   closeStudio();
-  pickerRoot.innerHTML = "";
   let cur = normalizeChampion(def);
 
-  const title = document.createElement("h2");
-  title.textContent = tr("Character Studio", "ورشة البطل");
-  pickerRoot.appendChild(title);
+  const saveBtn = button({
+    variant: "cta",
+    size: "lg",
+    icon: "save",
+    label: tr("Save champion", "احفظ البطل"),
+    onClick: () => {
+      cur.name = cur.name.trim() || "Champion";
+      if (!saveChampion(cur)) return; // over budget: the guardrail refused
+      invalidatePortrait("champion");
+      if (!meta.profile.owned.includes("champion")) {
+        meta.profile = { ...meta.profile, owned: [...meta.profile.owned, "champion"] };
+      }
+      ctx.persistProfile();
+      closeStudio();
+      ctx.openDeckPicker({ mode: "deck" }); // slot it straight into the deck
+    },
+  });
+  const saveLabel = saveBtn.querySelector<HTMLElement>(".ui-btn__label")!;
+  const footer = document.createElement("div");
+  footer.appendChild(saveBtn);
 
-  const hint = document.createElement("div");
-  hint.className = "collect-label";
+  let pickerRoot: HTMLElement = document.createElement("div");
+  mountSubscreen(ctx, {
+    id: "studio",
+    title: tr("Champion Studio", "ورشة البطل"),
+    footer,
+    onLeave: closeStudio,
+    build: (body) => {
+      body.classList.add("v2-studio");
+      pickerRoot = body;
+    },
+  });
+
+  const hint = document.createElement("p");
+  hint.className = "v2-hint";
   hint.textContent = hasSavedChampion()
-    ? tr("You have one champion — saving replaces it.", "لديك بطل واحد — الحفظ يستبدله.")
+    ? tr("You have one champion. Saving replaces it.", "لديك بطل واحد. الحفظ يستبدله.")
     : tr(
-        "Design your one champion — its elixir price follows its power.",
-        "صمّم بطلك الواحد — سعر الإكسير يتبع قوته.",
+        "Design your one champion. Its elixir price follows its power.",
+        "صمّم بطلك الواحد. سعر الإكسير يتبع قوته.",
       );
   pickerRoot.appendChild(hint);
 
@@ -136,31 +172,42 @@ function buildStudio(ctx: AppCtx, def: ChampionDef): void {
     const info = championCostInfo(cur);
     // Over budget: show the HONEST price in red — a design worth more
     // than the elixir bar can pay is blocked, never discounted to 10.
-    costBadge.textContent = String(info.overBudget ? info.raw : info.cost);
+    costBadge.textContent = fmtNum(info.overBudget ? info.raw : info.cost);
     costBadge.classList.toggle("over", info.overBudget);
+    const speedName: Record<ChampionDef["speed"], [string, string]> = {
+      slow: ["slow", "بطيء"],
+      medium: ["medium", "متوسط"],
+      fast: ["fast", "سريع"],
+    };
     const bits = [
-      `${cur.count > 1 ? `×${cur.count} · ` : ""}${cur.hp} HP · ${cur.damage} dmg`,
-      `every ${cur.hitSpeed.toFixed(1)}s · ${cur.range <= 1 ? "melee" : `range ${cur.range}`} · ${cur.speed}`,
+      tr(
+        `${cur.count > 1 ? `×${fmtNum(cur.count)} · ` : ""}${fmtNum(cur.hp)} HP · ${fmtNum(cur.damage)} damage`,
+        `${cur.count > 1 ? `×${fmtNum(cur.count)} · ` : ""}${fmtNum(cur.hp)} صحة · ${fmtNum(cur.damage)} ضرر`,
+      ),
+      tr(
+        `every ${fmtNum(Number(cur.hitSpeed.toFixed(1)))}s · ${cur.range <= 1 ? "melee" : `range ${fmtNum(cur.range)}`} · ${speedName[cur.speed][0]}`,
+        `كل ${fmtNum(Number(cur.hitSpeed.toFixed(1)))} ث · ${cur.range <= 1 ? "التحام" : `مدى ${fmtNum(cur.range)}`} · ${speedName[cur.speed][1]}`,
+      ),
     ];
     const caps = Object.entries(cur.abilities)
       .filter(([, on]) => on)
-      .map(([k]) => capLabel(k as keyof ChampionDef["abilities"]));
+      .map(([k]) => capText(k as keyof ChampionDef["abilities"]));
     if (caps.length) bits.push(caps.join(" · "));
     if (info.overBudget) {
       bits.push(
         `<span class="studio-warning">` +
           tr(
-            `⚠️ Worth ${info.raw} elixir — the bar only holds ${MAX_CHAMPION_COST}. Tone it down to save.`,
-            `⚠️ يستحق ${info.raw} إكسير — الحد الأقصى ${MAX_CHAMPION_COST}. خفّف القوة للحفظ.`,
+            `Worth ${fmtNum(info.raw)} elixir, but the bar only holds ${fmtNum(MAX_CHAMPION_COST)}. Tone it down to save.`,
+            `يستحق ${fmtNum(info.raw)} إكسير، والحد الأقصى ${fmtNum(MAX_CHAMPION_COST)}. خفّف القوة للحفظ.`,
           ) +
           `</span>`,
       );
     }
     summary.innerHTML = bits.map((b) => `<div>${b}</div>`).join("");
     saveBtn.disabled = info.overBudget;
-    saveBtn.textContent = info.overBudget
-      ? tr(`🚫 Too powerful (worth ${info.raw})`, `🚫 قوي جدًا (${info.raw})`)
-      : tr("💾 Save Champion", "💾 حفظ البطل");
+    saveLabel.textContent = info.overBudget
+      ? tr(`Too powerful (worth ${fmtNum(info.raw)})`, `قوي جدًا (${fmtNum(info.raw)})`)
+      : tr("Save champion", "احفظ البطل");
     for (const r of refreshers) r();
     rebuildRig();
   }
@@ -195,12 +242,13 @@ function buildStudio(ctx: AppCtx, def: ChampionDef): void {
     step: number,
     get: () => number,
     set: (v: number) => void,
-    fmt: (v: number) => string = (v) => String(v),
+    fmt: (v: number) => string = (v) => fmtNum(v),
   ): void {
     const r = row(label);
     const out = document.createElement("b");
     const input = document.createElement("input");
     input.type = "range";
+    input.className = "v2-range";
     input.min = String(min);
     input.max = String(max);
     input.step = String(step);
@@ -212,6 +260,7 @@ function buildStudio(ctx: AppCtx, def: ChampionDef): void {
     refreshers.push(() => {
       out.textContent = fmt(get());
       input.value = String(get());
+      input.style.setProperty("--fill", `${((get() - min) / (max - min)) * 100}%`);
     });
     r.appendChild(input);
     r.appendChild(out);
@@ -223,10 +272,12 @@ function buildStudio(ctx: AppCtx, def: ChampionDef): void {
     const r = row(tr("Presets", "قوالب"));
     const rowEl = document.createElement("div");
     rowEl.className = "studio-presets";
-    const preset = (label: string, apply: () => void): void => {
+    const preset = (ic: IconName, label: string, apply: () => void): void => {
       const b = document.createElement("button");
-      b.className = "studio-walk";
-      b.textContent = label;
+      b.type = "button";
+      b.className = "studio-walk v2-chipbtn";
+      b.innerHTML = `${icon(ic)}<span></span>`;
+      b.querySelector("span")!.textContent = label;
       b.addEventListener("click", (e) => {
         e.preventDefault();
         apply();
@@ -238,25 +289,25 @@ function buildStudio(ctx: AppCtx, def: ChampionDef): void {
       Object.assign(cur, p);
       cur.abilities = { ...normalizeChampion(DEFAULT_CHAMPION).abilities, ...caps };
     };
-    preset(tr("🛡 Tank", "🛡 درع"), () =>
+    preset("shield", tr("Tank", "درع"), () =>
       setAll(
         { count: 1, hp: 3400, damage: 230, hitSpeed: 1.6, range: 0.8, speed: "slow" },
         { buildingsOnly: true },
       ),
     );
-    preset(tr("🎯 Sniper", "🎯 قنّاص"), () =>
+    preset("target", tr("Sniper", "قنّاص"), () =>
       setAll(
         { count: 1, hp: 380, damage: 170, hitSpeed: 1.4, range: 8, speed: "medium" },
         { targetsAir: true },
       ),
     );
-    preset(tr("👥 Swarm", "👥 حشد"), () =>
+    preset("users", tr("Swarm", "حشد"), () =>
       setAll(
         { count: 5, hp: 160, damage: 80, hitSpeed: 1.0, range: 0.8, speed: "fast" },
         {},
       ),
     );
-    preset(tr("🎲 Surprise", "🎲 مفاجأة"), () => {
+    preset("dice", tr("Surprise", "مفاجأة"), () => {
       const L = CHAMPION_LIMITS;
       const ri = (lo: number, hi: number): number => lo + Math.floor(Math.random() * (hi - lo + 1));
       for (let tries = 0; tries < 40; tries++) {
@@ -288,7 +339,7 @@ function buildStudio(ctx: AppCtx, def: ChampionDef): void {
   slider(tr("Damage", "الضرر"), CHAMPION_LIMITS.damage.min, CHAMPION_LIMITS.damage.max, 10,
     () => cur.damage, (v) => (cur.damage = v));
   slider(tr("Hit every", "يضرب كل"), CHAMPION_LIMITS.hitSpeed.min, CHAMPION_LIMITS.hitSpeed.max, 0.1,
-    () => cur.hitSpeed, (v) => (cur.hitSpeed = v), (v) => `${v.toFixed(1)}s`);
+    () => cur.hitSpeed, (v) => (cur.hitSpeed = v), (v) => tr(`${fmtNum(Number(v.toFixed(1)))}s`, `${fmtNum(Number(v.toFixed(1)))} ث`));
 
   function select<T extends string | number>(
     label: string,
@@ -343,26 +394,25 @@ function buildStudio(ctx: AppCtx, def: ChampionDef): void {
   capsGrid.className = "studio-caps";
   controls.appendChild(capsGrid);
   for (const cap of Object.keys(cur.abilities) as (keyof ChampionDef["abilities"])[]) {
-    const lab = document.createElement("label");
-    lab.className = "studio-cap";
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = cur.abilities[cap];
-    cb.addEventListener("change", () => {
-      cur.abilities[cap] = cb.checked;
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "studio-cap v2-toggle";
+    chip.innerHTML = `${icon(CAP_ICON[cap])}<span></span>`;
+    chip.querySelector("span")!.textContent = capText(cap);
+    chip.addEventListener("click", () => {
+      if (chip.disabled) return;
+      cur.abilities[cap] = !cur.abilities[cap];
       refresh();
     });
     refreshers.push(() => {
-      cb.checked = cur.abilities[cap];
       // Pierce needs reach; flyers ignore the river on their own.
-      cb.disabled =
-        (cap === "pierce" && cur.range <= 1) ||
-        (cap === "jumpsRiver" && cur.abilities.flying);
-      lab.classList.toggle("off", cb.disabled);
+      const off = (cap === "pierce" && cur.range <= 1) || (cap === "jumpsRiver" && cur.abilities.flying);
+      if (off) cur.abilities[cap] = false;
+      chip.disabled = off;
+      chip.setAttribute("aria-pressed", String(cur.abilities[cap]));
+      chip.classList.toggle("off", off);
     });
-    lab.appendChild(cb);
-    lab.appendChild(document.createTextNode(capLabel(cap)));
-    capsGrid.appendChild(lab);
+    capsGrid.appendChild(chip);
   }
 
   // Appearance.
@@ -377,15 +427,19 @@ function buildStudio(ctx: AppCtx, def: ChampionDef): void {
     rowEl.className = "studio-swatches";
     for (const c of CHAMPION_PALETTE) {
       const b = document.createElement("button");
-      b.className = "studio-swatch";
-      b.style.background = `#${c.toString(16).padStart(6, "0")}`;
-      b.setAttribute("aria-label", `#${c.toString(16).padStart(6, "0")}`);
+      b.type = "button";
+      b.className = "studio-swatch v2-swatch";
+      b.style.setProperty("--swatch", `#${c.toString(16).padStart(6, "0")}`);
+      b.setAttribute("aria-label", `${label} #${c.toString(16).padStart(6, "0")}`);
       b.addEventListener("click", (e) => {
         e.preventDefault();
         set(c);
         refresh();
       });
-      refreshers.push(() => b.classList.toggle("sel", get() === c));
+      refreshers.push(() => {
+        b.classList.toggle("sel", get() === c);
+        b.setAttribute("aria-pressed", String(get() === c));
+      });
       rowEl.appendChild(b);
     }
     r.appendChild(rowEl);
@@ -436,86 +490,84 @@ function buildStudio(ctx: AppCtx, def: ChampionDef): void {
   {
     const r = row(tr("Preview", "المعاينة"));
     const b = document.createElement("button");
-    b.className = "studio-walk";
-    b.textContent = tr("🚶 Walking", "🚶 يمشي");
+    b.type = "button";
+    b.className = "studio-walk v2-chipbtn";
+    const paint = (): void => {
+      b.innerHTML = `${icon(walking ? "pause" : "play")}<span></span>`;
+      b.querySelector("span")!.textContent = walking ? tr("Walking", "يمشي") : tr("Standing", "واقف");
+    };
+    paint();
     b.addEventListener("click", (e) => {
       e.preventDefault();
       walking = !walking;
-      b.textContent = walking ? tr("🚶 Walking", "🚶 يمشي") : tr("🧍 Standing", "🧍 واقف");
+      paint();
     });
     r.appendChild(b);
   }
 
-  const saveBtn = document.createElement("button");
-  saveBtn.className = "battle-btn";
-  saveBtn.textContent = tr("💾 Save Champion", "💾 احفظ البطل");
-  saveBtn.addEventListener("click", () => {
-    cur.name = cur.name.trim() || "Champion";
-    if (!saveChampion(cur)) return; // over budget — the guardrail refused
-    invalidatePortrait("champion");
-    if (!meta.profile.owned.includes("champion")) {
-      meta.profile = { ...meta.profile, owned: [...meta.profile.owned, "champion"] };
-    }
-    ctx.persistProfile();
-    closeStudio();
-    ctx.openDeckPicker({ mode: "deck" }); // slot it straight into the deck
-  });
-  pickerRoot.appendChild(saveBtn);
-
-  // Delete the (single) champion: two taps to confirm, then it's removed
-  // from the save, the collection, and the deck.
+  // Delete the (single) champion after a confirm: it leaves the save,
+  // the collection and the deck.
   if (hasSavedChampion()) {
-    const delBtn = document.createElement("button");
-    delBtn.className = "back-btn studio-delete";
-    delBtn.textContent = tr("🗑️ Delete Champion", "🗑️ حذف البطل");
-    let armed = false;
-    delBtn.addEventListener("click", () => {
-      if (!armed) {
-        armed = true;
-        delBtn.textContent = tr("⚠️ Tap again to delete", "⚠️ اضغط مجددًا للحذف");
-        delBtn.classList.add("armed");
-        return;
-      }
-      deleteChampion();
-      invalidatePortrait("champion");
-      const owned = meta.profile.owned.filter((id) => id !== "champion");
-      meta.playerDeck = clampDeckToOwned(
-        meta.playerDeck.filter((id) => id !== "champion"),
-        ownedSet(owned),
-      );
-      meta.profile = { ...meta.profile, owned, deck: meta.playerDeck };
-      ctx.persistProfile();
-      closeStudio();
-      ctx.openHome();
+    const delBtn = button({
+      variant: "ghost",
+      icon: "trash",
+      label: tr("Delete champion", "احذف البطل"),
+      onClick: async () => {
+        const ok = await ask({
+          title: tr("Delete your champion?", "حذف بطلك؟"),
+          body: tr("It leaves your collection and your deck. This cannot be undone.", "سيُزال من مجموعتك ومن سطحك. لا يمكن التراجع."),
+          okLabel: tr("Delete", "احذف"),
+          cancelLabel: tr("Keep it", "أبقِه"),
+          danger: true,
+        });
+        if (!ok) return;
+        deleteChampion();
+        invalidatePortrait("champion");
+        const owned = meta.profile.owned.filter((id) => id !== "champion");
+        meta.playerDeck = clampDeckToOwned(
+          meta.playerDeck.filter((id) => id !== "champion"),
+          ownedSet(owned),
+        );
+        meta.profile = { ...meta.profile, owned, deck: meta.playerDeck };
+        ctx.persistProfile();
+        closeStudio();
+        ctx.openHome();
+      },
     });
+    delBtn.classList.add("studio-delete");
     pickerRoot.appendChild(delBtn);
   }
-
-  const backBtn = document.createElement("button");
-  backBtn.className = "back-btn";
-  backBtn.textContent = tr("← Home", "← الرئيسية");
-  backBtn.addEventListener("click", () => {
-    closeStudio();
-    ctx.openHome();
-  });
-  pickerRoot.appendChild(backBtn);
 
   refresh();
 }
 
-function capLabel(cap: keyof ChampionDef["abilities"]): string {
+const CAP_ICON: Record<keyof ChampionDef["abilities"], IconName> = {
+  flying: "wing",
+  targetsAir: "target",
+  splash: "burst",
+  charge: "bolt",
+  stun: "sparkle",
+  chill: "snow",
+  pierce: "arrow",
+  jumpsRiver: "wave",
+  deathBomb: "bomb",
+  buildingsOnly: "tower",
+  summoner: "skull",
+};
+
+function capText(cap: keyof ChampionDef["abilities"]): string {
   const labels: Record<keyof ChampionDef["abilities"], [string, string]> = {
-    flying: ["🕊️ Flies", "🕊️ يطير"],
-    targetsAir: ["🎯 Hits air", "🎯 يضرب الجو"],
-    splash: ["💥 Splash", "💥 ضرر منطقة"],
-    charge: ["🐎 Charge (2x)", "🐎 شحنة (×2)"],
-    stun: ["⚡ Stunning hits", "⚡ ضربات صاعقة"],
-    chill: ["❄️ Chilling hits", "❄️ ضربات مجمّدة"],
-    pierce: ["🏹 Piercing shots", "🏹 سهام خارقة"],
-    jumpsRiver: ["🌊 River jump", "🌊 قفز النهر"],
-    deathBomb: ["💣 Death bomb", "💣 قنبلة موت"],
-    buildingsOnly: ["🏰 Building hunter (cheaper!)", "🏰 صائد المباني (أرخص!)"],
-    summoner: ["💀 Summons skeletons", "💀 يستدعي الميليشيا"],
+    flying: ["Flies", "يطير"],
+    targetsAir: ["Hits air", "يضرب الجو"],
+    splash: ["Splash", "ضرر منطقة"],
+    charge: ["Charge (2x)", "شحنة (×2)"],
+    stun: ["Stunning hits", "ضربات صاعقة"],
+    chill: ["Chilling hits", "ضربات مجمّدة"],
+    pierce: ["Piercing shots", "سهام خارقة"],
+    jumpsRiver: ["River jump", "قفز النهر"],
+    deathBomb: ["Death bomb", "قنبلة موت"],
+    buildingsOnly: ["Building hunter (cheaper!)", "صائد المباني (أرخص!)"],
+    summoner: ["Summons skeletons", "يستدعي الميليشيا"],
   };
   return tr(labels[cap][0], labels[cap][1]);
 }

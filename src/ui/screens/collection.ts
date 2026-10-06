@@ -1,136 +1,152 @@
-/** Collection: every card, its level and shards; tap to upgrade or craft. */
+/**
+ * Collection: every card in Found and Locked groups. Found cards show
+ * their level and shard progress; locked ones are dimmed silhouettes with
+ * the arena that unlocks them. Tapping any card opens its info sheet —
+ * upgrades only happen from the sheet's labelled Upgrade button.
+ *
+ * The same grid fills the Cards tab on Home and the framed Collection
+ * sub-screen.
+ */
 import type { AppCtx } from "../../app/ctx";
-import { DECK, getCard } from "../../game/cards";
-import { arenaArForUnlock, arenaNameForUnlock } from "../../meta/arenas";
-import { addShards, isUnlockedAt } from "../../meta/collection";
-import { SHARD_GOLD_PRICE, spendGold, upgradeCost } from "../../meta/economy";
-import { ownedSet, tryUpgradeCard } from "../../meta/progress";
+import { DECK, getCard, type CardId } from "../../game/cards";
 import { cardDisplayName } from "../../render/cardNames";
+import { cardPortrait } from "../../render3d/cardportraits";
+import { fmtNum } from "../i18n";
+import { icon } from "../icons";
 import { cardTileCanvas } from "./common";
+import { arenaLabel, currentArenaIndex, mountSubscreen, section } from "./frame";
+import { cardProgress, openCardInfo, unlockArena } from "./cardInfo";
 
 export function openCollection(ctx: AppCtx): void {
-  buildCollection(ctx);
-  ctx.showPicker("collection");
+  const draw = (): void => {
+    mountSubscreen(ctx, {
+      id: "collection",
+      title: ctx.tr("Collection", "المجموعة"),
+      build: (body) => buildCollectionGroups(ctx, body, draw),
+    });
+  };
+  draw();
 }
 
-function buildCollection(ctx: AppCtx): void {
-  const { pickerRoot, meta, tr } = ctx;
-  pickerRoot.innerHTML = "";
-  const title = document.createElement("h2");
-  title.textContent = tr("Collection", "المجموعة");
-  pickerRoot.appendChild(title);
-
-  const currency = document.createElement("div");
-  currency.className = "home-currency";
-  currency.innerHTML =
-    `<span class="chip gold">🪙 ${meta.profile.gold}</span>` +
-    `<span class="chip gems">💎 ${meta.profile.gems}</span>`;
-  pickerRoot.appendChild(currency);
-
-  const detail = document.createElement("div");
-  detail.className = "collect-detail";
-  detail.textContent = tr("Tap a card to upgrade", "اضغط على بطاقة لترقيتها");
-  pickerRoot.appendChild(detail);
-
-  const grid = document.createElement("div");
-  grid.className = "picker-grid collection-grid";
-  pickerRoot.appendChild(grid);
-
-  const owned = ownedSet(meta.profile.owned);
-  for (const id of DECK) {
-    const card = getCard(id);
-    const have = owned.has(id);
-    const unlocked = isUnlockedAt(id, meta.profile.trophies);
-    const btn = document.createElement("button");
-    btn.className = "pick" + (have ? "" : " locked");
-    btn.dataset.card = id;
-    btn.dataset.rarity = card.rarity;
-    const level = meta.cardLevels[id] ?? 1;
-    const shards = meta.profile.shards[id] ?? 0;
-    if (have) {
-      btn.appendChild(cardTileCanvas(id));
-      const name = document.createElement("div");
-      name.textContent = `${cardDisplayName(id)} · ${tr("Lv.", "مستوى ")}${level}`;
-      btn.appendChild(name);
-      const cost = document.createElement("div");
-      cost.className = "pcost";
-      cost.textContent = String(card.cost);
-      btn.appendChild(cost);
-      const shardBar = document.createElement("div");
-      shardBar.className = "shard-bar";
-      const upc = upgradeCost(card.rarity, level);
-      const need = upc?.shards ?? 0;
-      shardBar.textContent = upc ? `${shards}/${need} shards` : "MAX";
-      btn.appendChild(shardBar);
-      btn.addEventListener("click", () => {
-        const upc2 = upgradeCost(card.rarity, meta.cardLevels[id] ?? 1);
-        if (!upc2) {
-          detail.textContent = tr(`${cardDisplayName(id)} is max level.`, `${cardDisplayName(id)} في أعلى مستوى.`);
-          return;
-        }
-        const result = tryUpgradeCard(
-          { ...meta.profile, deck: meta.playerDeck, levels: meta.cardLevels },
-          id,
-        );
-        if (!result.ok) {
-          const shardsHave = meta.profile.shards[id] ?? 0;
-          const missing = Math.max(0, upc2.shards - shardsHave);
-          const craftPrice = missing * SHARD_GOLD_PRICE;
-          detail.textContent =
-            result.reason === "afford"
-              ? `Need ${upc2.gold} gold + ${upc2.shards} shards`
-              : "Can't upgrade";
-          // Agency: short on shards but flush on gold? Craft them on the spot.
-          if (
-            result.reason === "afford" &&
-            missing > 0 &&
-            meta.profile.gold >= upc2.gold + craftPrice
-          ) {
-            const craft = document.createElement("button");
-            craft.className = "quest-claim craft-btn";
-            craft.textContent = tr(
-              `⚒️ Craft ${missing} shard${missing > 1 ? "s" : ""} — 🪙 ${craftPrice}`,
-              `⚒️ اصنع ${missing} شظية — 🪙 ${craftPrice}`,
-            );
-            craft.addEventListener("click", () => {
-              const left = spendGold(meta.profile.gold, craftPrice);
-              if (left === null) return;
-              meta.profile = {
-                ...meta.profile,
-                gold: left,
-                shards: addShards(meta.profile.shards, id, missing),
-              };
-              ctx.persistProfile();
-              buildCollection(ctx);
-            });
-            detail.appendChild(document.createTextNode(" "));
-            detail.appendChild(craft);
-          }
-          return;
-        }
-        meta.profile = result.profile;
-        meta.cardLevels = meta.profile.levels;
-        ctx.persistProfile();
-        buildCollection(ctx);
-      });
-    } else {
-      const sil = document.createElement("div");
-      sil.className = "pick-silhouette";
-      sil.textContent = "❔";
-      btn.appendChild(sil);
-      const name = document.createElement("div");
-      name.textContent = unlocked
-        ? cardDisplayName(id)
-        : tr(`Unlock at ${arenaNameForUnlock(id)}`, `يُفتح في ${arenaArForUnlock(id)}`);
-      btn.appendChild(name);
-      btn.disabled = true;
-    }
-    grid.appendChild(btn);
+/** A dark silhouette of the card's character (spells: its dimmed art). */
+function silhouette(id: CardId): HTMLCanvasElement {
+  const portrait = cardPortrait(id);
+  if (!portrait) {
+    const c = cardTileCanvas(id);
+    c.classList.add("v2-sil-art");
+    return c;
   }
+  const c = document.createElement("canvas");
+  c.width = c.height = 160;
+  c.getContext("2d")?.drawImage(portrait, 0, 0, 160, 160);
+  c.className = "v2-sil";
+  return c;
+}
 
-  const back = document.createElement("button");
-  back.className = "back-btn";
-  back.textContent = tr("← Home", "→ الرئيسية");
-  back.addEventListener("click", () => ctx.openHome());
-  pickerRoot.appendChild(back);
+type TileState = "locked" | "max" | "ready" | "progress";
+
+function tileState(p: ReturnType<typeof cardProgress>): TileState {
+  if (!p.owned) return "locked";
+  if (p.need === null) return "max";
+  return p.canUpgrade ? "ready" : "progress";
+}
+
+/** One card tile: art, elixir pip, level and shard progress (or a lock). */
+export function cardTile(ctx: AppCtx, id: CardId, onTap: () => void): HTMLButtonElement {
+  const { tr } = ctx;
+  const card = getCard(id);
+  const p = cardProgress(ctx, id);
+  const state = tileState(p);
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = `v2-tile rarity-${card.rarity}` + (p.owned ? "" : " is-locked");
+  b.dataset.card = id;
+  const art = document.createElement("div");
+  art.className = "v2-tile-art";
+  art.appendChild(p.owned ? cardTileCanvas(id) : silhouette(id));
+  b.appendChild(art);
+  const cost = document.createElement("span");
+  cost.className = "v2-cost";
+  cost.textContent = fmtNum(card.cost);
+  b.appendChild(cost);
+  const name = cardDisplayName(id);
+  if (p.owned) {
+    const lvl = document.createElement("span");
+    lvl.className = "v2-tile-level";
+    lvl.textContent = state === "max" ? tr("MAX", "الأقصى") : tr(`Lv ${fmtNum(p.level)}`, `م ${fmtNum(p.level)}`);
+    b.appendChild(lvl);
+    const bar = document.createElement("span");
+    bar.className = "v2-tile-shards";
+    const fill = document.createElement("i");
+    fill.style.width = p.need ? `${Math.min(100, Math.round((p.shards / p.need) * 100))}%` : "100%";
+    bar.appendChild(fill);
+    b.appendChild(bar);
+    if (state === "ready") {
+      b.classList.add("is-ready");
+      const up = document.createElement("span");
+      up.className = "v2-tile-up";
+      up.innerHTML = icon("upgrade");
+      b.appendChild(up);
+    }
+    b.setAttribute(
+      "aria-label",
+      state === "max"
+        ? tr(`${name}, max level`, `${name}، أعلى مستوى`)
+        : tr(
+            `${name}, level ${p.level}, ${p.shards} of ${p.need} shards${state === "ready" ? ", ready to upgrade" : ""}`,
+            `${name}، المستوى ${p.level}، ${p.shards} من ${p.need} شظايا${state === "ready" ? "، جاهزة للترقية" : ""}`,
+          ),
+    );
+  } else {
+    const where = unlockArena(id);
+    // Already findable at this arena: it can drop from chests now.
+    const findable = where.index <= currentArenaIndex(ctx);
+    const lock = document.createElement("span");
+    lock.className = "v2-tile-lock" + (findable ? " is-findable" : "");
+    lock.innerHTML = icon(findable ? "chest" : "lock");
+    const t = document.createElement("span");
+    t.textContent = findable ? tr("In chests", "في الصناديق") : arenaLabel(ctx, where.index);
+    lock.appendChild(t);
+    b.appendChild(lock);
+    b.setAttribute("aria-label", tr(`${name}, not found yet. ${t.textContent}`, `${name}، لم تُعثر عليها بعد. ${t.textContent}`));
+  }
+  b.addEventListener("click", onTap);
+  return b;
+}
+
+/** Found and Locked groups (Locked sorted by unlock arena). */
+export function buildCollectionGroups(ctx: AppCtx, host: HTMLElement, redraw: () => void): void {
+  const { tr, meta } = ctx;
+  const owned = new Set(meta.profile.owned);
+  const found = DECK.filter((id) => owned.has(id));
+  const locked = DECK.filter((id) => !owned.has(id)).sort((a, b) => unlockArena(a).index - unlockArena(b).index);
+  const open = (id: CardId): void => openCardInfo(ctx, id, { onChange: redraw });
+
+  const count = document.createElement("span");
+  count.className = "v2-count";
+  count.textContent = `${fmtNum(found.length)} / ${fmtNum(DECK.length)}`;
+  const f = section(tr("Found", "مكتشفة"), count);
+  f.el.classList.add("v2-found");
+  const fg = document.createElement("div");
+  fg.className = "v2-grid";
+  for (const id of found) fg.appendChild(cardTile(ctx, id, () => open(id)));
+  f.el.appendChild(fg);
+  host.appendChild(f.el);
+
+  if (locked.length) {
+    const l = section(tr("Locked", "مقفلة"));
+    l.el.classList.add("v2-locked");
+    const hint = document.createElement("p");
+    hint.className = "v2-hint";
+    hint.textContent = tr(
+      "Climb the trophy road: each arena adds new cards to your chests.",
+      "اصعد طريق الكؤوس: كل ساحة تضيف بطاقات جديدة إلى صناديقك.",
+    );
+    l.el.appendChild(hint);
+    const lg = document.createElement("div");
+    lg.className = "v2-grid";
+    for (const id of locked) lg.appendChild(cardTile(ctx, id, () => open(id)));
+    l.el.appendChild(lg);
+    host.appendChild(l.el);
+  }
 }
