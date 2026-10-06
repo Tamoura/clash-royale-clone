@@ -2,7 +2,8 @@
  * Ground decals: one InstancedMesh of flat quads (scorch, frost, crack,
  * heal glyph, crater, ring, falling shadow, rune circle) drawn from the
  * decal atlas. At most DECAL_CAP marks exist; a new one takes a dead slot
- * or else recycles the oldest. Each mark grows in, holds, then fades over
+ * or else recycles the mark closest to its end, so long-lived marks (tower
+ * craters) outlast bursts of short spell marks and telegraphs. Each mark grows in, holds, then fades over
  * the last third of its life (6-8 s by default). They sit just above the
  * ground with a polygon offset and draw before the deploy-zone overlay.
  */
@@ -32,15 +33,20 @@ export interface DecalOpts {
 
 /**
  * The slot a new decal takes at pool time `now`: the first dead slot, or
- * else the one born longest ago.
+ * else the live one with the least time left (ties go to the oldest).
  */
 export function pickDecalSlot(births: ArrayLike<number>, lives: ArrayLike<number>, now: number): number {
-  let oldest = 0;
+  let best = 0;
+  let bestEnd = Infinity;
   for (let i = 0; i < births.length; i++) {
-    if (now > births[i] + lives[i]) return i;
-    if (births[i] < births[oldest]) oldest = i;
+    const end = births[i] + lives[i];
+    if (now > end) return i;
+    if (end < bestEnd || (end === bestEnd && births[i] < births[best])) {
+      best = i;
+      bestEnd = end;
+    }
   }
-  return oldest;
+  return best;
 }
 
 const VERT = /* glsl */ `

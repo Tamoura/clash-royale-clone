@@ -236,9 +236,10 @@ describe("VfxPool", () => {
     expect(v.glyphs.count).toBe(4);
   });
 
-  it("decals recycle the oldest past the cap", () => {
-    expect(pickDecalSlot([5, 1, 3], [10, 10, 10], 4)).toBe(1); // all alive: oldest
+  it("decals recycle the one closest to its end past the cap", () => {
+    expect(pickDecalSlot([5, 1, 3], [10, 10, 10], 4)).toBe(1); // equal lives: oldest
     expect(pickDecalSlot([5, 1, 3], [10, 1, 10], 4)).toBe(1); // a dead slot first
+    expect(pickDecalSlot([5, 1, 3], [10, 600, 10], 4)).toBe(2); // least time left, not oldest
     const layer = new DecalLayer({ value: 0 }, false);
     const slots: number[] = [];
     for (let i = 0; i < DECAL_CAP; i++) slots.push(layer.add("scorch", 0, 0, 1, i * 0.01, { life: 8 }));
@@ -246,6 +247,16 @@ describe("VfxPool", () => {
     expect(layer.add("crater", 0, 0, 1, 1, { life: 8 })).toBe(slots[0]);
     expect(layer.add("crater", 0, 0, 1, 1.01, { life: 8 })).toBe(slots[1]);
     expect(layer.births.length).toBe(DECAL_CAP);
+  });
+
+  it("a long-lived crater survives a burst of short decals", () => {
+    const layer = new DecalLayer({ value: 0 }, false);
+    const crater = layer.add("crater", 0, 0, 1, 0, { life: 600 });
+    for (let i = 0; i < 20; i++) {
+      expect(layer.add(i % 2 ? "ring" : "scorch", 0, 0, 1, 0.5 + i * 0.05, { life: 7 })).not.toBe(crater);
+    }
+    expect(layer.lives[crater]).toBe(600);
+    expect(layer.births[crater]).toBe(0);
   });
 });
 
