@@ -114,6 +114,110 @@
     0 0 40px rgba(120, 140, 180, 0.2);
 }
 
+/* ============================================================
+   Tokens v2 — the shared vocabulary for every screen and component.
+   Additive: the --cr-* palette above stays for existing rules; new
+   CSS (src/ui/styles/*.css) uses only the tokens below.
+   ============================================================ */
+:root {
+  /* ── Spacing (4-pt scale) ── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 48px;
+
+  /* ── Type scale. --text-scale (1, 1.15, 1.3) is set on :root by the
+        Settings "Text size" pref; 12px is the smallest text anywhere. ── */
+  --text-scale: 1;
+  --fs-xs: calc(12px * var(--text-scale));
+  --fs-sm: calc(14px * var(--text-scale));
+  --fs-md: calc(16px * var(--text-scale));
+  --fs-lg: calc(20px * var(--text-scale));
+  --fs-xl: calc(26px * var(--text-scale));
+  --fs-display: calc(clamp(36px, 10vw, 56px) * var(--text-scale));
+  --lh-xs: 1.35;
+  --lh-sm: 1.4;
+  --lh-md: 1.45;
+  --lh-lg: 1.3;
+  --lh-xl: 1.2;
+  --lh-display: 1.05;
+  /* Letter-spacing multiplier: rules write calc(0.06em * var(--tracking)).
+     Arabic letters join, so the Islamic edition sets it to 0. */
+  --tracking: 1;
+
+  /* ── Radii ── */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-pill: 999px;
+
+  /* ── Elevation ── */
+  --elev-1: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 2px 4px rgba(0, 0, 0, 0.35);
+  --elev-2: 0 2px 0 rgba(255, 255, 255, 0.1) inset, 0 6px 14px rgba(0, 0, 0, 0.45);
+  --elev-3: 0 2px 0 rgba(255, 255, 255, 0.12) inset, 0 14px 32px rgba(0, 0, 0, 0.55);
+
+  /* ── Layers ── */
+  --z-hud: 10;
+  --z-sheet: 50;
+  --z-modal: 70;
+  --z-splash: 80;
+  --z-toast: 90;
+
+  /* ── Motion ── */
+  --dur-fast: 120ms;
+  --dur-med: 220ms;
+  --dur-slow: 360ms;
+  --ease-pop: cubic-bezier(0.2, 1.6, 0.4, 1);
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* ── Colour roles (Classic: navy chrome, gold accents) ── */
+  --surface-0: #0b1322; /* page / backdrop */
+  --surface-1: #14203a; /* panels */
+  --surface-2: #1d2a47; /* raised rows, cards */
+  --surface-3: #2e4470; /* inputs, pressed, dividers */
+  --on-surface: #f3f5fa;
+  --on-surface-dim: #b8c4da;
+  --accent: #f6c14e;
+  --accent-ink: #2a1806;
+  --cta: #f5b52e;
+  --cta-ink: #2a1806;
+  --success: #34c759;
+  --danger: #ef4444;
+  /* Team colours carry gameplay meaning and never change per edition;
+     the -cb pair replaces them when the colour-blind palette is on. */
+  --team-player: #3b82f6;
+  --team-enemy: #e53935;
+  --team-player-cb: #2f80ff;
+  --team-enemy-cb: #ff8a00;
+
+  /* CR text: white, dark outline, hard drop. */
+  --cr-outline:
+    -1.5px -1.5px 0 #1a1030, 1.5px -1.5px 0 #1a1030,
+    -1.5px 1.5px 0 #1a1030, 1.5px 1.5px 0 #1a1030,
+    0 3px 0 #1a1030;
+}
+
+/* ── Islamic edition: teal chrome, gold accents, untracked Arabic ── */
+:root[data-edition="arabic"] {
+  --surface-0: #06202a;
+  --surface-1: #0a3440;
+  --surface-2: #0f4f58;
+  --surface-3: #16807e;
+  --on-surface: #f4f1e6;
+  --on-surface-dim: #b9d9d3;
+  --accent: #e8c060;
+  --accent-ink: #1f1604;
+  --cta: #caa23f;
+  --cta-ink: #1f1604;
+  --success: #3ccf8e;
+  --danger: #f05252;
+  --tracking: 0;
+}
+
 /* ── Keyboard focus ring — visible only during keyboard navigation ── */
 :focus-visible {
   outline: 2.5px solid var(--cr-gold);
