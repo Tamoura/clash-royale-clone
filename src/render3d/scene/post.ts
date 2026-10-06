@@ -185,7 +185,8 @@ export function buildComposer(b: Battle3D): PostStack {
   // Settings → Quality applies live (a ?quality= URL pin still wins).
   b.quality.setPref(getPrefs().quality);
   onPrefs((p) => {
-    if (b.quality.setPref(p.quality)) b.resize();
+    // (A disposed scene has left the page; it no longer follows Settings.)
+    if (b.quality.setPref(p.quality) && b.renderer.domElement.isConnected) b.resize();
   });
   return { composer, bloom, finalPass };
 }
