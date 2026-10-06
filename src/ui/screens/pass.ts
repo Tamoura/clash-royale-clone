@@ -59,9 +59,9 @@ export function flairTier(trophies: number, passFlair: number): number {
 function rewardLabel(r: PassReward, tr: AppCtx["tr"]): string {
   switch (r.kind) {
     case "gold":
-      return `${fmtNum(r.amount)} ${tr("gold", "ذهب")}`;
+      return tr("Gold", "ذهب");
     case "gems":
-      return `${fmtNum(r.amount)} ${tr("gems", "جواهر")}`;
+      return tr("Gems", "جواهر");
     case "chest":
       return chestLabel(r.chest, tr);
     case "shards":

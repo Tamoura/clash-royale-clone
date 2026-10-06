@@ -20,7 +20,13 @@
   font-family: var(--cr-font);
 }
 .rw-screen > .ui-header {
-  padding-inline: 0;
+  position: sticky;
+  top: calc(-1 * max(18px, env(safe-area-inset-top, 0px)));
+  z-index: 3;
+  margin: calc(-1 * max(18px, env(safe-area-inset-top, 0px))) calc(-1 * var(--sp-4)) 0;
+  padding-inline: var(--sp-4);
+  padding-top: max(18px, env(safe-area-inset-top, 0px));
+  background: linear-gradient(180deg, var(--surface-0) 70%, transparent);
 }
 .rw-section {
   margin: var(--sp-2) 0 0;
@@ -626,10 +632,14 @@
   height: 26px;
 }
 .rw-summary__grid {
-  display: grid;
-  grid-template-columns: repeat(4, 72px);
+  max-width: 320px;
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--sp-2);
   justify-content: center;
+}
+.rw-summary__grid > * {
+  width: 72px;
 }
 .rw-summary__cell {
   --rw-rarity: var(--cr-rarity-common);
