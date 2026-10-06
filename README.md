@@ -76,6 +76,22 @@ Both devices run the identical, fully-deterministic simulation in lockstep —
 the relay (`server/relay.ts`) only forwards each player's deploys, never the
 game state. See `notes/features/online-1v1.md` for the design.
 
+## Play online
+
+To play friends on other networks, host the same relay somewhere with HTTPS
+and point the game at it:
+
+```sh
+npm run build:relay   # bundle the relay into dist-server/relay.mjs
+npm run relay:prod    # run it (or deploy the Dockerfile / fly.toml)
+```
+
+[docs/deploy-multiplayer.md](docs/deploy-multiplayer.md) walks through it
+step by step. It covers a free 5-minute test through a Cloudflare tunnel, a
+permanent Fly.io deploy, wiring GitHub Pages with the `RELAY_URL` variable,
+and troubleshooting. `node tools/relay-smoke.mjs wss://<relay>/ws` checks a
+running relay end to end.
+
 ## Project conventions
 
 - TDD (red-green-refactor); simulation logic never touches the DOM.
