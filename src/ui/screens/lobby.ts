@@ -157,7 +157,7 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
   // ---- Not set up on this site
   if (!configured) {
     const off = el("div", "lobby-note lobby-note--off");
-    off.innerHTML = icon("wifi");
+    off.innerHTML = icon("lock");
     off.appendChild(
       el(
         "p",
@@ -463,7 +463,10 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
     let step: Step = 0;
     if (found) step = foundTimer ? 2 : 3;
     else if (v?.t === "waiting" || v?.t === "queued") step = 1;
-    else if (v?.t === "connecting" && flow === "join") step = 0;
+    // A join has no "waiting" reply: the first pong says the socket is up,
+    // and any refusal other than "unreachable" came from the relay itself.
+    else if (flow === "join" && (session?.rtt != null || (failed && failed !== "unreachable"))) step = 1;
+    else if (failed && failed !== "unreachable") step = 1;
     const labels = stepLabels(flow);
     stepEls.forEach((li, i) => {
       li.querySelector(".lobby-step__label")!.textContent = labels[i];
