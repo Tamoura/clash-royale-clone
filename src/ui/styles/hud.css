@@ -1,0 +1,773 @@
+/* ============================================================
+   Battle HUD v2 and the result screen (src/render3d/hud.ts, result.ts,
+   src/ui/battleMenu.ts). Scoped to #hud.v2, #topbar.v2, #overlay.v2,
+   .hud-v2 (the #app root) and .battle-menu-v2, so the legacy rules in
+   style.css stay untouched. New values come from tokens.css.
+   ============================================================ */
+
+/* ══ Bottom tray ══ */
+#hud.v2 {
+  z-index: var(--z-hud);
+  padding: var(--sp-3) 0 max(8px, env(safe-area-inset-bottom));
+}
+
+/* ── Hand: exactly four big cards, edge to edge ── */
+#hud.v2 .hand-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-2);
+  /* 16px gutters + 3 gaps = 56px: each card is (width - 56px) / 4. */
+  padding: 0 var(--sp-4);
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+#hud.v2 button.card {
+  --charge: 0;
+  width: auto;
+  min-width: 0;
+  padding: 0;
+  border: 3px solid #e0a83c;
+  border-radius: var(--r-md);
+  background: #0d1426;
+  touch-action: none;
+}
+#hud.v2 button.card canvas.card-art {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 4;
+  border: 0;
+  border-radius: calc(var(--r-md) - 3px);
+  background: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+#hud.v2 button.card:hover {
+  transform: none;
+}
+@media (hover: hover) {
+  #hud.v2 button.card:hover {
+    transform: translateY(-4px);
+  }
+}
+#hud.v2 button.card.selected {
+  transform: translateY(-10px);
+}
+#hud.v2 button.card.dragging {
+  transform: translateY(-14px) scale(1.08) rotate(-3deg);
+}
+
+/* Cost droplet: bottom centre, 40% of it hanging below the card. */
+#hud.v2 .card-cost {
+  left: 50%;
+  bottom: -12px; /* 0.4 x 30px */
+  width: 30px;
+  height: 30px;
+  line-height: 26px;
+  font-size: var(--fs-md);
+  transform: translateX(-50%);
+  border-width: 2px;
+}
+
+/* Charge veil: a static gradient; --charge (0..100) moves the line. */
+#hud.v2 .elixir-veil {
+  inset: 0;
+  border-radius: calc(var(--r-md) - 3px);
+  transition: none;
+  background: linear-gradient(
+    to top,
+    rgba(242, 58, 168, 0.24) 0%,
+    rgba(242, 58, 168, 0.24) max(0%, calc(var(--charge) * 1% - 5%)),
+    rgba(255, 190, 235, 0.92) calc(var(--charge) * 1%),
+    rgba(8, 12, 22, 0.42) calc(var(--charge) * 1%),
+    rgba(8, 12, 22, 0.42) 100%
+  );
+}
+#hud.v2 button.card:not(.locked) .elixir-veil,
+#hud.v2 button.card:not(.locked) .card-need {
+  display: none;
+}
+/* "+N" elixir still needed: the number comes from --need via a counter. */
+#hud.v2 .card-need {
+  top: var(--sp-1);
+  font-size: var(--fs-sm);
+  counter-reset: need var(--need, 0);
+}
+#hud.v2 .card-need::before {
+  content: "+" counter(need);
+}
+:root[data-edition="arabic"] #hud.v2 .card-need::before {
+  content: "+" counter(need, arabic-indic);
+}
+#hud.v2 button.card.dead .card-need::before {
+  content: "\2014";
+}
+#hud.v2 .lvl-chip {
+  top: -8px;
+  right: -6px;
+}
+
+/* ── Next card: a mini card floating at the inline start ── */
+#hud.v2 .hud-next {
+  position: absolute;
+  inset-inline-start: var(--sp-3);
+  bottom: calc(100% + var(--sp-2));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+#hud.v2 .hud-next-label {
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-pill);
+  background: rgba(8, 12, 28, 0.72);
+  color: var(--on-surface);
+  font-size: var(--fs-xs);
+  line-height: 16px;
+  text-shadow: var(--cr-outline);
+  white-space: nowrap;
+}
+#hud.v2 .hud-next-art canvas {
+  display: block;
+  width: 34px;
+  height: auto;
+  aspect-ratio: 3 / 4;
+  border: 2px solid #e0a83c;
+  border-radius: var(--r-sm);
+  box-shadow: var(--elev-1);
+}
+#hud.v2 .hud-next-art.slide-in {
+  animation: hudNextIn var(--dur-slow) var(--ease-pop);
+}
+@keyframes hudNextIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.7); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── King's ability: a 56px round button floating at the inline end ── */
+#hud.v2 .hud-ability {
+  --charge: 0;
+  position: absolute;
+  inset-inline-end: var(--sp-3);
+  bottom: calc(100% + var(--sp-3));
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 35%, #34457a 0%, #141d3a 72%);
+  box-shadow: var(--elev-2);
+  color: var(--on-surface);
+  cursor: pointer;
+  touch-action: none;
+}
+#hud.v2 .hud-ability[hidden] {
+  display: none;
+}
+#hud.v2 .hud-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+#hud.v2 .hud-ring circle {
+  fill: none;
+  stroke-width: 5;
+}
+#hud.v2 .hud-ring-track {
+  stroke: rgba(255, 255, 255, 0.16);
+}
+#hud.v2 .hud-ring-fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: calc(100 - var(--charge));
+  transition: stroke-dashoffset var(--dur-med) linear;
+}
+#hud.v2 .hud-ability-icon {
+  display: grid;
+  place-items: center;
+  filter: grayscale(0.7) brightness(0.75);
+}
+#hud.v2 .hud-ability-icon .ui-icon {
+  width: 26px;
+  height: 26px;
+}
+#hud.v2 .hud-ability-label {
+  position: absolute;
+  bottom: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-pill);
+  background: #141d3a;
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  line-height: 16px;
+  letter-spacing: calc(0.06em * var(--tracking));
+  white-space: nowrap;
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+#hud.v2 .hud-ability.ready {
+  background: radial-gradient(circle at 50% 35%, #ffe07a 0%, #d9912b 75%);
+  animation: hudKingPulse 1.4s ease-in-out infinite;
+}
+#hud.v2 .hud-ability.ready .hud-ability-icon {
+  filter: none;
+}
+#hud.v2 .hud-ability.ready-pop {
+  animation: hudKingPop 0.5s var(--ease-pop), hudKingPulse 1.4s ease-in-out 0.5s infinite;
+}
+@keyframes hudKingPulse {
+  0%, 100% { box-shadow: var(--elev-2), 0 0 0 0 rgba(255, 210, 80, 0.7); }
+  50%      { box-shadow: var(--elev-2), 0 0 0 9px rgba(255, 210, 80, 0); }
+}
+@keyframes hudKingPop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+/* ── Elixir: droplet first, then a full-width bar ── */
+#hud.v2 .elixir-row {
+  margin-top: var(--sp-4);
+  padding: 0 var(--sp-4);
+}
+#hud.v2 .elixir-num {
+  width: 38px;
+  height: 38px;
+  line-height: 33px;
+  margin: 0;
+  margin-inline-end: -12px;
+  font-size: var(--fs-lg);
+}
+#hud.v2 .elixir-bar {
+  height: 24px;
+}
+#hud.v2 .elixir-fill {
+  width: calc(var(--elixir, 0) * 1%);
+}
+#hud.v2 .x2-tag {
+  font-size: var(--fs-sm);
+}
+#hud.v2 .x2-tag:empty {
+  display: none;
+}
+
+/* ══ Top bar ══ */
+#topbar.v2 .crowns {
+  gap: var(--sp-1);
+  padding: 3px var(--sp-2) 3px 3px;
+  min-height: 34px;
+  box-sizing: border-box;
+}
+#topbar.v2 .crowns.enemy {
+  /* Same reading order as yours: badge, name, crowns. */
+  flex-direction: row;
+  padding: 3px var(--sp-2) 3px 3px;
+}
+#topbar.v2 .hud-badge {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(8, 12, 28, 0.45);
+}
+#topbar.v2 .hud-badge .ui-icon {
+  width: 24px;
+  height: 24px;
+}
+#topbar.v2 .hud-badge.text {
+  color: #fff;
+  font-size: var(--fs-xs);
+  line-height: 1;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.7);
+  text-shadow: var(--cr-outline);
+}
+#topbar.v2 .hud-badge[hidden] {
+  display: none;
+}
+#topbar.v2 .hud-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.1;
+}
+#topbar.v2 .pname {
+  max-width: 10ch;
+  font-size: var(--fs-xs);
+}
+#topbar.v2 .ptrophies {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--fs-xs);
+  color: var(--cr-text-gold);
+}
+#topbar.v2 .ptrophies[hidden] {
+  display: none;
+}
+#topbar.v2 .ptrophies .ui-icon {
+  width: 12px;
+  height: 12px;
+}
+#topbar.v2 .hud-crown .ui-icon {
+  width: 18px;
+  height: 18px;
+}
+#topbar.v2 .crown-count {
+  min-width: 1ch;
+  font-size: var(--fs-md);
+}
+/* "OVERTIME 1:59" stays on one line so the bar (and the camera inset) keep their height. */
+#topbar.v2 .clock.overtime {
+  white-space: nowrap;
+  font-size: var(--fs-md);
+  padding-inline: var(--sp-2);
+}
+#topbar.v2 .menu-toggle {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-md);
+}
+#topbar.v2 .menu-toggle span {
+  width: 20px;
+}
+
+/* ══ In-stage controls that sit with the HUD ══ */
+.hud-v2 .emote-bar {
+  /* Beside the Next card, clear of the King button. */
+  left: auto;
+  inset-inline-start: calc(var(--sp-3) + 34px + var(--sp-3));
+  bottom: var(--sp-2);
+}
+.hud-v2 .emote-bar .emote-toggle {
+  width: 48px;
+  height: 48px;
+}
+.hud-v2 .emote-tray button {
+  width: 44px;
+  height: 44px;
+}
+/* Tips and info are sentences, not one-word calls: smaller and wrapped. */
+.hud-v2 #banner {
+  padding: 0 var(--sp-4);
+}
+.hud-v2 #banner[data-priority="tip"],
+.hud-v2 #banner[data-priority="info"] {
+  font-size: clamp(22px, 6vw, 28px);
+  line-height: 1.2;
+  -webkit-text-stroke: 1px #1f1303;
+}
+
+/* ══ Battle menu sheet ══ */
+.battle-menu-v2 {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-2);
+}
+.battle-menu-v2 .bm-status {
+  margin: 0;
+  color: var(--on-surface-dim);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+.battle-menu-v2 .ui-btn {
+  width: 100%;
+  min-height: 52px;
+}
+.battle-menu-v2 .bm-forfeit {
+  color: var(--danger);
+  box-shadow: inset 0 0 0 2px var(--danger), var(--elev-1);
+}
+
+/* ══ Result screen ══ */
+#overlay.v2 {
+  z-index: calc(var(--z-hud) + 2);
+  padding: max(var(--sp-4), env(safe-area-inset-top)) var(--sp-4) max(var(--sp-4), env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  gap: 0;
+  background: var(--scrim);
+  font-family: var(--cr-font);
+  color: var(--on-surface);
+}
+#overlay.v2.show[data-kind="win"] {
+  background:
+    radial-gradient(ellipse 80% 45% at 50% 22%, rgba(250, 204, 21, 0.32) 0%, transparent 70%),
+    var(--scrim);
+}
+#overlay.v2.show[data-kind="loss"] {
+  background:
+    radial-gradient(ellipse 80% 45% at 50% 22%, rgba(239, 68, 68, 0.28) 0%, transparent 70%),
+    var(--scrim);
+}
+#overlay.v2 .res-panel {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 380px);
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 2px var(--surface-3), var(--elev-3);
+  animation: resPanelIn var(--dur-slow) var(--ease-pop) both;
+}
+@keyframes resPanelIn {
+  from { opacity: 0; transform: translateY(24px) scale(0.92); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Ribbon */
+#overlay.v2 .res-ribbon {
+  align-self: center;
+  min-width: 78%;
+  padding: var(--sp-2) var(--sp-7);
+  text-align: center;
+  font-size: clamp(32px, 9vw, 44px);
+  line-height: var(--lh-display);
+  letter-spacing: calc(0.04em * var(--tracking));
+  clip-path: polygon(0 0, 100% 0, 94% 50%, 100% 100%, 0 100%, 6% 50%);
+  background: var(--surface-3);
+  color: var(--on-surface);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+  animation: resRibbonIn 0.42s var(--ease-pop) both;
+}
+#overlay.v2[data-kind="win"] .res-ribbon {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 80%, #fff) 0%, var(--accent) 60%);
+  color: var(--accent-ink);
+}
+#overlay.v2[data-kind="loss"] .res-ribbon {
+  background: var(--danger);
+  color: #fff;
+  text-shadow: var(--cr-outline);
+}
+@keyframes resRibbonIn {
+  from { opacity: 0; transform: translateY(-28px) scaleX(0.6); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Crowns */
+#overlay.v2 .res-crowns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+#overlay.v2 .res-side {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: 44px;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+}
+#overlay.v2 .res-side.me {
+  box-shadow: inset 4px 0 0 var(--team-player);
+}
+#overlay.v2 .res-side.them {
+  box-shadow: inset 4px 0 0 var(--team-enemy);
+}
+#overlay.v2 .res-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-md);
+}
+#overlay.v2 .res-crown-slots {
+  display: flex;
+  gap: var(--sp-1);
+  flex: none;
+}
+#overlay.v2 .res-crown .ui-icon {
+  width: 34px;
+  height: 34px;
+}
+#overlay.v2 .res-side.them .res-crown .ui-icon {
+  width: 26px;
+  height: 26px;
+}
+#overlay.v2 .res-crown.pop {
+  display: inline-block;
+  animation: resCrownPop 0.35s var(--ease-pop);
+}
+@keyframes resCrownPop {
+  0%   { transform: scale(0.3) rotate(-20deg); filter: brightness(2); }
+  100% { transform: none; filter: none; }
+}
+
+/* Trophies and gold */
+#overlay.v2 .res-rewards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-3);
+}
+#overlay.v2 .res-reward {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 44px;
+  padding: var(--sp-1) var(--sp-4) var(--sp-1) var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--surface-1);
+  box-shadow: inset 0 0 0 2px var(--surface-3);
+}
+#overlay.v2 .res-reward .ui-icon {
+  width: 28px;
+  height: 28px;
+}
+#overlay.v2 .res-num {
+  font-weight: 400;
+  font-size: var(--fs-xl);
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  text-shadow: var(--cr-outline);
+}
+#overlay.v2 .res-reward.down .res-num {
+  color: var(--danger);
+}
+
+/* Earned chest in its slot */
+#overlay.v2 .res-chest {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  opacity: 0;
+  transform: scale(0.6);
+}
+#overlay.v2 .res-chest.in {
+  opacity: 1;
+  transform: none;
+  transition: opacity var(--dur-med) var(--ease-out), transform var(--dur-slow) var(--ease-pop);
+}
+#overlay.v2 .res-chest-slot {
+  flex: none;
+  width: 60px;
+  height: 60px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  background: var(--surface-0);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+#overlay.v2 .res-chest-slot .ui-icon {
+  width: 46px;
+  height: 46px;
+}
+#overlay.v2 .res-chest.rare .res-chest-slot .ui-icon {
+  filter: hue-rotate(200deg) saturate(1.4);
+}
+#overlay.v2 .res-chest-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+#overlay.v2 .res-chest-text b {
+  font-weight: 400;
+  font-size: var(--fs-lg);
+  color: var(--accent);
+}
+#overlay.v2 .res-chest-text small {
+  font-size: var(--fs-xs);
+  color: var(--on-surface-dim);
+}
+#overlay.v2 .res-note {
+  text-align: center;
+  font-size: var(--fs-lg);
+  color: var(--accent);
+}
+#overlay.v2 .res-extras {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* Buttons */
+#overlay.v2 .res-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+#overlay.v2 .res-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+}
+#overlay.v2 .res-actions .ui-btn {
+  width: 100%;
+  padding-inline: var(--sp-3);
+}
+#overlay.v2 .res-open-chest {
+  animation: resChestGlow 1.8s ease-in-out infinite;
+}
+@keyframes resChestGlow {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(255, 210, 80, 0)); }
+  50%      { filter: drop-shadow(0 0 10px rgba(255, 210, 80, 0.75)); }
+}
+
+/* Battle report (folded) */
+#overlay.v2 .res-report {
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+}
+#overlay.v2 .res-report summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  cursor: pointer;
+  font-size: var(--fs-md);
+  color: var(--on-surface-dim);
+  list-style: none;
+}
+#overlay.v2 .res-report summary::-webkit-details-marker {
+  display: none;
+}
+#overlay.v2 .res-report summary::after {
+  content: "";
+  margin-inline-start: auto;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+#overlay.v2 .res-report[open] summary::after {
+  transform: rotate(-135deg);
+}
+#overlay.v2 .res-report-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3) var(--sp-3);
+  font-size: var(--fs-sm);
+}
+#overlay.v2 .res-stat {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+#overlay.v2 .res-stat .mine {
+  text-align: end;
+  color: var(--team-player);
+}
+#overlay.v2 .res-stat .theirs {
+  text-align: start;
+  color: var(--team-enemy);
+}
+#overlay.v2 .res-stat label {
+  color: var(--on-surface-dim);
+  font-size: var(--fs-xs);
+  text-align: center;
+}
+#overlay.v2 .res-stat-head span {
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#overlay.v2 .res-sub {
+  margin-top: var(--sp-2);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  letter-spacing: calc(0.08em * var(--tracking));
+  text-transform: uppercase;
+}
+#overlay.v2 .res-leader {
+  display: grid;
+  grid-template-columns: minmax(0, 7.5em) 1fr auto;
+  align-items: center;
+  gap: var(--sp-2);
+}
+#overlay.v2 .res-leader-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#overlay.v2 .res-leader-bar {
+  height: 10px;
+  border-radius: var(--r-pill);
+  background: var(--surface-0);
+  overflow: hidden;
+}
+#overlay.v2 .res-leader-bar i {
+  display: block;
+  height: 100%;
+  width: calc(var(--w, 0) * 1%);
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--cta));
+}
+#overlay.v2 .res-leader-num {
+  font-variant-numeric: tabular-nums;
+}
+#overlay.v2 .res-tl,
+#overlay.v2 .res-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+#overlay.v2 .res-tl .ui-icon,
+#overlay.v2 .res-tip .ui-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+#overlay.v2 .res-tl.lost {
+  color: var(--on-surface-dim);
+}
+#overlay.v2 .res-tip {
+  margin-top: var(--sp-2);
+  padding: var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  line-height: var(--lh-sm);
+}
+#overlay.v2 .res-tip b {
+  font-weight: 400;
+  color: var(--accent);
+}
+
+/* Confetti rains behind the panel. */
+#overlay.v2 .confetti-box {
+  z-index: 0;
+}
+
+/* Motion off (the pref or the OS): no entrances, no loops. */
+#overlay.v2.calm *,
+#overlay.v2.calm {
+  animation: none !important;
+  transition: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  #hud.v2 .hud-ability.ready,
+  #overlay.v2 .res-open-chest {
+    animation: none;
+  }
+}
