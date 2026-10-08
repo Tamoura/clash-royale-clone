@@ -66,6 +66,7 @@ import { applyWaves, challengeStatus, type Challenge } from "./game/challenges";
 import { dailyDeck, dateKey } from "./game/daily";
 import { checkSeason, loadAchievements, loadSeason, saveSeason, seasonKey } from "./meta/achievements";
 import { loadQuests } from "./meta/quests";
+import { registerRewards } from "./meta/rewardsWire";
 import type { AppCtx, MetaState } from "./app/ctx";
 import { registerLifecycle } from "./app/lifecycle";
 import {
@@ -799,6 +800,8 @@ const ctx: AppCtx = {
     sandboxResetBtn.style.display = "none";
   },
 };
+// Reward loop (chests, Trophy Road, Crown Pass): hooks and Home slots.
+registerRewards(ctx);
 
 registerLifecycle(scene); // idle rendering behind opaque screens, hidden-tab sim hold
 

@@ -167,6 +167,29 @@ export function seasonKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/** A finished season, handed to rollover listeners (the Crown Pass, the payout). */
+export interface SeasonRollover {
+  /** The season that just ended, with its final best. */
+  ended: SeasonState;
+  /** Key of the season that starts now. */
+  nextKey: string;
+}
+
+const rolloverListeners: ((r: SeasonRollover) => void)[] = [];
+
+/**
+ * Run fn whenever checkSeason rolls a saved season over to a new month.
+ * Returns the unsubscribe function. A throwing listener is reported and
+ * skipped, so it can never block the boot.
+ */
+export function onSeasonRollover(fn: (r: SeasonRollover) => void): () => void {
+  rolloverListeners.push(fn);
+  return () => {
+    const i = rolloverListeners.indexOf(fn);
+    if (i >= 0) rolloverListeners.splice(i, 1);
+  };
+}
+
 /**
  * Roll the season forward if the month changed. Returns the (possibly
  * soft-reset) trophy count and whether a reset banner should show.
@@ -186,6 +209,16 @@ export function checkSeason(
   const history = state
     ? [{ key: state.key, best: Math.max(state.best, trophies) }, ...state.history].slice(0, 12)
     : [];
+  if (state) {
+    const ended = { ...state, best: Math.max(state.best, trophies) };
+    for (const fn of rolloverListeners.slice()) {
+      try {
+        fn({ ended, nextKey: nowKey });
+      } catch (err) {
+        console.error("[season] rollover listener failed", err);
+      }
+    }
+  }
   const softReset =
     trophies > SEASON_FLOOR
       ? SEASON_FLOOR + Math.floor((trophies - SEASON_FLOOR) / 2)
