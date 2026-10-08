@@ -18,12 +18,11 @@ import {
   buildTowerDuchess,
   buildTowerKing,
   buildTowerPrincess,
-  outlineRig,
   paintedToon,
   toon,
 } from "../../characters3d";
 import { batchStatic } from "../../staticBatch";
-import { outlinesEnabled } from "../../quality";
+import { bakeRig } from "../../rigBake";
 import {
   CHUNK_ORDER,
   COLLAPSE_TIME,
@@ -35,7 +34,7 @@ import {
   type ChunkName,
   type ChunkStart,
 } from "../../towerCollapse";
-import { THEME } from "../../theme";
+import { ARABIC, THEME } from "../../theme";
 import type { Battle3D } from "../../scene3d";
 import {
   HP_COLOR,
@@ -415,12 +414,10 @@ export function buildTowerMesh(e: Entity): EntityView {
         ? buildTowerDuchess()
         : buildTowerPrincess();
   articulate(defender);
-  if (outlinesEnabled()) outlineRig(defender.group);
   defender.group.scale.setScalar(king ? 0.85 : 0.8);
   if (defender.arm) defender.arm.rotation.x = defender.armRest;
-  // Each limb's parts (and their ink hulls) merge into that limb; faces
-  // and other named parts stay separate meshes.
-  batchStatic(defender.group, () => false, { tint: true, local: true });
+  // Bake the crew like a field troop: one mesh and one ink hull per limb.
+  bakeRig(defender, `tower-${king ? "king" : (e.towerTroop ?? "princess")}:${e.side}:${ARABIC ? "arabic" : "normal"}:default`);
   const mount = chunkGroup(root, "defenderMount", true);
   mount.position.y = height + 0.18;
   mount.add(defender.group);

@@ -10,6 +10,7 @@ import type { Entity } from "../../../game/battle";
 import type { CardId } from "../../../game/cards";
 import { cardDisplayName } from "../../../render/cardNames";
 import { buildTroop, toon, type TroopRig } from "../../characters3d";
+import { bakeRig } from "../../rigBake";
 import { spawnRecipe } from "../../spawnfx";
 import { makeTeamDisc, refreshTeamDisc } from "../../teamBase";
 import { applyTeam, teamColor, teamCss, teamPalette } from "../../teamColors";
@@ -173,7 +174,7 @@ export function pillTex(): THREE.CanvasTexture {
   return pillTexture;
 }
 
-export function makeHpBar(width: number, color: number, y: number, height = 0.2): {
+export function makeHpBar(width: number, color: number, y: number, height = 0.2, gloss = true): {
   group: THREE.Group;
   fill: THREE.Mesh;
 } {
@@ -187,13 +188,16 @@ export function makeHpBar(width: number, color: number, y: number, height = 0.2)
     new THREE.MeshBasicMaterial({ color }),
   );
   fill.position.z = 0.01;
-  // Gloss highlight rides the fill so it scales with it.
-  const gloss = new THREE.Mesh(
-    new THREE.PlaneGeometry(width - 0.06, height * 0.25),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }),
-  );
-  gloss.position.set(0, height * 0.2, 0.01);
-  fill.add(gloss);
+  // Gloss highlight rides the fill so it scales with it. Troop bars skip it:
+  // the strip is about a pixel tall at battle zoom and costs a draw per unit.
+  if (gloss) {
+    const shine = new THREE.Mesh(
+      new THREE.PlaneGeometry(width - 0.06, height * 0.25),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }),
+    );
+    shine.position.set(0, height * 0.2, 0.01);
+    fill.add(shine);
+  }
   group.add(bg, fill);
   group.position.y = y;
   // Face the steep camera; for the enemy viewpoint, also spin 180° about Y.
@@ -398,14 +402,19 @@ export function makeZzzSprite(): THREE.Sprite {
   return sprite;
 }
 
-/** Materials with an emissive channel under this object, for flashes. */
+/**
+ * Materials with an emissive channel under this object, for flashes. Each
+ * material once: a baked unit shares one between all its baked meshes.
+ */
 export function collectFlashMats(root: THREE.Object3D): EntityView["flashMats"] {
   const out: EntityView["flashMats"] = [];
+  const seen = new Set<THREE.Material>();
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
     const mat = mesh.material as THREE.Material & { emissive?: THREE.Color };
-    if (mat.emissive) {
+    if (mat.emissive && !seen.has(mat)) {
+      seen.add(mat);
       out.push({
         mat: mat as THREE.Material & { emissive: THREE.Color },
         orig: mat.emissive.getHex(),
@@ -586,6 +595,7 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
     lift = glbUnit.height;
   } else {
     rig = buildTroop(e.cardId!, team);
+    bakeRig(rig, `${e.cardId}:${team}:${ARABIC ? "arabic" : "normal"}:${teamPalette()}`);
     // CR readability comes from silhouette CONTRAST: tanks tower, swarm
     // units stay small, everyone else sits between.
     const scale =
@@ -642,7 +652,7 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
   // the shadow-map pass for ~40 parts per unit halves a busy fight's cost.
   root.traverse((o) => (o.castShadow = false));
 
-  const bar = makeHpBar(0.9, unitHpColor(team), lift + 0.25);
+  const bar = makeHpBar(0.9, unitHpColor(team), lift + 0.25, 0.2, false);
   bar.group.visible = team === "enemy"; // opponents always; yours once damaged
   root.add(bar.group);
   trackTeam({ root, side: team, disc, hpFill: bar.fill });
@@ -683,7 +693,11 @@ export function buildGhost(cardId: CardId): TroopRig {
   const rig = buildTroop(cardId, "player");
   rig.group.traverse((o) => {
     const mesh = o as THREE.Mesh;
-    if (mesh.isMesh) {
+    if (mesh.isMesh && mesh.name === "outline") {
+      // The shared ink shader cannot be cloned per ghost (its width uniforms
+      // are shared); a see-through preview goes without ink.
+      mesh.visible = false;
+    } else if (mesh.isMesh) {
       const mat = (mesh.material as THREE.Material).clone() as THREE.Material & {
         opacity: number;
       };

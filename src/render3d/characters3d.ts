@@ -103,9 +103,24 @@ function grainMap(): THREE.DataTexture {
  * touch makes every rounded shape read as 3D and gives the whole roster a
  * premium "lit figurine" pop. Shared source ⇒ Three reuses one program.
  */
-function addRimLight(mat: THREE.Material, cacheKey = "premium-toon-rim-v2", ink = false): void {
+function addRimLight(
+  mat: THREE.Material,
+  cacheKey = "premium-toon-rim-v2",
+  ink = false,
+  dark: THREE.Color | null = null,
+): void {
   mat.onBeforeCompile = (sh) => {
     if (ink) installInk(sh);
+    if (dark) {
+      // A second team shade rides in a vertex attribute (see teamToon).
+      sh.uniforms.uDark = { value: dark };
+      sh.vertexShader = sh.vertexShader
+        .replace("#include <common>", "#include <common>\n attribute float aDark;\n varying float vDark;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\n vDark = aDark;");
+      sh.fragmentShader = sh.fragmentShader
+        .replace("#include <common>", "#include <common>\n uniform vec3 uDark;\n varying float vDark;")
+        .replace("#include <map_fragment>", "diffuseColor.rgb = mix(diffuse, uDark, vDark);\n #include <map_fragment>");
+    }
     // Coloured light ramp: sample the gradient's RGB, not just red.
     sh.fragmentShader = sh.fragmentShader.replace(
       "#include <gradientmap_pars_fragment>",
@@ -189,6 +204,21 @@ export function unitBakedToon(): THREE.MeshToonMaterial {
   addRimLight(mat, "baked", true); // clone() drops shader hooks
   mat.userData.shared = false;
   mat.userData.baked = true;
+  return mat;
+}
+
+/**
+ * The material of a baked node's merged team mesh. Its colour is the team's
+ * main shade (applyTeam sets it); parts of the dark shade carry aDark = 1 and
+ * take userData.teamDark instead, so one mesh holds both shades and still
+ * repaints with the palette. It can also host the node's ink triangles when
+ * the node has no body mesh (see installInk).
+ */
+export function teamToon(): THREE.MeshToonMaterial {
+  const mat = toon(0xffffff);
+  const dark = new THREE.Color(0xffffff);
+  mat.userData.teamDark = dark;
+  addRimLight(mat, "team-ink", true, dark);
   return mat;
 }
 
