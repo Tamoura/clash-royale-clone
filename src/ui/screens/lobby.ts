@@ -362,7 +362,7 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
           s.onMatch = (next) => beginOnlineMatch(ctx, next);
           beginOnlineMatch(ctx, m);
         },
-        reducedMotion() ? FOUND_MS / 2 : FOUND_MS,
+        FOUND_MS,
       );
     };
     render();

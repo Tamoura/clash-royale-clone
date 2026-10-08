@@ -230,10 +230,14 @@ export function showVersus(
   window.setTimeout(() => vs.remove(), 1650);
 }
 
-export function startCountdown(withVersus = false): void {
+/**
+ * `fixedDelay` keeps the versus pause even with reduced motion (the splash
+ * itself is skipped): online peers must start counting on the same beat.
+ */
+export function startCountdown(withVersus = false, fixedDelay = false): void {
   phase = "countdown";
   countdownStep = 4;
-  countdownTimer = withVersus && !reduceMotion() ? 1.7 : 0;
+  countdownTimer = withVersus && (fixedDelay || !reduceMotion()) ? 1.7 : 0;
   lastMinuteShown = false;
   overtimeShown = false;
   clearBanners();

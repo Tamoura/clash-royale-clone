@@ -215,7 +215,7 @@ export function settleMatch(ctx: AppCtx, m: SettleInput): Settlement {
       cardsPlayed: m.cardsPlayed,
       damage: mine.stats.damageDealt,
       durationSec: m.battle.time,
-      deckHadChampion: meta.playerDeck.includes("champion"),
+      deckHadChampion: solo && meta.playerDeck.includes("champion"),
       trophiesAfter: meta.profile.trophies,
     });
     saveAchievements(meta.achievements);

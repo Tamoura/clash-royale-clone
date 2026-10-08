@@ -32,8 +32,22 @@ export const SIM_DT = 1 / 30;
 export const SYNC_EVERY = 30;
 /** Seconds without the peer's input before the match is called off. */
 export const STALL_LIMIT_MS = 25_000;
+/**
+ * The guest gives up a little later than the host, so when both sides stall
+ * at once only one of them can call the other gone (the other gets peer-left
+ * while stalled and ends as no contest).
+ */
+const GUEST_STALL_EXTRA_MS = 3000;
 /** Delays before each resume attempt after the socket drops mid-match. */
-export const RESUME_BACKOFF_MS: readonly number[] = [500, 1000, 2000, 4000, 8000];
+export const RESUME_BACKOFF_MS: readonly number[] = [500, 1000, 2000, 3000, 4000];
+/** The relay keeps a dropped seat for 20 s; stop trying a little before. */
+export const RESUME_DEADLINE_MS = 18_000;
+/** A match socket that has been silent this long is dead: take the resume path. */
+export const DEAD_SOCKET_MS = 6000;
+/** A page that has not stepped for this long was frozen or hidden. */
+const FROZEN_MS = 2000;
+/** Stalled this long (with no word from the relay) counts as the stalled side. */
+const STALLED_SIDE_MS = 2000;
 /** Most ticks run in one step() while catching up after a resume. */
 export const CATCH_UP_TICKS = 600;
 /** One emote per this many milliseconds. */
@@ -52,6 +66,7 @@ export type EndReason =
   | "finished" // the battle reached its result
   | "opponent-left" // the peer left, dropped for good or stalled 25 s: you win
   | "desync" // checksums disagreed: no contest
+  | "no-contest" // both sides stalled or the page was frozen: nobody wins
   | "connection-lost" // our socket died and could not resume
   | "left" // we left on purpose
   | "forfeit" // we gave up: a loss
@@ -175,7 +190,11 @@ export class OnlineSession {
   private ownFrames: InputFrame[] = [];
   private reservations: Reservation[] = [];
   private abilityTick: number | null | undefined = undefined; // undefined: none pending
-  private queuedThisFrame = 0;
+  /** Deploys queued since the last outgoing frame (the relay caps a frame at 3). */
+  private queuedSinceFrame = 0;
+  private lastStepAt: number | null = null;
+  private localPaused = false;
+  private dropAt: number | null = null;
   private lastEmoteAt = -Infinity;
   private readonly mySums = new Map<number, number>();
   private readonly peerSums = new Map<number, number>();
@@ -264,7 +283,11 @@ export class OnlineSession {
 
   /** Tell the peer this page was hidden or shown again. */
   setPaused(paused: boolean): void {
-    if (this.phase === "match") this.client?.pause(paused);
+    this.localPaused = paused;
+    if (this.phase === "match") {
+      this.client?.pause(paused);
+      if (!paused) this.client?.markHeard();
+    }
   }
 
   // ---- Reading ---------------------------------------------------------
@@ -343,13 +366,13 @@ export class OnlineSession {
     const me = this.side === "player" ? battle.player : battle.enemy;
     if (!me.hand.cards.includes(cardId)) return "not-in-hand";
     if (this.isPending(cardId)) return "pending";
-    if (this.queuedThisFrame >= MAX_COMMANDS_PER_FRAME) return "busy";
+    if (this.queuedSinceFrame >= MAX_COMMANDS_PER_FRAME) return "busy";
     const eff = effectiveCard(battle, this.side, cardId);
     if (!eff) return "not-in-hand";
     if (me.elixir.amount - this.reserved() < eff.cost) return "no-elixir";
     const cmd: DeployCommand = { side: this.side, cardId, x, y };
     this.ls.queue(cmd);
-    this.queuedThisFrame++;
+    this.queuedSinceFrame++;
     this.reservations.push({ cardId, cost: eff.cost, tick: null });
     return "ok";
   }
@@ -384,8 +407,11 @@ export class OnlineSession {
   step(dt: number): number {
     const ls = this.ls;
     const battle = this.battle;
-    this.queuedThisFrame = 0;
     if (!ls || !battle || this.phase !== "match") return 1;
+    const wall = this.now();
+    if (this.lastStepAt !== null && wall - this.lastStepAt > FROZEN_MS) this.client?.markHeard();
+    this.lastStepAt = wall;
+    if (this.deadSocket()) return 1;
     this.acc += dt;
     let ran = 0;
     const budget = this.catchingUp ? CATCH_UP_TICKS : Number.POSITIVE_INFINITY;
@@ -407,7 +433,7 @@ export class OnlineSession {
       this.stallMs = 0;
     } else {
       this.stallMs += dt * 1000;
-      if (this.stallMs >= STALL_LIMIT_MS) {
+      if (this.stallMs >= STALL_LIMIT_MS + (this.side === "enemy" ? GUEST_STALL_EXTRA_MS : 0)) {
         this.opponentLeft();
         return 1;
       }
@@ -417,9 +443,19 @@ export class OnlineSession {
     return ready ? Math.min(1, Math.max(0, this.acc / SIM_DT)) : 1;
   }
 
+  /** No word from the relay for DEAD_SOCKET_MS: drop the socket and resume. */
+  private deadSocket(): boolean {
+    const c = this.client;
+    if (!c || this.reconnectAttempt > 0 || c.silence() < DEAD_SOCKET_MS) return false;
+    c.drop();
+    return true;
+  }
+
   private runTick(ls: Lockstep, battle: BattleState): void {
     const t = ls.tick;
     const { commands, outgoing } = ls.step();
+    // Everything queued so far rides on `outgoing`: a new frame starts empty.
+    this.queuedSinceFrame = 0;
     for (const c of commands) {
       try {
         deployCard(battle, c.side, c.cardId, c.x, c.y);
@@ -527,6 +563,9 @@ export class OnlineSession {
     this.lastPeerTick = -1;
     this.ownFrames = [];
     this.reservations = [];
+    this.queuedSinceFrame = 0;
+    this.lastStepAt = null;
+    this.dropAt = null;
     this.abilityTick = undefined;
     this.mySums.clear();
     this.peerSums.clear();
@@ -534,6 +573,7 @@ export class OnlineSession {
     this.peerDroppedAt = null;
     this.peerPaused = false;
     this.phase = "match";
+    this.client?.pingFast();
     // Opening frames unblock the first ticks before any deploy can land.
     for (const f of ls.bootstrap()) this.sendOwn(f);
     this.onMatch?.({
@@ -568,6 +608,7 @@ export class OnlineSession {
         this.fail("unreachable");
         return;
       case "match":
+        if (this.dropAt === null) this.dropAt = this.now();
         if (this.code && this.token) this.scheduleResume();
         else this.end("connection-lost");
         return;
@@ -584,24 +625,29 @@ export class OnlineSession {
   }
 
   private scheduleResume(): void {
-    if (this.reconnectAttempt >= RESUME_BACKOFF_MS.length) {
+    const delay = RESUME_BACKOFF_MS[this.reconnectAttempt] ?? Number.POSITIVE_INFINITY;
+    const sinceDrop = this.dropAt === null ? 0 : this.now() - this.dropAt;
+    if (this.reconnectAttempt >= RESUME_BACKOFF_MS.length || sinceDrop + delay > RESUME_DEADLINE_MS) {
       this.reconnectAttempt = 0;
+      this.dropAt = null;
       this.end("connection-lost");
       return;
     }
-    const delay = RESUME_BACKOFF_MS[this.reconnectAttempt];
     this.reconnectAttempt++;
     this.changed();
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (this.leaving || this.phase !== "match" || !this.code) return;
-      this.openClient().resume(this.code, this.token, this.lastPeerTick);
+      const c = this.openClient();
+      c.pingFast();
+      c.resume(this.code, this.token, this.lastPeerTick);
     }, delay);
   }
 
   private resumed(frames: InputFrame[], start: StartPayload): void {
     if (this.phase !== "match" || !this.ls || start.role !== this.start?.role) return;
     this.reconnectAttempt = 0;
+    this.dropAt = null;
     const haveTick = this.lastPeerTick;
     let ownLogged = -1;
     for (const f of frames) {
@@ -621,7 +667,8 @@ export class OnlineSession {
   private peerLeft(): void {
     this.peerGone = true;
     if (this.phase === "match") {
-      this.opponentLeft();
+      if (this.stalledSide()) this.noContest();
+      else this.opponentLeft();
     } else if (this.phase === "rematchWait") {
       this.end("opponent-left");
       this.leaveQuietly();
@@ -656,6 +703,25 @@ export class OnlineSession {
   private opponentLeft(): void {
     if (this.battle && !this.battle.result) this.declareWinner(this.side);
     this.end("opponent-left");
+    this.peerGone = true;
+    this.leaveQuietly();
+  }
+
+  /**
+   * Were we the paused or stalled side when the peer left? A page that was
+   * hidden or frozen, or that sat stalled with no word from the relay about
+   * the peer, cannot tell who left first: if both sides awarded themselves
+   * the win, both would be champions.
+   */
+  private stalledSide(): boolean {
+    if (this.localPaused) return true;
+    if (this.lastStepAt !== null && this.now() - this.lastStepAt > FROZEN_MS) return true;
+    return this.stallMs >= STALLED_SIDE_MS && this.peerDroppedAt === null && !this.peerPaused;
+  }
+
+  /** Nobody wins: the peer left while we were the stalled side. */
+  private noContest(): void {
+    this.end("no-contest");
     this.peerGone = true;
     this.leaveQuietly();
   }

@@ -190,7 +190,7 @@ export function beginOnlineMatch(ctx: AppCtx, m: MatchInfo): void {
     towerTroop: m.me?.tower ?? meta.towerTroop,
     ability: m.me?.ability ?? meta.abilityChoice,
   });
-  startCountdown(true);
+  startCountdown(true, true);
   if (m.round > 1) window.setTimeout(() => showBanner(tr("Rematch!", "مباراة إعادة!")), 1700);
   emit("matchStart", { kind: "ladder", battle: m.battle, mySide: m.side, online: true, replay: false });
 }
@@ -305,7 +305,7 @@ function ensureOverlay(ctx: AppCtx): OnlineOverlay {
       leaveOnline();
       ctx.openHome();
     },
-    onOpponentLeft: () => showBanner(tr("Your friend left — you win!", "غادر صديقك — لقد فزت!")),
+    onOpponentLeft: () => showBanner(tr("Your opponent left — you win!", "غادر خصمك — لقد فزت!")),
   });
   return overlay;
 }
@@ -316,7 +316,12 @@ function escapeHtml(s: string): string {
 
 // Queued (not yet executed) deploys keep their elixir reserved, so the HUD
 // and the deploy check never offer elixir that is already promised.
-setPendingSpend(() => onlineSession()?.reserved() ?? 0);
+try {
+  setPendingSpend(() => onlineSession()?.reserved() ?? 0);
+} catch {
+  // Dev hot reload re-runs this module and the provider is already set.
+  // Reload the page after editing online code.
+}
 
 // A hidden page can't step its sim: tell the friend we paused.
 if (typeof document !== "undefined") {

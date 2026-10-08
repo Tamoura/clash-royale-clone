@@ -4,10 +4,12 @@ import { stateChecksum } from "./checksum";
 import type { ClientMsg, Loadout, MatchMode } from "./protocol";
 import type { NetSocket } from "./roomClient";
 import { RoomHub, type Outbound } from "./rooms";
+import { parseClientMsg, playableCardIds } from "./validate";
 import {
   EMOTE_GAP_MS,
   OnlineSession,
   RESUME_BACKOFF_MS,
+  RESUME_DEADLINE_MS,
   SIM_DT,
   STALL_LIMIT_MS,
   mulberry32,
@@ -62,13 +64,17 @@ class MemRelay {
   /** While true, new connections fail at once (relay unreachable). */
   refuse = false;
   connects: number[] = [];
+  /** Raw client messages the production relay's parser would reject. */
+  rejected: string[] = [];
+  /** Sockets that receive nothing any more (a silently dead link). */
+  muted = new Set<string>();
 
   constructor() {
     let n = 0;
     this.hub = new RoomHub(() => `ROOM${++n}`, {
       now: () => this.clock,
       rng: mulberry32(9),
-      token: () => `tok${++n}`,
+      token: () => (++n).toString(16).padStart(32, "0"),
       seed: () => 1234,
     });
   }
@@ -103,12 +109,16 @@ class MemRelay {
       const msg = this.inbox.shift();
       if (msg) {
         if (msg.data === null) this.dropped(msg.from);
-        else if (this.sockets.has(msg.from)) this.outbox.push(...this.handle(msg.from, JSON.parse(msg.data) as ClientMsg));
+        else if (this.sockets.has(msg.from)) {
+          const parsed = parseClientMsg(msg.data, playableCardIds());
+          if ("error" in parsed) this.rejected.push(`${parsed.error}: ${msg.data.slice(0, 120)}`);
+          else this.outbox.push(...this.handle(msg.from, JSON.parse(msg.data) as ClientMsg));
+        }
         continue;
       }
       const out = this.outbox.shift();
       if (out) {
-        this.sockets.get(out.to)?.onmessage?.({ data: JSON.stringify(out.msg) });
+        if (!this.muted.has(out.to)) this.sockets.get(out.to)?.onmessage?.({ data: JSON.stringify(out.msg) });
         continue;
       }
       return;
@@ -157,14 +167,14 @@ interface Pair {
   frame(opts?: { host?: boolean; guest?: boolean }): void;
 }
 
-function pair(mode: MatchMode = MODE): Pair {
+function pair(mode: MatchMode = MODE, hostDeck: CardId[] = HOST_DECK): Pair {
   const relay = new MemRelay();
   const host = new OnlineSession({ url: "mem", loadout: HOST, connect: relay.connect, now: () => relay.clock });
   const guest = new OnlineSession({ url: "mem", loadout: GUEST, connect: relay.connect, now: () => relay.clock });
   const matches = { host: [] as MatchInfo[], guest: [] as MatchInfo[] };
   host.onMatch = (m) => matches.host.push(m);
   guest.onMatch = (m) => matches.guest.push(m);
-  host.create(HOST_DECK, mode);
+  host.create(hostDeck, mode);
   relay.pump();
   const waiting = host.view();
   if (waiting.t !== "waiting") throw new Error(`host not waiting: ${waiting.t}`);
@@ -177,6 +187,7 @@ function pair(mode: MatchMode = MODE): Pair {
     matches,
     frame(opts = {}) {
       relay.clock += SIM_DT * 1000;
+      vi.advanceTimersByTime(SIM_DT * 1000); // pings tick like a real page
       if (opts.host !== false) host.step(SIM_DT);
       if (opts.guest !== false) guest.step(SIM_DT);
       relay.pump();
@@ -338,6 +349,57 @@ describe("stalls", () => {
   });
 });
 
+describe("command cap", () => {
+  it("never puts more than 3 deploys in one frame, even through a stall", () => {
+    const p = pair(MODE, ["skeletons", "bats", "knight", "archers", "arrows", "zap", "cannon", "mini-pekka"]);
+    runUntil(p, 10);
+    // Stall the host (the guest stops answering), then tap 4 cheap cards on
+    // 4 render frames before the next outgoing frame is produced.
+    expect(p.host.tick).toBe(p.guest.tick);
+    for (const s of [p.host, p.guest]) {
+      // Same state on both sims at the same tick, so they stay in step.
+      (s.battle!.player.elixir as { amount: number }).amount = 10;
+    }
+    for (let i = 0; i < 12; i++) p.frame({ guest: false }); // the host runs dry
+    expect(p.host.view().t).toBe("stalled");
+    const hand = [...p.host.battle!.player.hand.cards];
+    const taps = hand.map((id, i) => {
+      p.frame({ guest: false });
+      return p.host.queueDeploy(id as CardId, 5 + i, 22);
+    });
+    expect(taps.filter((v) => v === "ok").length).toBeLessThanOrEqual(3);
+    expect(taps).toContain("busy");
+    for (let i = 0; i < 40; i++) p.frame();
+    expect(p.host.queueDeploy(hand[3], 8, 22)).toBe("ok");
+    for (let i = 0; i < 40; i++) p.frame();
+    expect(p.relay.rejected).toEqual([]);
+    while (p.host.tick !== p.guest.tick) p.frame(p.host.tick < p.guest.tick ? { guest: false } : { host: false });
+    expect(stateChecksum(p.host.battle!)).toBe(stateChecksum(p.guest.battle!));
+  });
+});
+
+describe("dead sockets", () => {
+  it("drops a silent socket and resumes on a fresh one", () => {
+    const p = pair();
+    runUntil(p, 20);
+    const before = p.relay.connects.length;
+    p.relay.muted.add("c2"); // the guest hears nothing; no close is ever reported
+    const seen = new Set<string>();
+    const tickAtMute = p.guest.tick;
+    for (let i = 0; i < Math.ceil(15000 / (SIM_DT * 1000)); i++) {
+      p.frame();
+      seen.add(p.guest.view().t);
+    }
+    // Nothing was dropped before the silence limit, and then it resumed.
+    expect(p.relay.connects.length).toBe(before + 1);
+    expect(seen.has("reconnecting")).toBe(true);
+    expect(p.guest.view().t).not.toBe("ended");
+    expect(p.host.view().t).not.toBe("ended");
+    expect(p.guest.tick).toBeGreaterThan(tickAtMute);
+    expect(p.relay.rejected).toEqual([]);
+  });
+});
+
 describe("resume", () => {
   it("retries with the backoff schedule, then gives up", async () => {
     const p = pair();
@@ -357,7 +419,8 @@ describe("resume", () => {
       expect(p.relay.connects.length).toBe(i + 1);
       expect(p.relay.connects[i] - t0).toBe(elapsed);
     }
-    expect(RESUME_BACKOFF_MS).toEqual([500, 1000, 2000, 4000, 8000]);
+    expect(RESUME_BACKOFF_MS).toEqual([500, 1000, 2000, 3000, 4000]);
+    expect(elapsed).toBeLessThan(RESUME_DEADLINE_MS);
     expect(p.guest.view()).toEqual({ t: "ended", reason: "connection-lost" });
   });
 
@@ -415,6 +478,46 @@ describe("resume", () => {
     expect(stateChecksum(p.host.battle!)).toBe(stateChecksum(p.guest.battle!));
     expect(p.host.view().t).not.toBe("ended");
     expect(p.guest.view().t).not.toBe("ended");
+  });
+});
+
+describe("symmetric stalls", () => {
+  it("do not make both players the winner", () => {
+    const p = pair();
+    runUntil(p, 30);
+    // Neither side hears the other (frames never arrive) for 25 s.
+    const hold = p.relay.hub;
+    expect(hold).toBeDefined();
+    const frames = Math.ceil((STALL_LIMIT_MS + 4000) / 1000 / SIM_DT) + 30;
+    for (let i = 0; i < frames; i++) {
+      p.relay.clock += SIM_DT * 1000;
+      vi.advanceTimersByTime(SIM_DT * 1000);
+      p.host.step(SIM_DT);
+      p.guest.step(SIM_DT);
+      // Drop their frames in transit; keep everything else flowing.
+      p.relay.inbox = p.relay.inbox.filter((m) => m.data === null || !m.data.includes('"t":"frame"'));
+      p.relay.pump();
+    }
+    const results = [p.host, p.guest].map((s) => s.battle!.result?.winner ?? null);
+    expect(results.filter((w) => w !== null).length).toBeLessThanOrEqual(1);
+    const reasons = [p.host, p.guest].map((s) => s.view());
+    expect(reasons.every((v) => v.t === "ended")).toBe(true);
+  });
+
+  it("a page that was hidden when the peer gave up is not the winner", () => {
+    const p = pair();
+    runUntil(p, 30);
+    p.guest.setPaused(true);
+    for (let i = 0; i < Math.ceil((STALL_LIMIT_MS + 4000) / 1000 / SIM_DT) + 30; i++) {
+      p.relay.clock += SIM_DT * 1000;
+      vi.advanceTimersByTime(SIM_DT * 1000);
+      p.host.step(SIM_DT); // the hidden guest does not step
+      p.relay.pump();
+    }
+    expect(p.host.view()).toEqual({ t: "ended", reason: "opponent-left" });
+    expect(p.host.battle!.result?.winner).toBe("player");
+    expect(p.guest.view()).toEqual({ t: "ended", reason: "no-contest" });
+    expect(p.guest.battle!.result).toBeNull();
   });
 });
 

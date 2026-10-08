@@ -77,7 +77,7 @@ export function overlayCard(v: SessionView, prev: SessionView["t"] | null): Card
       return {
         key: "paused",
         icon: "pause",
-        title: tr("Friend paused", "صديقك أوقف اللعبة مؤقتًا"),
+        title: tr("Opponent paused", "خصمك أوقف اللعبة مؤقتًا"),
         body: tr("They left the game for a moment.", "خرج من اللعبة للحظة."),
         actions: ["leave"],
         blocking: false,
@@ -101,7 +101,7 @@ export function overlayCard(v: SessionView, prev: SessionView["t"] | null): Card
         key: "rematch",
         icon: "spinner",
         title: tr("Waiting for rematch…", "بانتظار مباراة الإعادة…"),
-        body: tr("Your friend needs to tap Rematch too.", "يجب أن يضغط صديقك «إعادة» أيضًا."),
+        body: tr("Your opponent needs to tap Rematch too.", "يجب أن يضغط خصمك «إعادة» أيضًا."),
         actions: ["cancel"],
         blocking: true,
         tone: "wait",
@@ -116,6 +116,19 @@ export function overlayCard(v: SessionView, prev: SessionView["t"] | null): Card
             body: tr(
               "Your two games stopped matching, so this one doesn't count.",
               "لم تعد اللعبتان متطابقتين، لذلك لا تُحتسب هذه المباراة.",
+            ),
+            actions: ["home", "lobby"],
+            blocking: true,
+            tone: "end",
+          };
+        case "no-contest":
+          return {
+            key: "no-contest",
+            icon: "flag",
+            title: tr("No contest — connection stalled", "لا نتيجة — توقف الاتصال"),
+            body: tr(
+              "Neither side could tell who dropped, so this one doesn't count.",
+              "لم يتمكن أي طرف من معرفة من انقطع، لذلك لا تُحتسب هذه المباراة.",
             ),
             actions: ["home", "lobby"],
             blocking: true,
@@ -157,7 +170,7 @@ export function overlayCard(v: SessionView, prev: SessionView["t"] | null): Card
           return {
             key: "left-rematch",
             icon: "handshake",
-            title: tr("Your friend left", "غادر صديقك"),
+            title: tr("Your opponent left", "غادر خصمك"),
             body: tr("No rematch this time.", "لا مباراة إعادة هذه المرة."),
             actions: ["home", "lobby"],
             blocking: true,
