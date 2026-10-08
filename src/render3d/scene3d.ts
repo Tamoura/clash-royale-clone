@@ -47,6 +47,7 @@ import {
   applyQuality,
   buildComposer,
   createRenderer,
+  markShadowsDirty,
   maxAnisotropy,
   sampleQuality,
   setFlash,
@@ -305,9 +306,9 @@ export class Battle3D {
    * Arabic bazaar is a single fixed look). Rebuilds the set and light rig
    * when the look actually changes; call before reset() for a new battle.
    */
-  setArenaLook(arenaId: string): void {
+  setArenaLook(arenaId: string, force = false): void {
     const next = lookForArena(arenaId, arabic);
-    if (next.id === LOOK.id) return;
+    if (next.id === LOOK.id && !force) return;
     setLook(next);
     for (const g of [this.arenaGroup, this.lightGroup]) {
       for (const child of [...g.children]) {
@@ -630,7 +631,33 @@ export class Battle3D {
     }
   }
 
+  /** True between webglcontextlost and webglcontextrestored. */
+  private contextLost = false;
+
+  /**
+   * Survive a lost WebGL context (a backgrounded tab, a GPU reset): cancel the
+   * default so the browser may restore it, stop drawing while it is gone, and
+   * on restore rebuild the arena (`arenaId` is the one in play), drop every
+   * entity view and re-fit the post stack. The next sync() recreates the
+   * views from the battle state, so play continues without a reload.
+   */
+  recoverFromContextLoss(arenaId: () => string): void {
+    const canvas = this.renderer.domElement;
+    canvas.addEventListener("webglcontextlost", (ev) => {
+      ev.preventDefault();
+      this.contextLost = true;
+    });
+    canvas.addEventListener("webglcontextrestored", () => {
+      this.contextLost = false;
+      this.setArenaLook(arenaId(), true);
+      this.reset();
+      markShadowsDirty(this);
+      this.resize();
+    });
+  }
+
   render(dt: number): void {
+    if (this.contextLost) return;
     gradeSky(this, dt);
     updateRiver(this, dt);
     updateCrowd(this, dt);
