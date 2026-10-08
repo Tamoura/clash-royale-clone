@@ -67,6 +67,7 @@ import { dailyDeck, dateKey } from "./game/daily";
 import { checkSeason, loadAchievements, loadSeason, saveSeason, seasonKey } from "./meta/achievements";
 import { loadQuests } from "./meta/quests";
 import type { AppCtx, MetaState } from "./app/ctx";
+import { registerLifecycle } from "./app/lifecycle";
 import {
   emit,
   presentTimeScale,
@@ -743,6 +744,8 @@ const ctx: AppCtx = {
     sandboxResetBtn.style.display = "none";
   },
 };
+
+registerLifecycle(scene); // idle rendering behind opaque screens, hidden-tab sim hold
 
 // Home / deck buttons in the top bar.
 const homeBtn = document.createElement("button");
