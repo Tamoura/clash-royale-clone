@@ -1211,6 +1211,7 @@ function frame(now: number): void {
 }
 
 requestAnimationFrame(frame);
+requestAnimationFrame(() => document.body.classList.add("booted")); // boot splash off after the first frame
 
 // Dev-only hook for the lockstep determinism test (stripped from prod builds).
 if (import.meta.env.DEV) {

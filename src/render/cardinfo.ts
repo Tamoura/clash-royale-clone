@@ -1,4 +1,5 @@
-import { getCard, type CardId } from "../game/cards";
+import { levelMultiplier } from "../game/battle";
+import { getCard, SPEED_TILES_PER_SEC, type CardId, type Speed } from "../game/cards";
 import { ARABIC } from "../render3d/theme";
 import { cardDisplayName } from "./cardNames";
 
@@ -105,4 +106,74 @@ export function cardStatLines(id: CardId): string[] {
   }
   if (powers.length) lines.push(powers.join(" · "));
   return lines;
+}
+
+// ---- Stats at a card level (card info sheet) ------------------------------
+
+/** Who a card's attacks can hit. */
+export type CardTargets = "ground" | "air-ground" | "buildings" | "area";
+
+/**
+ * A card's combat numbers at one level, with the same +10%-per-level
+ * multiplier the sim applies (levelMultiplier). Values are unrounded so
+ * they match the sim exactly; the UI rounds for display. null = the stat
+ * does not apply to this card (a spell has no HP, a collector no DPS).
+ */
+export interface CardLevelStats {
+  kind: "troop" | "building" | "spell";
+  level: number;
+  /** HP per unit (troops and buildings). */
+  hp: number | null;
+  /** Damage per hit (troops, buildings) or per cast (spells). */
+  damage: number | null;
+  /** Damage per second per unit. */
+  dps: number | null;
+  /** Seconds between hits. */
+  hitSpeed: number | null;
+  /** Attack range in tiles (troops/buildings) or the spell radius. */
+  range: number | null;
+  /** Move speed (troops only). */
+  speed: Speed | null;
+  /** Tiles per second for that speed. */
+  tilesPerSec: number | null;
+  targets: CardTargets;
+  /** Units per deploy (1 for buildings and spells). */
+  count: number;
+}
+
+/** Pure: the stats for card `id` at `level` (1 = base). */
+export function cardStatsAtLevel(id: CardId, level: number): CardLevelStats {
+  const card = getCard(id);
+  const lvl = Math.max(1, Math.floor(level));
+  const mult = levelMultiplier({ [id]: lvl }, id);
+  if (card.kind === "spell") {
+    return {
+      kind: "spell",
+      level: lvl,
+      hp: null,
+      damage: card.damage > 0 ? card.damage * mult : null,
+      dps: null,
+      hitSpeed: null,
+      range: card.radius,
+      speed: null,
+      tilesPerSec: null,
+      targets: "area",
+      count: 1,
+    };
+  }
+  const u = card.unit;
+  const damage = u.damage > 0 ? u.damage * mult : null;
+  return {
+    kind: card.kind,
+    level: lvl,
+    hp: u.maxHp * mult,
+    damage,
+    dps: damage !== null && u.hitSpeed > 0 ? damage / u.hitSpeed : null,
+    hitSpeed: damage !== null ? u.hitSpeed : null,
+    range: damage !== null ? u.attackRange : null,
+    speed: card.kind === "troop" ? u.speed : null,
+    tilesPerSec: card.kind === "troop" ? SPEED_TILES_PER_SEC[u.speed] : null,
+    targets: u.targetsBuildingsOnly ? "buildings" : u.targetsAir ? "air-ground" : "ground",
+    count: card.kind === "troop" ? card.count : 1,
+  };
 }
