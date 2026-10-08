@@ -1,21 +1,45 @@
 /**
- * The arena stage: playfield, edging, stands and crowd, scenery, the river
- * band with its bridges, and Arabic ornaments (domes, finials, lanterns,
- * arch gateways) shared with the towers. Everything static is batched.
+ * The arena stage: the painted playfield, edging, stands and crowd,
+ * scenery, the living river band with its bridges, the stadium backdrop,
+ * night light pools, ambient weather, and Arabic ornaments (domes,
+ * finials, lanterns, arch gateways) shared with the towers. Everything
+ * static is batched.
  */
 import * as THREE from "three";
 import { ARENA_HEIGHT, ARENA_WIDTH, BRIDGE_XS, RIVER_Y } from "../../../game/arena";
 import type { BattleEvent } from "../../../game/battle";
-import { ARABIC_LOOK } from "../../arenaLooks";
+import { reducedMotion } from "../../../ui/prefs";
 import { toon } from "../../characters3d";
 import { batchStatic } from "../../staticBatch";
 import { THEME } from "../../theme";
 import type { Battle3D } from "../../scene3d";
 import { LOOK, arabic, toWorld, unlitGlow, viewSide } from "../common";
-import { makeStoneTexture, makeZelligeTexture } from "./textures";
+import { skyHorizon } from "../sky";
+import { buildAmbient, disposeAmbient, updateAmbient, type Ambient } from "./ambient";
+import { buildBackdrop, type Backdrop } from "./backdrop";
+import { groundTexture, hashString } from "./groundPaint";
+import { LightPools, type LightSpot } from "./lightPools";
+import { buildRiver, type RiverHandle } from "./river";
+
+/** Everything the arena art keeps per Battle3D between frames. */
+interface ArenaArt {
+  backdrop: Backdrop;
+  river: RiverHandle;
+  pools: LightPools;
+  ambient: Ambient | null;
+  /** Crowd seats 0..kitSeats-1 belong to the backdrop stand (host-view x/z). */
+  kitSeats: Array<{ x: number; z: number }>;
+}
+const ART = new WeakMap<Battle3D, ArenaArt>();
+
+/** Side stands stand this far out; in portrait they sit just off-frame. */
+const STAND_X = 11.25;
+/** The stands' field-side face: past this the crowd is off-screen. */
+const STAND_INNER_X = STAND_X - 0.8;
 
 // Instanced-pose scratch (no per-frame allocation).
 const CROWD_M = new THREE.Matrix4();
+const SKY_TINT = new THREE.Color();
 const WATER_M = new THREE.Matrix4();
 const WATER_POS = new THREE.Vector3();
 const WATER_SCALE = new THREE.Vector3();
@@ -131,8 +155,11 @@ export function archGateway(): THREE.Group {
   return g;
 }
 
-/** Spectators as two instanced meshes (bodies, heads): 2 draw calls. */
-export function buildCrowd(b: Battle3D, seats: Array<{ x: number; z: number; garb: number; skin: number }>): void {
+/**
+ * Spectators as two instanced meshes (bodies, heads): 2 draw calls. Seats
+ * may carry a `lift` (world units) above the side-stand parapet.
+ */
+export function buildCrowd(b: Battle3D, seats: Array<{ x: number; z: number; garb: number; skin: number; lift?: number }>): void {
   if (seats.length === 0) return;
   const bodies = new THREE.InstancedMesh(
     new THREE.CylinderGeometry(0.1, 0.13, 0.26, 6),
@@ -151,36 +178,45 @@ export function buildCrowd(b: Battle3D, seats: Array<{ x: number; z: number; gar
     heads.setColorAt(i, vivid(seat.skin));
   });
   b.crowd = { bodies, heads, seats: seats.map((s) => new THREE.Vector2(s.x, s.z)) };
+  lifts = new Float32Array(seats.map((s) => s.lift ?? 0));
   poseCrowd(b, -1);
   b.arenaGroup.add(bodies, heads);
 }
 
-/** Place every spectator; `t >= 0` makes them hop (cheering). */
-export function poseCrowd(b: Battle3D, t: number): void {
+/** Seat lifts of the crowd being posed (set by buildCrowd). */
+let lifts = new Float32Array(0);
+
+/**
+ * Place spectators; `t >= 0` makes them hop (cheering). Only the first
+ * `count` seats move (the rest keep their pose), so off-screen stands
+ * cost nothing.
+ */
+export function poseCrowd(b: Battle3D, t: number, count = Infinity): void {
   const c = b.crowd!;
-  c.seats.forEach((seat, i) => {
+  const n = Math.min(count, c.seats.length);
+  for (let i = 0; i < n; i++) {
+    const seat = c.seats[i];
     const hop = t >= 0 ? Math.abs(Math.sin(t * 11 + i * 2.6)) * 0.16 : 0;
-    CROWD_M.makeTranslation(seat.x, 1.06 + hop, seat.y);
+    const lift = lifts[i] ?? 0;
+    CROWD_M.makeTranslation(seat.x, 1.06 + lift + hop, seat.y);
     c.bodies.setMatrixAt(i, CROWD_M);
-    CROWD_M.makeTranslation(seat.x, 1.28 + hop, seat.y);
+    CROWD_M.makeTranslation(seat.x, 1.28 + lift + hop, seat.y);
     c.heads.setMatrixAt(i, CROWD_M);
-  });
+  }
   c.bodies.instanceMatrix.needsUpdate = true;
   c.heads.instanceMatrix.needsUpdate = true;
   c.bodies.computeBoundingSphere();
   c.heads.computeBoundingSphere();
 }
 
-export function decorate(b: Battle3D): void {
-  // Distant ground so the arena never floats in a void.
-  const far = new THREE.Mesh(
-    new THREE.PlaneGeometry(140, 140),
-    new THREE.MeshToonMaterial({ color: LOOK.far }),
-  );
-  far.rotation.x = -Math.PI / 2;
-  far.position.y = -0.45;
-  b.arenaGroup.add(far);
+type Seat = { x: number; z: number; garb: number; skin: number; lift?: number };
 
+/**
+ * Set dressing around the court. Returns the side-stand crowd seats and
+ * appends every lantern, torch and string light to `lights`. (The distant
+ * ground and the far end belong to the backdrop.)
+ */
+export function decorate(b: Battle3D, lights: LightSpot[]): Seat[] {
   // Outer apron framing the arena.
   const apron = new THREE.Mesh(
     new THREE.BoxGeometry(ARENA_WIDTH + 10, 0.36, ARENA_HEIGHT + 10),
@@ -218,15 +254,14 @@ export function decorate(b: Battle3D): void {
     rail.rotation.y = -Math.atan2(to[1] - from[1], to[0] - from[0]);
     b.arenaGroup.add(rail);
   };
-  addFenceRun([-fenceHw, -fenceHd], [fenceHw, -fenceHd], 10);
-  addFenceRun([-fenceHw, fenceHd], [fenceHw, fenceHd], 10);
+  // Side runs only: the backdrop and the foreground lip close the ends.
   addFenceRun([-fenceHw, -fenceHd], [-fenceHw, fenceHd], 16);
   addFenceRun([fenceHw, -fenceHd], [fenceHw, fenceHd], 16);
 
   // Long spectator stands flanking the arena: stone galleries with
   // pitched roofs — red on the enemy half, blue on the player half
   // (CR arenas are walled in by these).
-  const crowdSeats: Array<{ x: number; z: number; garb: number; skin: number }> = [];
+  const crowdSeats: Seat[] = [];
   const stand = (x: number, zCenter: number, len: number, roofColor: number): void => {
     const g = new THREE.Group();
     const wall = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, len), toon(LOOK.standWall));
@@ -266,13 +301,13 @@ export function decorate(b: Battle3D): void {
     g.position.set(x, 0, zCenter);
     b.arenaGroup.add(g);
   };
-  const standX = ARENA_WIDTH / 2 + 6.2;
+  // Pulled in to the court's edge: they frame wider screens, and sit just
+  // off-frame on a portrait phone.
   const standLen = ARENA_HEIGHT / 2 - 2.5;
   for (const sx of [-1, 1]) {
-    stand(sx * standX, -ARENA_HEIGHT / 4 - 1, standLen, LOOK.standRoofEnemy); // enemy side
-    stand(sx * standX, ARENA_HEIGHT / 4 + 1, standLen, LOOK.standRoofPlayer); // player side
+    stand(sx * STAND_X, -ARENA_HEIGHT / 4 - 1, standLen, LOOK.standRoofEnemy); // enemy side
+    stand(sx * STAND_X, ARENA_HEIGHT / 4 + 1, standLen, LOOK.standRoofPlayer); // player side
   }
-  buildCrowd(b, crowdSeats);
 
   // Striped spectator tents in the corners, team-colored.
   const tent = (x: number, z: number, color: number): void => {
@@ -350,7 +385,13 @@ export function decorate(b: Battle3D): void {
       b.arenaGroup = endGroup;
       rope(ARENA_WIDTH + 10, 0, y, sz * dz, true);
       for (let i = 0; i < 7; i++) {
-        stringLantern(-12 + i * 4, y + Math.sin(i * 2.3) * 0.15, sz * dz, i + (sz > 0 ? 1 : 0));
+        const ly = y + Math.sin(i * 2.3) * 0.15;
+        const ci = i + (sz > 0 ? 1 : 0);
+        stringLantern(-12 + i * 4, ly, sz * dz, ci);
+        lights.push({
+          x: -12 + i * 4, y: ly - 0.4, z: sz * dz, color: lanternColors[ci % lanternColors.length],
+          radius: 1.7, end: sz > 0 ? "player" : "enemy",
+        });
       }
       b.arenaGroup = holder;
       holder.add(endGroup);
@@ -364,7 +405,9 @@ export function decorate(b: Battle3D): void {
       rope(ARENA_HEIGHT + 4, sx * sideX, 4.6, 0, false);
       for (let i = 0; i < 8; i++) {
         const z = -14 + i * 4;
-        stringLantern(sx * sideX, 4.6 + Math.sin(i * 1.7) * 0.18, z, i + (sx > 0 ? 1 : 0));
+        const ci = i + (sx > 0 ? 1 : 0);
+        stringLantern(sx * sideX, 4.6 + Math.sin(i * 1.7) * 0.18, z, ci);
+        lights.push({ x: sx * sideX, y: 4.2, z, color: lanternColors[ci % lanternColors.length], radius: 1.6 });
       }
     }
   }
@@ -385,6 +428,7 @@ export function decorate(b: Battle3D): void {
         const lantern = makeLantern(0.95);
         lantern.position.set(w.x + 1.2, 0.92, sz * 2.2);
         b.arenaGroup.add(lantern);
+        lights.push({ x: w.x + 1.2, y: 1.12, z: sz * 2.2, color: 0xffb347, radius: 1.9 });
       } else {
         const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.1, 6), toon(LOOK.fencePost));
         pole.position.set(w.x + 1.45, 0.55, sz * 2.2);
@@ -393,6 +437,7 @@ export function decorate(b: Battle3D): void {
         const flame = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), b.glow(LOOK.torch));
         flame.position.set(w.x + 1.45, 1.2, sz * 2.2);
         b.arenaGroup.add(flame);
+        lights.push({ x: w.x + 1.45, y: 1.2, z: sz * 2.2, color: LOOK.torch, radius: 2.0 });
       }
     }
   }
@@ -471,18 +516,18 @@ export function decorate(b: Battle3D): void {
 
   const hw = ARENA_WIDTH / 2;
   const hd = ARENA_HEIGHT / 2;
-  // Tree lines along both sides, plus a few behind each king.
+  // Tree lines behind the side stands, plus a few by the corners (the
+  // backdrop and the foreground lip dress the ends).
   const treeSpots: Array<[number, number, number]> = [
-    [-hw - 1.6, -12, 1.2], [-hw - 2.4, -6, 0.9], [-hw - 1.8, -1, 1.1],
-    [-hw - 2.2, 4, 1.0], [-hw - 1.5, 9, 1.3], [-hw - 2.6, 14, 0.8],
-    [hw + 1.7, -13, 1.0], [hw + 2.3, -7, 1.2], [hw + 1.6, -2, 0.9],
-    [hw + 2.5, 3, 1.1], [hw + 1.8, 8, 1.0], [hw + 2.2, 13, 1.2],
-    [-5, -hd - 2.2, 1.1], [3, -hd - 2.8, 0.9], [7, hd + 2.4, 1.2], [-6, hd + 2.6, 1.0],
+    [-hw - 4.6, -12, 1.2], [-hw - 5.4, -6, 0.9], [-hw - 4.8, -1, 1.1],
+    [-hw - 5.2, 4, 1.0], [-hw - 4.5, 9, 1.3], [-hw - 5.6, 14, 0.8],
+    [hw + 4.7, -13, 1.0], [hw + 5.3, -7, 1.2], [hw + 4.6, -2, 0.9],
+    [hw + 5.5, 3, 1.1], [hw + 4.8, 8, 1.0], [hw + 5.2, 13, 1.2],
+    [-hw - 2.2, hd + 1.2, 1.0], [hw + 2.0, hd + 1.5, 0.9],
   ];
   for (const [x, z, s] of treeSpots) tree(x, z, s);
   const rockSpots: Array<[number, number, number]> = [
-    [-hw - 1.3, 6.5, 0.8], [hw + 1.4, -4.5, 1.0], [-hw - 2.0, -9.5, 0.6],
-    [hw + 1.2, 10.5, 0.7], [2, -hd - 1.8, 0.9], [-3, hd + 1.9, 0.8],
+    [-hw - 3.6, 6.5, 0.8], [hw + 3.6, -4.5, 1.0], [-hw - 3.8, -9.5, 0.6], [hw + 3.5, 10.5, 0.7],
   ];
   for (const [x, z, s] of rockSpots) rock(x, z, s);
 
@@ -497,6 +542,7 @@ export function decorate(b: Battle3D): void {
     f.position.set(x, 0.06, z);
     b.arenaGroup.add(f);
   }
+  return crowdSeats;
 }
 
 /** Flat golden crescent moon inlaid in the floor (arena centerpiece). */
@@ -551,32 +597,39 @@ export function makeSnowDrift(x: number, z: number, scale: number): THREE.Mesh {
 }
 
 export function buildArena(b: Battle3D): void {
-  // One checkered playfield slab instead of two flat halves.
-  const fieldMat = new THREE.MeshToonMaterial({
-    map: arabic ? makeZelligeTexture() : makeStoneTexture(),
-  });
-  const field = new THREE.Mesh(
-    new THREE.BoxGeometry(ARENA_WIDTH + 0.6, 0.4, ARENA_HEIGHT),
-    [
-      toon(LOOK.fieldSide).clone(), // stone sides
-      toon(LOOK.fieldSide).clone(),
-      fieldMat, // top
-      toon(LOOK.fieldSide).clone(),
-      toon(LOOK.fieldSide).clone(),
-      toon(LOOK.fieldSide).clone(),
-    ],
-  );
+  const prev = ART.get(b);
+  if (prev) {
+    // Points and instance buffers are not freed by disposeDeep.
+    if (prev.ambient) disposeAmbient(prev.ambient);
+    prev.pools.dispose();
+  }
+  // The painted playfield slab: a cached floor paint on its top face.
+  const maxAniso = (b as unknown as { maxAniso?: number }).maxAniso ?? 4;
+  const aniso = Math.min(maxAniso, b.renderer.capabilities.getMaxAnisotropy?.() ?? maxAniso);
+  const fieldMat = new THREE.MeshToonMaterial({ map: groundTexture(LOOK, arabic, aniso) });
+  const fieldGeo = new THREE.BoxGeometry(ARENA_WIDTH + 0.6, 0.4, ARENA_HEIGHT);
+  // The paint's row 0 is the enemy back line; the box's top face runs
+  // v = 1 there, so flip that face's v (vertices 8-11).
+  const uv = fieldGeo.getAttribute("uv");
+  for (let i = 8; i < 12; i++) uv.setY(i, 1 - uv.getY(i));
+  const field = new THREE.Mesh(fieldGeo, [
+    toon(LOOK.fieldSide).clone(), // stone sides
+    toon(LOOK.fieldSide).clone(),
+    fieldMat, // top
+    toon(LOOK.fieldSide).clone(),
+    toon(LOOK.fieldSide).clone(),
+    toon(LOOK.fieldSide).clone(),
+  ]);
   field.position.set(0, -0.2, 0);
   field.receiveShadow = true;
   b.arenaGroup.add(field);
 
-  // Snow drifts piled along the playfield edges (winter theme).
+  // Drifts piled along the playfield's long edges (the ends are dressed
+  // by the backdrop and the foreground lip).
   const dhw = ARENA_WIDTH / 2 + 1.1;
-  const dhd = ARENA_HEIGHT / 2 + 0.6;
   const driftSpots: Array<[number, number, number]> = [
     [-dhw, -11, 1.6], [-dhw, -3, 1.3], [-dhw, 6, 1.7], [-dhw, 13, 1.4],
     [dhw, -13, 1.5], [dhw, -5, 1.6], [dhw, 4, 1.3], [dhw, 12, 1.7],
-    [-5, -dhd, 1.8], [5, -dhd, 1.5], [-6, dhd, 1.6], [6, dhd, 1.9],
   ];
   for (const [x, z, sc] of driftSpots) {
     b.arenaGroup.add(makeSnowDrift(x, z, sc));
@@ -629,88 +682,63 @@ export function buildArena(b: Battle3D): void {
       b.arenaGroup.add(strip);
     }
   }
-  decorate(b);
+  const lights: LightSpot[] = [];
+  const seats = decorate(b, lights);
 
-  // Arabic keeps its straight golden lanes; the normal edition bakes
-  // organic winding paths directly into the floor texture instead.
-  if (arabic) addStraightLanes(b);
-  finishArena(b);
+  // The stadium backdrop behind the enemy king, with its own crowd stand
+  // (seated first, so cheering can skip the off-screen side stands).
+  const backdrop = buildBackdrop(LOOK, (c) => b.glow(c));
+  b.arenaGroup.add(backdrop.group);
+  const CROWD_SKIN = [0xf6c9a0, 0x9c6644, 0xcfa07a] as const;
+  const CROWD_GARB = [0xe53935, 0xf2c14e, 0xab47bc, 0x66bb6a, 0xff8a3a] as const;
+  const kitSeats = backdrop.seats.map((st, i) => ({
+    x: st.x,
+    z: st.z,
+    garb: CROWD_GARB[(i * 3 + 1) % CROWD_GARB.length],
+    skin: CROWD_SKIN[(i * 7) % CROWD_SKIN.length],
+    lift: st.y - 0.93,
+  }));
+  buildCrowd(b, [...kitSeats, ...seats]);
+  for (const l of backdrop.lights) lights.push({ ...l, backdrop: true });
+
+  // The Islamic lane strips are baked into the floor paint now.
+  const river = finishArena(b);
+
+  const pools = new LightPools(lights, LOOK.nightPools);
+  b.arenaGroup.add(pools.group);
+  const ambient = buildAmbient(LOOK, hashString(`ambient:${LOOK.id}`));
+  if (ambient) b.arenaGroup.add(ambient.points);
+  ART.set(b, {
+    backdrop,
+    river,
+    pools,
+    ambient,
+    kitSeats: kitSeats.map((st) => ({ x: st.x, z: st.z })),
+  });
+  applyEndStrings(b);
   // Hundreds of static props -> one draw call per look.
-  batchStatic(b.arenaGroup, () => false);
-}
-
-export function addStraightLanes(b: Battle3D): void {
-  const laneCanvas = document.createElement("canvas");
-  laneCanvas.width = 48;
-  laneCanvas.height = 256;
-  const lctx = laneCanvas.getContext("2d")!;
-  const Z = LOOK.islamic ?? ARABIC_LOOK.islamic!;
-  const grad = lctx.createLinearGradient(0, 0, 48, 0);
-  grad.addColorStop(0, `rgba(${Z.lane},0)`);
-  grad.addColorStop(0.15, `rgba(${Z.lane},0.75)`);
-  grad.addColorStop(0.5, `rgba(${Z.lane},0.95)`);
-  grad.addColorStop(0.85, `rgba(${Z.lane},0.75)`);
-  grad.addColorStop(1, `rgba(${Z.lane},0)`);
-  lctx.fillStyle = grad;
-  lctx.fillRect(0, 0, 48, 256);
-  // Speckled wear so the path reads as trodden dirt.
-  lctx.fillStyle = `rgba(${Z.laneWear},0.55)`;
-  for (let i = 0; i < 120; i++) {
-    lctx.fillRect((i * 13) % 46, (i * 47) % 254, 2.5, 1.8);
-  }
-  lctx.fillStyle = "rgba(255,236,170,0.4)";
-  for (let i = 0; i < 80; i++) {
-    lctx.fillRect((i * 19 + 5) % 46, (i * 31 + 9) % 254, 1.8, 1.2);
-  }
-  // Center rut line for CR lane readability.
-  lctx.fillStyle = `rgba(${Z.laneWear},0.3)`;
-  lctx.fillRect(22, 0, 4, 256);
-  const laneTex = new THREE.CanvasTexture(laneCanvas);
-  laneTex.colorSpace = THREE.SRGBColorSpace;
-  for (const bx of BRIDGE_XS) {
-    const lane = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.35, ARENA_HEIGHT - 1.2),
-      new THREE.MeshToonMaterial({ map: laneTex, transparent: true }),
-    );
-    lane.rotation.x = -Math.PI / 2;
-    const w = toWorld(bx, ARENA_HEIGHT / 2);
-    lane.position.set(w.x, 0.012, 0);
-    lane.receiveShadow = true;
-    b.arenaGroup.add(lane);
+  batchStatic(b.arenaGroup, (o) => o.userData.noBatch === true);
+  // Warm every shader now (during the versus splash), not on the first frame.
+  try {
+    b.renderer.compile(b.scene, b.camera);
+  } catch {
+    // A failed warm-up only costs a hitch later.
   }
 }
 
-/** River, emblems, bridges, and bank foam — both editions. */
-export function finishArena(b: Battle3D): void {
-  // Bright CR-blue water with drifting light streaks.
-  const waterCanvas = document.createElement("canvas");
-  waterCanvas.width = 128;
-  waterCanvas.height = 32;
-  const wctx = waterCanvas.getContext("2d")!;
-  // The mid-band is whatever the look says: river, lava, chasm, ice, metal.
-  wctx.fillStyle = LOOK.band.fill;
-  wctx.fillRect(0, 0, 128, 32);
-  wctx.strokeStyle = LOOK.band.streak;
-  wctx.lineWidth = 1.6;
-  for (let i = 0; i < 9; i++) {
-    const y = 3 + ((i * 37) % 26);
-    const x = (i * 29) % 110;
-    wctx.beginPath();
-    wctx.moveTo(x, y);
-    wctx.quadraticCurveTo(x + 7, y - 2, x + 14, y);
-    wctx.stroke();
-  }
-  b.waterTex = new THREE.CanvasTexture(waterCanvas);
-  b.waterTex.wrapS = THREE.RepeatWrapping;
-  b.waterTex.colorSpace = THREE.SRGBColorSpace;
-  const river = new THREE.Mesh(
-    new THREE.BoxGeometry(ARENA_WIDTH + 0.6, 0.22, 2.2),
-    new THREE.MeshToonMaterial({ map: b.waterTex }),
-  );
-  river.position.set(0, -0.04, 0);
-  b.arenaGroup.add(river);
-  // One instanced draw call supplies mobile-friendly moving specular glints.
-  b.waterSparkles = new THREE.InstancedMesh(
+/** The arena art handles for this scene (tests and debugging). */
+export function arenaArt(b: Battle3D): Readonly<ArenaArt> | undefined {
+  return ART.get(b);
+}
+
+/** River band, bank lips, glints, emblems and bridges — both editions. */
+export function finishArena(b: Battle3D): RiverHandle {
+  // The mid-band: water, lava, ice, chasm or neon (see river.ts).
+  const river = buildRiver(b.arenaGroup, LOOK);
+  b.waterTex = null;
+  // Water and ice keep a few instanced specular glints sliding over them.
+  const glints = LOOK.band.kind === "water" || LOOK.band.kind === "ice";
+  b.waterSparkles = !glints ? null : new THREE.InstancedMesh(
     new THREE.PlaneGeometry(0.7, 0.045),
     new THREE.MeshBasicMaterial({
       color: LOOK.band.glint,
@@ -722,9 +750,11 @@ export function finishArena(b: Battle3D): void {
     }),
     12,
   );
-  b.waterSparkles.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  b.waterSparkles.frustumCulled = false;
-  b.arenaGroup.add(b.waterSparkles);
+  if (b.waterSparkles) {
+    b.waterSparkles.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    b.waterSparkles.frustumCulled = false;
+    b.arenaGroup.add(b.waterSparkles);
+  }
 
   // Gold crescent emblem on each half (Arabic). The normal edition bakes
   // its faint crown watermark into the floor texture instead.
@@ -884,33 +914,52 @@ export function finishArena(b: Battle3D): void {
     }
   }
 
-  // Soft foam strips along the river banks (both editions).
-  const foamMat = new THREE.MeshBasicMaterial({
-    color: LOOK.band.foam,
-    transparent: true,
-    opacity: LOOK.band.foamOpacity,
-    depthWrite: false,
-  });
-  for (const sz of [-1, 1]) {
-    const foam = new THREE.Mesh(new THREE.PlaneGeometry(ARENA_WIDTH + 0.4, 0.35), foamMat);
-    foam.rotation.x = -Math.PI / 2;
-    foam.position.set(0, 0.02, sz * 1.15);
-    b.arenaGroup.add(foam);
-  }
+  return river;
 }
 
-/** Hide the end-string nearest the camera (it would cross our king). */
+/**
+ * Viewpoint-dependent dressing: hide the lantern string nearest the camera
+ * (it would cross our king), and turn the backdrop, its crowd and its
+ * lights to stand behind whichever king is at the far end.
+ */
 export function applyEndStrings(b: Battle3D): void {
   if (b.endStringPlayer) b.endStringPlayer.visible = viewSide !== "player";
   if (b.endStringEnemy) b.endStringEnemy.visible = viewSide !== "enemy";
+  const art = ART.get(b);
+  if (!art) return;
+  art.backdrop.orient(viewSide);
+  art.pools.orient(viewSide, {
+    player: !b.endStringPlayer || b.endStringPlayer.visible,
+    enemy: !b.endStringEnemy || b.endStringEnemy.visible,
+  });
+  if (b.crowd) {
+    const flip = viewSide === "player" ? 1 : -1;
+    art.kitSeats.forEach((st, i) => b.crowd!.seats[i].set(st.x * flip, st.z * flip));
+    poseCrowd(b, -1);
+  }
 }
 
-
-/** The river drifts sideways forever, with glints sliding over it. */
+/**
+ * Per frame: the river, waterfall and glints flow, the weather drifts,
+ * and the night lights follow the living sky.
+ */
 export function updateRiver(b: Battle3D, dt: number): void {
-  if (b.waterTex) {
-    b.waterTime += dt;
-    b.waterTex.offset.x = b.waterTime * 0.04;
+  b.waterTime += dt;
+  const art = ART.get(b);
+  if (art) {
+    const t = b.waterTime;
+    const u = art.river.material.uniforms;
+    u["uTime"].value = t;
+    u["uNight"].value = b.dayPhase;
+    (u["uSky"].value as THREE.Color).copy(skyHorizon(SKY_TINT));
+    if (art.backdrop.waterfall) art.backdrop.waterfall.material.uniforms["uTime"].value = t;
+    if (art.ambient) {
+      const h = b.renderer.domElement.height || 1;
+      updateAmbient(art.ambient, t, h / Math.max(1e-3, b.camera.top - b.camera.bottom), reducedMotion());
+    }
+    art.pools.update(b.dayPhase, b.syncState);
+    // Far silhouettes sink into the night with the sky.
+    art.backdrop.silhouettes.color.setScalar(1 - 0.55 * b.dayPhase);
   }
   if (b.waterSparkles) {
     for (let i = 0; i < b.waterSparkles.count; i++) {
@@ -931,11 +980,17 @@ export function updateRiver(b: Battle3D, dt: number): void {
   }
 }
 
-/** Crowd cheering: spectators hop while the cheer lasts. */
+/**
+ * Crowd cheering: spectators hop while the cheer lasts. The side stands
+ * only join in when the frame is wide enough to show them.
+ */
 export function updateCrowd(b: Battle3D, dt: number): void {
   if (b.cheer > 0) {
     b.cheer = Math.max(0, b.cheer - dt);
-    if (b.crowd) poseCrowd(b, b.cheer > 0 ? b.waterTime : -1);
+    if (!b.crowd) return;
+    const sidesOnScreen = b.showcase || b.camera.right > STAND_INNER_X;
+    const n = sidesOnScreen ? Infinity : (ART.get(b)?.kitSeats.length ?? Infinity);
+    poseCrowd(b, b.cheer > 0 ? b.waterTime : -1, n);
   }
 }
 

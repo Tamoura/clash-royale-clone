@@ -1,34 +1,80 @@
-import { tr } from "../ui/i18n";
-import { effectiveCard, type BattleState } from "../game/battle";
+import "../ui/styles/hud.css";
+import { fmtNum, tr } from "../ui/i18n";
+import type { BattleState } from "../game/battle";
 import { ABILITIES, type AbilityId } from "../game/abilities";
-import { icon, type IconName } from "../ui/icons";
-
-const ABILITY_ICON: Record<AbilityId, IconName> = { rally: "sword", restore: "heart", salvo: "bomb" };
+import { icon, type CrestIndex, type IconName } from "../ui/icons";
 import type { Side } from "../game/arena";
 import { getCard, type CardId } from "../game/cards";
-import { ELIXIR_MAX } from "../game/elixir";
-import {
-  BATTLE_DURATION,
-  OVERTIME_DURATION,
-  SANDBOX_ELIXIR_RATE,
-  effectiveElixirMultiplier,
-} from "../game/sim";
 import { cardStatLines } from "../render/cardinfo";
 import { cardDisplayName } from "../render/cardNames";
-import { makeCardCanvas } from "../ui/cardFrame";
+import { CARD_COLOR } from "../render/cardcolors";
+import { drawCardArt } from "../render/characters";
+import { cardPortrait } from "./cardportraits";
+import { on, pendingSpend, setPresentTimeScale, type MatchEndPayload } from "../app/hooks";
+import { resultExtras } from "../app/slots";
+import { battleMenuPausing, closeBattleMenu, openBattleMenu } from "../ui/battleMenu";
+import { getPrefs, onPrefs, reducedMotion } from "../ui/prefs";
+import {
+  TowerDamageTracker,
+  buildResultStats,
+  hudModel,
+  lossTip,
+  mergeTimeline,
+  type HudModel,
+  type TimelineEntry,
+} from "./hudModel";
+import { ResultScreen } from "./result";
+
+const ABILITY_ICON: Record<AbilityId, IconName> = { rally: "sword", restore: "heart", salvo: "bomb" };
+
+/** How a banner names the opponent. Every field is optional. */
+export interface OpponentLabel {
+  name?: string;
+  /** Profile crest index (online opponents). */
+  crest?: number;
+  trophies?: number;
+  /** Short badge text shown when there is no crest (the arena number). */
+  badge?: string;
+}
 
 export interface HudCallbacks {
   onSelectCard(id: CardId | null): void;
   /** Release of a card-drag over the field — deploy at these page coords. */
   onDeployAt(clientX: number, clientY: number): void;
+  /** "Play again" / "Rematch" on the result screen. */
   onRestart(): void;
-  /** Returns the new muted state. */
-  onToggleSound(): boolean;
+  /** @deprecated Sound lives in the battle menu now (prefs.muted); see onMuted. */
+  onToggleSound?(): boolean;
   /** Fired once when elixir hits the leak threshold (10). */
   onElixirLeak?(): void;
   /** The King's Ability button was pressed. */
   onAbility?(): void;
+  /** "OK" on the result screen (and Leave from a free-exit menu). */
+  onHome?(): void;
+  /** "Open chest" on the result screen. */
+  onOpenChest?(): void;
+  /** A chest can be opened right now (shows "Open chest"). */
+  chestReady?(): boolean;
+  /** The match is online: no pause, and "Play again" reads "Rematch". */
+  isOnline?(): boolean;
+  /** The opponent's banner; null falls back to setOpponentName() or "Bot". */
+  opponentLabel?(): OpponentLabel | null;
+  /** The player confirmed Forfeit in the battle menu. */
+  onForfeit?(): void;
+  /** Trophies shown on the player's banner (null hides them). */
+  playerTrophies?(): number | null;
+  /** Gold and trophies now; the result screen counts up the difference. */
+  wallet?(): { gold: number; trophies: number };
+  /** Trophies a forfeit costs now (0 = a loss with none); null = free exit. */
+  leaveCost?(): number | null;
+  /** The sound setting changed in the battle menu (already saved to prefs). */
+  onMuted?(muted: boolean): void;
 }
+
+/** Presentation speed between the last blow and the result screen. */
+const SLOW_MO = 0.35;
+const REVEAL_MS = 1600;
+const REVEAL_MS_CALM = 400;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -41,9 +87,50 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/** Card canvas helper — delegates to shared cardFrame for consistent framing. */
-function cardCanvas(id: CardId): HTMLCanvasElement {
-  return makeCardCanvas(id, { style: "hud" });
+/**
+ * A full-bleed 3:4 card portrait: the card's colour as a lit backdrop, the
+ * pre-rendered 3D character cropped to fill it (spells keep painted art).
+ */
+function handCardCanvas(id: CardId, w = 72): HTMLCanvasElement {
+  const h = Math.round((w * 4) / 3);
+  const canvas = document.createElement("canvas");
+  const dpr = Math.min(2, (typeof devicePixelRatio !== "undefined" ? devicePixelRatio : 1) || 1);
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  canvas.className = "card-art";
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+  ctx.scale(dpr, dpr);
+  const base = CARD_COLOR[id];
+  const g = ctx.createRadialGradient(w * 0.5, h * 0.3, w * 0.05, w * 0.5, h * 0.55, h * 0.75);
+  g.addColorStop(0, "#ffffff40");
+  g.addColorStop(0.3, base);
+  g.addColorStop(1, "#0a0e16");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  const portrait = cardPortrait(id);
+  if (portrait) {
+    // Fill the frame: the square render scaled to the card's height and
+    // centred, so the sides crop and the whole figure stays in view.
+    const s = h * 0.96;
+    ctx.drawImage(portrait, (w - s) / 2, (h - s) * 0.4, s, s);
+  } else {
+    drawCardArt(ctx, id, w / 2, h * 0.46, w * 0.6);
+  }
+  // Floor shade so the cost droplet always reads.
+  const shade = ctx.createLinearGradient(0, h * 0.62, 0, h);
+  shade.addColorStop(0, "rgba(6,10,22,0)");
+  shade.addColorStop(1, "rgba(6,10,22,0.55)");
+  ctx.fillStyle = shade;
+  ctx.fillRect(0, 0, w, h);
+  return canvas;
+}
+
+interface CardSlot {
+  btn: HTMLButtonElement;
+  cost: HTMLElement;
+  veil: HTMLElement;
+  need: HTMLElement;
 }
 
 /** DOM HUD layered over the 3D stage: clock, crowns, cards, elixir. */
@@ -51,34 +138,41 @@ export class Hud {
   private readonly clock: HTMLElement;
   private readonly playerCrowns: HTMLElement;
   private readonly enemyCrowns: HTMLElement;
-  private readonly opponentName: HTMLElement;
-  private readonly muteBtn: HTMLButtonElement;
-  private readonly elixirFill: HTMLElement;
-  private readonly elixirNum: HTMLElement;
-  private elixirBar!: HTMLElement;
-  private x2Tag!: HTMLElement;
-  private readonly nextArt: HTMLElement;
-  private readonly cardBtns: HTMLButtonElement[] = [];
-  private readonly abilityBtn: HTMLButtonElement;
-  private readonly abilityIcon: HTMLElement;
-  private abilityReady = false;
-  private readonly cardCosts: HTMLElement[] = [];
-  private readonly cardVeils: HTMLElement[] = [];
-  private readonly cardNeeds: HTMLElement[] = [];
-  private readonly cardReady: boolean[] = [];
-  private readonly overlay: HTMLElement;
-  private readonly overlayTitle: HTMLElement;
-  private readonly overlayScore: HTMLElement;
-  private readonly overlayStats: HTMLElement;
-  private handKey = "";
-  private nextKey = "";
-  private selected: CardId | null = null;
-  private prevPlayerCrowns = 0;
-  private prevEnemyCrowns = 0;
-  private leaking = false;
-  private overlayShown = false;
   private readonly playerCrownsWrap: HTMLElement;
   private readonly enemyCrownsWrap: HTMLElement;
+  private readonly playerBadge: HTMLElement;
+  private readonly playerName: HTMLElement;
+  private readonly playerTrophies: HTMLElement;
+  private readonly enemyBadge: HTMLElement;
+  private readonly enemyName: HTMLElement;
+  private readonly enemyTrophies: HTMLElement;
+  private readonly menuToggle: HTMLButtonElement;
+  private readonly elixirRow: HTMLElement;
+  private readonly elixirBar: HTMLElement;
+  private readonly elixirNum: HTMLElement;
+  private readonly multTag: HTMLElement;
+  private readonly handRow: HTMLElement;
+  private readonly slots: CardSlot[] = [];
+  private readonly nextWrap: HTMLElement;
+  private readonly nextArt: HTMLElement;
+  private readonly abilityBtn: HTMLButtonElement;
+  private readonly abilityIcon: HTMLElement;
+  private readonly result: ResultScreen;
+
+  private prev: HudModel | null = null;
+  private selected: CardId | null = null;
+  private battle: BattleState | null = null;
+  private mySide: Side = "player";
+  private opponentName: string | null = null;
+
+  // Match bookkeeping for the result screen.
+  private readonly tracker = new TowerDamageTracker();
+  private timeline: TimelineEntry[] = [];
+  private lastEnd: MatchEndPayload | null = null;
+  private walletAtStart: { gold: number; trophies: number } | null = null;
+  private resultEntered = false;
+  private revealAt = 0;
+  private revealTimer = 0;
 
   constructor(
     topbar: HTMLElement,
@@ -86,77 +180,91 @@ export class Hud {
     overlay: HTMLElement,
     private readonly cb: HudCallbacks,
   ) {
-    // CR-style name banners with level badges around the gold clock.
-    const left = el("div", "crowns player", topbar);
-    left.setAttribute("aria-label", "Your crowns");
-    left.innerHTML =
-      `<span class="level" aria-hidden="true">9</span><span class="pname">${tr("You", "أنت")}</span> ${icon("crown")} <span class="crown-count">0</span>`;
-    this.playerCrownsWrap = left;
-    this.playerCrowns = left.querySelector(".crown-count")!;
+    topbar.classList.add("v2");
+    bottom.classList.add("v2");
+    bottom.parentElement?.classList.add("hud-v2");
+
+    // ---- Top bar: two name banners, the clock, the menu.
+    const banner = (side: "player" | "enemy"): {
+      wrap: HTMLElement;
+      badge: HTMLElement;
+      name: HTMLElement;
+      trophies: HTMLElement;
+      count: HTMLElement;
+    } => {
+      const wrap = el("div", `crowns ${side}`, topbar);
+      const badge = el("span", "hud-badge", wrap);
+      badge.setAttribute("aria-hidden", "true");
+      const text = el("span", "hud-who", wrap);
+      const name = el("span", "pname", text);
+      const trophies = el("span", "ptrophies", text);
+      const crown = el("span", "hud-crown", wrap);
+      crown.innerHTML = icon("crown");
+      crown.setAttribute("aria-hidden", "true");
+      const count = el("span", "crown-count", wrap);
+      count.textContent = fmtNum(0);
+      return { wrap, badge, name, trophies, count };
+    };
+    const foe = banner("enemy");
+    const me = banner("player");
+    this.enemyCrownsWrap = foe.wrap;
+    this.enemyBadge = foe.badge;
+    this.enemyName = foe.name;
+    this.enemyTrophies = foe.trophies;
+    this.enemyCrowns = foe.count;
+    this.playerCrownsWrap = me.wrap;
+    this.playerBadge = me.badge;
+    this.playerName = me.name;
+    this.playerTrophies = me.trophies;
+    this.playerCrowns = me.count;
+
     this.clock = el("div", "clock", topbar);
     this.clock.setAttribute("role", "timer");
-    this.clock.setAttribute("aria-label", "Time remaining");
-    const right = el("div", "crowns enemy", topbar);
-    right.setAttribute("aria-label", "Opponent crowns");
-    right.innerHTML =
-      `<span class="crown-count">0</span> ${icon("crown")} <span class="pname">Bot</span><span class="level" aria-hidden="true">9</span>`;
-    this.enemyCrownsWrap = right;
-    this.enemyCrowns = right.querySelector(".crown-count")!;
-    this.opponentName = right.querySelector(".pname")!;
-    this.muteBtn = el("button", "mute", topbar);
-    this.muteBtn.innerHTML = icon("sound");
-    this.muteBtn.setAttribute("aria-label", "Toggle sound");
-    this.muteBtn.setAttribute("title", tr("Toggle sound", "تشغيل/كتم الصوت"));
-    this.muteBtn.addEventListener("click", () => {
-      const muted = this.cb.onToggleSound();
-      this.muteBtn.innerHTML = icon(muted ? "mute" : "sound");
-      this.muteBtn.setAttribute("aria-label", muted ? "Unmute sound" : "Mute sound");
+    this.clock.setAttribute("aria-label", tr("Time remaining", "الوقت المتبقي"));
+
+    const menuWrap = el("div", "battle-menu", topbar);
+    this.menuToggle = el("button", "menu-toggle", menuWrap);
+    this.menuToggle.type = "button";
+    this.menuToggle.setAttribute("aria-label", tr("Battle menu", "قائمة المعركة"));
+    this.menuToggle.setAttribute("aria-haspopup", "dialog");
+    this.menuToggle.innerHTML = "<span></span><span></span><span></span>";
+    this.menuToggle.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      this.openMenu();
     });
 
-    // CR layout: the elixir droplet counter leads the bar.
-    const elixirRow = el("div", "elixir-row", bottom);
-    elixirRow.setAttribute("role", "group");
-    elixirRow.setAttribute("aria-label", "Elixir");
-    this.elixirNum = el("div", "elixir-num", elixirRow);
-    this.elixirNum.setAttribute("aria-label", "Elixir amount");
-    this.elixirBar = el("div", "elixir-bar", elixirRow);
-    this.elixirBar.setAttribute("role", "progressbar");
-    this.elixirBar.setAttribute("aria-label", "Elixir bar");
-    this.elixirBar.setAttribute("aria-valuemin", "0");
-    this.elixirBar.setAttribute("aria-valuemax", "10");
-    this.elixirFill = el("div", "elixir-fill", this.elixirBar);
-    this.x2Tag = el("div", "x2-tag", this.elixirBar);
-    this.x2Tag.textContent = "x2";
-    this.x2Tag.setAttribute("aria-hidden", "true");
-    const maxTag = el("div", "elixir-max", this.elixirBar);
-    maxTag.textContent = tr(`Max: ${ELIXIR_MAX}`, `الحد: ${ELIXIR_MAX}`);
-    maxTag.setAttribute("aria-hidden", "true");
+    // ---- Bottom: floating Next + King, the hand, the elixir bar.
+    this.nextWrap = el("div", "hud-next", bottom);
+    this.nextWrap.setAttribute("role", "img");
+    el("div", "hud-next-label", this.nextWrap).textContent = tr("Next", "التالية");
+    this.nextArt = el("div", "hud-next-art", this.nextWrap);
 
-    const handRow = el("div", "hand-row", bottom);
-    handRow.setAttribute("role", "group");
-    handRow.setAttribute("aria-label", "Card hand");
-    // King's Ability: a charge dial that lights up when ready.
-    this.abilityBtn = el("button", "ability-btn", handRow);
-    this.abilityBtn.setAttribute("aria-label", "King's Ability");
-    this.abilityBtn.style.display = "none";
-    this.abilityIcon = el("span", "ability-icon", this.abilityBtn);
-    el("span", "ability-label", this.abilityBtn).textContent = tr("KING", "الملك");
+    this.abilityBtn = el("button", "hud-ability", bottom);
+    this.abilityBtn.type = "button";
+    this.abilityBtn.hidden = true;
+    this.abilityBtn.innerHTML =
+      '<svg class="hud-ring" viewBox="0 0 56 56" aria-hidden="true">' +
+      '<circle class="hud-ring-track" cx="28" cy="28" r="25"/>' +
+      '<circle class="hud-ring-fill" cx="28" cy="28" r="25" pathLength="100"/></svg>';
+    this.abilityIcon = el("span", "hud-ability-icon", this.abilityBtn);
+    el("span", "hud-ability-label", this.abilityBtn).textContent = tr("KING", "الملك");
     this.abilityBtn.addEventListener("pointerdown", (ev) => {
       ev.preventDefault();
       this.cb.onAbility?.();
     });
-    const nextWrap = el("div", "next-card", handRow);
-    nextWrap.setAttribute("aria-label", "Next card");
-    this.nextArt = el("div", "next-art", nextWrap);
-    el("div", "next-label", nextWrap).textContent = tr("Next:", "التالي:");
-    // Shared stats tooltip floating above the hovered card.
+
+    this.handRow = el("div", "hand-row", bottom);
+    this.handRow.setAttribute("role", "group");
+    this.handRow.setAttribute("aria-label", tr("Card hand", "البطاقات في يدك"));
+
+    // Shared stats tooltip floating above the hovered card (desktop only).
     const tip = el("div", "card-tip", bottom);
     const showTip = (btn: HTMLButtonElement): void => {
       const id = btn.dataset.card as CardId | undefined;
       if (!id) return;
       tip.innerHTML = "";
       const title = document.createElement("b");
-      title.textContent = `${cardDisplayName(id)} · ${getCard(id).cost} elixir`;
+      title.textContent = `${cardDisplayName(id)} · ${tr(`${getCard(id).cost} elixir`, `${fmtNum(getCard(id).cost)} إكسير`)}`;
       tip.appendChild(title);
       for (const line of cardStatLines(id)) {
         const div = document.createElement("div");
@@ -168,15 +276,13 @@ export class Hud {
       tip.style.left = `${rect.left + rect.width / 2 - parent.left}px`;
       tip.classList.add("show");
     };
-
-    // Stat tooltips are hover-only — they're useless and intrusive on touch,
-    // so only wire them up on devices with a real hovering pointer (desktop).
     const canHover =
       typeof window !== "undefined" && !!window.matchMedia?.("(hover: hover)").matches;
 
     for (let i = 0; i < 4; i++) {
-      const btn = el("button", "card", handRow);
-      btn.setAttribute("aria-label", `Card slot ${i + 1}`);
+      const btn = el("button", "card", this.handRow);
+      btn.type = "button";
+      btn.setAttribute("aria-label", tr(`Card slot ${i + 1}`, `خانة البطاقة ${fmtNum(i + 1)}`));
       if (canHover) {
         btn.addEventListener("mouseenter", () => showTip(btn));
         btn.addEventListener("mouseleave", () => tip.classList.remove("show"));
@@ -199,39 +305,66 @@ export class Hud {
       });
       const endDrag = (ev: PointerEvent): void => {
         btn.classList.remove("dragging");
-        const moved = Math.hypot(ev.clientX - downX, ev.clientY - downY);
-        if (moved > 16) this.cb.onDeployAt(ev.clientX, ev.clientY);
+        const dx = ev.clientX - downX;
+        const dy = ev.clientY - downY;
+        if (Math.sqrt(dx * dx + dy * dy) > 16) this.cb.onDeployAt(ev.clientX, ev.clientY);
       };
       btn.addEventListener("pointerup", endDrag);
       btn.addEventListener("pointercancel", () => btn.classList.remove("dragging"));
-      // Bottom-up elixir-charge fill that rises as the card nears playable.
-      const veil = el("div", "elixir-veil", btn);
-      // "+N" badge: how much more elixir is needed (hidden once playable).
-      const need = el("div", "card-need", btn);
-      this.cardVeils.push(veil);
-      this.cardNeeds.push(need);
-      this.cardBtns.push(btn);
+      const cost = document.createElement("div");
+      cost.className = "card-cost";
+      // Charge veil: a static gradient driven by --charge (0..100).
+      const veil = document.createElement("div");
+      veil.className = "elixir-veil";
+      // "+N": how much more elixir is needed (hidden once playable).
+      const need = document.createElement("div");
+      need.className = "card-need";
+      this.slots.push({ btn, cost, veil, need });
     }
-    // CR layout (reference screenshot): the elixir bar runs UNDER the hand.
-    bottom.appendChild(elixirRow);
 
-    this.overlay = overlay;
-    overlay.setAttribute("role", "dialog");
-    overlay.setAttribute("aria-modal", "true");
-    overlay.setAttribute("aria-label", "Match result");
-    this.overlayTitle = el("div", "overlay-title", overlay);
-    this.overlayScore = el("div", "overlay-score", overlay);
-    this.overlayStats = el("div", "overlay-stats", overlay);
-    const again = el("button", "again", overlay);
-    again.textContent = tr("Play again", "العب مجددًا");
-    again.setAttribute("aria-label", "Play again");
-    again.addEventListener("click", () => this.cb.onRestart());
+    // The elixir bar runs full width under the hand, droplet first.
+    this.elixirRow = el("div", "elixir-row", bottom);
+    this.elixirRow.setAttribute("role", "group");
+    this.elixirRow.setAttribute("aria-label", tr("Elixir", "الإكسير"));
+    this.elixirNum = el("div", "elixir-num", this.elixirRow);
+    this.elixirNum.setAttribute("aria-hidden", "true");
+    this.elixirBar = el("div", "elixir-bar", this.elixirRow);
+    this.elixirBar.setAttribute("role", "progressbar");
+    this.elixirBar.setAttribute("aria-label", tr("Elixir", "الإكسير"));
+    this.elixirBar.setAttribute("aria-valuemin", "0");
+    this.elixirBar.setAttribute("aria-valuemax", "10");
+    el("div", "elixir-fill", this.elixirBar);
+    this.multTag = el("div", "x2-tag", this.elixirBar);
+    this.multTag.setAttribute("aria-hidden", "true");
+
+    this.result = new ResultScreen(overlay);
+
+    // ---- Hooks: match lifecycle, tower damage, slow-mo and pause.
+    on("matchStart", (p) => this.beginBattle(p.battle, p.mySide, true));
+    on("battleEvent", ({ ev, mySide }) => {
+      const b = this.battle;
+      if (!b) return;
+      this.tracker.noteEvent(ev, b.time);
+      if (ev.type === "death" && (ev.kind === "princess-tower" || ev.kind === "king-tower")) {
+        this.timeline.push({ t: b.time, mine: ev.side === mySide, tower: ev.kind === "king-tower" ? "king" : "princess" });
+      }
+    });
+    on("matchEnd", (p) => {
+      this.lastEnd = p;
+    });
+    onPrefs(() => this.refreshLabels());
+    setPresentTimeScale(() => {
+      if (battleMenuPausing()) return 0;
+      return this.revealAt > 0 && performance.now() < this.revealAt ? SLOW_MO : 1;
+    });
+    this.refreshLabels();
   }
 
   setSelected(id: CardId | null): void {
     this.selected = id;
-    if (!id) {
-      for (const btn of this.cardBtns) btn.classList.remove("dragging");
+    for (const s of this.slots) {
+      s.btn.classList.toggle("selected", id !== null && s.btn.dataset.card === id);
+      if (!id) s.btn.classList.remove("dragging");
     }
   }
 
@@ -246,27 +379,23 @@ export class Hud {
     count.classList.add("crown-pop");
   }
 
-  /** Trophy/level-up summary shown on the result overlay. */
+  /** Reward summary text (settlement); only its words are shown, numbers count up. */
   private reward: string | null = null;
+  /** Chest won this match (shown on the result screen), or null. */
+  private rewardChest: "free" | "rare" | null = null;
 
   setReward(text: string | null): void {
     this.reward = text;
     if (text === null) this.rewardChest = null;
   }
 
-  /** Chest won this match (shown on the victory screen), or null. */
-  private rewardChest: "free" | "rare" | null = null;
-  private statsHtml = "";
   setRewardChest(rarity: "free" | "rare" | null): void {
     this.rewardChest = rarity;
   }
 
   /** Shake the elixir row (can't afford) or the hand (bad spot). */
   flashError(kind: "elixir" | "spot"): void {
-    const target =
-      kind === "elixir"
-        ? this.elixirBar.parentElement!
-        : this.cardBtns[0].parentElement!;
+    const target = kind === "elixir" ? this.elixirRow : this.handRow;
     target.classList.remove("error-shake");
     void target.offsetWidth; // restart the animation
     target.classList.add("error-shake");
@@ -274,297 +403,299 @@ export class Hud {
 
   /** Relabel the opponent banner (e.g. "Friend" for an online match). */
   setOpponentName(name: string): void {
-    this.opponentName.textContent = name;
+    this.opponentName = name;
+    this.refreshLabels();
   }
 
-  /** Tower-fall timeline lines shown on the result report (main feeds these). */
-  private timeline: string[] = [];
-  setTimeline(lines: string[]): void {
-    this.timeline = lines;
+  /** @deprecated The HUD builds its own tower timeline from the battle events. */
+  setTimeline(_lines: string[]): void {}
+
+  /**
+   * Let a feature module supply or replace callbacks after construction
+   * (online play sets isOnline, opponentLabel and onForfeit this way).
+   */
+  setCallbacks(patch: Partial<HudCallbacks>): void {
+    Object.assign(this.cb, patch);
+    this.refreshLabels();
+  }
+
+  /** Close the battle menu and the result screen (leaving the battle). */
+  dismiss(): void {
+    closeBattleMenu();
+    this.result.hide();
+  }
+
+  private openMenu(): void {
+    const b = this.battle;
+    if (!b || b.result) return;
+    openBattleMenu({
+      isOnline: () => this.cb.isOnline?.() ?? false,
+      leaveCost: () => (this.cb.leaveCost ? this.cb.leaveCost() : 0),
+      onForfeit: () => this.cb.onForfeit?.(),
+      onLeave: () => {
+        this.dismiss();
+        (this.cb.onHome ?? this.cb.onRestart)();
+      },
+      onMuted: (m) => this.cb.onMuted?.(m),
+    });
+  }
+
+  private refreshLabels(): void {
+    const prefs = getPrefs();
+    this.playerBadge.innerHTML = icon(`crest-${prefs.crest as CrestIndex}`);
+    this.playerName.textContent = prefs.playerName || tr("You", "أنت");
+    this.setTrophies(this.playerTrophies, this.cb.playerTrophies?.() ?? null);
+    const label = this.cb.opponentLabel?.() ?? null;
+    const foeName = label?.name || this.opponentName || tr("Bot", "الروبوت");
+    this.enemyName.textContent = foeName;
+    const crest = label?.crest;
+    if (crest !== undefined && Number.isInteger(crest) && crest >= 0 && crest < 12) {
+      this.enemyBadge.innerHTML = icon(`crest-${crest as CrestIndex}`);
+      this.enemyBadge.classList.remove("text");
+      this.enemyBadge.hidden = false;
+    } else {
+      // No crest: the arena number in a ring, or nothing at all.
+      this.enemyBadge.textContent = label?.badge ?? "";
+      this.enemyBadge.classList.add("text");
+      this.enemyBadge.hidden = !label?.badge;
+    }
+    this.setTrophies(this.enemyTrophies, label?.trophies ?? null);
+    this.playerCrownsWrap.setAttribute("aria-label", tr(`${this.playerName.textContent}: crowns`, `${this.playerName.textContent}: التيجان`));
+    this.enemyCrownsWrap.setAttribute("aria-label", tr(`${foeName}: crowns`, `${foeName}: التيجان`));
+  }
+
+  private setTrophies(node: HTMLElement, n: number | null): void {
+    node.hidden = n === null;
+    if (n !== null) node.innerHTML = `${icon("trophy")}${fmtNum(n)}`;
+  }
+
+  /** A new match: forget the last one's HUD state and result. */
+  private beginBattle(state: BattleState, mySide: Side, announced: boolean): void {
+    if (state === this.battle && mySide === this.mySide) {
+      // matchStart for a battle update() already adopted: just relabel.
+      if (announced) {
+        this.walletAtStart = this.cb.wallet?.() ?? null;
+        this.refreshLabels();
+      }
+      return;
+    }
+    this.battle = state;
+    this.mySide = mySide;
+    this.prev = null; // write every field on the next update
+    this.tracker.reset();
+    this.timeline = [];
+    this.lastEnd = null;
+    this.resultEntered = false;
+    this.revealAt = 0;
+    window.clearTimeout(this.revealTimer);
+    this.result.hide();
+    closeBattleMenu();
+    this.walletAtStart = this.cb.wallet?.() ?? null;
+    this.refreshLabels();
   }
 
   update(state: BattleState, mySide: Side = "player"): void {
-    // From the local player's perspective: "me" sits at the bottom.
-    const me = mySide === "player" ? state.player : state.enemy;
-    const foe = mySide === "player" ? state.enemy : state.player;
+    if (state !== this.battle || mySide !== this.mySide) this.beginBattle(state, mySide, false);
+    this.tracker.observe(state);
+    const m = hudModel(state, mySide, pendingSpend());
+    const p = this.prev;
+    this.prev = m;
 
     // Clock.
-    const total = state.overtime
-      ? BATTLE_DURATION + OVERTIME_DURATION
-      : BATTLE_DURATION;
-    const left = Math.max(0, Math.ceil(total - state.time));
-    const text = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
-    this.clock.textContent = state.overtime ? `OVERTIME ${text}` : text;
-    this.clock.classList.toggle("overtime", state.overtime);
+    if (m.clockText !== p?.clockText) this.clock.textContent = m.clockText;
+    if (m.overtime !== p?.overtime) this.clock.classList.toggle("overtime", m.overtime);
 
-    // Crown counters — pop when a tower falls (CR scoreboard feel).
-    if (me.crowns > this.prevPlayerCrowns) this.popCrowns("player");
-    if (foe.crowns > this.prevEnemyCrowns) this.popCrowns("enemy");
-    this.prevPlayerCrowns = me.crowns;
-    this.prevEnemyCrowns = foe.crowns;
-    this.playerCrowns.textContent = String(me.crowns);
-    this.enemyCrowns.textContent = String(foe.crowns);
-
-    // Elixir (the bar runs hot during double elixir).
-    const amount = me.elixir.amount;
-    const amountInt = Math.floor(amount);
-    this.elixirFill.style.width = `${(amount / ELIXIR_MAX) * 100}%`;
-    this.elixirNum.textContent = String(amountInt);
-    this.elixirBar.setAttribute("aria-valuenow", String(amountInt));
-    const mult = effectiveElixirMultiplier(state);
-    this.elixirBar.classList.toggle("x2", mult >= 2 && !state.result);
-    // Sandbox's huge flat rate reads as "infinite", not a real multiplier.
-    this.x2Tag.textContent = mult >= SANDBOX_ELIXIR_RATE ? "∞" : `x${mult}`;
-
-    // Elixir leak warning at max — pulse the bar until the player spends.
-    const atMax = amount >= ELIXIR_MAX && !state.result;
-    this.elixirBar.classList.toggle("leak", atMax);
-    this.elixirNum.classList.toggle("leak", atMax);
-    if (atMax && !this.leaking) {
-      this.leaking = true;
-      this.cb.onElixirLeak?.();
-    } else if (!atMax) {
-      this.leaking = false;
+    // Crown counters — pop when a tower falls.
+    if (m.crowns.me !== p?.crowns.me) {
+      this.playerCrowns.textContent = fmtNum(m.crowns.me);
+      if (p && m.crowns.me > p.crowns.me) this.popCrowns("player");
+    }
+    if (m.crowns.them !== p?.crowns.them) {
+      this.enemyCrowns.textContent = fmtNum(m.crowns.them);
+      if (p && m.crowns.them > p.crowns.them) this.popCrowns("enemy");
     }
 
-    // King's Ability dial.
-    if (me.ability) {
-      const def = ABILITIES[me.ability];
-      this.abilityBtn.style.display = "";
-      this.abilityBtn.title = `${def.name}: ${def.blurb}`;
-      if (this.abilityIcon.dataset.icon !== me.ability) {
-        this.abilityIcon.dataset.icon = me.ability;
-        this.abilityIcon.innerHTML = icon(ABILITY_ICON[me.ability]);
-      }
-      const pct = Math.round(me.abilityCharge * 100);
-      this.abilityBtn.style.setProperty("--charge", `${pct}%`);
-      const ready = me.abilityCharge >= 1;
-      this.abilityBtn.classList.toggle("ready", ready);
-      if (ready && !this.abilityReady) {
-        this.abilityBtn.classList.remove("ready-pop");
-        void this.abilityBtn.offsetWidth;
-        this.abilityBtn.classList.add("ready-pop");
-      }
-      this.abilityReady = ready;
-    } else {
-      this.abilityBtn.style.display = "none";
+    // Elixir.
+    if (m.elixirPct !== p?.elixirPct) this.elixirBar.style.setProperty("--elixir", String(m.elixirPct));
+    if (m.elixirInt !== p?.elixirInt) {
+      this.elixirNum.textContent = fmtNum(m.elixirInt);
+      this.elixirBar.setAttribute("aria-valuenow", String(m.elixirInt));
+    }
+    if (m.mult !== p?.mult) {
+      this.multTag.textContent = m.mult;
+      this.elixirBar.classList.toggle("x2", m.mult !== "");
+    }
+    if (m.leak !== p?.leak) {
+      // One class on the row drives both the bar and the droplet pulse.
+      this.elixirRow.classList.toggle("leak", m.leak);
+      if (m.leak && p) this.cb.onElixirLeak?.();
     }
 
-    // Hand (rebuild card art only when the hand changes).
-    const handKey = me.hand.cards.join(",");
-    if (handKey !== this.handKey) {
-      this.handKey = handKey;
-      me.hand.cards.forEach((id, i) => {
-        const btn = this.cardBtns[i];
-        const isNewDraw = btn.dataset.card !== undefined && btn.dataset.card !== id;
-        btn.dataset.card = id;
-        btn.dataset.rarity = getCard(id).rarity;
-        btn.setAttribute("aria-label", `${cardDisplayName(id)}, ${getCard(id).cost} elixir`);
-        if (isNewDraw) {
-          btn.classList.remove("dealt");
-          void btn.offsetWidth; // restart the pop animation
-          btn.classList.add("dealt");
-        }
-        btn.innerHTML = "";
-        btn.appendChild(cardCanvas(id));
-        const name = document.createElement("div");
-        name.className = "card-name";
-        name.textContent = cardDisplayName(id);
-        btn.appendChild(name);
-        const cost = document.createElement("div");
-        cost.className = "card-cost";
-        cost.textContent = String(getCard(id).cost);
-        btn.appendChild(cost);
-        this.cardCosts[i] = cost;
-        const key = document.createElement("div");
-        key.className = "key-chip";
-        key.textContent = String(i + 1); // keyboard shortcut hint
-        btn.appendChild(key);
-        const lvl = me.levels[id] ?? 1;
-        if (lvl > 1) {
-          const chip = document.createElement("div");
-          chip.className = "lvl-chip";
-          // Arabic "مستوى" is too wide for the corner; the number alone reads.
-          chip.textContent = tr(`Lv.${lvl}`, String(lvl));
-          chip.title = tr(`Level ${lvl}`, `مستوى ${lvl}`);
-          btn.appendChild(chip);
-        }
-        // Re-attach the persistent charge overlay + "+N" badge, which the
-        // innerHTML reset above detaches.
-        btn.appendChild(this.cardVeils[i]);
-        btn.appendChild(this.cardNeeds[i]);
-      });
+    // King's Ability.
+    if (m.ability.id !== p?.ability.id) {
+      const id = m.ability.id;
+      this.abilityBtn.hidden = id === null;
+      if (id) {
+        const def = ABILITIES[id];
+        const name = tr(def.name, def.ar);
+        this.abilityBtn.title = `${name}: ${tr(def.blurb, def.blurbAr)}`;
+        this.abilityBtn.setAttribute("aria-label", tr(`King's Ability: ${name}`, `قدرة الملك: ${name}`));
+        this.abilityIcon.innerHTML = icon(ABILITY_ICON[id]);
+      }
     }
-    me.hand.cards.forEach((id, i) => {
-      const btn = this.cardBtns[i];
-      btn.classList.toggle("selected", this.selected === id);
-      // Mirror's price tracks the last card played (its copy +1); with
-      // nothing to copy yet it shows "?" and stays locked.
-      const eff = effectiveCard(state, mySide, id);
-      const cost = eff?.cost ?? Infinity;
-      if (id === "mirror") {
-        this.cardCosts[i].textContent = eff ? String(eff.cost) : "?";
+    if (m.ability.pct !== p?.ability.pct) this.abilityBtn.style.setProperty("--charge", String(m.ability.pct));
+    if (m.ability.ready !== p?.ability.ready) {
+      this.abilityBtn.classList.toggle("ready", m.ability.ready);
+      if (m.ability.ready && p && !reducedMotion()) this.restartAnim(this.abilityBtn, "ready-pop");
+    }
+
+    // Hand: rebuild a slot's art only when its card changes.
+    m.hand.forEach((slot, i) => {
+      const s = this.slots[i];
+      if (!s) return;
+      const before = p?.hand[i];
+      if (slot.id !== before?.id) this.dealCard(i, slot.id, state, mySide, !!before);
+      if (slot.cost !== before?.cost || slot.id !== before?.id) {
+        s.cost.textContent = slot.cost === null ? "?" : fmtNum(slot.cost);
       }
-      const affordable = cost <= amount;
-      btn.classList.toggle("locked", !affordable);
-      // Bottom-up charge fill: dark covers the still-uncharged top,
-      // clearing downward as elixir rises toward the card's cost.
-      const progress = Math.max(0, Math.min(1, amount / cost));
-      const veil = this.cardVeils[i];
-      const need = this.cardNeeds[i];
-      if (affordable) {
-        veil.style.display = "none";
-        need.style.display = "none";
-        // Pop once at the moment it becomes playable.
-        if (this.cardReady[i] === false) {
-          btn.classList.remove("ready-pop");
-          void btn.offsetWidth;
-          btn.classList.add("ready-pop");
+      if (slot.affordable !== before?.affordable) {
+        s.btn.classList.toggle("locked", !slot.affordable);
+        if (slot.affordable && before && before.id === slot.id && !reducedMotion()) {
+          this.restartAnim(s.btn, "ready-pop");
         }
-        this.cardReady[i] = true;
-      } else {
-        veil.style.display = "block";
-        // Bright elixir-pink fill rises from the bottom to the charge level,
-        // with a glowing edge; dark covers the part still to charge.
-        const pct = progress * 100;
-        const edge = Math.max(0, pct - 5);
-        // CR read: the art stays visible (only dimmed); a pink charge line
-        // rises through it toward the playable point.
-        veil.style.background =
-          `linear-gradient(to top,` +
-          ` rgba(242,58,168,0.22) 0%,` +
-          ` rgba(242,58,168,0.22) ${edge.toFixed(1)}%,` +
-          ` rgba(255,190,235,0.9) ${pct.toFixed(1)}%,` +
-          ` rgba(8,12,22,0.32) ${pct.toFixed(1)}%,` +
-          ` rgba(8,12,22,0.32) 100%)`;
-        need.style.display = "block";
-        // A Mirror with nothing to copy shows no "+N" — it's simply dead.
-        need.textContent = Number.isFinite(cost) ? `+${Math.ceil(cost - amount)}` : "—";
-        this.cardReady[i] = false;
       }
+      // Charge and "+N" share one style write (CSS draws the number), so an
+      // elixir tick costs each card at most one mutation.
+      if (slot.chargePct !== before?.chargePct || slot.need !== before?.need) {
+        s.btn.style.cssText = `--charge:${slot.chargePct};--need:${slot.need}`;
+      }
+      // A Mirror with nothing to copy shows a dash — it is simply dead.
+      if ((slot.cost === null) !== (before?.cost === null)) s.btn.classList.toggle("dead", slot.cost === null);
     });
-    const nextId = me.hand.queue[0];
-    if (nextId !== this.nextKey) {
-      this.nextKey = nextId;
-      this.nextArt.innerHTML = "";
-      this.nextArt.appendChild(cardCanvas(nextId));
-      this.nextArt.classList.remove("slide-in");
-      void this.nextArt.offsetWidth;
-      this.nextArt.classList.add("slide-in");
-    }
-
-    // Result overlay.
-    if (state.result) {
-      const { winner, playerCrowns, enemyCrowns } = state.result;
-      const iWon = winner === mySide;
-      this.overlayTitle.textContent =
-        winner === "draw" ? tr("DRAW", "تعادل") : iWon ? tr("VICTORY! 🎉", "انتصار! 🎉") : tr("DEFEAT", "هزيمة");
-      this.overlayTitle.dataset.kind = winner === "draw" ? "draw" : iWon ? "player" : "enemy";
-      this.overlay.dataset.kind = this.overlayTitle.dataset.kind;
-      const myCrowns = mySide === "player" ? playerCrowns : enemyCrowns;
-      const foeCrowns = mySide === "player" ? enemyCrowns : playerCrowns;
-      // Staggered crown tally on first show.
-      if (!this.overlayShown) {
-        this.overlayShown = true;
-        if (iWon) this.dropConfetti();
-        this.overlayScore.textContent = "👑 0 — 0 👑";
-        let step = 0;
-        const targetMy = myCrowns;
-        const targetFoe = foeCrowns;
-        const tick = (): void => {
-          step++;
-          const a = Math.min(targetMy, step);
-          const b = Math.min(targetFoe, step);
-          this.overlayScore.textContent = `👑 ${a} — ${b} 👑`;
-          if (a < targetMy || b < targetFoe) window.setTimeout(tick, 180);
-        };
-        window.setTimeout(tick, 220);
-      } else {
-        this.overlayScore.textContent = `👑 ${myCrowns} — ${foeCrowns} 👑`;
+    if (m.next !== p?.next) {
+      this.nextArt.replaceChildren();
+      if (m.next) {
+        this.nextArt.appendChild(handCardCanvas(m.next, 34));
+        this.nextWrap.setAttribute("aria-label", tr(`Next: ${cardDisplayName(m.next)}`, `التالية: ${cardDisplayName(m.next)}`));
+        if (p && !reducedMotion()) this.restartAnim(this.nextArt, "slide-in");
       }
-      const p = me.stats;
-      const e = foe.stats;
-      const statsHtml =
-        `<div class="stat-row"><span>${Math.round(p.damageDealt)}</span>` +
-        `<label>${tr("damage", "الضرر")}</label><span>${Math.round(e.damageDealt)}</span></div>` +
-        `<div class="stat-row"><span>${p.elixirSpent}</span>` +
-        `<label>${tr("elixir spent", "الإكسير المصروف")}</label><span>${e.elixirSpent}</span></div>` +
-        `<div class="stat-row"><span>${Math.round(p.elixirLeaked)}</span>` +
-        `<label>${tr("elixir leaked", "الإكسير المهدور")}</label><span>${Math.round(e.elixirLeaked)}</span></div>` +
-        (p.elixirCollected > 0 || e.elixirCollected > 0
-          ? `<div class="stat-row"><span>${Math.round(p.elixirCollected)}</span>` +
-            `<label>${tr("elixir collected", "الإكسير المجموع")}</label><span>${Math.round(e.elixirCollected)}</span></div>`
-          : "") +
-        this.buildReport(me.stats) +
-        (this.reward ? `<div class="reward-line">${this.reward}</div>` : "") +
-        (this.rewardChest
-          ? `<div class="reward-chest ${this.rewardChest}">${icon("chest")}<span>${
-              this.rewardChest === "rare" ? tr("Rare Chest", "صندوق نادر") : tr("Wooden Chest", "صندوق خشبي")
-            }</span></div>`
-          : "");
-      // Rewrite only on change so entrance animations aren't restarted every frame.
-      if (statsHtml !== this.statsHtml) {
-        this.statsHtml = statsHtml;
-        this.overlayStats.innerHTML = statsHtml;
-      }
-      this.overlay.classList.add("show");
-    } else {
-      this.overlayShown = false;
-      this.statsHtml = "";
-      this.overlay.classList.remove("show");
-      delete this.overlay.dataset.kind;
-      this.overlay.querySelector(".confetti-box")?.remove();
+    }
+
+    // Match end: slow-mo, then the result screen.
+    if (m.result && !this.resultEntered) {
+      this.resultEntered = true;
+      const delay = reducedMotion() ? REVEAL_MS_CALM : REVEAL_MS;
+      this.revealAt = performance.now() + delay;
+      const stats = buildResultStats(state, mySide, this.tracker.bySide);
+      const lines = mergeTimeline(this.timeline);
+      const tip = m.result.outcome === "loss" ? lossTip(stats, mySide) : null;
+      window.clearTimeout(this.revealTimer);
+      this.revealTimer = window.setTimeout(() => this.reveal(state, m, stats, lines, tip), delay);
     }
   }
 
-  /** Battle report: your damage leaders (MVP crowned) + tower timeline. */
-  private buildReport(stats: { damageByCard: Partial<Record<CardId, number>> }): string {
-    const top = (Object.entries(stats.damageByCard) as [CardId, number][])
-      .filter(([, v]) => v >= 1)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3);
-    if (top.length === 0 && this.timeline.length === 0) return "";
-    let html = "";
-    if (top.length > 0) {
-      const max = top[0][1];
-      html += `<div class="report-title">${tr("Damage leaders", "الأكثر ضررًا")}</div>`;
-      html += top
-        .map(
-          ([id, v], i) =>
-            `<div class="report-row">` +
-            `<label>${i === 0 ? "👑 " : ""}${cardDisplayName(id)}</label>` +
-            `<div class="report-bar"><i style="width:${Math.round((v / max) * 100)}%"></i></div>` +
-            `<span>${Math.round(v)}</span></div>`,
-        )
-        .join("");
-    }
-    if (this.timeline.length > 0) {
-      html += `<div class="report-title">${tr("Towers", "الأبراج")}</div>`;
-      html += this.timeline
-        .map((line) => `<div class="report-line">${line}</div>`)
-        .join("");
-    }
-    return html;
+  private reveal(
+    state: BattleState,
+    m: HudModel,
+    stats: ReturnType<typeof buildResultStats>,
+    timeline: ReturnType<typeof mergeTimeline>,
+    tip: string | null,
+  ): void {
+    if (state !== this.battle || !m.result) return;
+    this.revealAt = 0;
+    closeBattleMenu();
+    const end = this.lastEnd && this.lastEnd.battle === state ? this.lastEnd : null;
+    const ladder = !!end && end.kind === "ladder" && !end.online && !end.sandbox && !end.replay;
+    const now = this.cb.wallet?.() ?? null;
+    const goldDelta = now && this.walletAtStart ? now.gold - this.walletAtStart.gold : null;
+    const online = this.cb.isOnline?.() ?? end?.online ?? false;
+    const chest = this.rewardChest;
+    this.result.show(
+      {
+        outcome: m.result.outcome,
+        myCrowns: m.result.myCrowns,
+        theirCrowns: m.result.theirCrowns,
+        myName: this.playerName.textContent ?? tr("You", "أنت"),
+        theirName: this.enemyName.textContent ?? tr("Bot", "الروبوت"),
+        trophyDelta: ladder && end ? end.trophyDelta : null,
+        goldDelta: goldDelta && goldDelta > 0 ? goldDelta : null,
+        chest,
+        note: ladder ? null : rewardWords(this.reward),
+        extras: end ? resultExtras(end) : [],
+        stats,
+        timeline,
+        tip,
+        mySide: this.mySide,
+        online,
+        chestReady: this.cb.chestReady?.() ?? false,
+      },
+      {
+        onOk: () => {
+          if (chest) {
+            try {
+              sessionStorage.setItem("cr-clone-pulse-chest", "1");
+            } catch {
+              // storage blocked: the chest simply does not pulse
+            }
+          }
+          this.dismiss();
+          (this.cb.onHome ?? this.cb.onRestart)();
+        },
+        onAgain: () => this.cb.onRestart(),
+        onOpenChest: this.cb.onOpenChest
+          ? () => {
+              this.dismiss();
+              this.cb.onOpenChest?.();
+            }
+          : undefined,
+      },
+    );
   }
 
-  /** Rain celebratory confetti over the victory overlay. */
-  private dropConfetti(): void {
-    this.overlay.querySelector(".confetti-box")?.remove();
-    const box = document.createElement("div");
-    box.className = "confetti-box";
-    box.setAttribute("aria-hidden", "true");
-    const colors = ["#f6c14e", "#3b82f6", "#ef4444", "#66bb6a", "#e879d0", "#fff"];
-    for (let i = 0; i < 42; i++) {
-      const p = document.createElement("span");
-      p.className = "confetti";
-      p.style.left = `${(i * 137.5) % 100}%`;
-      p.style.background = colors[i % colors.length];
-      p.style.animationDelay = `${(i % 7) * 0.35}s`;
-      p.style.animationDuration = `${2.4 + ((i * 13) % 10) * 0.18}s`;
-      p.style.width = `${7 + (i % 3) * 3}px`;
-      p.style.height = `${10 + ((i * 5) % 3) * 4}px`;
-      box.appendChild(p);
+  /** Put a card into hand slot i (art, cost, chips), animating a fresh draw. */
+  private dealCard(i: number, id: CardId, state: BattleState, mySide: Side, animate: boolean): void {
+    const s = this.slots[i];
+    const btn = s.btn;
+    const card = getCard(id);
+    btn.dataset.card = id;
+    btn.dataset.rarity = card.rarity;
+    btn.setAttribute("aria-label", tr(`${cardDisplayName(id)}, ${card.cost} elixir`, `${cardDisplayName(id)}، ${fmtNum(card.cost)} إكسير`));
+    btn.classList.toggle("selected", this.selected === id);
+    const name = document.createElement("div");
+    name.className = "card-name";
+    name.textContent = cardDisplayName(id);
+    const key = document.createElement("div");
+    key.className = "key-chip";
+    key.textContent = String(i + 1); // keyboard shortcut hint
+    const parts: HTMLElement[] = [handCardCanvas(id), name, s.veil, s.need, s.cost, key];
+    const me = mySide === "player" ? state.player : state.enemy;
+    const lvl = me.levels[id] ?? 1;
+    if (lvl > 1) {
+      const chip = document.createElement("div");
+      chip.className = "lvl-chip";
+      // Arabic "مستوى" is too wide for the corner; the number alone reads.
+      chip.textContent = tr(`Lv.${lvl}`, fmtNum(lvl));
+      chip.title = tr(`Level ${lvl}`, `مستوى ${fmtNum(lvl)}`);
+      parts.push(chip);
     }
-    this.overlay.appendChild(box);
+    btn.replaceChildren(...parts);
+    if (animate && !reducedMotion()) this.restartAnim(btn, "dealt");
   }
+
+  private restartAnim(node: HTMLElement, cls: string): void {
+    node.classList.remove(cls);
+    void node.offsetWidth;
+    node.classList.add(cls);
+  }
+}
+
+/** The words of a settlement line: "First clear! +50 <coin>" reads "First clear!". */
+export function rewardWords(text: string | null): string | null {
+  if (!text) return null;
+  const words = text
+    .replace(/[+\-−]?\d+\s*\p{Extended_Pictographic}️?/gu, "")
+    .replace(/\p{Extended_Pictographic}️?/gu, "")
+    .replace(/(^[\s·]+|[\s·]+$)/g, "")
+    .trim();
+  return words || null;
 }

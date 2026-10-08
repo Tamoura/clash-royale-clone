@@ -10,13 +10,11 @@ import {
 import type { CardId } from "../game/cards";
 import { ShakeController } from "./shake";
 import { HitStopController } from "./hitstop";
-import { ParticleField } from "./particles";
 import { QualityGovernor, qualityPinFromUrl } from "./quality";
 import { lookForArena } from "./arenaLooks";
 import type { TroopRig } from "./characters3d";
 import type { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import type { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
-import type { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import type { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import {
   CAM_HOME,
@@ -40,22 +38,29 @@ import {
   applyTopInset,
   frameOrtho,
   initFog,
+  koZoomActive,
   showcase,
   updateShowcase,
 } from "./scene/camera";
-import { applyGrade, applyQuality, buildComposer, createRenderer, sampleQuality } from "./scene/post";
 import {
-  PARTICLE_CAP,
-  buildSparkMesh,
+  applyGrade,
+  applyQuality,
+  buildComposer,
+  createRenderer,
+  maxAnisotropy,
+  sampleQuality,
+  setFlash,
+} from "./scene/post";
+import {
   deployFlash,
   emote,
   fxOnEvent,
+  initFx,
   spawnFlourish,
   syncProjectiles,
-  syncSparks,
   updateEffects,
 } from "./scene/fx/effects";
-import { LegacyFx, type FxApi } from "./scene/fx/api";
+import type { FxApi } from "./scene/fx/api";
 import {
   buildBuildingMesh,
   buildGhost,
@@ -95,8 +100,8 @@ export class Battle3D {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene: THREE.Scene;
   readonly camera: THREE.OrthographicCamera;
-  /** Effects behind the FX contract (footstep dust today). */
-  fx: FxApi = new LegacyFx(this);
+  /** Particles, decals, damage numbers and spell set pieces (a VfxPool, see fx/pool.ts). */
+  fx!: FxApi;
   private readonly raycaster = new THREE.Raycaster();
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly views = new Map<number, EntityView>();
@@ -139,10 +144,6 @@ export class Battle3D {
   shakeTime = 0;
   /** Render-only hit-stop (does not touch the sim clock). */
   readonly hitStop = new HitStopController();
-  /** @internal Pooled hit sparks / debris, mirrored into one InstancedMesh. */
-  readonly sparks = new ParticleField(PARTICLE_CAP);
-  /** @internal */
-  sparkMesh!: THREE.InstancedMesh;
   /** @internal Rubble piles left by fallen towers; cleared on reset. */
   rubble: THREE.Object3D[] = [];
   /** @internal Sim projectile meshes by projectile id. */
@@ -160,7 +161,7 @@ export class Battle3D {
   waterSparkles: THREE.InstancedMesh | null = null;
   /** @internal */
   waterTime = 0;
-  /** @internal Post-processing: thresholded bloom followed by display output encoding. */
+  /** @internal Post-processing: render, thresholded bloom, then one fused final pass. */
   readonly composer: EffectComposer;
   /** @internal Steps resolution/bloom down on devices that can't hold the frame rate. */
   readonly quality = new QualityGovernor(qualityPinFromUrl(location.search));
@@ -168,11 +169,10 @@ export class Battle3D {
   lastFrameAt = 0;
   /** @internal */
   readonly bloom: UnrealBloomPass;
-  private readonly outputPass: OutputPass;
-  /** @internal */
-  fxaa!: ShaderPass;
-  /** @internal Per-arena colour grade pass. */
-  grade!: ShaderPass;
+  /** @internal Tone mapping, sRGB, per-arena grade, FXAA and flash in one pass. */
+  finalPass!: ShaderPass;
+  /** Shadow-map renders so far: shadows are static and re-render only when marked dirty. */
+  shadowRenders = 0;
   private readonly zonePlane: THREE.Mesh; // own-half deploy area (blue)
   // Enemy half, split per lane: a dark "no-deploy" overlay that turns into a
   // blue "deployable" strip once that lane's princess tower falls.
@@ -199,9 +199,6 @@ export class Battle3D {
     this.scene.add(this.arenaGroup);
     this.scene.add(this.lightGroup);
 
-    this.sparkMesh = buildSparkMesh();
-    this.scene.add(this.sparkMesh);
-
     // Orthographic = no perspective convergence, so the arena reads
     // as a perfectly straight board (not a trapezoid). Angled from
     // the player's elevated side, not straight down from the sky.
@@ -209,6 +206,7 @@ export class Battle3D {
     this.camera.position.copy(CAM_HOME);
     this.camera.lookAt(0, 0, 0);
     frameOrtho(this);
+    initFx(this); // pooled particles, decals, damage numbers (fx/pool.ts)
 
     buildLights(this);
     buildArena(this);
@@ -290,8 +288,6 @@ export class Battle3D {
     const post = buildComposer(this);
     this.composer = post.composer;
     this.bloom = post.bloom;
-    this.outputPass = post.outputPass;
-    this.fxaa = post.fxaa;
 
     this.resize();
     window.addEventListener("resize", this.onResize);
@@ -334,6 +330,16 @@ export class Battle3D {
     mat.toneMapped = false;
     this.glowMats.push({ mat, base: new THREE.Color(color) });
     return mat;
+  }
+
+  /** Anisotropic filtering for ground textures (capped at 4x). */
+  get maxAniso(): number {
+    return maxAnisotropy(this.renderer);
+  }
+
+  /** Additive white over the whole frame, 0..1 (for spell impacts). */
+  setFlash(a: number): void {
+    setFlash(this, a);
   }
 
   /** Current look id (for tests / debugging). */
@@ -406,6 +412,7 @@ export class Battle3D {
   }
 
   pick(clientX: number, clientY: number): { x: number; y: number } | null {
+    if (koZoomActive(this)) return null; // the frame is moving under the finger
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(
       ((clientX - rect.left) / rect.width) * 2 - 1,
@@ -641,8 +648,6 @@ export class Battle3D {
         0.55 + Math.sin(this.hoverPulse * 11) * 0.3;
     }
 
-    // Advance and draw the hit-spark pool through one InstancedMesh.
-    syncSparks(this, dt);
     updateEffects(this, dt);
     this.fx.update(dt);
 
@@ -699,8 +704,6 @@ export class Battle3D {
     }
     this.projViews.clear();
     this.shakeCtl.update(999, 1); // drain trauma to rest
-    for (const p of this.sparks.particles) p.active = false;
-    this.sparkMesh.count = 0;
     this.camera.position.set(CAM_HOME.x, CAM_HOME.y, cameraZForView());
     this.camera.lookAt(0, 0, 0);
   }
@@ -712,7 +715,7 @@ export class Battle3D {
     disposeDeep(this.scene);
     this.scene.clear();
     this.bloom.dispose();
-    this.outputPass.dispose();
+    this.finalPass.dispose();
     this.composer.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();

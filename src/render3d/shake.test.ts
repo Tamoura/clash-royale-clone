@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { setPrefs } from "../ui/prefs";
 import { ShakeController } from "./shake";
 
 describe("trauma-based camera shake", () => {
@@ -34,5 +35,29 @@ describe("trauma-based camera shake", () => {
     small.add(0.3);
     big.add(0.9);
     expect(big.intensity).toBeGreaterThan(small.intensity);
+  });
+
+  describe("under reduced motion", () => {
+    afterEach(() => {
+      setPrefs({ reduceMotion: "auto" });
+    });
+
+    it("scales every kick to nothing", () => {
+      setPrefs({ reduceMotion: "on" });
+      const s = new ShakeController();
+      s.add(0.9);
+      expect(s.intensity).toBe(0);
+      expect(s.active).toBe(false);
+    });
+
+    it("lets trauma already in flight drain normally", () => {
+      const s = new ShakeController();
+      s.add(0.5);
+      setPrefs({ reduceMotion: "on" });
+      s.add(0.5); // ignored
+      expect(s.intensity).toBeCloseTo(0.25);
+      s.update(1, 1.5);
+      expect(s.active).toBe(false);
+    });
   });
 });

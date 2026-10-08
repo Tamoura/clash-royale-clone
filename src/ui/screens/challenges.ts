@@ -2,37 +2,61 @@
 import type { AppCtx } from "../../app/ctx";
 import { CHALLENGES } from "../../game/challenges";
 import { challengesDone } from "../../match/rewards";
+import { button } from "../components";
+import { fmtNum } from "../i18n";
+import { icon } from "../icons";
+import { mountSubscreen } from "./frame";
 
 export function openChallenges(ctx: AppCtx): void {
-  const { pickerRoot, tr } = ctx;
-  pickerRoot.innerHTML = "";
-  const title = document.createElement("h2");
-  title.textContent = tr("Challenges", "التحديات");
-  pickerRoot.appendChild(title);
-
+  const { tr } = ctx;
   const done = challengesDone();
-  for (const ch of CHALLENGES) {
-    const row = document.createElement("div");
-    row.className = "challenge-row";
-    const info = document.createElement("div");
-    info.className = "challenge-info";
-    info.innerHTML =
-      `<div class="challenge-name">${done.has(ch.id) ? "✅ " : ""}${tr(ch.name, ch.nameAr)}</div>` +
-      `<div class="challenge-blurb">${tr(ch.blurb, ch.blurbAr)}</div>`;
-    row.appendChild(info);
-    const play = document.createElement("button");
-    play.className = "battle-btn challenge-play";
-    play.textContent = done.has(ch.id) ? "Replay" : `Play · +${ch.goldReward} 🪙`;
-    play.setAttribute("aria-label", `Play challenge ${ch.name}`);
-    play.addEventListener("click", () => ctx.startChallenge(ch));
-    row.appendChild(play);
-    pickerRoot.appendChild(row);
-  }
-
-  const back = document.createElement("button");
-  back.className = "battle-btn friend";
-  back.textContent = tr("← Home", "→ الرئيسية");
-  back.addEventListener("click", () => ctx.openHome());
-  pickerRoot.appendChild(back);
-  ctx.showPicker("challenges");
+  mountSubscreen(ctx, {
+    id: "challenges",
+    title: tr("Challenges", "التحديات"),
+    build: (body) => {
+      const intro = document.createElement("p");
+      intro.className = "v2-hint";
+      intro.textContent = tr(
+        "Hand-made battles with fixed decks. Win one for the first time to earn its gold.",
+        "معارك مصممة بمجموعات ثابتة. انتصر فيها أول مرة لتربح ذهبها.",
+      );
+      body.appendChild(intro);
+      const list = document.createElement("div");
+      list.className = "v2-challenges";
+      // The guided tutorial battle is a challenge too, but not a listed one.
+      const listed = CHALLENGES.filter((ch) => ch.id !== "tutorial" && !(ch as { hidden?: boolean }).hidden);
+      for (const ch of listed) {
+        const cleared = done.has(ch.id);
+        const row = document.createElement("article");
+        row.className = "challenge-row v2-challenge" + (cleared ? " is-done" : "");
+        const badge = document.createElement("span");
+        badge.className = "v2-challenge-badge";
+        badge.innerHTML = icon(cleared ? "check" : "puzzle");
+        row.appendChild(badge);
+        const info = document.createElement("div");
+        info.className = "challenge-info";
+        const name = document.createElement("div");
+        name.className = "challenge-name";
+        name.textContent = tr(ch.name, ch.nameAr);
+        const blurb = document.createElement("div");
+        blurb.className = "challenge-blurb";
+        blurb.textContent = tr(ch.blurb, ch.blurbAr);
+        info.append(name, blurb);
+        row.appendChild(info);
+        const play = button({
+          variant: cleared ? "secondary" : "cta",
+          icon: "play",
+          label: cleared ? tr("Replay", "أعد اللعب") : tr(`Play · +${fmtNum(ch.goldReward)} gold`, `العب (+${fmtNum(ch.goldReward)} ذهب)`),
+          ariaLabel: cleared
+            ? tr(`Replay challenge ${ch.name}`, `أعد تحدي ${ch.nameAr}`)
+            : tr(`Play challenge ${ch.name} for ${ch.goldReward} gold`, `العب تحدي ${ch.nameAr} مقابل ${ch.goldReward} ذهب`),
+          onClick: () => ctx.startChallenge(ch),
+        });
+        play.classList.add("challenge-play");
+        row.appendChild(play);
+        list.appendChild(row);
+      }
+      body.appendChild(list);
+    },
+  });
 }

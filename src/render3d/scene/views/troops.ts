@@ -1,7 +1,8 @@
 /**
- * Unit meshes: troop and building views with their team ring, name chip,
+ * Unit meshes: troop and building views with their team disc, name chip,
  * contact shadow and HP bar, the shared HP/label/status sprites, and the
  * translucent deploy ghost. Optional KayKit glTF models load on demand.
+ * Team colours follow the player's teamPalette pref live (no reload).
  */
 import * as THREE from "three";
 import type { Side } from "../../../game/arena";
@@ -10,13 +11,15 @@ import type { CardId } from "../../../game/cards";
 import { cardDisplayName } from "../../../render/cardNames";
 import { buildTroop, toon, type TroopRig } from "../../characters3d";
 import { spawnRecipe } from "../../spawnfx";
+import { makeTeamDisc, refreshTeamDisc } from "../../teamBase";
+import { applyTeam, teamColor, teamCss, teamPalette } from "../../teamColors";
+import { onPrefs, type TeamPalette } from "../../../ui/prefs";
 import { ARABIC } from "../../theme";
 import { kaykitOptIn } from "../../modelsOptIn";
 import {
   BAR_TILT,
   GAME_FONT,
   HP_COLOR,
-  SIDE_COLOR,
   unlitGlow,
   viewSide,
   type EntityView,
@@ -47,6 +50,73 @@ export function loadGlbModels(): void {
 /** The loaded glTF module; only views that carry a `glb` unit need it. */
 export function glbModels(): GlbModule | null {
   return glb;
+}
+
+/**
+ * Everything built here that wears team colours and is still on stage:
+ * rig team parts, the disc and the HP fill are repainted when the
+ * teamPalette pref changes. Entries drop out once their root leaves the
+ * scene (death, reset, ghost swap).
+ */
+interface TeamLive {
+  root: THREE.Object3D;
+  side: Side;
+  disc?: THREE.Mesh;
+  hpFill?: THREE.Mesh;
+}
+const teamLive = new Set<TeamLive>();
+let livePalette: TeamPalette | null = null;
+
+function pruneTeamLive(): void {
+  for (const t of teamLive) if (!t.root.parent) teamLive.delete(t);
+}
+
+/** Repaint every live unit, label and level shield for a palette. */
+function repaintTeams(palette: TeamPalette): void {
+  pruneTeamLive();
+  for (const t of teamLive) {
+    applyTeam(t.root, t.side, palette);
+    if (t.disc) refreshTeamDisc(t.disc, palette);
+    if (t.hpFill) (t.hpFill.material as THREE.MeshBasicMaterial).color.setHex(unitHpColor(t.side, palette));
+  }
+  for (const b of levelBadges.values()) drawLevelBadge(b, palette);
+  for (const l of nameLabels.values()) drawNameLabel(l, palette);
+}
+
+function trackTeam(entry: TeamLive): void {
+  if (livePalette === null) {
+    livePalette = teamPalette();
+    onPrefs((p) => {
+      if (p.teamPalette === livePalette) return;
+      livePalette = p.teamPalette;
+      repaintTeams(p.teamPalette);
+    });
+  }
+  if (teamLive.size > 64) pruneTeamLive();
+  teamLive.add(entry);
+}
+
+/**
+ * The team a unit WEARS, relative to the viewer: "player" (blue, plain
+ * disc, green HP, bar only once hurt) always means yours and "enemy"
+ * (red or orange, notched disc, bar always on) your opponent, also for an
+ * online guest who plays the sim's "enemy" side. Every team cue built
+ * here (rig parts, disc, HP fill, name tint, level shield) goes through
+ * it, so colour and the notch can never disagree with the HP-bar rule.
+ * viewSide is set before the scene resets, so views are built with the
+ * final viewpoint.
+ */
+export function teamSide(side: Side): Side {
+  return side === viewSide ? "player" : "enemy";
+}
+
+/**
+ * HP fill for troops and buildings: the classic green-for-yours and
+ * red-for-theirs, or the colour-blind blue/orange team pair (green and
+ * orange collide under deuteranopia).
+ */
+export function unitHpColor(side: Side, palette: TeamPalette = teamPalette()): number {
+  return palette === "cb" ? teamColor(side, "main", "cb") : HP_COLOR[side];
 }
 
 export function makeHpText(y: number): { sprite: THREE.Sprite; text: HpText } {
@@ -132,48 +202,65 @@ export function makeHpBar(width: number, color: number, y: number, height = 0.2)
   return { group, fill };
 }
 
+/** A cached level shield: its canvas is redrawn when the palette changes. */
+interface LevelBadge {
+  side: Side;
+  level: number;
+  ctx: CanvasRenderingContext2D;
+  tex: THREE.CanvasTexture;
+  mat: THREE.SpriteMaterial;
+}
 /** Shared level-shield materials, one per side + level. */
-const levelBadgeMats = new Map<string, THREE.SpriteMaterial>();
+const levelBadges = new Map<string, LevelBadge>();
 
-/** CR-style level shield capping an HP bar (towers and troops). */
-export function makeLevelBadge(side: Side, level = 9): THREE.Sprite {
+function drawLevelBadge(b: LevelBadge, palette: TeamPalette): void {
+  const { ctx, side, level } = b;
+  ctx.clearRect(0, 0, 64, 64);
+  // Shield: flat top, pointed bottom — a crest, not a coin.
+  ctx.beginPath();
+  ctx.moveTo(8, 8);
+  ctx.lineTo(56, 8);
+  ctx.lineTo(56, 36);
+  ctx.quadraticCurveTo(56, 52, 32, 60);
+  ctx.quadraticCurveTo(8, 52, 8, 36);
+  ctx.closePath();
+  ctx.fillStyle =
+    palette === "cb" ? teamCss(side, "dark", "cb") : side === "player" ? "#2c55b8" : "#b02e22";
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = "#f2c14e";
+  ctx.stroke();
+  ctx.font = `36px ${GAME_FONT}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = "rgba(10,14,22,0.85)";
+  ctx.strokeText(String(level), 32, 33);
+  ctx.fillStyle = "#fff";
+  ctx.fillText(String(level), 32, 33);
+  b.tex.needsUpdate = true;
+}
+
+/**
+ * CR-style level shield capping an HP bar (towers and troops). `simSide`
+ * is the entity's sim side; the shield wears the viewer-relative team.
+ */
+export function makeLevelBadge(simSide: Side, level = 9): THREE.Sprite {
+  const side = teamSide(simSide);
   const key = `${side}:${level}`;
-  let mat = levelBadgeMats.get(key);
-  if (!mat) {
+  let badge = levelBadges.get(key);
+  if (!badge) {
     const c = document.createElement("canvas");
     c.width = c.height = 64;
-    const ctx = c.getContext("2d")!;
-    // Shield: flat top, pointed bottom — a crest, not a coin.
-    ctx.beginPath();
-    ctx.moveTo(8, 8);
-    ctx.lineTo(56, 8);
-    ctx.lineTo(56, 36);
-    ctx.quadraticCurveTo(56, 52, 32, 60);
-    ctx.quadraticCurveTo(8, 52, 8, 36);
-    ctx.closePath();
-    ctx.fillStyle = side === "player" ? "#2c55b8" : "#b02e22";
-    ctx.fill();
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = "#f2c14e";
-    ctx.stroke();
-    ctx.font = `36px ${GAME_FONT}`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.lineJoin = "round";
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = "rgba(10,14,22,0.85)";
-    ctx.strokeText(String(level), 32, 33);
-    ctx.fillStyle = "#fff";
-    ctx.fillText(String(level), 32, 33);
-    mat = new THREE.SpriteMaterial({
-      map: new THREE.CanvasTexture(c),
-      transparent: true,
-      depthWrite: false,
-    });
+    const tex = new THREE.CanvasTexture(c);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
     mat.userData.shared = true;
-    levelBadgeMats.set(key, mat);
+    badge = { side, level, ctx: c.getContext("2d")!, tex, mat };
+    drawLevelBadge(badge, teamPalette());
+    levelBadges.set(key, badge);
   }
-  const sprite = new THREE.Sprite(mat);
+  const sprite = new THREE.Sprite(badge.mat);
   sprite.scale.set(0.42, 0.42, 1);
   return sprite;
 }
@@ -184,21 +271,26 @@ export function setHpFill(view: EntityView, frac: number, width: number): void {
   view.hpFill.position.x = (-(1 - f) * (width - 0.06)) / 2;
 }
 
-/** One shared sprite material per card+side; labels never change. */
-const nameMaterials = new Map<string, THREE.SpriteMaterial>();
+/** A cached unit name label: its tint follows the team palette. */
+interface NameLabel {
+  name: string;
+  side: Side;
+  ctx: CanvasRenderingContext2D;
+  tex: THREE.CanvasTexture;
+  mat: THREE.SpriteMaterial;
+}
+/** One shared sprite material per card+side; only the palette tint changes. */
+const nameLabels = new Map<string, NameLabel>();
 
-export function nameSpriteMaterial(cardId: CardId, side: Side): THREE.SpriteMaterial {
-  // Edition-aware: Arabic-script names in the Arabic edition.
-  const name = cardDisplayName(cardId);
-  // Keyed by name too: renaming the Studio champion must not reuse a
-  // stale label from an earlier battle.
-  const key = `${cardId}:${side}:${name}`;
-  const cached = nameMaterials.get(key);
-  if (cached) return cached;
-  const c = document.createElement("canvas");
-  c.width = 256;
-  c.height = 64;
-  const ctx = c.getContext("2d")!;
+/** Light team tint for name text (pale blue / pale red, or pale orange). */
+function labelTint(side: Side, palette: TeamPalette): string {
+  if (side === "player") return "#aecdff";
+  return palette === "cb" ? "#ffcf94" : "#ffb9b3";
+}
+
+function drawNameLabel(l: NameLabel, palette: TeamPalette): void {
+  const { ctx, name } = l;
+  ctx.clearRect(0, 0, 256, 64);
   let size = 34;
   ctx.font = `bold ${size}px ${GAME_FONT}`;
   while (ctx.measureText(name).width > 236 && size > 16) {
@@ -211,16 +303,30 @@ export function nameSpriteMaterial(cardId: CardId, side: Side): THREE.SpriteMate
   ctx.lineWidth = 8;
   ctx.strokeStyle = "rgba(10,14,22,0.9)";
   ctx.strokeText(name, 128, 34);
-  ctx.fillStyle = side === "player" ? "#aecdff" : "#ffb9b3";
+  ctx.fillStyle = labelTint(l.side, palette);
   ctx.fillText(name, 128, 34);
-  const mat = new THREE.SpriteMaterial({
-    map: new THREE.CanvasTexture(c),
-    transparent: true,
-    depthWrite: false,
-  });
-  mat.userData.shared = true; // cached across every unit label
-  nameMaterials.set(key, mat);
-  return mat;
+  l.tex.needsUpdate = true;
+}
+
+export function nameSpriteMaterial(cardId: CardId, side: Side): THREE.SpriteMaterial {
+  // Edition-aware: Arabic-script names in the Arabic edition.
+  const name = cardDisplayName(cardId);
+  // Keyed by name too: renaming the Studio champion must not reuse a
+  // stale label from an earlier battle.
+  const key = `${cardId}:${side}:${name}`;
+  let label = nameLabels.get(key);
+  if (!label) {
+    const c = document.createElement("canvas");
+    c.width = 256;
+    c.height = 64;
+    const tex = new THREE.CanvasTexture(c);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+    mat.userData.shared = true; // cached across every unit label
+    label = { name, side, ctx: c.getContext("2d")!, tex, mat };
+    drawNameLabel(label, teamPalette());
+    nameLabels.set(key, label);
+  }
+  return label.mat;
 }
 
 /** Shared soft radial contact-shadow texture (dark centre, feathered edge). */
@@ -341,12 +447,14 @@ export function buildTombstoneMesh(e: Entity): EntityView {
   glowOrb.position.set(0, 1.02, 0.02);
   root.add(glowOrb);
 
-  const bar = makeHpBar(1.4, HP_COLOR[e.side], 1.6);
+  const team = teamSide(e.side);
+  const bar = makeHpBar(1.4, unitHpColor(team), 1.6);
   root.add(bar.group);
-  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
+  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, team));
   label.scale.set(2.0, 0.5, 1);
   label.position.y = 1.95;
   root.add(label);
+  trackTeam({ root, side: team, hpFill: bar.fill });
   return {
     root,
     rig: null,
@@ -394,12 +502,14 @@ export function buildCollectorMesh(e: Entity): EntityView {
   drop.position.y = 1.25;
   root.add(drop);
 
-  const bar = makeHpBar(1.4, HP_COLOR[e.side], 1.7);
+  const team = teamSide(e.side);
+  const bar = makeHpBar(1.4, unitHpColor(team), 1.7);
   root.add(bar.group);
-  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
+  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, team));
   label.scale.set(2.0, 0.5, 1);
   label.position.y = 2.05;
   root.add(label);
+  trackTeam({ root, side: team, hpFill: bar.fill });
   return {
     root,
     rig: null,
@@ -441,12 +551,14 @@ export function buildBuildingMesh(e: Entity): EntityView {
   barrel.add(breech);
   root.add(barrel);
 
-  const bar = makeHpBar(1.4, HP_COLOR[e.side], 1.15);
+  const team = teamSide(e.side);
+  const bar = makeHpBar(1.4, unitHpColor(team), 1.15);
   root.add(bar.group);
-  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
+  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, team));
   label.scale.set(2.0, 0.5, 1);
   label.position.y = 1.5;
   root.add(label);
+  trackTeam({ root, side: team, hpFill: bar.fill });
   return {
     root,
     rig: null,
@@ -463,6 +575,7 @@ export function buildBuildingMesh(e: Entity): EntityView {
 
 export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
   const root = new THREE.Group();
+  const team = teamSide(e.side);
 
   // Real glTF model (KayKit) when this card has one; else the primitive rig.
   const glbUnit = glb?.hasGlbModel(e.cardId!) ? glb.makeGlbUnit(e.cardId!) : null;
@@ -472,7 +585,7 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
     root.add(glbUnit.group);
     lift = glbUnit.height;
   } else {
-    rig = buildTroop(e.cardId!);
+    rig = buildTroop(e.cardId!, team);
     // CR readability comes from silhouette CONTRAST: tanks tower, swarm
     // units stay small, everyone else sits between.
     const scale =
@@ -487,26 +600,16 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
     lift = (rig.hover ?? 0) + rig.height * scale;
   }
 
-  // Bold team-color contact ring: at phone size this is the primary
-  // "whose unit is that" read, so it has to pop off the grass.
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(e.radius * 0.8, e.radius * 1.02, 24),
-    new THREE.MeshBasicMaterial({
-      color: SIDE_COLOR[e.side],
-      transparent: true,
-      opacity: 0.65,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    }),
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.02;
-  root.add(ring);
+  // Bold team disc: at phone size this is the primary "whose unit is
+  // that" read, so it has to pop off grass and cream tile alike. Enemy
+  // discs are notched, so the side also reads by shape.
+  const disc = makeTeamDisc(team, e.radius);
+  root.add(disc);
 
   // Name chip so cards are tellable apart mid-fight. The caller labels
   // only one unit per deployed group — a flock gets one label, not three.
   if (withLabel) {
-    const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, e.side));
+    const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, team));
     label.name = "unitLabel";
     label.scale.set(1.7, 0.42, 1);
     label.position.y = lift + 0.62;
@@ -539,9 +642,10 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
   // the shadow-map pass for ~40 parts per unit halves a busy fight's cost.
   root.traverse((o) => (o.castShadow = false));
 
-  const bar = makeHpBar(0.9, HP_COLOR[e.side], lift + 0.25);
-  bar.group.visible = false; // shown once damaged
+  const bar = makeHpBar(0.9, unitHpColor(team), lift + 0.25);
+  bar.group.visible = team === "enemy"; // opponents always; yours once damaged
   root.add(bar.group);
+  trackTeam({ root, side: team, disc, hpFill: bar.fill });
 
   const deploy = spawnRecipe(e.cardId);
   return {
@@ -562,14 +666,21 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
   };
 }
 
-/** Damage-only HP bars: a troop's bar appears once it is hurt, and stays. */
+/**
+ * Troop HP bars: the opponent's troops always show a compact bar (their
+ * health is what you plan around); your own appear once hurt, and stay.
+ * "Opponent" is relative to the viewpoint, so an online guest sees the
+ * host's units barred.
+ */
 export function hpBarVisible(view: EntityView, e: Entity): boolean {
-  return view.hpGroup.visible || (e.kind === "troop" && e.hp < e.maxHp);
+  return (
+    view.hpGroup.visible || (e.kind === "troop" && (teamSide(e.side) === "enemy" || e.hp < e.maxHp))
+  );
 }
 
-/** Translucent preview rig of a troop card for the deploy cursor. */
+/** Translucent preview rig of a troop card for the deploy cursor (always yours). */
 export function buildGhost(cardId: CardId): TroopRig {
-  const rig = buildTroop(cardId);
+  const rig = buildTroop(cardId, "player");
   rig.group.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (mesh.isMesh) {
@@ -582,5 +693,6 @@ export function buildGhost(cardId: CardId): TroopRig {
       mesh.castShadow = false;
     }
   });
+  trackTeam({ root: rig.group, side: "player" });
   return rig;
 }

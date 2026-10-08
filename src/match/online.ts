@@ -16,6 +16,7 @@ import { resolveRelayUrl, type RelayTarget } from "../net/relayUrl";
 import { OnlineSession, type MatchInfo } from "../net/session";
 import type { AppCtx } from "../app/ctx";
 import { emit, on, setPendingSpend } from "../app/hooks";
+import type { OpponentLabel } from "../render3d/hud";
 import { showBanner, showVersus, startCountdown } from "../ui/banner";
 import { getPrefs, sanitizePlayerName } from "../ui/prefs";
 import { tr } from "../ui/i18n";
@@ -151,10 +152,17 @@ export function leaveOnline(): void {
 export const clearOnline = leaveOnline;
 
 /** Who we are playing: the opponent's name, or "Friend". */
-export function onlineOpponentLabel(): string | null {
+export function onlineOpponentName(): string | null {
   const s = onlineSession();
   if (!s) return null;
   return s.opponent?.name || tr("Friend", "صديق");
+}
+
+/** The HUD banner for the online opponent (name and crest), or null off-line. */
+export function onlineOpponentLabel(): OpponentLabel | null {
+  const s = onlineSession();
+  if (!s) return null;
+  return { name: onlineOpponentName() ?? undefined, crest: s.opponent?.crest };
 }
 
 /**
@@ -165,7 +173,7 @@ export function onlineOpponentLabel(): string | null {
 export function beginOnlineMatch(ctx: AppCtx, m: MatchInfo): void {
   if (!session) return;
   const { hud, scene, sound: audio, meta } = ctx;
-  const label = onlineOpponentLabel() ?? tr("Friend", "صديق");
+  const label = onlineOpponentName() ?? tr("Friend", "صديق");
   ctx.hideSandboxReset();
   ctx.closeDeckPicker();
   ctx.setBattle(m.battle);

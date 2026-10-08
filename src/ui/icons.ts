@@ -15,7 +15,11 @@ export type IconName =
   // Game glyphs
   | "crown-filled" | "crown-empty" | "skull" | "wing" | "snow" | "pause" | "info"
   // Profile crests (prefs.crest picks one)
-  | `crest-${CrestIndex}`;
+  | `crest-${CrestIndex}`
+  // Home and meta screens (home-meta-ux)
+  | "target" | "burst" | "arrow" | "wave" | "tower" | "pencil" | "trash" | "gauge"
+  | "users" | "sliders" | "clock" | "globe" | "vibrate" | "sparkle" | "palette"
+  | "text" | "motion";
 
 export type CrestIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
 
@@ -118,6 +122,24 @@ const PATHS: Record<IconName, string> = {
   "crest-9": crest(9),
   "crest-10": crest(10),
   "crest-11": crest(11),
+  // ---- Home and meta screens (home-meta-ux) ----
+  target: `<circle ${O} fill="#e8413b" cx="12" cy="12" r="9.5"/><circle ${O} fill="#fff" cx="12" cy="12" r="6"/><circle ${O} fill="#e8413b" cx="12" cy="12" r="2.4"/>`,
+  burst: `<path ${O} fill="#ffb03a" d="M12 2l2.1 5.4 5.4-2.3-2.3 5.4L22 12l-4.8 1.5 2.3 5.4-5.4-2.3L12 22l-2.1-5.4-5.4 2.3 2.3-5.4L2 12l4.8-1.5-2.3-5.4 5.4 2.3z"/><circle fill="#ffe07a" cx="12" cy="12" r="3.4"/>`,
+  arrow: `${line("M4.5 19.5 17 7", "#d99a42")}<path ${O} fill="#dfe7f2" d="M21 3l-8.2 1.8 6.4 6.4z"/>${line("M4.5 19.5 3.6 15.8M4.5 19.5l3.7.9", "#e8413b")}`,
+  wave: line("M2.5 9c2.4-2.4 4.4-2.4 6.6 0s4.2 2.4 6.4 0 4.2-2.4 6 0M2.5 15.5c2.4-2.4 4.4-2.4 6.6 0s4.2 2.4 6.4 0 4.2-2.4 6 0", "#4fc3ff"),
+  tower: `<path ${O} fill="#f6e7c8" d="M5 21.5V6.5h3v2.2h2.4V6.5h3.2v2.2H16V6.5h3v15z"/><path ${O} fill="#8a5a30" d="M10 21.5v-4.2a2 2 0 0 1 4 0v4.2z"/><path fill="#1a1030" d="M11 11.5h2v2.6h-2z"/>`,
+  pencil: `<path ${O} fill="#ffd23f" d="M15.2 4.8 19.2 8.8 8.5 19.5 3.5 20.5l1-5z"/><path ${O} fill="#ff8fb0" d="M15.2 4.8l1.9-1.9a1.4 1.4 0 0 1 2 0l2 2a1.4 1.4 0 0 1 0 2l-1.9 1.9z"/><path fill="#1a1030" d="M3.5 20.5l.5-2.6 2.1 2.1z"/>`,
+  trash: `<path ${O} fill="#9aa7b8" d="M5.8 7.5h12.4l-1.1 13.5H6.9z"/><path ${O} fill="#dfe7f2" d="M3.8 5h16.4v2.6H3.8zM9.4 2.6h5.2V5H9.4z"/><path fill="none" stroke="#1a1030" stroke-width="1.4" stroke-linecap="round" d="M10 10.5v7.5M14 10.5v7.5"/>`,
+  gauge: `<path ${O} fill="#2d3b66" d="M2.5 17.5a9.5 9.5 0 0 1 19 0z"/><path fill="#3ee07a" d="M4.6 16.5a7.4 7.4 0 0 1 2.9-5.9l1.3 1.6a5.4 5.4 0 0 0-2.2 4.3z"/><path fill="#ffd23f" d="M8.7 9.8a7.4 7.4 0 0 1 6.6 0l-.9 1.8a5.4 5.4 0 0 0-4.8 0z"/><path fill="#e8413b" d="M16.5 10.6a7.4 7.4 0 0 1 2.9 5.9h-2a5.4 5.4 0 0 0-2.2-4.3z"/>${line("M12 16.5l3.6-4.6")}`,
+  users: `<circle ${O} fill="#ffd9a8" cx="8.5" cy="8" r="3.3"/><path ${O} fill="#e8413b" d="M2.5 19.5a6 5.5 0 0 1 12 0z"/><circle ${O} fill="#ffd9a8" cx="16" cy="9.3" r="3"/><path ${O} fill="#4f8cff" d="M10.8 20.5a5.6 5 0 0 1 11.2 0z"/>`,
+  sliders: `${line("M4 7h16M4 17h16", "#9aa7b8")}<circle ${O} fill="#ffd23f" cx="9" cy="7" r="2.8"/><circle ${O} fill="#4f8cff" cx="15" cy="17" r="2.8"/>`,
+  clock: `<circle ${O} fill="#f6f1e6" cx="12" cy="12" r="9.5"/><path fill="none" stroke="#1a1030" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 6.5V12l3.6 2.4"/>`,
+  globe: `<circle ${O} fill="#4f8cff" cx="12" cy="12" r="9.5"/><path fill="#3ee07a" d="M6.5 5.2c1.6 1.2 1.9 2.6.9 3.6s-2.8.6-3.4 2.4c-.4 1.3.9 2.6 2.4 3.4 1 .6.8 2.4.4 3.6A9.5 9.5 0 0 1 6.5 5.2zM14.5 3c-.7 1.6.3 2.8 1.9 3.3s2.6 1.9 2 3.4c-.5 1.2-2 1.3-2.4 2.6-.4 1.4.8 2.8 2.3 3.2l1.3.3A9.5 9.5 0 0 0 14.5 3z"/><circle fill="none" stroke="#1a1030" stroke-width="1.6" cx="12" cy="12" r="9.5"/>`,
+  vibrate: `<rect ${O} fill="#2d3b66" x="7.5" y="2.8" width="9" height="18.4" rx="2.2"/><rect fill="#8fd8ff" x="9.1" y="5.2" width="5.8" height="11.6" rx=".8"/>${line("M3.6 8.5v7M20.4 8.5v7", "#ffd23f")}`,
+  sparkle: `<path ${O} fill="#ffd23f" d="M10 2.5l1.9 5.4 5.4 1.9-5.4 1.9L10 17.1l-1.9-5.4-5.4-1.9 5.4-1.9z"/><path ${O} fill="#fff6c9" d="M18 13.5l1 2.4 2.4 1-2.4 1-1 2.4-1-2.4-2.4-1 2.4-1z"/>`,
+  palette: `<path ${O} fill="#f6e7c8" d="M12 3a9 9 0 0 0 0 18c1.6 0 2.1-1.1 1.5-2.3-.6-1.3.3-2.4 1.6-2.4H17a4 4 0 0 0 4-4C21 6.9 17 3 12 3z"/><circle fill="#e8413b" cx="7.4" cy="11.4" r="1.7"/><circle fill="#4f8cff" cx="9.6" cy="7.2" r="1.7"/><circle fill="#3ee07a" cx="14.4" cy="6.8" r="1.7"/><circle fill="#ffd23f" cx="17.4" cy="10.6" r="1.7"/>`,
+  text: `<path ${O} fill="#dfe7f2" d="M2.5 19.5 7.6 4.5h3l5.1 15h-3.2l-1.1-3.4H6.8l-1.1 3.4zm5.2-6.2h3.3L9.1 7.6z"/><path ${O} fill="#ffd23f" d="M17.5 10.5h2v3h3v2h-3v3h-2v-3h-3v-2h3z"/>`,
+  motion: `${line("M2.5 8h5.5M1.8 12h6.5M2.5 16h5.5", "#8fd8ff")}<circle ${O} fill="#ffd23f" cx="15.5" cy="12" r="6.2"/><path fill="#fff6c9" d="M12.6 10a3.4 3.4 0 0 1 2.6-1.9l.3 1.4a2 2 0 0 0-1.5 1.1z"/>`,
 };
 
 /** An inline SVG icon, 1em square, for innerHTML use. */

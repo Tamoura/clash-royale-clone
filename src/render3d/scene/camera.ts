@@ -1,10 +1,13 @@
 /**
  * The battle camera: the orthographic fit around the HUD inset, the home
- * diorama framing and sway, trauma shake, and the depth fog per look.
+ * diorama framing and sway, trauma shake, the king-tower KO zoom, and the
+ * depth fog per look (fitted so it never reaches the playfield).
  */
 import * as THREE from "three";
 import type { Battle3D } from "../scene3d";
-import { CAM_HOME, LOOK, cameraZForView } from "./common";
+import { fitFog, viewMatrixAt } from "../fogfit";
+import { reducedMotion } from "../../ui/prefs";
+import { CAM_HOME, LOOK, cameraZForView, toWorld } from "./common";
 
 /** Distance fog in the sky colour (gradeSky re-tints it every frame). */
 export function initFog(b: Battle3D): void {
@@ -15,8 +18,28 @@ export function initFog(b: Battle3D): void {
 export function applyLookFog(b: Battle3D): void {
   const fog = b.scene.fog as THREE.Fog;
   fog.color.set(LOOK.sky);
-  fog.near = LOOK.fogNear;
-  fog.far = LOOK.fogFar;
+  applyFogRange(b);
+}
+
+const VIEW = new THREE.Matrix4();
+
+/**
+ * Battle: fog starts just past the playfield as the resting camera sees it
+ * (fogfit.ts), so the far half is as crisp as the near half. The home
+ * diorama keeps the look's own distances for its hazy, framed-in-a-window
+ * feel.
+ */
+export function applyFogRange(b: Battle3D): void {
+  const fog = b.scene?.fog as THREE.Fog | null | undefined;
+  if (!fog) return;
+  if (b.showcase) {
+    fog.near = LOOK.fogNear;
+    fog.far = LOOK.fogFar;
+    return;
+  }
+  const fit = fitFog(viewMatrixAt(CAM_HOME.x, CAM_HOME.y, cameraZForView(), VIEW), LOOK);
+  fog.near = fit.near;
+  fog.far = fit.far;
 }
 
 /**
@@ -40,6 +63,7 @@ export function showcase(b: Battle3D, on: boolean, windowFrac = 0.5): void {
     b.camera.top = top;
     b.camera.bottom = top - V;
     b.camera.updateProjectionMatrix();
+    applyFogRange(b);
   } else {
     frameOrtho(b);
     b.camera.position.set(CAM_HOME.x, CAM_HOME.y, cameraZForView());
@@ -53,6 +77,15 @@ export function applyTopInset(b: Battle3D, px: number): void {
   b.topInsetPx = px;
   frameOrtho(b);
 }
+
+/** The resting battle frustum (before any KO zoom), per camera. */
+interface Frustum {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+const restFrustum = new WeakMap<THREE.OrthographicCamera, Frustum>();
 
 /** Fit the arena to the viewport with an orthographic frustum. */
 export function frameOrtho(b: Battle3D): void {
@@ -79,19 +112,87 @@ export function frameOrtho(b: Battle3D): void {
   const halfW = halfH * aspect;
   const V = halfH * 2;
   const top = CONTENT_MID + (V * (1 + f)) / 2;
-  b.camera.left = -halfW;
-  b.camera.right = halfW;
-  b.camera.top = top;
-  b.camera.bottom = top - V;
+  restFrustum.set(b.camera, { left: -halfW, right: halfW, top, bottom: top - V });
+  applyFrustum(b);
+  applyFogRange(b);
+}
+
+// ---- King-tower KO zoom -----------------------------------------------------
+
+/** The frustum shrinks to this share at the height of the pulse. */
+export const KO_ZOOM = 0.92;
+/** Seconds the push-in and release take together. */
+export const KO_ZOOM_TIME = 0.4;
+
+interface KoZoom {
+  t: number;
+  /** The tower's position in camera space (the zoom's fixed point). */
+  px: number;
+  py: number;
+}
+const koZooms = new WeakMap<Battle3D, KoZoom>();
+const KO_POINT = new THREE.Vector3();
+
+/** 0 → 1 → 0 over u in [0, 1]: a quick push in, then a soft release. */
+export function koPulse(u: number): number {
+  if (u <= 0 || u >= 1) return 0;
+  if (u < 0.3) {
+    const k = 1 - u / 0.3;
+    return 1 - k * k * k; // ease out
+  }
+  const k = (u - 0.3) / 0.7;
+  return 1 - k * k * (3 - 2 * k); // smooth release
+}
+
+/**
+ * The camera leans in on a fallen king tower: the frustum shrinks to
+ * KO_ZOOM around it and eases back over KO_ZOOM_TIME. Skipped entirely
+ * under reduced motion (the frustum never changes).
+ */
+export function startKoZoom(b: Battle3D, ax: number, ay: number): void {
+  if (reducedMotion() || b.showcase) return;
+  const w = toWorld(ax, ay);
+  KO_POINT.set(w.x, 1.5, w.z).applyMatrix4(viewMatrixAt(CAM_HOME.x, CAM_HOME.y, cameraZForView(), VIEW));
+  koZooms.set(b, { t: 0, px: KO_POINT.x, py: KO_POINT.y });
+}
+
+/** True while the KO zoom moves the frame (pointer picks are ignored). */
+export function koZoomActive(b: Battle3D): boolean {
+  return koZooms.has(b);
+}
+
+/** The resting frustum, scaled about the KO point while the zoom runs. */
+function applyFrustum(b: Battle3D): void {
+  const rest = restFrustum.get(b.camera);
+  if (!rest) return;
+  const z = koZooms.get(b);
+  const s = z ? 1 - (1 - KO_ZOOM) * koPulse(z.t / KO_ZOOM_TIME) : 1;
+  const px = z?.px ?? 0;
+  const py = z?.py ?? 0;
+  b.camera.left = px + (rest.left - px) * s;
+  b.camera.right = px + (rest.right - px) * s;
+  b.camera.top = py + (rest.top - py) * s;
+  b.camera.bottom = py + (rest.bottom - py) * s;
   b.camera.updateProjectionMatrix();
 }
 
-/** Kick the camera; trauma stacks but is clamped. */
+function updateKoZoom(b: Battle3D, dt: number): void {
+  const z = koZooms.get(b);
+  if (!z) return;
+  z.t += dt;
+  if (z.t >= KO_ZOOM_TIME || b.showcase) koZooms.delete(b);
+  if (!b.showcase) applyFrustum(b);
+}
+
+/** Kick the camera; trauma stacks but is clamped (and ignored under reduced motion). */
 export function addShake(b: Battle3D, amount: number): void {
   b.shakeCtl.add(amount);
 }
 
-/** Camera shake: trauma² jitter around the fixed viewpoint. */
+/**
+ * Per-frame camera motion: trauma² jitter around the fixed viewpoint, and
+ * the KO zoom's frustum pulse.
+ */
 export function applyShake(b: Battle3D, dt: number): void {
   if (b.shakeCtl.active) {
     b.shakeTime += dt;
@@ -106,6 +207,7 @@ export function applyShake(b: Battle3D, dt: number): void {
       b.camera.position.set(0, CAM_HOME.y, cameraZForView());
     }
   }
+  updateKoZoom(b, dt);
 }
 
 /**

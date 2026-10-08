@@ -9,6 +9,9 @@ import type { Entity } from "../../game/battle";
 import type { TroopRig } from "../characters3d";
 import type { Battle3D } from "../scene3d";
 import type { GlbUnit } from "../glbModels";
+import type { InterpTrack } from "../anim/interp";
+import type { DeathAnim } from "../anim/deaths";
+import type { TroopAnim } from "./views/animate";
 import { ARABIC } from "../theme";
 import { ARABIC_LOOK, LOOKS, type ArenaLook } from "../arenaLooks";
 
@@ -72,7 +75,11 @@ export const FLASH_TIME = 0.12;
 /** Duration of the squash-and-stretch jiggle when a unit takes a hit. */
 export const HIT_JIGGLE_TIME = 0.2;
 
-export interface EntityView {
+/**
+ * One entity's on-screen record. The InterpTrack fields (prevX/prevZ,
+ * curX/curZ, lastTick) hold the last two sim positions for smoothing.
+ */
+export interface EntityView extends InterpTrack {
   root: THREE.Group;
   rig: TroopRig | null;
   hpFill: THREE.Mesh;
@@ -106,8 +113,8 @@ export interface EntityView {
   blobShadow?: THREE.Mesh;
   /** Seconds until the next footstep dust puff. */
   dustT?: number;
-  /** How this troop enters the field. */
-  spawnStyle?: "rise" | "pop" | "slam";
+  /** How this troop enters the field ("pop" is the old name of "drop"). */
+  spawnStyle?: "rise" | "drop" | "slam" | "pop";
   spawnColor?: number;
   spawnBurst?: number;
   /** White countdown ring shown while the unit's deploy freeze runs. */
@@ -128,6 +135,8 @@ export interface EntityView {
   /** Deploy name tag: shown briefly, then shrinks away (CR shows none). */
   label?: THREE.Object3D;
   labelAge?: number;
+  /** Troop animation state (archetype, clocks, face, status poses). */
+  anim?: TroopAnim;
 }
 
 export interface DyingView {
@@ -137,6 +146,8 @@ export interface DyingView {
   /** Corpses topple to a side; buildings sink. */
   topple: number;
   fadeMats: (THREE.Material & { opacity: number })[];
+  /** A troop's knockout / shatter / tumble motion. */
+  anim?: DeathAnim;
 }
 
 export interface HpText {
