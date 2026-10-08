@@ -80,6 +80,7 @@ import { loadMode } from "./match/modes";
 import { clearOnline, onlineSession, stepOnline } from "./match/online";
 import { CHAMPION_BONUS_GOLD, currentStreak, settleMatch } from "./match/rewards";
 import {
+  botTrophies,
   checkBanners,
   getPhase,
   reduceMotion,
@@ -89,7 +90,10 @@ import {
   startCountdown,
   tickCountdown,
 } from "./ui/banner";
-import { tr } from "./ui/i18n";
+import { fmtNum, tr } from "./ui/i18n";
+import { getPrefs } from "./ui/prefs";
+import { isChestReady } from "./meta/chests";
+import { MATCH_TROPHIES } from "./meta/economy";
 import { openChallenges } from "./ui/screens/challenges";
 import { openChests } from "./ui/screens/chests";
 import { openCollection } from "./ui/screens/collection";
@@ -652,7 +656,7 @@ function startDaily(): void {
 function sandboxReset(): void {
   restart();
   setPhase("playing");
-  showBanner("Reset!", true);
+  showBanner(tr("Reset!", "إعادة!"), true);
 }
 sandboxResetBtn.addEventListener("click", () => {
   sandboxReset();
@@ -694,13 +698,60 @@ const hud = new Hud(topbar, hudRoot, overlay, {
   onSelectCard: selectCard,
   onDeployAt: (x, y) => tryDeployAt(x, y),
   onRestart: restart,
-  onToggleSound: () => {
-    audio.setMuted(!audio.muted);
-    return audio.muted;
-  },
+  onMuted: (muted) => audio.setMuted(muted),
   onElixirLeak: () => audio.elixirLeak(),
   onAbility: triggerAbility,
+  onHome: openHome,
+  onOpenChest: () => ctx.openChests(),
+  chestReady: () => meta.profile.chests.some((c) => c !== null && isChestReady(c, Date.now())),
+  isOnline: () => onlineSession() !== null,
+  // Online opponents are labelled by the online module (hud.setCallbacks).
+  opponentLabel: () =>
+    onlineSession()
+      ? null
+      : {
+          badge: fmtNum(Math.max(0, ARENAS.findIndex((a) => a.id === battleArenaId())) + 1),
+          trophies: ladderMatch() ? botTrophies(meta.profile.trophies) : undefined,
+        },
+  onForfeit: forfeitMatch,
+  playerTrophies: () => (ladderMatch() ? meta.profile.trophies : null),
+  wallet: () => ({ gold: meta.profile.gold, trophies: meta.profile.trophies }),
+  leaveCost: () =>
+    replaying || (isSandbox() && !onlineSession())
+      ? null
+      : ladderMatch()
+        ? Math.min(-MATCH_TROPHIES.loss, meta.profile.trophies)
+        : 0,
 });
+audio.setMuted(getPrefs().muted);
+
+/** A real trophy match: solo ladder, not sandbox practice or a replay. */
+function ladderMatch(): boolean {
+  return battleKind === "ladder" && !onlineSession() && !replaying && !isSandbox();
+}
+
+/**
+ * Forfeit from the battle menu: the match ends now as a loss. Solo matches
+ * settle through the normal finish path (a ladder forfeit costs trophies);
+ * online, by default, leaves the room and shows the loss with no trophies.
+ */
+function forfeitMatch(): void {
+  if (battle.result) return;
+  const winner: Side = localSide() === "player" ? "enemy" : "player";
+  const result = { winner, playerCrowns: battle.player.crowns, enemyCrowns: battle.enemy.crowns };
+  const online = onlineSession();
+  if (online) {
+    online.client.onClose = null;
+    online.client.onPeerLeft = null;
+    online.client.leave();
+    battle.result = result;
+    return;
+  }
+  recording = null; // a forfeited match is not worth a replay
+  setPhase("playing");
+  battle.result = result;
+  battle.events.push({ type: "finish", winner });
+}
 
 // Audio can only start from a user gesture.
 window.addEventListener("pointerdown", () => audio.resume(), { once: false });
@@ -747,48 +798,7 @@ const ctx: AppCtx = {
 
 registerLifecycle(scene); // idle rendering behind opaque screens, hidden-tab sim hold
 
-// Home / deck buttons in the top bar.
-const homeBtn = document.createElement("button");
-homeBtn.className = "mute";
-homeBtn.innerHTML = icon("home");
-homeBtn.title = tr("Home", "الرئيسية");
-homeBtn.addEventListener("click", openHome);
-topbar.appendChild(homeBtn);
-
-const deckBtn = document.createElement("button");
-deckBtn.className = "mute";
-deckBtn.innerHTML = icon("cards");
-deckBtn.title = tr("Edit deck", "تعديل المجموعة");
-deckBtn.addEventListener("click", () => ctx.openDeckPicker({ mode: "deck" }));
-
-// CR-style battle chrome: sound, home and deck live behind one menu
-// button instead of a second toolbar row eating the arena.
-const battleMenu = document.createElement("div");
-battleMenu.className = "battle-menu";
-const menuToggle = document.createElement("button");
-menuToggle.className = "menu-toggle";
-menuToggle.setAttribute("aria-label", "Menu");
-menuToggle.setAttribute("aria-expanded", "false");
-menuToggle.innerHTML = "<span></span><span></span><span></span>";
-const menuPanel = document.createElement("div");
-menuPanel.className = "menu-panel";
-const hudMute = topbar.querySelector("button.mute");
-if (hudMute) menuPanel.appendChild(hudMute);
-menuPanel.append(homeBtn, deckBtn);
-battleMenu.append(menuToggle, menuPanel);
-topbar.appendChild(battleMenu);
-const setMenuOpen = (open: boolean): void => {
-  battleMenu.classList.toggle("open", open);
-  menuToggle.setAttribute("aria-expanded", String(open));
-};
-menuToggle.addEventListener("click", (ev) => {
-  ev.stopPropagation();
-  setMenuOpen(!battleMenu.classList.contains("open"));
-});
-menuPanel.addEventListener("click", () => setMenuOpen(false));
-window.addEventListener("pointerdown", (ev) => {
-  if (!battleMenu.contains(ev.target as Node)) setMenuOpen(false);
-});
+// The battle menu (Resume, Sound, Forfeit) is the HUD's own top-bar button.
 
 const clockEl = topbar.querySelector<HTMLElement>(".clock");
 if (clockEl) clockEl.dataset.label = tr("Time left", "الوقت المتبقي");
