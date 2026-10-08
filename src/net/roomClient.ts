@@ -32,6 +32,8 @@ export interface StartPayload {
   delay: number;
   /** This seat's resume token. Keep it private. */
   token: string;
+  /** The room code (for resuming), or null from a relay that omits it. */
+  code: string | null;
 }
 
 export interface RoomClientOptions {
@@ -46,6 +48,8 @@ export const CONNECT_TIMEOUT_MS = 8000;
 const BURST_PINGS = 5;
 const BURST_GAP_MS = 250;
 const PING_EVERY_MS = 5000;
+/** Ping interval while a match runs: a silent socket shows within seconds. */
+export const MATCH_PING_EVERY_MS = 2000;
 const RTT_SAMPLES = 5;
 
 function toPayload(msg: StartMsg): StartPayload {
@@ -58,6 +62,7 @@ function toPayload(msg: StartMsg): StartPayload {
     guestLoadout: msg.guestLoadout ?? null,
     delay: msg.delay ?? 4,
     token: msg.token ?? "",
+    code: msg.code ?? null,
   };
 }
 
@@ -96,12 +101,15 @@ export class RoomClient {
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimers: ReturnType<typeof setTimeout>[] = [];
   private pingInterval: ReturnType<typeof setInterval> | null = null;
+  private pingEvery = PING_EVERY_MS;
+  private heardAt: number;
 
   constructor(
     private readonly socket: NetSocket,
     opts: RoomClientOptions = {},
   ) {
     this.now = opts.now ?? (() => performance.now());
+    this.heardAt = this.now();
     this.connectTimer = setTimeout(() => {
       if (this.open) return;
       try {
@@ -121,6 +129,7 @@ export class RoomClient {
       this.startPinging();
     };
     socket.onmessage = (ev) => {
+      this.heardAt = this.now();
       let msg: ServerMsg;
       try {
         msg = JSON.parse(ev.data) as ServerMsg;
@@ -131,6 +140,39 @@ export class RoomClient {
     };
     socket.onclose = () => this.finish();
     socket.onerror = () => this.finish();
+  }
+
+  /** Milliseconds since anything last arrived on this socket. */
+  silence(): number {
+    return this.now() - this.heardAt;
+  }
+
+  /** Treat the link as freshly heard from (after this page was frozen or hidden). */
+  markHeard(): void {
+    this.heardAt = this.now();
+  }
+
+  /** Ping faster, for the duration of a match (see {@link MATCH_PING_EVERY_MS}). */
+  pingFast(): void {
+    this.pingEvery = MATCH_PING_EVERY_MS;
+    if (this.pingInterval !== null) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = setInterval(() => this.ping(), this.pingEvery);
+    }
+  }
+
+  /**
+   * Abandon a socket that has gone silent without sending "leave" (the seat
+   * must stay ours for a resume). A dead socket may never fire onclose, so
+   * the close is reported here.
+   */
+  drop(): void {
+    try {
+      this.socket.close();
+    } catch {
+      // already closing
+    }
+    this.finish();
   }
 
   /** Median of the last few measured round trips (ms), or null before any. */
@@ -204,7 +246,7 @@ export class RoomClient {
     for (let i = 0; i < BURST_PINGS; i++) {
       this.pingTimers.push(setTimeout(() => this.ping(), i * BURST_GAP_MS));
     }
-    this.pingInterval = setInterval(() => this.ping(), PING_EVERY_MS);
+    this.pingInterval = setInterval(() => this.ping(), this.pingEvery);
   }
 
   private clearConnectTimer(): void {

@@ -46,6 +46,7 @@ const START: StartMsg = {
   guestLoadout: null,
   delay: 5,
   token: TOKEN,
+  code: "LION42",
 };
 const PAYLOAD = {
   role: "guest",
@@ -56,6 +57,7 @@ const PAYLOAD = {
   guestLoadout: null,
   delay: 5,
   token: TOKEN,
+  code: "LION42",
 };
 
 beforeEach(() => {
@@ -144,7 +146,7 @@ describe("RoomClient", () => {
     client.onStart = onStart;
     sock.open();
     sock.emit({ t: "start", role: "host", hostDeck: DECK, guestDeck: DECK, mode: MODE } as unknown as ServerMsg);
-    expect(onStart).toHaveBeenCalledWith({ ...PAYLOAD, role: "host", hostLoadout: null, delay: 4, token: "" });
+    expect(onStart).toHaveBeenCalledWith({ ...PAYLOAD, role: "host", hostLoadout: null, delay: 4, token: "", code: null });
   });
 
   it("stays v1-shaped without a loadout and adds v with one", () => {

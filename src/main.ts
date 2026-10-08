@@ -90,7 +90,18 @@ import {
   type Tier,
 } from "./match/difficulty";
 import { loadMode } from "./match/modes";
-import { clearOnline, onlineSession, stepOnline } from "./match/online";
+import {
+  clearOnline,
+  forfeitOnline,
+  handleJoinLink,
+  leaveOnline,
+  onlineOpponentLabel,
+  onlineSession,
+  restartOnline,
+  sendOnlineEmote,
+  setOnlineEmotes,
+  stepOnline,
+} from "./match/online";
 import { CHAMPION_BONUS_GOLD, currentStreak, settleMatch } from "./match/rewards";
 import {
   botTrophies,
@@ -208,8 +219,9 @@ function botAbility(): AbilityId {
 /** Fire the local King's Ability (button / "Q"); replays are watch-only. */
 function triggerAbility(): void {
   if (replaying || battle.result || getPhase() === "countdown") return;
-  if (onlineSession()) return; // not lockstep-synced yet
-  if (!useAbility(battle, localSide())) {
+  // Online, the ability rides the next lockstep frame so both peers fire it on the same tick.
+  const online = onlineSession();
+  if (online ? !online.queueAbility() : !useAbility(battle, localSide())) {
     hud.flashError("elixir");
     audio.error();
     return;
@@ -451,6 +463,11 @@ function selectCard(id: CardId | null): void {
 
 /** Restart whatever we were just playing (ladder, draft, challenge, daily). */
 function restart(): void {
+  // Online: Rematch the same friend, or back to the lobby; never a bot match.
+  if (onlineSession()) {
+    restartOnline(ctx);
+    return;
+  }
   if (battleKind === "challenge" && activeChallenge) {
     startChallenge(activeChallenge);
     return;
@@ -468,9 +485,9 @@ function restart(): void {
 
 /** A normal trophy/chest bot match with the saved deck + selected mode. */
 function startLadder(): void {
+  leaveOnline();
   battleKind = "ladder";
   activeChallenge = null;
-  clearOnline();
   // Crazy mode rerolls a scrambled card set each match; other modes use stock.
   setCardOverrides(meta.gameMode.id === "crazy" ? crazyCards() : null);
   const archetype = pickArchetype();
@@ -696,6 +713,7 @@ function showPicker(id: string): void {
 }
 
 function openHome(): void {
+  leaveOnline();
   buildHome(ctx);
   showPicker("home");
 }
@@ -721,7 +739,7 @@ const hud = new Hud(topbar, hudRoot, overlay, {
   // Online opponents are labelled by the online module (hud.setCallbacks).
   opponentLabel: () =>
     onlineSession()
-      ? null
+      ? onlineOpponentLabel()
       : {
           badge: fmtNum(Math.max(0, ARENAS.findIndex((a) => a.id === battleArenaId())) + 1),
           trophies: ladderMatch() ? botTrophies(meta.profile.trophies) : undefined,
@@ -750,16 +768,12 @@ function ladderMatch(): boolean {
  */
 function forfeitMatch(): void {
   if (battle.result) return;
-  const winner: Side = localSide() === "player" ? "enemy" : "player";
-  const result = { winner, playerCrowns: battle.player.crowns, enemyCrowns: battle.enemy.crowns };
-  const online = onlineSession();
-  if (online) {
-    online.client.onClose = null;
-    online.client.onPeerLeft = null;
-    online.client.leave();
-    battle.result = result;
+  if (onlineSession()) {
+    forfeitOnline();
     return;
   }
+  const winner: Side = localSide() === "player" ? "enemy" : "player";
+  const result = { winner, playerCrowns: battle.player.crowns, enemyCrowns: battle.enemy.crowns };
   recording = null; // a forfeited match is not worth a replay
   setPhase("playing");
   battle.result = result;
@@ -835,8 +849,12 @@ function legacyPlayed(): boolean {
 ensureAutoState(meta.profile.trophies, legacyPlayed());
 installAutoDifficulty(() => meta.profile.trophies);
 // A first-time player (edition picked) learns in the guided battle first.
-if (EDITION_CHOSEN && !tutorialDone()) startTutorial(ctx);
-else openHome();
+if (EDITION_CHOSEN && !tutorialDone()) {
+  startTutorial(ctx); // the guided battle comes first, even for a ?join= link
+} else {
+  openHome();
+  handleJoinLink(ctx); // ?join=CODE invite links open the lobby and join
+}
 
 // Trophy + currency live on the home screen now; the chip is kept (not
 // mounted) so refreshMetaChips() stays a cheap no-op in battle.
@@ -855,6 +873,7 @@ refreshMetaChips();
 
 // One chat bubble (CR): tap to open the tray, pick an emote, it closes.
 const EMOTES = ["😂", "😭", "👍", "😡"];
+setOnlineEmotes(EMOTES);
 const emoteToggle = document.createElement("button");
 emoteToggle.className = "emote-toggle";
 emoteToggle.setAttribute("aria-label", "Emotes");
@@ -874,8 +893,11 @@ for (const emoji of EMOTES) {
   const btn = document.createElement("button");
   btn.textContent = emoji;
   btn.addEventListener("click", () => {
-    scene.showEmote(localSide(), emoji);
-    audio.emotePop();
+    // Online emotes travel in the lockstep and pop on both screens together.
+    if (!sendOnlineEmote(EMOTES.indexOf(emoji))) {
+      scene.showEmote(localSide(), emoji);
+      audio.emotePop();
+    }
     setEmotesOpen(false);
     emit("input", { kind: "emote" });
   });
@@ -993,7 +1015,16 @@ function tryDeployAt(clientX: number, clientY: number): void {
     const online = onlineSession();
     if (online) {
       // Lockstep: schedule the deploy; both peers apply it at the same tick.
-      online.ls.queue({ side, cardId: selectedCard, x: pos.x, y: pos.y });
+      // Its card and elixir stay reserved until then (no double spends).
+      const queued = online.queueDeploy(selectedCard, pos.x, pos.y);
+      if (queued !== "ok") {
+        if (queued === "no-elixir") {
+          emit("input", { kind: "invalid", cardId: selectedCard });
+          hud.flashError("elixir");
+          audio.error();
+        }
+        return;
+      }
       emit("input", { kind: "deploy", cardId: selectedCard });
       flyCardToField(selectedCard, clientX, clientY);
       scene.deployFlash(pos.x, pos.y);
@@ -1253,6 +1284,10 @@ if (import.meta.env.DEV) {
   (window as unknown as { __cr: unknown }).__cr = {
     sum: () => stateChecksum(battle),
     tick: () => onlineSession()?.tick ?? 0,
+    net: () => {
+      const s = onlineSession();
+      return s && { view: s.view(), side: s.side, rtt: s.rtt, agreed: s.agreedSyncs, reserved: s.reserved() };
+    },
     mode: () => mode(),
     entities: () => battle.entities.length,
     battle: () => battle,
