@@ -172,6 +172,8 @@ export function beginDeath(b: Battle3D, view: EntityView): void {
       const mesh = o as THREE.Mesh;
       if (mesh.isMesh) {
         const mat = mesh.material as THREE.Material & { opacity: number };
+        // A shared material (a baked rig's template, the outline) must never fade.
+        if (mat.userData.shared || fadeMats.includes(mat)) return;
         mat.transparent = true;
         fadeMats.push(mat);
       }

@@ -168,20 +168,24 @@ function buildXEyes(face: FaceRig): THREE.Object3D[] {
   const out: THREE.Object3D[] = [];
   for (const eye of face.eyes) {
     const mesh = eye as THREE.Mesh;
-    mesh.geometry.computeBoundingSphere();
-    const r = (mesh.geometry.boundingSphere?.radius ?? 0.05) * eye.scale.x;
-    const x = new THREE.Group();
-    x.name = "xeyes";
-    for (const a of [Math.PI / 4, -Math.PI / 4]) {
-      const bar = new THREE.Mesh(xGeo, xMat!);
-      bar.rotation.z = a;
-      x.add(bar);
+    // A baked rig folds both eyes into one mesh and lists where they sit.
+    const spots = (eye.userData.spots as { x: number; z: number; r: number }[] | undefined) ?? null;
+    if (!spots) mesh.geometry.computeBoundingSphere();
+    for (const spot of spots ?? [{ x: eye.position.x, z: eye.position.z, r: mesh.geometry.boundingSphere?.radius ?? 0.05 }]) {
+      const r = spot.r * (spots ? 1 : eye.scale.x);
+      const x = new THREE.Group();
+      x.name = "xeyes";
+      for (const a of [Math.PI / 4, -Math.PI / 4]) {
+        const bar = new THREE.Mesh(xGeo, xMat!);
+        bar.rotation.z = a;
+        x.add(bar);
+      }
+      x.scale.setScalar(r);
+      x.position.set(spot.x, eye.position.y, spot.z + r * 0.95);
+      x.visible = false;
+      eye.parent?.add(x);
+      out.push(x);
     }
-    x.scale.setScalar(r);
-    x.position.set(eye.position.x, eye.position.y, eye.position.z + r * 0.95);
-    x.visible = false;
-    eye.parent?.add(x);
-    out.push(x);
   }
   return out;
 }
@@ -206,6 +210,8 @@ export function dropSkinGrain(group: THREE.Object3D, face: FaceRig | null): void
     if (!mesh.isMesh) return;
     const mat = mesh.material as THREE.MeshToonMaterial;
     if (!mat.isMeshToonMaterial || !mat.map) return;
+    // Baked rigs choose grain per vertex (see rigBake); their one material is shared.
+    if (mat.userData.baked) return;
     if (o === face?.head || mat.color.getHex() === SKIN_HEX) {
       mat.map = null;
       mat.needsUpdate = true;

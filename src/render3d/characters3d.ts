@@ -4,6 +4,7 @@ import type { CardId } from "../game/cards";
 import { loadChampion, normalizeChampion, type ChampionDef } from "../game/customcard";
 import type { Side } from "../game/arena";
 import { applyTeam, teamPart } from "./teamColors";
+import { INK_FRAGMENT, OUTLINE_MIN_RADIUS, installInk, outlineHull } from "./outlineMaterial";
 import { ARABIC, THEME } from "./theme";
 import { rigArchetype, type AttackStyle, type QuadGait, type Weight } from "./anim/archetypes";
 import { BASE_CADENCE, hopScale, legPhase, stepSquash } from "./anim/gait";
@@ -79,6 +80,9 @@ function grainMap(): THREE.DataTexture {
         data[i + 3] = 255;
       }
     }
+    // Texel (0,0) is left pure white: baked rigs point the UVs of grainless
+    // parts (skin, faces) at it, so one material serves both looks.
+    data[0] = data[1] = data[2] = 255;
     grainTexture = new THREE.DataTexture(data, s, s, THREE.RGBAFormat);
     grainTexture.wrapS = grainTexture.wrapT = THREE.RepeatWrapping;
     grainTexture.repeat.set(2, 2); // finer grain across each face
@@ -99,8 +103,24 @@ function grainMap(): THREE.DataTexture {
  * touch makes every rounded shape read as 3D and gives the whole roster a
  * premium "lit figurine" pop. Shared source ⇒ Three reuses one program.
  */
-function addRimLight(mat: THREE.Material): void {
+function addRimLight(
+  mat: THREE.Material,
+  cacheKey = "premium-toon-rim-v2",
+  ink = false,
+  dark: THREE.Color | null = null,
+): void {
   mat.onBeforeCompile = (sh) => {
+    if (ink) installInk(sh);
+    if (dark) {
+      // A second team shade rides in a vertex attribute (see teamToon).
+      sh.uniforms.uDark = { value: dark };
+      sh.vertexShader = sh.vertexShader
+        .replace("#include <common>", "#include <common>\n attribute float aDark;\n varying float vDark;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\n vDark = aDark;");
+      sh.fragmentShader = sh.fragmentShader
+        .replace("#include <common>", "#include <common>\n uniform vec3 uDark;\n varying float vDark;")
+        .replace("#include <map_fragment>", "diffuseColor.rgb = mix(diffuse, uDark, vDark);\n #include <map_fragment>");
+    }
     // Coloured light ramp: sample the gradient's RGB, not just red.
     sh.fragmentShader = sh.fragmentShader.replace(
       "#include <gradientmap_pars_fragment>",
@@ -119,14 +139,16 @@ function addRimLight(mat: THREE.Material): void {
     );
     sh.fragmentShader = sh.fragmentShader.replace(
       "#include <dithering_fragment>",
-      `float _rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
-       _rim = smoothstep(0.72, 1.0, _rim) * 0.26;
-       gl_FragColor.rgb += _rim * vec3(0.42, 0.56, 0.80);
+      `${ink ? INK_FRAGMENT : "{"}
+         float _rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
+         _rim = smoothstep(0.72, 1.0, _rim) * 0.26;
+         gl_FragColor.rgb += _rim * vec3(0.42, 0.56, 0.80);
+       }
        #include <dithering_fragment>`,
     );
   };
   // Explicit key lets Three share this one shader variant across the roster.
-  mat.customProgramCacheKey = () => "premium-toon-rim-v2";
+  mat.customProgramCacheKey = () => cacheKey;
 }
 
 export function toon(color: number): THREE.MeshToonMaterial {
@@ -141,6 +163,62 @@ export function toon(color: number): THREE.MeshToonMaterial {
     map: grainMap(),
   });
   addRimLight(mat);
+  return mat;
+}
+
+/**
+ * UV that samples the grain map's pure-white texel (see grainMap): the
+ * texture repeats 2x, so the centre of texel (0,0) sits at 0.5 / 64 / 2.
+ */
+export const GRAINLESS_UV = 0.25 / 64;
+
+/** The unit the baked-rig material shares across every unit of a rig. */
+let bakedBase: THREE.MeshToonMaterial | null = null;
+
+/**
+ * The material baked rigs draw with: vertex colours carry each part's
+ * colour, the gradient ramp, grain map and rim light are the ones toon()
+ * parts use. One shared instance; every unit takes a clone (unitBakedToon).
+ */
+export function bakedToon(): THREE.MeshToonMaterial {
+  if (!bakedBase) {
+    bakedBase = new THREE.MeshToonMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      gradientMap: gradientMap(),
+      map: grainMap(),
+    });
+    addRimLight(bakedBase, "baked", true);
+    bakedBase.userData.shared = true;
+    bakedBase.userData.baked = true;
+  }
+  return bakedBase;
+}
+
+/**
+ * A unit's own copy of the baked material: its emissive carries the flash,
+ * rage and freeze glows, so it can never be shared between units.
+ */
+export function unitBakedToon(): THREE.MeshToonMaterial {
+  const mat = bakedToon().clone();
+  addRimLight(mat, "baked", true); // clone() drops shader hooks
+  mat.userData.shared = false;
+  mat.userData.baked = true;
+  return mat;
+}
+
+/**
+ * The material of a baked node's merged team mesh. Its colour is the team's
+ * main shade (applyTeam sets it); parts of the dark shade carry aDark = 1 and
+ * take userData.teamDark instead, so one mesh holds both shades and still
+ * repaints with the palette. It can also host the node's ink triangles when
+ * the node has no body mesh (see installInk).
+ */
+export function teamToon(): THREE.MeshToonMaterial {
+  const mat = toon(0xffffff);
+  const dark = new THREE.Color(0xffffff);
+  mat.userData.teamDark = dark;
+  addRimLight(mat, "team-ink", true, dark);
   return mat;
 }
 
@@ -3228,33 +3306,27 @@ const ISLAMIC_BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
 };
 
 /**
- * Add inverted-hull silhouette outlines to a rig's larger meshes.
- * One black material per rig so death-fade can't bleed across units.
+ * Add ink outlines to a rig's larger meshes: each gets a child hull drawn
+ * with the shared constant-width outline material (see outlineMaterial.ts).
+ * Baked troop rigs use bakeRig instead, which builds one hull per animated
+ * node; this stays the path for rigs that are not baked (card portraits,
+ * the gallery, tower crews, the deploy ghost).
  */
-/** Bold CR-style cel outline: near-black and thick. */
-const OUTLINE_COLOR = 0x0b0e16;
-const OUTLINE_SCALE = 1.075;
+/** Face parts and the orb read cleaner without ink, whatever their size. */
+const UNLINED = new Set(["eye", "eyerim", "pupil", "brow", "mouth", "xeyes", "orb"]);
 
 export function outlineRig(group: THREE.Group): void {
-  const mat = new THREE.MeshBasicMaterial({ color: OUTLINE_COLOR, side: THREE.BackSide });
   const targets: THREE.Mesh[] = [];
   group.traverse((o) => {
     const mesh = o as THREE.Mesh;
-    if (!mesh.isMesh || mesh.name === "outline") return;
+    if (!mesh.isMesh || mesh.name === "outline" || UNLINED.has(mesh.name)) return;
     mesh.geometry.computeBoundingSphere();
     const r = mesh.geometry.boundingSphere?.radius ?? 0;
     const s = Math.max(mesh.scale.x, mesh.scale.y, mesh.scale.z);
-    if (r * s < 0.14) return; // tiny details read better unlined
+    if (r * s < OUTLINE_MIN_RADIUS) return; // tiny details read better unlined
     targets.push(mesh);
   });
-  for (const mesh of targets) {
-    const hull = new THREE.Mesh(mesh.geometry, mat);
-    hull.name = "outline";
-    hull.scale.setScalar(OUTLINE_SCALE);
-    hull.castShadow = false;
-    hull.receiveShadow = false;
-    mesh.add(hull);
-  }
+  for (const mesh of targets) mesh.add(outlineHull(mesh.geometry));
 }
 
 /** First mesh child of a limb group that isn't an added joint. */

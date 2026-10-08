@@ -13,6 +13,8 @@ import { FXAAShader } from "three/examples/jsm/shaders/FXAAShader.js";
 import type { Battle3D } from "../scene3d";
 import { getPrefs, onPrefs } from "../../ui/prefs";
 import { LOOK } from "./common";
+import { setOutlinesVisible } from "../outlineMaterial";
+import { outlinesEnabled } from "../quality";
 
 /** Display-space colour grade defaults: saturation, contrast, tint, vignette. */
 const DEFAULT_GRADE = { saturation: 1.1, contrast: 1.05, tint: [1, 1, 1] as [number, number, number], vignette: 0.3 };
@@ -242,6 +244,7 @@ export function applyQuality(b: Battle3D): void {
   (u["resolution"].value as THREE.Vector2).set(1 / (w * dpr), 1 / (h * dpr));
   u["uFxaa"].value = level.fxaa ? 1 : 0;
   applyLightQuality(b);
+  setOutlinesVisible(outlinesEnabled());
 }
 
 /**

@@ -11,7 +11,10 @@ import { getPrefs, type TeamPalette } from "../ui/prefs";
  * distinct under the common colour-vision deficiencies).
  *
  * Contract (wave 3 relies on it): team parts are separate meshes named
- * "team" with userData.team = shade, never merged into batched geometry.
+ * "team" with userData.team = shade, never merged into batched geometry. A
+ * baked rig (rigBake.ts) merges a node's team parts into one "team" mesh:
+ * userData.team is then "both" when it holds both shades, whose dark parts
+ * read the material's userData.teamDark colour.
  */
 
 export type TeamShade = "main" | "dark";
@@ -85,6 +88,8 @@ export function applyTeam(root: THREE.Object3D, side: Side, palette: TeamPalette
     for (const m of mats) {
       const c = (m as THREE.Material & { color?: THREE.Color }).color;
       if (c) c.setHex(hex);
+      const dark = m.userData.teamDark as THREE.Color | undefined;
+      if (dark) dark.setHex(teamColor(side, "dark", palette));
     }
   });
 }

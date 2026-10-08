@@ -13,6 +13,7 @@ import { HitStopController } from "./hitstop";
 import { QualityGovernor, qualityPinFromUrl } from "./quality";
 import { lookForArena } from "./arenaLooks";
 import type { TroopRig } from "./characters3d";
+import { prewarmBakes } from "./rigBake";
 import type { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import type { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import type { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
@@ -47,6 +48,7 @@ import {
   applyQuality,
   buildComposer,
   createRenderer,
+  markShadowsDirty,
   maxAnisotropy,
   sampleQuality,
   setFlash,
@@ -66,6 +68,7 @@ import {
   buildGhost,
   buildTroopMesh,
   loadGlbModels,
+  isSwarmSized,
   makeLevelBadge,
 } from "./scene/views/troops";
 import { buildTowerMesh, towersOnEvent, updateTower, updateTowerDeath } from "./scene/views/towers";
@@ -305,9 +308,9 @@ export class Battle3D {
    * Arabic bazaar is a single fixed look). Rebuilds the set and light rig
    * when the look actually changes; call before reset() for a new battle.
    */
-  setArenaLook(arenaId: string): void {
+  setArenaLook(arenaId: string, force = false): void {
     const next = lookForArena(arenaId, arabic);
-    if (next.id === LOOK.id) return;
+    if (next.id === LOOK.id && !force) return;
     setLook(next);
     for (const g of [this.arenaGroup, this.lightGroup]) {
       for (const child of [...g.children]) {
@@ -567,6 +570,10 @@ export class Battle3D {
    * passed through to the view animation, which does not interpolate yet.
    */
   sync(state: BattleState, dt: number, alpha = 1): void {
+    if (state !== this.syncState) {
+      // A new battle: bake both decks' troop rigs now, while the countdown runs.
+      prewarmBakes([...state.player.hand.cards, ...state.player.hand.queue, ...state.enemy.hand.cards, ...state.enemy.hand.queue]);
+    }
     this.syncState = state;
     this.byId.clear();
     for (const e of state.entities) this.byId.set(e.id, e);
@@ -587,9 +594,8 @@ export class Battle3D {
       if (!view) {
         // One name label per deployed group: the lowest-id living unit of
         // a card nearby carries it, so a swarm reads as one labeled pack.
-        const withLabel =
+        const packLead =
           e.kind === "troop" &&
-          e.radius >= 0.28 &&
           !state.entities.some(
             (o) =>
               o.id < e.id &&
@@ -599,6 +605,7 @@ export class Battle3D {
               o.kind === "troop" &&
               distance(o, e) < 4,
           );
+        const withLabel = packLead && e.radius >= 0.28;
         view =
           e.kind === "troop"
             ? buildTroopMesh(e, withLabel)
@@ -608,12 +615,16 @@ export class Battle3D {
         if (e.kind === "troop" && e.cardId) {
           view.label = view.root.getObjectByName("unitLabel");
           view.labelAge = 0;
-          // Level shield on the (damage-only) HP bar, CR-style.
-          const lvl = (e.side === "player" ? state.player : state.enemy).levels[e.cardId] ?? 1;
-          const shield = makeLevelBadge(e.side, lvl);
-          shield.scale.set(0.34, 0.34, 1);
-          shield.position.set(-0.6, 0, 0.05);
-          view.hpGroup.add(shield);
+          // Level shield on the (damage-only) HP bar, CR-style. Swarm-sized
+          // members past the first go without: one shield names the pack's
+          // level and saves a draw per unit.
+          if (packLead || !isSwarmSized(e)) {
+            const lvl = (e.side === "player" ? state.player : state.enemy).levels[e.cardId] ?? 1;
+            const shield = makeLevelBadge(e.side, lvl);
+            shield.scale.set(0.34, 0.34, 1);
+            shield.position.set(-0.6, 0, 0.05);
+            view.hpGroup.add(shield);
+          }
         }
         this.views.set(e.id, view);
         this.scene.add(view.root);
@@ -630,7 +641,33 @@ export class Battle3D {
     }
   }
 
+  /** True between webglcontextlost and webglcontextrestored. */
+  private contextLost = false;
+
+  /**
+   * Survive a lost WebGL context (a backgrounded tab, a GPU reset): cancel the
+   * default so the browser may restore it, stop drawing while it is gone, and
+   * on restore rebuild the arena (`arenaId` is the one in play), drop every
+   * entity view and re-fit the post stack. The next sync() recreates the
+   * views from the battle state, so play continues without a reload.
+   */
+  recoverFromContextLoss(arenaId: () => string): void {
+    const canvas = this.renderer.domElement;
+    canvas.addEventListener("webglcontextlost", (ev) => {
+      ev.preventDefault();
+      this.contextLost = true;
+    });
+    canvas.addEventListener("webglcontextrestored", () => {
+      this.contextLost = false;
+      this.setArenaLook(arenaId(), true);
+      this.reset();
+      markShadowsDirty(this);
+      this.resize();
+    });
+  }
+
   render(dt: number): void {
+    if (this.contextLost) return;
     gradeSky(this, dt);
     updateRiver(this, dt);
     updateCrowd(this, dt);

@@ -431,6 +431,7 @@ function mySideState(): BattleState["player"] {
 let scene: Battle3D;
 try {
   scene = new Battle3D(stage);
+  scene.recoverFromContextLoss(() => battleArenaId()); // a lost GPU context rebuilds, never blanks
   // `?sky=0..1` pins the living sky for previews/screenshots.
   const sky = new URLSearchParams(location.search).get("sky");
   if (sky !== null && !Number.isNaN(Number(sky))) {

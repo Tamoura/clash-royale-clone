@@ -34,6 +34,9 @@ const TUMBLE_LAND = 0.2;
 /** Seconds the team ring / contact shadow take to fade under a corpse. */
 const MARK_FADE = 0.2;
 
+/** One body breaks into at most this many chunks (its biggest baked meshes). */
+export const SHATTER_CHUNKS = 8;
+
 /** How many shatter pieces may fly right now at the current quality. */
 export function shatterCap(): number {
   return Math.floor(SHATTER_BUDGET * particleScale());
@@ -201,6 +204,7 @@ function shatter(
   budget: number,
 ): ShatterPart[] {
   let meshes = topMeshes(body);
+  budget = Math.min(budget, SHATTER_CHUNKS);
   if (meshes.length > budget) {
     const sized = meshes.map((m) => ({ m, s: sizeOf(m) })).sort((a, b) => b.s - a.s);
     meshes = sized.slice(0, Math.max(0, budget)).map((x) => x.m);

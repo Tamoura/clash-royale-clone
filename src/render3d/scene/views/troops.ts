@@ -10,6 +10,7 @@ import type { Entity } from "../../../game/battle";
 import type { CardId } from "../../../game/cards";
 import { cardDisplayName } from "../../../render/cardNames";
 import { buildTroop, toon, type TroopRig } from "../../characters3d";
+import { bakeRig } from "../../rigBake";
 import { spawnRecipe } from "../../spawnfx";
 import { makeTeamDisc, refreshTeamDisc } from "../../teamBase";
 import { applyTeam, teamColor, teamCss, teamPalette } from "../../teamColors";
@@ -77,7 +78,7 @@ function repaintTeams(palette: TeamPalette): void {
   for (const t of teamLive) {
     applyTeam(t.root, t.side, palette);
     if (t.disc) refreshTeamDisc(t.disc, palette);
-    if (t.hpFill) (t.hpFill.material as THREE.MeshBasicMaterial).color.setHex(unitHpColor(t.side, palette));
+    if (t.hpFill) setHpFillColor(t.hpFill, unitHpColor(t.side, palette));
   }
   for (const b of levelBadges.values()) drawLevelBadge(b, palette);
   for (const l of nameLabels.values()) drawNameLabel(l, palette);
@@ -173,10 +174,64 @@ export function pillTex(): THREE.CanvasTexture {
   return pillTexture;
 }
 
-export function makeHpBar(width: number, color: number, y: number, height = 0.2): {
+interface HpBarUniforms {
+  uFrac: { value: number };
+  uColor: { value: THREE.Color };
+  uMap: { value: THREE.Texture };
+  uPad: { value: THREE.Vector2 };
+}
+
+const HP_BAR_VERT = "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }";
+const HP_BAR_FRAG = `varying vec2 vUv;
+uniform sampler2D uMap; uniform vec3 uColor; uniform float uFrac; uniform vec2 uPad;
+void main(){
+  vec4 base = texture2D(uMap, vUv);
+  float inY = step(uPad.y, vUv.y) * step(vUv.y, 1.0 - uPad.y);
+  float inX = step(uPad.x, vUv.x) * step(vUv.x, uPad.x + (1.0 - 2.0 * uPad.x) * uFrac);
+  float fill = inX * inY;
+  gl_FragColor = vec4(mix(base.rgb, uColor, fill), max(base.a, fill));
+}`;
+
+/**
+ * Troop HP bar in a single draw: the pill trough and the fill share one
+ * quad, the fill drawn by a fraction uniform. Swarms pay one draw per bar
+ * instead of two.
+ */
+function makeFlatHpBar(width: number, color: number, y: number, height: number): {
   group: THREE.Group;
   fill: THREE.Mesh;
 } {
+  const uniforms: HpBarUniforms = {
+    uFrac: { value: 1 },
+    uColor: { value: new THREE.Color(color) },
+    uMap: { value: pillTex() },
+    uPad: { value: new THREE.Vector2(0.03 / width, 0.15) },
+  };
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, height),
+    new THREE.ShaderMaterial({ uniforms: uniforms as never, vertexShader: HP_BAR_VERT, fragmentShader: HP_BAR_FRAG, transparent: true }),
+  );
+  mesh.userData.hpBar = uniforms;
+  const group = new THREE.Group();
+  group.add(mesh);
+  group.position.y = y;
+  if (viewSide === "enemy") group.rotation.set(BAR_TILT, Math.PI, 0, "YXZ");
+  else group.rotation.x = BAR_TILT;
+  return { group, fill: mesh };
+}
+
+/** Recolour an HP bar fill (single-draw or classic two-mesh form). */
+export function setHpFillColor(fill: THREE.Mesh, hex: number): void {
+  const u = fill.userData.hpBar as HpBarUniforms | undefined;
+  if (u) u.uColor.value.setHex(hex);
+  else (fill.material as THREE.MeshBasicMaterial).color.setHex(hex);
+}
+
+export function makeHpBar(width: number, color: number, y: number, height = 0.2, gloss = true): {
+  group: THREE.Group;
+  fill: THREE.Mesh;
+} {
+  if (!gloss) return makeFlatHpBar(width, color, y, height);
   const group = new THREE.Group();
   const bg = new THREE.Mesh(
     new THREE.PlaneGeometry(width, height),
@@ -187,13 +242,16 @@ export function makeHpBar(width: number, color: number, y: number, height = 0.2)
     new THREE.MeshBasicMaterial({ color }),
   );
   fill.position.z = 0.01;
-  // Gloss highlight rides the fill so it scales with it.
-  const gloss = new THREE.Mesh(
-    new THREE.PlaneGeometry(width - 0.06, height * 0.25),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }),
-  );
-  gloss.position.set(0, height * 0.2, 0.01);
-  fill.add(gloss);
+  // Gloss highlight rides the fill so it scales with it. Troop bars skip it:
+  // the strip is about a pixel tall at battle zoom and costs a draw per unit.
+  if (gloss) {
+    const shine = new THREE.Mesh(
+      new THREE.PlaneGeometry(width - 0.06, height * 0.25),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }),
+    );
+    shine.position.set(0, height * 0.2, 0.01);
+    fill.add(shine);
+  }
   group.add(bg, fill);
   group.position.y = y;
   // Face the steep camera; for the enemy viewpoint, also spin 180° about Y.
@@ -267,6 +325,11 @@ export function makeLevelBadge(simSide: Side, level = 9): THREE.Sprite {
 
 export function setHpFill(view: EntityView, frac: number, width: number): void {
   const f = Math.max(0, Math.min(1, frac));
+  const u = view.hpFill.userData.hpBar as HpBarUniforms | undefined;
+  if (u) {
+    u.uFrac.value = f;
+    return;
+  }
   view.hpFill.scale.x = Math.max(0.001, f);
   view.hpFill.position.x = (-(1 - f) * (width - 0.06)) / 2;
 }
@@ -398,14 +461,19 @@ export function makeZzzSprite(): THREE.Sprite {
   return sprite;
 }
 
-/** Materials with an emissive channel under this object, for flashes. */
+/**
+ * Materials with an emissive channel under this object, for flashes. Each
+ * material once: a baked unit shares one between all its baked meshes.
+ */
 export function collectFlashMats(root: THREE.Object3D): EntityView["flashMats"] {
   const out: EntityView["flashMats"] = [];
+  const seen = new Set<THREE.Material>();
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
     const mat = mesh.material as THREE.Material & { emissive?: THREE.Color };
-    if (mat.emissive) {
+    if (mat.emissive && !seen.has(mat)) {
+      seen.add(mat);
       out.push({
         mat: mat as THREE.Material & { emissive: THREE.Color },
         orig: mat.emissive.getHex(),
@@ -586,6 +654,7 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
     lift = glbUnit.height;
   } else {
     rig = buildTroop(e.cardId!, team);
+    bakeRig(rig, `${e.cardId}:${team}:${ARABIC ? "arabic" : "normal"}:${teamPalette()}`);
     // CR readability comes from silhouette CONTRAST: tanks tower, swarm
     // units stay small, everyone else sits between.
     const scale =
@@ -642,8 +711,8 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
   // the shadow-map pass for ~40 parts per unit halves a busy fight's cost.
   root.traverse((o) => (o.castShadow = false));
 
-  const bar = makeHpBar(0.9, unitHpColor(team), lift + 0.25);
-  bar.group.visible = team === "enemy"; // opponents always; yours once damaged
+  const bar = makeHpBar(0.9, unitHpColor(team), lift + 0.25, 0.2, false);
+  bar.group.visible = team === "enemy" && !isSwarmSized(e); // opponents always (swarms once hurt); yours once damaged
   root.add(bar.group);
   trackTeam({ root, side: team, disc, hpFill: bar.fill });
 
@@ -674,16 +743,27 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
  */
 export function hpBarVisible(view: EntityView, e: Entity): boolean {
   return (
-    view.hpGroup.visible || (e.kind === "troop" && (teamSide(e.side) === "enemy" || e.hp < e.maxHp))
+    view.hpGroup.visible ||
+    (e.kind === "troop" && ((teamSide(e.side) === "enemy" && !isSwarmSized(e)) || e.hp < e.maxHp))
   );
 }
+
+/** Swarm-sized bodies (skeletons, bats) show a bar once hurt, whichever side they fight for. */
+export function isSwarmSized(e: Entity): boolean {
+  return e.radius <= SWARM_RADIUS;
+}
+const SWARM_RADIUS = 0.3;
 
 /** Translucent preview rig of a troop card for the deploy cursor (always yours). */
 export function buildGhost(cardId: CardId): TroopRig {
   const rig = buildTroop(cardId, "player");
   rig.group.traverse((o) => {
     const mesh = o as THREE.Mesh;
-    if (mesh.isMesh) {
+    if (mesh.isMesh && mesh.name === "outline") {
+      // The shared ink shader cannot be cloned per ghost (its width uniforms
+      // are shared); a see-through preview goes without ink.
+      mesh.visible = false;
+    } else if (mesh.isMesh) {
       const mat = (mesh.material as THREE.Material).clone() as THREE.Material & {
         opacity: number;
       };
