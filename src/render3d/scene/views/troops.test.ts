@@ -3,7 +3,7 @@ import * as THREE from "three";
 import type { Entity } from "../../../game/battle";
 import { TEAM, isTeamPart } from "../../teamColors";
 import { HP_COLOR, setViewSide, type EntityView } from "../common";
-import { buildTroopMesh, hpBarVisible, teamSide, unitHpColor } from "./troops";
+import { buildTroopMesh, hpBarVisible, makeHpBar, setHpFill, setHpFillColor, teamSide, unitHpColor } from "./troops";
 
 function view(visible = false): EntityView {
   const hpGroup = new THREE.Group();
@@ -82,5 +82,26 @@ describe("viewer-relative team (online guest)", () => {
       setViewSide("player");
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("swarm HP bars and the single-draw bar", () => {
+  it("swarm-sized opponents show a bar only once hurt", () => {
+    const small = (hp: number) => ({ ...troop("enemy", hp), radius: 0.28 }) as Entity;
+    expect(hpBarVisible(view(), small(100))).toBe(false);
+    expect(hpBarVisible(view(), small(40))).toBe(true);
+    expect(hpBarVisible(view(), { ...troop("enemy"), radius: 0.6 } as Entity)).toBe(true);
+  });
+
+  it("a troop bar is one mesh whose fraction and colour are uniforms", () => {
+    const bar = makeHpBar(0.9, 0xff0000, 1, 0.2, false);
+    let meshes = 0;
+    bar.group.traverse((o) => ((o as THREE.Mesh).isMesh ? meshes++ : 0));
+    expect(meshes).toBe(1);
+    setHpFill({ hpFill: bar.fill } as EntityView, 0.4, 0.9);
+    const u = bar.fill.userData.hpBar;
+    expect(u.uFrac.value).toBeCloseTo(0.4);
+    setHpFillColor(bar.fill, 0x00ff00);
+    expect(u.uColor.value.getHex()).toBe(0x00ff00);
   });
 });

@@ -68,6 +68,7 @@ import {
   buildGhost,
   buildTroopMesh,
   loadGlbModels,
+  isSwarmSized,
   makeLevelBadge,
 } from "./scene/views/troops";
 import { buildTowerMesh, towersOnEvent, updateTower, updateTowerDeath } from "./scene/views/towers";
@@ -593,9 +594,8 @@ export class Battle3D {
       if (!view) {
         // One name label per deployed group: the lowest-id living unit of
         // a card nearby carries it, so a swarm reads as one labeled pack.
-        const withLabel =
+        const packLead =
           e.kind === "troop" &&
-          e.radius >= 0.28 &&
           !state.entities.some(
             (o) =>
               o.id < e.id &&
@@ -605,6 +605,7 @@ export class Battle3D {
               o.kind === "troop" &&
               distance(o, e) < 4,
           );
+        const withLabel = packLead && e.radius >= 0.28;
         view =
           e.kind === "troop"
             ? buildTroopMesh(e, withLabel)
@@ -614,12 +615,16 @@ export class Battle3D {
         if (e.kind === "troop" && e.cardId) {
           view.label = view.root.getObjectByName("unitLabel");
           view.labelAge = 0;
-          // Level shield on the (damage-only) HP bar, CR-style.
-          const lvl = (e.side === "player" ? state.player : state.enemy).levels[e.cardId] ?? 1;
-          const shield = makeLevelBadge(e.side, lvl);
-          shield.scale.set(0.34, 0.34, 1);
-          shield.position.set(-0.6, 0, 0.05);
-          view.hpGroup.add(shield);
+          // Level shield on the (damage-only) HP bar, CR-style. Swarm-sized
+          // members past the first go without: one shield names the pack's
+          // level and saves a draw per unit.
+          if (packLead || !isSwarmSized(e)) {
+            const lvl = (e.side === "player" ? state.player : state.enemy).levels[e.cardId] ?? 1;
+            const shield = makeLevelBadge(e.side, lvl);
+            shield.scale.set(0.34, 0.34, 1);
+            shield.position.set(-0.6, 0, 0.05);
+            view.hpGroup.add(shield);
+          }
         }
         this.views.set(e.id, view);
         this.scene.add(view.root);
