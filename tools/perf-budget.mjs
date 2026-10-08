@@ -3,16 +3,19 @@
 // 12-card fight (6 per side), as JSON:
 //
 //   node tools/perf-budget.mjs [--url http://127.0.0.1:3101] [--edition arabic]
-//                              [--arena <id>] [--max-calls N] [--chrome <path>]
+//                              [--arena <id>] [--max-calls N] [--max-empty-calls N]
+//                              [--chrome <path>]
 //
 // {"empty":{calls,triangles,geometries,textures},"fight":{...}}
-// --max-calls N exits non-zero when either scene draws more than N calls.
+// Enforced budgets (exit code 2 when exceeded): the 12-card fight may draw
+// --max-calls calls (default 450) and the empty battle --max-empty-calls
+// (default 220). Pass "off" to a flag to switch that check off.
 //
 // The bot is starved of elixir and the fight is read after 3 s of SIM time, so
 // runs line up; ambient FX (dust, sparks, birds) still wobble a few calls.
-// Baselines (390x844 @2, ?quality=high, first arena, software GL):
-//   classic  empty battle ~461-465 calls, 12-card fight ~1,385-1,400 calls
-//   arabic   empty battle ~479-483 calls, 12-card fight ~1,485 calls
+// Numbers (390x844 @2, ?quality=high, first arena, software GL):
+//   before rig baking   classic empty 246 / fight 1,165   arabic 259 / 1,260
+//   after               see the package notes; the budgets above are the gate
 // (The audits measured ~465 empty and ~1,568 in a looser, bot-fed fight.)
 // Every composer pass counts (bloom alone is ~10 full-screen draws), which is
 // why renderer.info.autoReset is switched off and reset once per frame here.
@@ -26,7 +29,12 @@ const opt = (name, fallback) => {
 };
 const EDITION = opt("edition", "clash") === "arabic" ? "arabic" : "normal";
 const ARENA = opt("arena", null);
-const MAX_CALLS = opt("max-calls", null) === null ? null : Number(opt("max-calls", "0"));
+const limit = (name, fallback) => {
+  const v = opt(name, String(fallback));
+  return v === "off" ? null : Number(v);
+};
+const MAX_FIGHT_CALLS = limit("max-calls", 450);
+const MAX_EMPTY_CALLS = limit("max-empty-calls", 220);
 const CHROME = opt("chrome", process.env.CHROME_PATH ?? "/opt/pw-browsers/chromium");
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -134,10 +142,14 @@ if (errors.length) {
   console.error("page errors:\n  " + errors.join("\n  "));
   process.exit(1);
 }
-if (MAX_CALLS !== null) {
-  const worst = Math.max(result.empty.calls, result.fight.calls);
-  if (worst > MAX_CALLS) {
-    console.error(`draw calls ${worst} exceed the budget of ${MAX_CALLS}`);
-    process.exit(2);
-  }
+const over = [];
+if (MAX_EMPTY_CALLS !== null && result.empty.calls > MAX_EMPTY_CALLS) {
+  over.push(`empty battle draws ${result.empty.calls} calls, over its budget of ${MAX_EMPTY_CALLS}`);
+}
+if (MAX_FIGHT_CALLS !== null && result.fight.calls > MAX_FIGHT_CALLS) {
+  over.push(`12-card fight draws ${result.fight.calls} calls, over its budget of ${MAX_FIGHT_CALLS}`);
+}
+if (over.length) {
+  console.error(over.join("\n"));
+  process.exit(2);
 }

@@ -2,12 +2,19 @@
  * Offline service worker: the app shell and every fetched asset are cached,
  * so an installed game launches (and plays solo) with no connection.
  *
- * Strategy: navigations are network-first (fresh deploys win) with a cache
- * fallback; everything else same-origin is cache-first with a background
- * refresh. Vite's hashed /assets/ files are immutable, so cache-first is
- * always correct for them.
+ * Strategy: navigations (index.html) are network-first so a new deploy wins,
+ * with the cached shell as the offline fallback. Vite's hashed /assets/ files
+ * are immutable, so they are cache-first and never refetched in the
+ * background. Anything else same-origin (icons, the manifest) is cache-first
+ * with a background refresh.
+ *
+ * The cache name carries a build id stamped in at build time (see
+ * vite.config.ts), so every deploy starts a fresh cache and activate deletes
+ * the old ones: no stale assets pile up across releases.
  */
-const CACHE = "cr-clone-v1";
+const BUILD_ID = "__BUILD_ID__";
+const CACHE = `cr-clone-${BUILD_ID}`;
+const ASSETS = new URL("assets/", self.registration.scope).pathname;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -40,6 +47,24 @@ self.addEventListener("fetch", (event) => {
           return res;
         })
         .catch(() => caches.match("./")),
+    );
+    return;
+  }
+
+  if (url.pathname.startsWith(ASSETS)) {
+    // Hashed and immutable: the cached copy is always right, never refetched.
+    event.respondWith(
+      caches.match(req).then(
+        (hit) =>
+          hit ??
+          fetch(req).then((res) => {
+            if (res.ok) {
+              const copy = res.clone();
+              caches.open(CACHE).then((cache) => cache.put(req, copy));
+            }
+            return res;
+          }),
+      ),
     );
     return;
   }
