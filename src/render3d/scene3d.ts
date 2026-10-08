@@ -10,7 +10,6 @@ import {
 import type { CardId } from "../game/cards";
 import { ShakeController } from "./shake";
 import { HitStopController } from "./hitstop";
-import { ParticleField } from "./particles";
 import { QualityGovernor, qualityPinFromUrl } from "./quality";
 import { lookForArena } from "./arenaLooks";
 import type { TroopRig } from "./characters3d";
@@ -53,17 +52,15 @@ import {
   setFlash,
 } from "./scene/post";
 import {
-  PARTICLE_CAP,
-  buildSparkMesh,
   deployFlash,
   emote,
   fxOnEvent,
+  initFx,
   spawnFlourish,
   syncProjectiles,
-  syncSparks,
   updateEffects,
 } from "./scene/fx/effects";
-import { LegacyFx, type FxApi } from "./scene/fx/api";
+import type { FxApi } from "./scene/fx/api";
 import {
   buildBuildingMesh,
   buildGhost,
@@ -103,8 +100,8 @@ export class Battle3D {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene: THREE.Scene;
   readonly camera: THREE.OrthographicCamera;
-  /** Effects behind the FX contract (footstep dust today). */
-  fx: FxApi = new LegacyFx(this);
+  /** Particles, decals, damage numbers and spell set pieces (a VfxPool, see fx/pool.ts). */
+  fx!: FxApi;
   private readonly raycaster = new THREE.Raycaster();
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly views = new Map<number, EntityView>();
@@ -147,10 +144,6 @@ export class Battle3D {
   shakeTime = 0;
   /** Render-only hit-stop (does not touch the sim clock). */
   readonly hitStop = new HitStopController();
-  /** @internal Pooled hit sparks / debris, mirrored into one InstancedMesh. */
-  readonly sparks = new ParticleField(PARTICLE_CAP);
-  /** @internal */
-  sparkMesh!: THREE.InstancedMesh;
   /** @internal Rubble piles left by fallen towers; cleared on reset. */
   rubble: THREE.Object3D[] = [];
   /** @internal Sim projectile meshes by projectile id. */
@@ -206,9 +199,6 @@ export class Battle3D {
     this.scene.add(this.arenaGroup);
     this.scene.add(this.lightGroup);
 
-    this.sparkMesh = buildSparkMesh();
-    this.scene.add(this.sparkMesh);
-
     // Orthographic = no perspective convergence, so the arena reads
     // as a perfectly straight board (not a trapezoid). Angled from
     // the player's elevated side, not straight down from the sky.
@@ -216,6 +206,7 @@ export class Battle3D {
     this.camera.position.copy(CAM_HOME);
     this.camera.lookAt(0, 0, 0);
     frameOrtho(this);
+    initFx(this); // pooled particles, decals, damage numbers (fx/pool.ts)
 
     buildLights(this);
     buildArena(this);
@@ -657,8 +648,6 @@ export class Battle3D {
         0.55 + Math.sin(this.hoverPulse * 11) * 0.3;
     }
 
-    // Advance and draw the hit-spark pool through one InstancedMesh.
-    syncSparks(this, dt);
     updateEffects(this, dt);
     this.fx.update(dt);
 
@@ -715,8 +704,6 @@ export class Battle3D {
     }
     this.projViews.clear();
     this.shakeCtl.update(999, 1); // drain trauma to rest
-    for (const p of this.sparks.particles) p.active = false;
-    this.sparkMesh.count = 0;
     this.camera.position.set(CAM_HOME.x, CAM_HOME.y, cameraZForView());
     this.camera.lookAt(0, 0, 0);
   }
