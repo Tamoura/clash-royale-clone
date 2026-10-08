@@ -81,6 +81,7 @@ import {
   avgDeckLevel,
   botLevels,
   installAutoDifficulty,
+  ensureAutoState,
   ladderMatchesPlayed,
   loadAutoState,
   loadDifficulty,
@@ -821,6 +822,17 @@ if (clockEl) clockEl.dataset.label = tr("Time left", "الوقت المتبقي"
 // The top bar floats over the arena; tell the camera how much it covers.
 new ResizeObserver(() => scene.setTopInset(topbar.offsetHeight)).observe(topbar);
 
+function legacyPlayed(): boolean {
+  try {
+    return localStorage.getItem("cr-clone-tutored") === "1" || localStorage.getItem("cr-clone-difficulty") !== null;
+  } catch {
+    return false;
+  }
+}
+// Pin the auto-difficulty record before the tutorial or a first match can
+// grant trophies; saves from before this version (a legacy tutored flag or
+// any trophies) keep their level.
+ensureAutoState(meta.profile.trophies, legacyPlayed());
 installAutoDifficulty(() => meta.profile.trophies);
 // A first-time player (edition picked) learns in the guided battle first.
 if (EDITION_CHOSEN && !tutorialDone()) startTutorial(ctx);

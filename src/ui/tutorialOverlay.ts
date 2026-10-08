@@ -14,6 +14,8 @@ import {
   Tutorial,
   canPlay,
   markTutorialDone,
+  markTutorialPaid,
+  tutorialPaid,
   prepareTutorialBattle,
   tutorialChallenge,
   type TutorialStep,
@@ -108,12 +110,12 @@ function circle(cx: number, cy: number, r: number): string {
 const cardButton = (id: string): HTMLElement | null =>
   document.querySelector<HTMLElement>(`#hud button.card[data-card="${id}"]`);
 
-/** The HUD element a callout points at (selectors kept loose for HUD redesigns). */
+/** The HUD element a callout points at (data-tut hooks set by the HUD first). */
 function anchorElement(anchor: TutorialStep["anchor"]): HTMLElement | null {
   const sel =
     anchor === "elixir"
-      ? ["#hud .elixir-row", "#hud .elixir-bar", "#hud [aria-label='Elixir']"]
-      : ["#hud .ability-btn", "#hud [aria-label=\"King's Ability\"]"];
+      ? ['#hud [data-tut="elixir"]', "#hud .elixir-row", "#hud .elixir-bar"]
+      : ['#hud [data-tut="ability"]', "#hud .hud-ability"];
   for (const s of sel) {
     const el = document.querySelector<HTMLElement>(s);
     if (el && el.offsetParent !== null) return el;
@@ -126,6 +128,23 @@ function tileOnScreen(ctx: AppCtx, t: TutorialTarget): { x: number; y: number; r
   const p = ctx.scene.arenaToClient(t.x, t.y);
   const q = ctx.scene.arenaToClient(t.x + 1.25, t.y);
   return { x: p.x, y: p.y, r: Math.max(26, Math.hypot(q.x - p.x, q.y - p.y)) };
+}
+
+/**
+ * Should the sim and the pointer mask hold right now? The machine decides,
+ * but only while the thing the player must touch can be found on screen.
+ * If the HUD changes and the card or anchor is missing, fail open: no hold
+ * and no mask, so the lesson can never soft-lock the player.
+ */
+function effectiveHold(s: Session, b: BattleState): boolean {
+  if (!s.machine.holds(b)) return false;
+  const step = s.machine.current;
+  if (!step) return false;
+  const target = step.target?.(b) ?? null;
+  if (target) return canPlay(b, target.cardId) && cardButton(target.cardId) !== null;
+  const tap = step.tapToContinue || (step.id === "king" && b.player.ability === null);
+  if (step.anchor && !tap) return anchorElement(step.anchor) !== null;
+  return true;
 }
 
 // ---- Building the overlay ------------------------------------------------------
@@ -213,8 +232,11 @@ function finish(s: Session): void {
   // The HUD only clears its result panel on its next battle frame; Home
   // shows before that, so clear it here the way the HUD does.
   const result = document.getElementById("overlay");
-  result?.classList.remove("show");
-  result?.querySelector(".confetti-box")?.remove();
+  if (result) {
+    result.classList.remove("show");
+    result.replaceChildren();
+    delete result.dataset.kind;
+  }
   if (won) {
     try {
       // Ask Home to draw the eye to the chest just earned.
@@ -229,7 +251,7 @@ function finish(s: Session): void {
 // ---- Per-frame drawing ---------------------------------------------------------
 
 function computeView(s: Session, b: BattleState, step: TutorialStep): View {
-  const holding = s.machine.holds(b);
+  const holding = effectiveHold(s, b);
   const target = step.target?.(b) ?? null;
   const rects: DOMRect[] = [];
   let tile: View["tile"] = null;
@@ -553,7 +575,7 @@ export function startTutorial(ctx: AppCtx): void {
         s.battle !== null &&
         !s.ended &&
         getPhase() === "playing" &&
-        (s.modal || s.machine.holds(s.battle)),
+        (s.modal || effectiveHold(s, s.battle)),
     ),
     on("matchStart", (m) => {
       if (s.battle === null) {
@@ -575,7 +597,11 @@ export function startTutorial(ctx: AppCtx): void {
       if (m.battle !== s.battle || s.ended) return;
       const won = m.winner === "player";
       // The first win pays out like a ladder win: trophies, gold, a chest.
-      if (won) applyMatchResult(ctx, "player");
+      // A replay from Settings teaches again but pays only once.
+      if (won && !tutorialPaid()) {
+        applyMatchResult(ctx, "player");
+        markTutorialPaid();
+      }
       window.setTimeout(() => {
         if (session === s) showEnding(s, won);
       }, reducedMotion() ? 300 : 1400);

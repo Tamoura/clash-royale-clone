@@ -14,6 +14,7 @@ import { icon, type CrestIndex, type IconName } from "../icons";
 import { CREST_COUNT, PLAYER_NAME_MAX, getPrefs, sanitizePlayerName, setPrefs } from "../prefs";
 import { claimButton, crestIcon, goalRow, refreshTopBars, section, type ClaimState } from "./frame";
 import { openSettings } from "./settings";
+import { startTutorial } from "../tutorialOverlay";
 
 // ---- Losses: wins already live in the achievement counters ------------------
 
@@ -196,7 +197,7 @@ export function buildProfileTab(
     size: "lg",
     icon: "settings",
     label: ctx.tr("Settings", "الإعدادات"),
-    onClick: () => openSettings({ onClose: () => refreshTopBars(ctx) }),
+    onClick: () => openSettings({ onClose: () => refreshTopBars(ctx), onReplayTutorial: () => startTutorial(ctx) }),
   });
   settings.classList.add("v2-wide");
   host.appendChild(settings);

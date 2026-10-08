@@ -195,7 +195,11 @@ export const TUTORIAL_STEP_COUNT = TUTORIAL_STEPS.length;
 export interface TutorialStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
 }
+
+/** Set once the tutorial win has paid out, so a replay never pays again. */
+export const TUTORIAL_PAID_KEY = "cr-clone-tutorial-paid";
 
 /** A storage that is missing or throws behaves like an empty one. */
 function safeGet(storage: TutorialStorage | undefined, key: string): string | null {
@@ -238,6 +242,26 @@ export function tutorialDone(storage = defaultStorage()): boolean {
 export function markTutorialDone(storage = defaultStorage()): void {
   safeSet(storage, TUTORIAL_KEY, "done");
   safeSet(storage, TUTORED_KEY, "1");
+}
+
+/** Forget that the tutorial was finished, so it can be played again. */
+export function resetTutorial(storage = defaultStorage()): void {
+  for (const k of [TUTORIAL_KEY, TUTORED_KEY]) {
+    try {
+      storage?.removeItem?.(k);
+    } catch {
+      // storage unavailable: nothing to reset
+    }
+  }
+}
+
+/** Has the tutorial win already paid its trophies, gold and chest? */
+export function tutorialPaid(storage = defaultStorage()): boolean {
+  return safeGet(storage, TUTORIAL_PAID_KEY) === "1";
+}
+
+export function markTutorialPaid(storage = defaultStorage()): void {
+  safeSet(storage, TUTORIAL_PAID_KEY, "1");
 }
 
 // ---- The machine ---------------------------------------------------------------

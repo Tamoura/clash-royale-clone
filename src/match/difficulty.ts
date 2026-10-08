@@ -168,6 +168,22 @@ export function loadAutoState(trophies: number): AutoState {
   }
 }
 
+/**
+ * Pin the auto record once, before anything can grant trophies. A brand-new
+ * profile is saved as rookie with no matches played, so the tutorial payout
+ * (or a first ladder win) cannot make it look like a veteran later. A profile
+ * that already has trophies, or `playedBefore`, keeps the veteran start.
+ * An existing record is never touched.
+ */
+export function ensureAutoState(trophies: number, playedBefore = false): void {
+  try {
+    if (localStorage.getItem(AUTO_KEY) !== null) return;
+  } catch {
+    return;
+  }
+  saveAutoState(freshAutoState(playedBefore ? Math.max(1, trophies) : trophies));
+}
+
 export function saveAutoState(s: AutoState): void {
   try {
     localStorage.setItem(AUTO_KEY, JSON.stringify(s));

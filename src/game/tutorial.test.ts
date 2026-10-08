@@ -10,6 +10,10 @@ import {
   TUTORIAL_STEPS,
   Tutorial,
   loadTutorialProgress,
+  markTutorialDone,
+  markTutorialPaid,
+  resetTutorial,
+  tutorialPaid,
   prepareTutorialBattle,
   tutorialChallenge,
   tutorialDone,
@@ -24,6 +28,7 @@ function memStorage(init: Record<string, string> = {}): TutorialStorage & { map:
     map,
     getItem: (k) => map.get(k) ?? null,
     setItem: (k, v) => void map.set(k, v),
+    removeItem: (k) => void map.delete(k),
   };
 }
 
@@ -190,5 +195,40 @@ describe("tutorial steps", () => {
     }
     expect(t.done).toBe(true);
     expect(g.b.result?.winner).toBe("player");
+  });
+});
+
+describe("replaying the tutorial", () => {
+  it("resetTutorial clears a finished lesson (and the legacy flag) so it starts again", () => {
+    const store = memStorage();
+    markTutorialDone(store);
+    expect(tutorialDone(store)).toBe(true);
+    resetTutorial(store);
+    expect(tutorialDone(store)).toBe(false);
+    expect(loadTutorialProgress(store)).toBe(0);
+    expect(store.map.has(TUTORED_KEY)).toBe(false);
+    expect(store.map.has(TUTORIAL_KEY)).toBe(false);
+  });
+
+  it("a replay keeps the paid flag, so the payout happens only once", () => {
+    const store = memStorage();
+    expect(tutorialPaid(store)).toBe(false);
+    markTutorialPaid(store);
+    markTutorialDone(store);
+    resetTutorial(store);
+    expect(tutorialPaid(store)).toBe(true);
+  });
+
+  it("survives storage without removeItem or that throws", () => {
+    expect(() => resetTutorial({ getItem: () => null, setItem: () => undefined })).not.toThrow();
+    expect(() =>
+      resetTutorial({
+        getItem: () => null,
+        setItem: () => undefined,
+        removeItem: () => {
+          throw new Error("blocked");
+        },
+      }),
+    ).not.toThrow();
   });
 });

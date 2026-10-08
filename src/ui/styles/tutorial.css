@@ -55,14 +55,7 @@
   opacity: 0;
   filter: drop-shadow(0 0 6px var(--accent));
 }
-.tut-mask.on /* The ending card sits on a near-opaque backdrop over the result screen. */
-.tut.ending .tut-mask-fill {
-  fill: var(--surface-0);
-}
-.tut.ending .tut-mask.on .tut-mask-fill {
-  opacity: 0.86;
-}
-.tut-ring {
+.tut-mask.on .tut-ring {
   opacity: 1;
   animation: tut-ring 1.2s var(--ease-out) infinite alternate;
 }

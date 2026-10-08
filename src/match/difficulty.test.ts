@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_DECK } from "../game/cards";
 import {
   DIFFICULTIES,
@@ -10,7 +10,10 @@ import {
   avgDeckLevel,
   botLevel,
   botLevels,
+  AUTO_KEY,
+  ensureAutoState,
   freshAutoState,
+  loadAutoState,
   parseAutoState,
   recordAutoResult,
   resolveTier,
@@ -143,5 +146,48 @@ describe("bot levels", () => {
     expect(avgDeckLevel(DEFAULT_DECK, {})).toBe(1);
     expect(avgDeckLevel(DEFAULT_DECK, { knight: 9 })).toBe(2);
     expect(avgDeckLevel([], {})).toBe(1);
+  });
+});
+
+describe("ensureAutoState", () => {
+  const mem = new Map<string, string>();
+  const store = {
+    getItem: (k: string) => mem.get(k) ?? null,
+    setItem: (k: string, v: string) => void mem.set(k, v),
+    removeItem: (k: string) => void mem.delete(k),
+  };
+  beforeEach(() => {
+    mem.clear();
+    vi.stubGlobal("localStorage", store);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("pins a brand-new profile to rookie so a tutorial payout cannot make it a veteran", () => {
+    ensureAutoState(0);
+    expect(mem.has(AUTO_KEY)).toBe(true);
+    // the tutorial win grants trophies afterwards
+    const s = loadAutoState(30);
+    expect(s.tier).toBe("rookie");
+    expect(s.ladderMatches).toBe(0);
+    expect(resolveTier("auto", s)).toBe("rookie");
+    // and a first ladder win stays in the rookie period
+    const after = recordAutoResult(s, 3);
+    expect(after.tier).toBe("rookie");
+    expect(after.ladderMatches).toBe(1);
+  });
+
+  it("keeps a veteran (trophies or an older save) at their level", () => {
+    ensureAutoState(420);
+    expect(loadAutoState(420).tier).toBe("normal");
+    mem.clear();
+    ensureAutoState(0, true);
+    expect(loadAutoState(0).tier).toBe("normal");
+    expect(loadAutoState(0).ladderMatches).toBeGreaterThanOrEqual(ROOKIE_MATCHES);
+  });
+
+  it("never overwrites an existing record", () => {
+    mem.set(AUTO_KEY, JSON.stringify({ v: 1, ladderMatches: 3, tier: "easy", history: [] }));
+    ensureAutoState(500, true);
+    expect(loadAutoState(500).tier).toBe("easy");
   });
 });
