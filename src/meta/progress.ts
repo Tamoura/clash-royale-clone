@@ -328,6 +328,12 @@ export function tryUpgradeCard(
   return { profile: next, ok: true };
 }
 
+/** The level a newly unlocked card starts at: two below the deck's average. */
+export function newCardLevel(deck: readonly CardId[], levels: CardLevels): number {
+  const avg = deck.length > 0 ? deck.reduce((n, id) => n + (levels[id] ?? 1), 0) / deck.length : 1;
+  return Math.min(MAX_CARD_LEVEL, Math.max(1, Math.round(avg) - 2));
+}
+
 export function tryOpenChest(
   profile: PlayerProfile,
   slotIndex: number,
@@ -354,8 +360,15 @@ export function tryOpenChest(
 
   let nextOwned = [...profile.owned];
   let nextShards = { ...profile.shards };
+  const nextLevels = { ...profile.levels };
   if (rewards.newCard) {
     nextOwned = grantOwned(nextOwned, rewards.newCard);
+    // A late unlock joins near the deck's level, not at 1, so it is worth
+    // trying (bots play at the deck's level too).
+    nextLevels[rewards.newCard] = Math.max(
+      nextLevels[rewards.newCard] ?? 1,
+      newCardLevel(profile.deck, profile.levels),
+    );
   }
   for (const [id, n] of Object.entries(rewards.shards)) {
     nextShards = addShards(nextShards, id as CardId, n ?? 0);
@@ -371,7 +384,7 @@ export function tryOpenChest(
     owned: nextOwned,
     shards: nextShards,
     chests,
-    levels: { ...profile.levels },
+    levels: nextLevels,
     deck: [...profile.deck],
   };
   return { profile: next, rewards, ok: true };

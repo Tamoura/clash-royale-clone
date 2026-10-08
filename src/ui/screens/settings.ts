@@ -5,6 +5,7 @@
  * subscribers (audio, renderer, CSS --text-scale) apply it live.
  * Every control is at least 44px tall.
  */
+import { resetTutorial } from "../../game/tutorial";
 import { loadMode, otherMode, type GameMode as GameVariant } from "../../launcher/mode";
 import { segmented, toast } from "../components";
 import { fmtNum, tr } from "../i18n";
@@ -15,10 +16,9 @@ import { ask, openSheet } from "./frame";
 
 export interface SettingsOpts {
   onClose?: () => void;
+  /** Start the guided first battle (the row is hidden when not provided). */
+  onReplayTutorial?: () => void;
 }
-
-/** The tutorial keys the first-session package reads. */
-const TUTORIAL_KEYS = ["cr-clone-tutorial", "cr-clone-tutored"];
 
 function group(title: string): HTMLElement {
   const g = document.createElement("section");
@@ -176,7 +176,7 @@ function creditsGroup(): HTMLElement {
 }
 
 /** Build the settings content (exported for tests and embedding). */
-export function buildSettings(): HTMLElement {
+export function buildSettings(opts: SettingsOpts = {}, close?: () => void): HTMLElement {
   const p = getPrefs();
   const root = document.createElement("div");
   root.className = "v2-settings";
@@ -260,28 +260,36 @@ export function buildSettings(): HTMLElement {
 
   // ---- Help
   const help = group(tr("Help", "المساعدة"));
-  const tut = document.createElement("button");
-  tut.type = "button";
-  tut.className = "v2-set-action";
-  tut.innerHTML = `${icon("book")}<span>${tr("Replay the tutorial", "أعد الدرس التعليمي")}</span>`;
-  tut.addEventListener("click", () => {
-    try {
-      for (const k of TUTORIAL_KEYS) localStorage.removeItem(k);
-    } catch {
-      // storage blocked: nothing to reset
-    }
-    toast(tr("The tutorial will play in your next battle.", "سيبدأ الدرس التعليمي في معركتك القادمة."), "success");
-  });
-  help.appendChild(tut);
+  help.appendChild(tutorialRow(opts, close));
   root.appendChild(help);
 
   root.appendChild(creditsGroup());
   return root;
 }
 
+/** The "Replay the tutorial" row: clears the saved lesson and starts it. */
+export function tutorialRow(opts: SettingsOpts, close?: () => void): HTMLButtonElement {
+  const tut = document.createElement("button");
+  tut.type = "button";
+  tut.className = "v2-set-action";
+  tut.dataset.act = "replay-tutorial";
+  tut.innerHTML = `${icon("book")}<span>${tr("Replay the tutorial", "أعد الدرس التعليمي")}</span>`;
+  tut.addEventListener("click", () => {
+    resetTutorial();
+    if (opts.onReplayTutorial) {
+      close?.();
+      opts.onReplayTutorial();
+    } else {
+      toast(tr("The tutorial will play in your next battle.", "سيبدأ الدرس التعليمي في معركتك القادمة."), "success");
+    }
+  });
+  return tut;
+}
+
 /** Open the Settings sheet. Safe to call from any screen. */
 export function openSettings(opts: SettingsOpts = {}): { close: () => void } {
-  const content = buildSettings();
+  let closeSheet: (() => void) | undefined;
+  const content = buildSettings(opts, () => closeSheet?.());
   // Keep the switches honest if another screen changes a pref meanwhile.
   const off = onPrefs((p) => {
     content.querySelectorAll<HTMLElement>(".v2-switch[data-pref]").forEach((sw) => {
@@ -298,5 +306,6 @@ export function openSettings(opts: SettingsOpts = {}): { close: () => void } {
       opts.onClose?.();
     },
   });
+  closeSheet = s.close;
   return { close: s.close };
 }

@@ -4,6 +4,7 @@ import {
   STORAGE_KEYS,
   applyMatchResult,
   loadProfile,
+  newCardLevel,
   saveProfile,
   tryOpenChest,
   tryUpgradeCard,
@@ -106,6 +107,32 @@ describe("progress", () => {
     expect(result.ok).toBe(true);
     expect(result.rewards!.gold).toBeGreaterThan(0);
     expect(result.profile.chests[0]).toBeNull();
+  });
+
+  it("starts a new card two levels below the deck average", () => {
+    const levels = Object.fromEntries(DEFAULT_DECK.map((id) => [id, 9]));
+    const chests = emptyChestSlots();
+    chests[0] = { rarity: "rare", readyAt: 0 };
+    const profile = baseProfile({ chests, trophies: 3000, levels });
+    // Find a seed whose chest unlocks a card (rare chests usually do).
+    let unlocked = null;
+    for (let seed = 1; seed < 200 && !unlocked; seed++) {
+      const r = tryOpenChest(profile, 0, 10, seed);
+      if (r.rewards?.newCard) unlocked = { id: r.rewards.newCard, profile: r.profile };
+    }
+    expect(unlocked).not.toBeNull();
+    expect(unlocked!.profile.levels[unlocked!.id]).toBe(7);
+    expect(unlocked!.profile.owned).toContain(unlocked!.id);
+    // The deck's own levels are untouched.
+    for (const id of DEFAULT_DECK) expect(unlocked!.profile.levels[id]).toBe(9);
+  });
+
+  it("never starts a new card below 1 or above the cap", () => {
+    expect(newCardLevel(DEFAULT_DECK, {})).toBe(1);
+    expect(newCardLevel(DEFAULT_DECK, { knight: 3, archers: 3 })).toBe(1);
+    const maxed = Object.fromEntries(DEFAULT_DECK.map((id) => [id, 11]));
+    expect(newCardLevel(DEFAULT_DECK, maxed)).toBe(9);
+    expect(newCardLevel([], {})).toBe(1);
   });
 
   it("round-trips a saved profile", () => {

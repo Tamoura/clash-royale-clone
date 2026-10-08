@@ -29,6 +29,7 @@ import { fmtNum } from "../i18n";
 import { icon, type CrestIndex, type IconName } from "../icons";
 import { getPrefs, reducedMotion } from "../prefs";
 import { openSettings } from "./settings";
+import { startTutorial } from "../tutorialOverlay";
 import "../styles/home.css";
 
 export type HomeTab = "shop" | "cards" | "battle" | "events" | "profile";
@@ -210,7 +211,7 @@ export function buildTopBar(ctx: AppCtx, goTab: (t: HomeTab) => void): HTMLEleme
   gear.setAttribute("aria-label", tr("Settings", "الإعدادات"));
   gear.addEventListener("click", () => {
     sfx(ctx, "uiTap");
-    openSettings({ onClose: () => refreshTopBars(ctx) });
+    openSettings({ onClose: () => refreshTopBars(ctx), onReplayTutorial: () => startTutorial(ctx) });
   });
   bar.appendChild(gear);
 

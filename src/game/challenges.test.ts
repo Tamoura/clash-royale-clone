@@ -4,6 +4,7 @@ import { createBattle, isValidDeck } from "./battle";
 import { CARDS } from "./cards";
 import {
   CHALLENGES,
+  TUTORIAL_CHALLENGE,
   applyWaves,
   challengeStatus,
 } from "./challenges";
@@ -31,6 +32,26 @@ describe("challenge definitions", () => {
         expect(w.y).toBeLessThanOrEqual(ARENA_HEIGHT);
       }
     }
+  });
+});
+
+describe("tutorial challenge", () => {
+  it("stays out of the Challenges list", () => {
+    expect(CHALLENGES).not.toContain(TUTORIAL_CHALLENGE);
+    expect(CHALLENGES.some((c) => c.id === TUTORIAL_CHALLENGE.id)).toBe(false);
+  });
+
+  it("is well-formed: a legal deck, enemy-half waves, a weakened King", () => {
+    const ch = TUTORIAL_CHALLENGE;
+    expect(isValidDeck(ch.deck)).toBe(true);
+    for (const w of ch.waves) {
+      expect(CARDS[w.cardId].kind).not.toBe("spell");
+      expect(w.y).toBeLessThan(RIVER_Y);
+      expect(w.at).toBeGreaterThan(0);
+    }
+    expect(ch.enemyKingHp).toBeGreaterThan(0);
+    // Never won by the clock: only a fallen King ends the lesson.
+    expect(ch.surviveFor).toBeGreaterThan(1e6);
   });
 });
 

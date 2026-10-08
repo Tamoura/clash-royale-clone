@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { RIVER_Y } from "./arena";
+import { ARENA_HEIGHT, RIVER_Y } from "./arena";
 import { createBattle, spawnUnits } from "./battle";
-import { botThink, createBot, tickBot } from "./bot";
+import { BOT_PROFILE_DEFAULTS, botThink, createBot, tickBot } from "./bot";
 import { createHand } from "./hand";
+import { DEFAULT_DECK, type CardId } from "./cards";
+import { createPilot, tickPilot } from "./pilot";
+import { BATTLE_DURATION, OVERTIME_DURATION, tick } from "./sim";
+import { stateChecksum } from "../net/checksum";
 
 function troopsOf(b: ReturnType<typeof createBattle>, side: "player" | "enemy") {
   return b.entities.filter((e) => e.side === side && e.kind === "troop");
@@ -247,5 +251,239 @@ describe("difficulty", () => {
     c.enemy.elixir = { amount: 6 };
     botThink(c, createBot(42)); // default waits for 8
     expect(troopsOf(c, "enemy")).toHaveLength(0);
+  });
+});
+
+describe("side-aware bot", () => {
+  /** Mirror of giveBotHand for a bot playing the bottom half. */
+  function givePlayerHand(b: ReturnType<typeof createBattle>, cards: string[]): void {
+    b.player.hand = createHand([...cards, "knight", "archers", "giant", "fireball"] as never);
+    b.player.elixir = { amount: 10 };
+  }
+
+  it("fills every optional knob with the classic default", () => {
+    const bot = createBot(1, { thinkInterval: 1, pushAt: 8 });
+    expect(bot.side).toBe("enemy");
+    expect(bot.reactionDelay).toBe(0);
+    expect(bot.mistakeRate).toBe(0);
+    expect(bot.spellIQ).toBe(1);
+    expect(bot.allowFinisher).toBe(true);
+    expect(BOT_PROFILE_DEFAULTS.side).toBe("enemy");
+  });
+
+  it("defends its own (bottom) half when piloting the player side", () => {
+    const b = createBattle();
+    b.player.elixir = { amount: 10 };
+    spawnUnits(b, "enemy", "knight", 3.5, RIVER_Y + 2);
+    botThink(b, createBot(42, { side: "player" }));
+    const defenders = troopsOf(b, "player");
+    expect(defenders.length).toBeGreaterThan(0);
+    for (const d of defenders) expect(d.y).toBeGreaterThan(RIVER_Y);
+  });
+
+  it("pushes from its own bridge when piloting the player side", () => {
+    const b = createBattle();
+    givePlayerHand(b, ["giant", "skeletons", "archers", "wizard"]);
+    botThink(b, createBot(42, { side: "player" }));
+    const troops = troopsOf(b, "player");
+    expect(troops.map((t) => t.cardId)).toEqual(["giant"]);
+    expect(troops[0].y).toBeCloseTo(ARENA_HEIGHT - (RIVER_Y - 4));
+  });
+
+  it("plays the mirror image of the enemy-side bot", () => {
+    const top = createBattle();
+    const bottom = createBattle();
+    spawnUnits(top, "player", "knight", 5, RIVER_Y - 2);
+    spawnUnits(bottom, "enemy", "knight", 5, ARENA_HEIGHT - (RIVER_Y - 2));
+    top.enemy.elixir = { amount: 10 };
+    bottom.player.elixir = { amount: 10 };
+    botThink(top, createBot(9));
+    botThink(bottom, createBot(9, { side: "player" }));
+    const a = troopsOf(top, "enemy").map((e) => [e.cardId, e.x, e.y]);
+    const m = troopsOf(bottom, "player").map((e) => [e.cardId, e.x, ARENA_HEIGHT - e.y]);
+    expect(a.length).toBeGreaterThan(0);
+    expect(m).toEqual(a);
+  });
+
+  it("waits reactionDelay seconds before answering an invader", () => {
+    const b = createBattle();
+    b.enemy.elixir = { amount: 6 }; // enough to defend, short of a push
+    b.enemy.hand = createHand(["knight", "archers", "musketeer", "valkyrie", "giant", "fireball", "arrows", "zap"]);
+    spawnUnits(b, "player", "knight", 3.5, RIVER_Y - 2);
+    const slow = createBot(42, { reactionDelay: 2 });
+    botThink(b, slow); // first sight: no reaction yet
+    expect(troopsOf(b, "enemy")).toHaveLength(0);
+    b.time += 1;
+    botThink(b, slow);
+    expect(troopsOf(b, "enemy")).toHaveLength(0);
+    b.time += 1.5;
+    botThink(b, slow);
+    expect(troopsOf(b, "enemy").length).toBeGreaterThan(0);
+  });
+
+  it("a high spellIQ ignores a cluster the default bot would spell", () => {
+    const setup = () => {
+      const b = createBattle();
+      giveBotHand(b, ["arrows", "giant", "hog-rider", "balloon"]);
+      // Three archers-worth of value: enough for arrows (3), not for 2x.
+      spawnUnits(b, "player", "archers", 9, RIVER_Y - 3);
+      spawnUnits(b, "player", "archers", 9.4, RIVER_Y - 3.2);
+      return b;
+    };
+    const plain = setup();
+    botThink(plain, createBot(42));
+    expect(plain.effects.some((e) => e.cardId === "arrows")).toBe(true);
+    const picky = setup();
+    botThink(picky, createBot(42, { spellIQ: 2 }));
+    expect(picky.effects.some((e) => e.cardId === "arrows")).toBe(false);
+  });
+
+  it("never finishes a tower with a spell when allowFinisher is off", () => {
+    const setup = () => {
+      const b = createBattle();
+      giveBotHand(b, ["fireball", "skeletons", "bats", "knight"]);
+      const tower = b.entities.find((e) => e.side === "player" && e.kind === "princess-tower")!;
+      tower.hp = 50;
+      return b;
+    };
+    const rude = setup();
+    botThink(rude, createBot(1));
+    expect(rude.events.some((e) => e.type === "spell" && e.cardId === "fireball")).toBe(true);
+    const kind = setup();
+    botThink(kind, createBot(1, { allowFinisher: false }));
+    expect(kind.events.some((e) => e.type === "spell" && e.cardId === "fireball")).toBe(false);
+  });
+
+  it("slips up only within the rules: every mistake is still a legal play", () => {
+    for (const side of ["enemy", "player"] as const) {
+      const b = createBattle(DEFAULT_DECK, DEFAULT_DECK);
+      const bot = createBot(5, { side, mistakeRate: 1, thinkInterval: 0.5, pushAt: 4 });
+      let plays = 0;
+      for (let t = 0; t < 30 * 120 && !b.result; t++) {
+        tick(b, 1 / 30);
+        tickBot(b, bot, 1 / 30);
+        for (const ev of b.events) {
+          if (ev.type !== "deploy" || ev.side !== side) continue;
+          plays++;
+          // Troops and buildings land on the bot's own half (no tower has fallen).
+          if (b.player.crowns + b.enemy.crowns === 0) {
+            expect(side === "enemy" ? ev.y < RIVER_Y : ev.y > RIVER_Y).toBe(true);
+          }
+        }
+        b.events.length = 0;
+      }
+      expect(plays).toBeGreaterThan(5);
+    }
+  });
+});
+
+/**
+ * Snapshot: whole seeded matches against the normal and hard bot profiles,
+ * sampled with stateChecksum every 300 ticks. The fixture was captured
+ * BEFORE the bot learned to play either side and to make mistakes, so it
+ * proves the default profiles (and every saved replay, which re-creates
+ * its bot from seed + profile) still make exactly the same plays.
+ */
+describe("bot snapshot", () => {
+  const DT = 1 / 30;
+  const SAMPLE = 300;
+  const MAX_TICKS = 30 * (BATTLE_DURATION + OVERTIME_DURATION) + 30;
+  const DECKS: CardId[][] = [
+    DEFAULT_DECK,
+    ["cannon", "freeze", "rage", "mirror", "giant", "musketeer", "skeletons", "arrows"],
+    ["heal", "skeleton-barrel", "elixir-collector", "tornado", "balloon", "valkyrie", "zap", "bats"],
+  ];
+  const PROFILES = {
+    normal: { thinkInterval: 1.0, pushAt: 8 },
+    hard: { thinkInterval: 0.55, pushAt: 6 },
+  } as const;
+
+  function trace(i: number, tier: keyof typeof PROFILES): { sums: number[]; winner: string; ticks: number } {
+    const b = createBattle(DEFAULT_DECK, DECKS[i], {}, 1, {}, { player: "rally", enemy: (["rally", "restore", "salvo"] as const)[i] });
+    const bot = createBot(9000 + i, PROFILES[tier]);
+    const pilot = createPilot(500 + i);
+    const sums: number[] = [];
+    let t = 0;
+    for (; t < MAX_TICKS && !b.result; t++) {
+      tickPilot(b, pilot, DT);
+      tick(b, DT);
+      tickBot(b, bot, DT);
+      b.events.length = 0;
+      if ((t + 1) % SAMPLE === 0) sums.push(stateChecksum(b));
+    }
+    sums.push(stateChecksum(b));
+    return { sums, winner: b.result?.winner ?? "none", ticks: t };
+  }
+
+  const FIXTURE: Record<string, { sums: number[]; winner: string; ticks: number }> = {
+    "normal-0": {
+      sums: [
+        2331464826, 4242004129, 545071692, 3343785850, 2214328479, 1049432801,
+        2395278456, 4235287843, 2721297228, 964647001, 1445801226, 1939704935,
+        1814757781, 386127648, 2611807727, 3299237802, 1771682291, 1125510365,
+        3944289167,
+      ],
+      winner: "enemy",
+      ticks: 5401,
+    },
+    "normal-1": {
+      sums: [
+        3967589965, 325270354, 2787626439, 2428838500, 1061971610, 2774141507,
+        1542481325, 799943695, 2417825047, 2390044206, 570180802, 2237770336,
+        1306084008, 1141453084, 4020109919, 723439349, 2411544843, 1970993356,
+        3762502254,
+      ],
+      winner: "player",
+      ticks: 5401,
+    },
+    "normal-2": {
+      sums: [
+        359395313, 555699469, 2734517376, 345896709, 2102799540, 2267085366,
+        2067040913, 3575477480, 3474240845, 3992425148, 122525595, 1719967134,
+        3394359913, 194696013, 2576697584, 2304957474, 3577586674, 3572431994,
+        3391449889,
+      ],
+      winner: "enemy",
+      ticks: 5401,
+    },
+    "hard-0": {
+      sums: [
+        490951617, 3957263388, 3772914039, 4255100035, 2255575832, 1345588746,
+        3424243933, 943990520, 955929095, 46627719, 2982324542, 2943398919,
+        4251526780, 1955110677, 2573542688, 2930378967, 592499545, 198469274,
+        3603919868, 155680441, 2719583634, 4239723538, 2006814732, 3476235176,
+        201977768, 2933341317, 1132816612, 534416944,
+      ],
+      winner: "enemy",
+      ticks: 8353,
+    },
+    "hard-1": {
+      sums: [
+        1348659352, 2142287434, 1602244527, 2082842734, 3372899854, 2875259080,
+        3092173492, 3220729939, 822385063, 3990523397, 1555073234, 3110842047,
+        2724314560, 259937880, 2449943032, 2549435741, 2058467834, 1376325056,
+        1369421312,
+      ],
+      winner: "player",
+      ticks: 5401,
+    },
+    "hard-2": {
+      sums: [
+        1174139870, 2920872792, 2095528310, 3107492375, 1824511351, 2810084895,
+        739663375, 2756575446, 1897029291, 3383164516, 2870425010, 2234295396,
+        2092099689, 2178050029, 2955491477, 2383587513, 1242847736, 2689157739,
+        404779126,
+      ],
+      winner: "enemy",
+      ticks: 5401,
+    },
+  };
+
+  it("default profiles replay the pre-refactor matches exactly", () => {
+    const got: typeof FIXTURE = {};
+    for (const tier of ["normal", "hard"] as const) {
+      for (let i = 0; i < 3; i++) got[`${tier}-${i}`] = trace(i, tier);
+    }
+    expect(got).toEqual(FIXTURE);
   });
 });

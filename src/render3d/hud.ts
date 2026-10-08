@@ -241,6 +241,7 @@ export class Hud {
 
     this.abilityBtn = el("button", "hud-ability", bottom);
     this.abilityBtn.type = "button";
+    this.abilityBtn.dataset.tut = "ability";
     this.abilityBtn.hidden = true;
     this.abilityBtn.innerHTML =
       '<svg class="hud-ring" viewBox="0 0 56 56" aria-hidden="true">' +
@@ -324,6 +325,7 @@ export class Hud {
 
     // The elixir bar runs full width under the hand, droplet first.
     this.elixirRow = el("div", "elixir-row", bottom);
+    this.elixirRow.dataset.tut = "elixir";
     this.elixirRow.setAttribute("role", "group");
     this.elixirRow.setAttribute("aria-label", tr("Elixir", "الإكسير"));
     this.elixirNum = el("div", "elixir-num", this.elixirRow);

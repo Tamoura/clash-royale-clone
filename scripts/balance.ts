@@ -4,8 +4,8 @@
  * Swaps a candidate card into a fixed base deck in place, then runs mirrored
  * self-play (same seed, both orientations). A fair card scores near 50%.
  */
-import { createBattle, type BattleState } from "../src/game/battle";
-import { createBot, tickBot, type BotState } from "../src/game/bot";
+import { createBattle } from "../src/game/battle";
+import { createBot, tickBot } from "../src/game/bot";
 import { DEFAULT_DECK, type CardId } from "../src/game/cards";
 import { BATTLE_DURATION, OVERTIME_DURATION, tick } from "../src/game/sim";
 
@@ -27,34 +27,16 @@ function swapIn(deck: CardId[], slot: number, card: CardId): CardId[] {
   return out;
 }
 
-/** Drive both sides with the enemy-facing bot by flipping sides each think. */
-function thinkBoth(b: BattleState, botP: BotState, botE: BotState): void {
-  tickBot(b, botE, TICK);
-  // Flip sides so the same bot API can pilot the player.
-  const savedEnemy = b.enemy;
-  const savedPlayer = b.player;
-  b.enemy = savedPlayer;
-  b.player = savedEnemy;
-  for (const e of b.entities) {
-    if (e.side === "player") e.side = "enemy";
-    else if (e.side === "enemy") e.side = "player";
-  }
-  tickBot(b, botP, TICK);
-  for (const e of b.entities) {
-    if (e.side === "player") e.side = "enemy";
-    else if (e.side === "enemy") e.side = "player";
-  }
-  b.enemy = savedEnemy;
-  b.player = savedPlayer;
-}
-
+/** One bot per side: each plays its own half (the bot is side-aware). */
 function play(seed: number, playerDeck: CardId[], enemyDeck: CardId[]): "player" | "enemy" | "draw" {
   const b = createBattle(playerDeck, enemyDeck);
-  const botP = createBot(seed);
+  const botP = createBot(seed, { side: "player" });
   const botE = createBot(seed ^ 0x9e3779b9);
   while (!b.result && b.time < MAX_T) {
     tick(b, TICK);
-    thinkBoth(b, botP, botE);
+    tickBot(b, botE, TICK);
+    tickBot(b, botP, TICK);
+    b.events.length = 0;
   }
   return b.result?.winner ?? "draw";
 }
@@ -87,7 +69,8 @@ function main(): void {
     const bar = "#".repeat(filled) + "-".repeat(20 - filled);
     console.log(`${card.padEnd(14)} ${pct.padStart(5)}%  [${bar}]  n=${games}`);
   }
-  // True mirror: the slot card swapped for itself — must score exactly 50%.
+  // True mirror: the slot card swapped for itself. Both orientations run
+  // per seed, so this lands near (not exactly at) 50%.
   const mirrorCard = DEFAULT_DECK[slot];
   const mirror = winRate(mirrorCard, slot);
   console.log(`\nmirror(${mirrorCard}) ${(mirror.rate * 100).toFixed(1)}%  (expect ~50%)`);
