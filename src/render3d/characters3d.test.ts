@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
-import { getCard, DECK, type CardId } from "../game/cards";
+import type { Side } from "../game/arena";
+import { getCard, CARDS, DECK, type CardId } from "../game/cards";
 import { animateTroop, buildTroop, toon } from "./characters3d";
+import { TEAM, isTeamPart, type TeamShade } from "./teamColors";
 
 const TROOP_IDS = DECK.filter((id) => getCard(id).kind === "troop");
 
@@ -318,7 +320,8 @@ describe("islamic reskins (ARABIC mode)", () => {
     expect(rig.hover).toBeGreaterThan(0); // still a flyer
     let tails = 0;
     rig.group.traverse((o) => {
-      if (o.name === "kite-tail") tails++;
+      // Two cloth tails fly team colours (renamed "team", part kept).
+      if ((o.userData.part ?? o.name) === "kite-tail") tails++;
     });
     expect(tails).toBeGreaterThanOrEqual(3);
     expect(rig.extras).toBeDefined(); // tail flutter + flame flicker
@@ -415,10 +418,11 @@ describe("clash design cues (named signature props)", () => {
   // These cues are authored on Clash builders; Islamic overrides replace some
   // cards entirely, so we only assert cues that survive on shared Clash paths
   // or on cards without an Islamic silhouette swap.
-  it("firecracker carries a launcher tube and blue headband", () => {
-    // Firecracker has no Islamic override — cues always present.
+  it("firecracker carries a launcher tube and a team headband", () => {
+    // Firecracker has no Islamic override — cues always present. The
+    // headband is a team part, so its name lives on in userData.part.
     const names = new Set<string>();
-    buildTroop("firecracker").group.traverse((o) => names.add(o.name));
+    buildTroop("firecracker").group.traverse((o) => names.add(o.userData.part ?? o.name));
     expect(names.has("launcher")).toBe(true);
     expect(names.has("headband")).toBe(true);
     expect(names.has("ponytail")).toBe(true);
@@ -466,5 +470,221 @@ describe("surface texturing (3d-texturing skill)", () => {
       (c) => (c as THREE.Mesh).isMesh,
     ) as THREE.Mesh).material;
     expect(m1).not.toBe(m2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Team identity: bodies are team-neutral, tagged parts carry the side.
+
+type BuildTroop = typeof buildTroop;
+
+/**
+ * buildTroop for one edition. ARABIC is fixed at module load (the test env
+ * defaults to the Islamic edition), so the Clash edition gets a fresh copy
+ * of the module graph with the theme flag mocked off.
+ */
+async function editionBuilder(edition: "classic" | "islamic"): Promise<BuildTroop> {
+  if (edition === "islamic") return buildTroop;
+  vi.resetModules();
+  vi.doMock("./theme", async (orig) => ({ ...(await orig<typeof import("./theme")>()), ARABIC: false }));
+  try {
+    return (await import("./characters3d")).buildTroop;
+  } finally {
+    vi.doUnmock("./theme");
+    vi.resetModules();
+  }
+}
+
+/** Every card id that has a 3D builder in this edition. */
+function rigIds(build: BuildTroop): CardId[] {
+  return (Object.keys(CARDS) as CardId[]).filter((id) => {
+    try {
+      build(id);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+function colorOf(mesh: THREE.Mesh): number | null {
+  const mat = mesh.material as THREE.Material & { color?: THREE.Color };
+  return mat.color ? mat.color.getHex() : null;
+}
+
+/** Flatten a rig into comparable node records (depth-first, stable order). */
+function nodes(root: THREE.Object3D): THREE.Object3D[] {
+  const out: THREE.Object3D[] = [];
+  root.traverse((o) => out.push(o));
+  return out;
+}
+
+function sameNode(a: THREE.Object3D, b: THREE.Object3D): void {
+  expect(b.type).toBe(a.type);
+  expect(b.name).toBe(a.name);
+  expect(b.children.length).toBe(a.children.length);
+  expect(b.position.toArray()).toEqual(a.position.toArray());
+  expect(b.rotation.toArray()).toEqual(a.rotation.toArray());
+  expect(b.scale.toArray()).toEqual(a.scale.toArray());
+  const ma = a as THREE.Mesh, mb = b as THREE.Mesh;
+  if (ma.isMesh) {
+    expect(mb.geometry.type).toBe(ma.geometry.type);
+    expect(JSON.stringify((mb.geometry as THREE.BufferGeometry & { parameters?: unknown }).parameters))
+      .toBe(JSON.stringify((ma.geometry as THREE.BufferGeometry & { parameters?: unknown }).parameters));
+    expect((mb.material as THREE.Material).type).toBe((ma.material as THREE.Material).type);
+  }
+}
+
+/** Near-white and near-black read as white/black at any hue: not a team cue. */
+const NEUTRAL_LIGHTNESS = (l: number): boolean => l >= 0.85 || l <= 0.15;
+
+/**
+ * Non-team materials that may sit near a team hue, each with its reason.
+ * Keyed "<cardId>:#rrggbb" (sRGB of the final material colour).
+ */
+const PALETTE_ALLOW: Record<string, string> = {
+  // Small unlit fire bits: they read as flame (glowing, flickering, a few
+  // pixels at phone size), never as a cloth or armour team cue.
+  "princess:#ff9a3c": "flame-arrow tip glow",
+  "wizard:#ff7a00": "fireball orb glow",
+  "balloon:#ffa000": "bomb fuse spark glow",
+  "balloon:#ff8a3c": "fire-kite brazier coals glow",
+  "balloon:#ffb300": "fire-kite fire-pot flame glow",
+};
+
+function hueDistance(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+function hueOf(hex: number): number {
+  const hsl = { h: 0, s: 0, l: 0 };
+  new THREE.Color().setHex(hex).getHSL(hsl, THREE.SRGBColorSpace);
+  return hsl.h * 360;
+}
+
+function lightnessOf(hex: number): number {
+  const hsl = { h: 0, s: 0, l: 0 };
+  new THREE.Color().setHex(hex).getHSL(hsl, THREE.SRGBColorSpace);
+  return hsl.l;
+}
+
+/**
+ * Team hues a body material must keep clear of, in BOTH palettes: a
+ * colour-blind player picks cb, so a body that reads as the cb enemy
+ * orange fails exactly the players who rely on it. Orange sits next to
+ * skin and gold, so its window is narrower and also bounded in lightness
+ * (pale skin and bright gold read as their own colours, not as the team
+ * orange). Its saturation floor is low because scene lighting pushes a
+ * mid tan (s 0.63 here) to a clear orange on screen. Blue and red keep
+ * the original wide hue-only window.
+ */
+function paletteTargets(): { hue: number; window: number; l: number; band: number; minS: number }[] {
+  const wide = (hex: number) => ({ hue: hueOf(hex), window: 15, l: 0.5, band: 1, minS: 0 });
+  const orange = TEAM.cb.enemy.main;
+  return [
+    wide(TEAM.default.player.main),
+    wide(TEAM.default.enemy.main),
+    wide(TEAM.cb.player.main),
+    { hue: hueOf(orange), window: 10, l: lightnessOf(orange), band: 0.18, minS: 0.6 },
+  ];
+}
+
+for (const edition of ["classic", "islamic"] as const) {
+  describe(`team identity (${edition} edition)`, () => {
+    it("routes through the right edition's builders", async () => {
+      const build = await editionBuilder(edition);
+      // The Islamic Giant is a four-legged war elephant.
+      expect(build("giant").legs?.length).toBe(edition === "classic" ? 2 : 4);
+    });
+
+    it("player and enemy rigs share one node tree and differ only on 'team' meshes", async () => {
+      const build = await editionBuilder(edition);
+      const ids = rigIds(build);
+      expect(ids.length).toBeGreaterThanOrEqual(DECK.filter((id) => getCard(id).kind === "troop").length);
+      for (const id of ids) {
+        const p = nodes(build(id, "player").group);
+        const e = nodes(build(id, "enemy").group);
+        expect(e.length, id).toBe(p.length);
+        let team = 0;
+        for (let i = 0; i < p.length; i++) {
+          sameNode(p[i], e[i]);
+          const mp = p[i] as THREE.Mesh, me = e[i] as THREE.Mesh;
+          if (!mp.isMesh) continue;
+          if (isTeamPart(mp)) {
+            team++;
+            const shade = mp.userData.team as TeamShade;
+            expect(me.userData.team).toBe(shade);
+            expect(colorOf(mp), `${id} player team part`).toBe(TEAM.default.player[shade]);
+            expect(colorOf(me), `${id} enemy team part`).toBe(TEAM.default.enemy[shade]);
+          } else {
+            expect(colorOf(me), `${id} non-team mesh ${mp.name || i}`).toBe(colorOf(mp));
+          }
+        }
+        expect(team, `${id} has a team part`).toBeGreaterThanOrEqual(1);
+      }
+    });
+
+    it("team parts stay separate meshes that never share a limb's material", async () => {
+      const build = await editionBuilder(edition);
+      for (const id of rigIds(build)) {
+        const mats = new Map<THREE.Material, string[]>();
+        build(id, "enemy").group.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh) return;
+          const list = mats.get(m.material as THREE.Material) ?? [];
+          list.push(o.name);
+          mats.set(m.material as THREE.Material, list);
+        });
+        for (const names of mats.values()) {
+          // A team material is owned by exactly one team mesh.
+          if (names.includes("team")) expect(names, id).toEqual(["team"]);
+        }
+      }
+    });
+
+    it("no body material sits near a team hue in either palette (palette audit)", async () => {
+      const build = await editionBuilder(edition);
+      const targets = paletteTargets();
+      const hits: string[] = [];
+      for (const id of rigIds(build)) {
+        build(id, "player").group.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh || isTeamPart(m) || o.name === "outline") return;
+          const mat = m.material as THREE.Material & { color?: THREE.Color };
+          if (!mat.color) return;
+          const hsl = { h: 0, s: 0, l: 0 };
+          mat.color.getHSL(hsl, THREE.SRGBColorSpace);
+          if (hsl.s <= 0.55 || NEUTRAL_LIGHTNESS(hsl.l)) return;
+          const h = hsl.h * 360;
+          const near = (t: (typeof targets)[number]) =>
+            hueDistance(h, t.hue) <= t.window && Math.abs(hsl.l - t.l) <= t.band && hsl.s >= t.minS;
+          if (!targets.some(near)) return;
+          const key = `${id}:#${mat.color.getHexString(THREE.SRGBColorSpace)}`;
+          if (!(key in PALETTE_ALLOW)) hits.push(`${key} (${o.name || "unnamed"}, h=${h.toFixed(0)})`);
+        });
+      }
+      expect(hits).toEqual([]);
+    });
+  });
+}
+
+describe("team identity (palette)", () => {
+  it("buildTroop defaults to the player side", () => {
+    const parts: number[] = [];
+    buildTroop("knight").group.traverse((o) => {
+      if (isTeamPart(o) && o.userData.team === "main") parts.push(colorOf(o as THREE.Mesh)!);
+    });
+    expect(parts.length).toBeGreaterThan(0);
+    expect(new Set(parts)).toEqual(new Set([TEAM.default.player.main]));
+  });
+
+  it("every side has a distinct main and dark shade in both palettes", () => {
+    for (const palette of ["default", "cb"] as const) {
+      for (const side of ["player", "enemy"] as Side[]) {
+        expect(TEAM[palette][side].main).not.toBe(TEAM[palette][side].dark);
+      }
+      expect(TEAM[palette].player.main).not.toBe(TEAM[palette].enemy.main);
+    }
   });
 });

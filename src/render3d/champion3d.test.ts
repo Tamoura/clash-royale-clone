@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import * as THREE from "three";
 import { DEFAULT_CHAMPION, type ChampionDef } from "../game/customcard";
 import { buildChampionRig, buildTroop } from "./characters3d";
+import { TEAM, isTeamPart, type TeamShade } from "./teamColors";
 
 function def(overrides: Partial<ChampionDef> = {}): ChampionDef {
   const base = structuredClone(DEFAULT_CHAMPION);
@@ -53,5 +55,38 @@ describe("buildChampionRig", () => {
   it("buildTroop dispatches the champion id", () => {
     const rig = buildTroop("champion");
     expect(rig.group.children.length).toBeGreaterThan(5);
+  });
+});
+
+describe("champion team colours", () => {
+  const teamColours = (rig: ReturnType<typeof buildChampionRig>): [TeamShade, number][] => {
+    const out: [TeamShade, number][] = [];
+    rig.group.traverse((o) => {
+      if (isTeamPart(o)) {
+        out.push([o.userData.team, ((o as THREE.Mesh).material as THREE.MeshToonMaterial).color.getHex()]);
+      }
+    });
+    return out;
+  };
+
+  it("the Studio preview defaults to the player side", () => {
+    const parts = teamColours(buildChampionRig(def()));
+    expect(parts.length).toBeGreaterThan(0);
+    for (const [shade, hex] of parts) expect(hex).toBe(TEAM.default.player[shade]);
+  });
+
+  it("an enemy champion wears the enemy colour on every team part", () => {
+    const parts = teamColours(buildChampionRig(def(), "enemy"));
+    expect(parts.length).toBeGreaterThan(0);
+    for (const [shade, hex] of parts) expect(hex).toBe(TEAM.default.enemy[shade]);
+  });
+
+  it("every headgear and weapon variant carries at least one team part", () => {
+    for (const headgear of ["none", "helmet", "hood", "crown", "horns", "turban"] as const) {
+      for (const weapon of ["sword", "axe", "hammer", "spear", "bow", "staff", "none"] as const) {
+        const rig = buildChampionRig(def({ look: { ...DEFAULT_CHAMPION.look, headgear, weapon } }));
+        expect(teamColours(rig).length).toBeGreaterThanOrEqual(1);
+      }
+    }
   });
 });

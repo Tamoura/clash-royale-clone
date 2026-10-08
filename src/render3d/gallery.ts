@@ -58,7 +58,7 @@ export function startGallery(container: HTMLElement, subject: string): void {
     outlineRig(rig.group);
     title = "Dagger Duchess";
   } else {
-    rig = buildTroop(subject as CardId); // throws on unknown/spell ids
+    rig = buildTroop(subject as CardId, "player"); // throws on unknown/spell ids
     title = getCard(subject as CardId).name;
   }
   if (rig.arm) rig.arm.rotation.x = rig.armRest;
