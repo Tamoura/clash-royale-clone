@@ -13,6 +13,7 @@ import { HitStopController } from "./hitstop";
 import { QualityGovernor, qualityPinFromUrl } from "./quality";
 import { lookForArena } from "./arenaLooks";
 import type { TroopRig } from "./characters3d";
+import { prewarmBakes } from "./rigBake";
 import type { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import type { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import type { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
@@ -568,6 +569,10 @@ export class Battle3D {
    * passed through to the view animation, which does not interpolate yet.
    */
   sync(state: BattleState, dt: number, alpha = 1): void {
+    if (state !== this.syncState) {
+      // A new battle: bake both decks' troop rigs now, while the countdown runs.
+      prewarmBakes([...state.player.hand.cards, ...state.player.hand.queue, ...state.enemy.hand.cards, ...state.enemy.hand.queue]);
+    }
     this.syncState = state;
     this.byId.clear();
     for (const e of state.entities) this.byId.set(e.id, e);

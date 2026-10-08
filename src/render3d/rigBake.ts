@@ -11,10 +11,11 @@
  *  - `team` parts (the teamPalette repaint targets them), merged per node
  *    into one mesh that keeps name "team": userData.team is "main", "dark" or
  *    "both" (the dark parts then read the material's teamDark colour);
- *  - the face (eye, pupil, brow, mouth): blinks, squints and KO eyes drive
- *    them by name. The sclera and its dark rim become one "eye" mesh and the
- *    two pupils one "pupil" mesh; both scale about the shared eye line, so a
- *    blink looks the same. Brows and mouth are recoloured in place;
+ *  - the face (eye, brow, mouth): blinks, squints, brows and KO eyes drive
+ *    them by name. The sclera, its dark rim and the pupils become one "eye"
+ *    mesh that scales about the shared eye line, so a blink looks the same
+ *    (a knocked-out unit keeps its pupils under the X eyes). Brows and mouth
+ *    are recoloured in place;
  *  - `orb`, anything with userData.noBake, hidden, transparent, emissive or
  *    double-sided parts, and any mesh whose material the animation drives.
  *
@@ -31,14 +32,15 @@
  * shared by reference (userData.shared) between every unit of the card.
  */
 import * as THREE from "three";
-import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { weldVertices } from "./weld";
 import { DEFAULT_ARCHETYPE, archetypeFor } from "./anim/archetypes";
-import { type AnimateOpts, GRAINLESS_UV, animateTroop, bakedToon, teamToon, unitBakedToon, type TroopRig } from "./characters3d";
+import { type AnimateOpts, GRAINLESS_UV, animateTroop, bakedToon, buildTroop, teamToon, unitBakedToon, type TroopRig } from "./characters3d";
 import { OUTLINE_MIN_RADIUS, ensureOutlineNormals, fitInk, outlineHull } from "./outlineMaterial";
 import { bake as bakeWorld } from "./staticBatch";
 import { ARABIC } from "./theme";
 import { TEAM_MESH } from "./teamColors";
-import type { CardId } from "../game/cards";
+import { type CardId, getCard } from "../game/cards";
 
 /** Names that never fold into a node's baked mesh. */
 const FACE_NAMES = new Set(["eye", "eyerim", "pupil", "brow", "mouth", "xeyes"]);
@@ -46,12 +48,21 @@ const KEEP_NAMES = new Set([TEAM_MESH, "orb", "ice", "outline", ...FACE_NAMES]);
 
 /** Mesh budget a baked troop must fit (outline hulls not counted). */
 export const MESH_BUDGET = 14;
+/**
+ * Small units (body radius at most SMALL_RADIUS: skeletons, bats, minions)
+ * are a few pixels tall at battle zoom, where a blink or a brow is under a
+ * pixel yet five face meshes cost five draws each. Their face parts bake in
+ * static, so they lose the blink, brow and mouth animation (and, with no face
+ * to find, shatter when they die instead of falling over).
+ */
+export const SMALL_RADIUS = 0.32;
+/** Cards that field this many units at once (the Skeleton Army's fifteen) also bake to SWARM_BUDGET meshes. */
+export const SWARM_COUNT = 6;
+export const SWARM_BUDGET = 5;
 /** Radians the stun daze rolls the head by (see views/animate.ts). */
 const HEAD_WOBBLE = 0.2;
 /** Nodes that travel farther than this (rig units, about 9 px) never fold away. */
 const FOLD_REACH_MAX = 0.45;
-/** Past this reach (the head wobble sits just under it) the pupil merge is tried before folding on. */
-const PUPIL_MERGE_REACH = 0.12;
 
 const EPS = 1e-6;
 
@@ -222,7 +233,7 @@ function auditRig(rig: TroopRig, list: THREE.Object3D[], arch: ReturnType<typeof
 // ---------------------------------------------------------------------------
 
 /**
- * team: merged per node. face: eye/rim/pupil pair up, brow and
+ * team: merged per node. face: eye/rim/pupil merge into one, brow and
  * mouth recolour in place. toon/basic: fold into the node's mesh (or, for a
  * node mesh, into itself). solo: stays a mesh, recoloured onto a shared
  * material. keep: untouched.
@@ -352,6 +363,22 @@ function cardOf(key: string): CardId | null {
   return id ? (id as CardId) : null;
 }
 
+/** How light this key bakes: small bodies (and tower crews) get static faces, swarms also a tighter budget. */
+function lodOf(key: string): { small: boolean; swarm: boolean } {
+  const id = cardOf(key);
+  // Tower crews are only ever posed by animateTroop; nothing blinks or knits
+  // their brows, so their faces can bake in static at no loss at all.
+  if (id?.startsWith("tower-")) return { small: true, swarm: false };
+  if (!id) return { small: false, swarm: false };
+  try {
+    const card = getCard(id);
+    if (card.kind !== "troop") return { small: false, swarm: false };
+    return { small: card.unit.radius <= SMALL_RADIUS, swarm: card.count >= SWARM_COUNT };
+  } catch {
+    return { small: false, swarm: false };
+  }
+}
+
 /** The archetype the views will pose this rig with (tower crews run the default). */
 function archetypeOfKey(key: string): ReturnType<typeof archetypeFor> {
   const id = cardOf(key);
@@ -371,7 +398,7 @@ function finish(list: THREE.BufferGeometry[]): THREE.BufferGeometry | null {
   const merged = mergeGeometries(list, false);
   for (const g of list) g.dispose();
   if (!merged) return null;
-  const welded = mergeVertices(merged);
+  const welded = weldVertices(merged);
   merged.dispose();
   welded.computeBoundingSphere();
   welded.computeBoundingBox();
@@ -446,7 +473,7 @@ function grainless(g: THREE.BufferGeometry): void {
 function localColoured(mesh: THREE.Mesh, flat: boolean): THREE.BufferGeometry {
   const g = bake(mesh, mesh.matrixWorld.clone().invert(), true);
   if (flat) grainless(g);
-  const out = mergeVertices(g);
+  const out = weldVertices(g);
   g.dispose();
   out.computeBoundingSphere();
   out.userData.shared = true;
@@ -549,7 +576,6 @@ interface Bucket {
   basic: Map<boolean, THREE.Mesh[]>;
   team: THREE.Mesh[];
   eyes: THREE.Mesh[];
-  pupils: THREE.Mesh[];
   solo: THREE.Mesh[];
   outline: THREE.Mesh[];
 }
@@ -595,18 +621,19 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
   for (const o of moving) addNode(o);
   for (const o of list) if (o.userData.animated) addNode(o);
   // The head turns and wobbles: the object the first eye hangs on.
+  const { small, swarm } = lodOf(key);
+  const budget = swarm ? SWARM_BUDGET : MESH_BUDGET;
   let head: THREE.Object3D | null = null;
-  for (const o of list) {
-    if ((o.name === "eye" || o.name === "eyerim") && o.parent && o.parent !== group) {
-      head = o.parent;
-      break;
+  if (!small) {
+    for (const o of list) {
+      if ((o.name === "eye" || o.name === "eyerim") && o.parent && o.parent !== group) {
+        head = o.parent;
+        break;
+      }
     }
   }
   addNode(head);
 
-  // Last resort for a rig still over budget: the pupils join the eye mesh
-  // (a knocked-out unit then shows them under its X eyes).
-  let pupilsIntoEyes = false;
   const twins = findTwins(nodes, plan.audit, index);
   for (const t of twins.keys()) nodes.delete(t);
 
@@ -621,7 +648,7 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
         if (o.name === TEAM_MESH) {
           // A team mesh that moves on its own stays as built.
           if (toonBakeable(mat) && !moving.has(o)) k = "team";
-        } else if (FACE_NAMES.has(o.name)) {
+        } else if (FACE_NAMES.has(o.name) && !small) {
           if (toonBakeable(mat)) k = "face";
         } else if (o.name === "orb" || (moving.has(o) && isNode)) {
           // Driven meshes keep their own transform; only the colour moves into
@@ -629,7 +656,7 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
           // with children carries them (isNode), a bare one just recolours.
           if (basicBakeable(mat)) k = "solo";
           else if (toonBakeable(mat) && o.name !== "orb") k = isNode ? "toon" : "solo";
-        } else if (!KEEP_NAMES.has(o.name)) {
+        } else if (!KEEP_NAMES.has(o.name) || (small && FACE_NAMES.has(o.name))) {
           if (toonBakeable(mat)) k = "toon";
           else if (basicBakeable(mat)) k = isNode ? "solo" : "basic";
         }
@@ -642,7 +669,7 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
     const bucketOf = (n: THREE.Object3D): Bucket => {
       let b = buckets.get(n);
       if (!b) {
-        b = { toon: [], basic: new Map(), team: [], eyes: [], pupils: [], solo: [], outline: [] };
+        b = { toon: [], basic: new Map(), team: [], eyes: [], solo: [], outline: [] };
         buckets.set(n, b);
       }
       return b;
@@ -679,7 +706,7 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
         }
         case "face":
           if (m.name === "eye" || m.name === "eyerim") b.eyes.push(m);
-          else if (m.name === "pupil") (pupilsIntoEyes ? b.eyes : b.pupils).push(m);
+          else if (m.name === "pupil") b.eyes.push(m); // the pupils ride in the eye mesh
           else b.solo.push(m);
           break;
         case "solo":
@@ -693,7 +720,7 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
     for (const [node, b] of buckets) {
       if (b.toon.length) count++;
       count += b.basic.size + (b.team.length ? 1 : 0) + b.solo.length;
-      for (const parts of [b.eyes, b.pupils]) {
+      for (const parts of [b.eyes]) {
         if (!parts.length) continue;
         const ok = pairable(node, parts);
         if (ok) for (const m of parts) removed.add(m);
@@ -711,19 +738,8 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
   let an = analyse(nodes);
   const foldOrder = [...nodes].filter((n) => n !== group).sort((a, b) => reachOf(a) - reachOf(b));
   let folded = 0;
-  // Cheapest saving after the head: the pupils join the eye mesh (a knocked-out
-  // unit then shows them under its X eyes). Only tried when over budget.
-  const tryPupils = (): void => {
-    if (pupilsIntoEyes || an.count <= MESH_BUDGET) return;
-    pupilsIntoEyes = true;
-    const trial = analyse(nodes);
-    if (trial.count < an.count) an = trial;
-    else pupilsIntoEyes = false;
-  };
   for (const n of foldOrder) {
-    if (an.count <= MESH_BUDGET) break;
-    if (reachOf(n) > PUPIL_MERGE_REACH) tryPupils();
-    if (an.count <= MESH_BUDGET) break;
+    if (an.count <= budget) break;
     if (reachOf(n) > FOLD_REACH_MAX) break; // beyond here the motion shows: keep it
     nodes.delete(n);
     const trial = analyse(nodes);
@@ -735,7 +751,6 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
       nodes.add(n); // folding it saves nothing (a bare moving mesh): keep it moving
     }
   }
-  tryPupils();
 
   // =====================  build products (no scene mutation)  =====================
   const toNode = (n: THREE.Object3D): THREE.Matrix4 => n.matrixWorld.clone().invert();
@@ -748,7 +763,7 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
   };
   const flat = (m: THREE.Mesh, owner: THREE.Object3D): boolean => {
     const mat = m.material as THREE.MeshToonMaterial;
-    return m === head || owner === head || mat.color.getHex() === SKIN_HEX || !mat.map;
+    return m === head || owner === head || mat.color.getHex() === SKIN_HEX || !mat.map || FACE_NAMES.has(m.name);
   };
 
   interface Face {
@@ -763,7 +778,6 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
     basic: [boolean, THREE.BufferGeometry][];
     team: { g: THREE.BufferGeometry; shade: string; host: boolean; part: unknown } | null;
     eye: Face | null;
-    pupil: Face | null;
     solo: [THREE.Mesh, THREE.BufferGeometry, THREE.Material | null][];
     outline: THREE.BufferGeometry | null;
   }
@@ -773,7 +787,7 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
     const ni = index.get(node)!;
     const inv = toNode(node);
     const carrier = isMeshObj(node) && an.kind.get(node) === "toon";
-    const out: Built = { node, toon: null, carrier, basic: [], team: null, eye: null, pupil: null, solo: [], outline: null };
+    const out: Built = { node, toon: null, carrier, basic: [], team: null, eye: null, solo: [], outline: null };
     // Outline: every static part big enough to read, welded into one hull.
     const hull = (): THREE.BufferGeometry | null => hullGeometry(b.outline, inv);
     if (b.toon.length) {
@@ -847,7 +861,7 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
       if (!meta) {
         meta = {
           spots: parts
-            .filter((m) => m.name === "eye" || (m.name === "pupil" && id.endsWith("pupil")))
+            .filter((m) => m.name === "eye")
             .map((m) => {
               m.geometry.computeBoundingSphere();
               const p = posIn(node, m);
@@ -859,8 +873,7 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
       for (const m of parts) mergedFace.add(m);
       return { g, y: y0, spots: meta.spots };
     };
-    out.eye = pairMesh(b.eyes, `${ni}:eye${pupilsIntoEyes ? "p" : ""}`);
-    out.pupil = pairMesh(b.pupils, `${ni}:pupil`);
+    out.eye = pairMesh(b.eyes, `${ni}:eye`);
     b.solo.forEach((m) => {
       const mat = m.material as THREE.Material;
       const basicMat = basicBakeable(mat);
@@ -876,7 +889,7 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
   const removed = an.removed;
   // Face parts that could not pair stay as they are.
   for (const b of an.buckets.values()) {
-    for (const m of [...b.eyes, ...b.pupils]) if (!mergedFace.has(m)) removed.delete(m);
+    for (const m of b.eyes) if (!mergedFace.has(m)) removed.delete(m);
   }
   // 1. Reattach survivors whose parent folds away, compensating the matrices.
   group.traverse((o) => o.updateMatrix());
@@ -951,10 +964,10 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
       mesh.receiveShadow = true;
       node.add(mesh);
     }
-    for (const [name, face] of [["eye", b.eye], ["pupil", b.pupil]] as const) {
-      if (!face) continue;
+    if (b.eye) {
+      const face = b.eye;
       const mesh = new THREE.Mesh(face.g, unit);
-      mesh.name = name;
+      mesh.name = "eye";
       mesh.position.y = face.y;
       mesh.userData.spots = face.spots;
       node.add(mesh);
@@ -972,7 +985,7 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
 }
 
 /**
- * Whether a node's mirrored face parts (eye + rim, or the pupils) can share
+ * Whether a node's mirrored face parts (eyes, rims and pupils) can share
  * one mesh: same height above the node's origin (blinks scale about it),
  * upright and unscaled.
  */
@@ -983,4 +996,53 @@ function pairable(node: THREE.Object3D, parts: THREE.Mesh[]): boolean {
     const e = new THREE.Euler().setFromQuaternion(m.quaternion);
     return Math.abs(e.x) + Math.abs(e.y) + Math.abs(e.z) < 1e-4 && Math.abs(m.scale.x - 1) + Math.abs(m.scale.y - 1) < 1e-4;
   });
+}
+
+// ---------------------------------------------------------------------------
+// Prewarm
+// ---------------------------------------------------------------------------
+
+const warmQueue: CardId[] = [];
+const warmed = new Set<string>();
+let warming = false;
+
+/**
+ * Bake cards ahead of their first deploy, one per timer tick, so the 30-80 ms
+ * a card's first bake costs lands in the countdown instead of mid-fight. Only
+ * troop cards are baked; each card once per edition.
+ */
+export function prewarmBakes(cards: readonly CardId[]): void {
+  const edition = ARABIC ? "arabic" : "normal";
+  for (const id of cards) {
+    if (warmed.has(`${id}:${edition}`) || warmQueue.includes(id)) continue;
+    try {
+      const card = getCard(id);
+      if (card.kind !== "troop" || id === "champion") continue;
+    } catch {
+      continue;
+    }
+    warmQueue.push(id);
+  }
+  if (!warming && warmQueue.length) {
+    warming = true;
+    setTimeout(pumpWarm, 0);
+  }
+}
+
+function pumpWarm(): void {
+  const id = warmQueue.shift();
+  if (!id) {
+    warming = false;
+    return;
+  }
+  const edition = ARABIC ? "arabic" : "normal";
+  try {
+    // The rig is thrown away: it never reached the GPU, so there is nothing to
+    // free, and the cached geometry is what the real units will share.
+    bakeRig(buildTroop(id, "player"), `${id}:player:${edition}:default`);
+    warmed.add(`${id}:${edition}`);
+  } catch {
+    // a card without a rig: nothing to warm
+  }
+  setTimeout(pumpWarm, 16);
 }

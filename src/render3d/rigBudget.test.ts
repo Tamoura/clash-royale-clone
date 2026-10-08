@@ -33,7 +33,7 @@ for (const edition of ["normal", "arabic"] as const) {
       vi.stubGlobal("localStorage", storage(edition));
       const { CARDS } = await import("../game/cards");
       const { buildTroop } = await import("./characters3d");
-      const { bakeRig, countMeshes, MESH_BUDGET } = await import("./rigBake");
+      const { bakeRig, countMeshes, MESH_BUDGET, SWARM_BUDGET } = await import("./rigBake");
       const { ARABIC } = await import("./theme");
       expect(ARABIC).toBe(edition === "arabic");
 
@@ -56,11 +56,24 @@ for (const edition of ["normal", "arabic"] as const) {
         // Ink rides inside the body or team meshes; only a node with neither
         // (glow parts alone) gets a hull mesh of its own.
         expect(hulls, `${card.id} separate hulls`).toBeLessThanOrEqual(2);
-        if (stats.parts > MESH_BUDGET || materials.size > 5) {
+        // A card that fields six or more units at once bakes lighter still.
+        const limit = card.count >= 6 ? SWARM_BUDGET : MESH_BUDGET;
+        if (stats.parts > limit || materials.size > 5) {
           report.push(`${card.id}: ${stats.parts} meshes (was ${before}), ${materials.size} materials`);
         }
       }
       expect(report, report.join("; ")).toEqual([]);
+    });
+
+    it("the Skeleton Army's fifteen units bake light: no face meshes, five meshes each", async () => {
+      vi.resetModules();
+      vi.stubGlobal("localStorage", storage(edition));
+      const { buildTroop } = await import("./characters3d");
+      const { bakeRig, countMeshes, SWARM_BUDGET } = await import("./rigBake");
+      const rig = buildTroop("skeleton-army", "player");
+      bakeRig(rig, `skeleton-army:player:${edition}:default`);
+      expect(countMeshes(rig.group, false)).toBeLessThanOrEqual(SWARM_BUDGET);
+      rig.group.traverse((o) => expect(["eye", "pupil", "brow", "mouth"]).not.toContain(o.name));
     });
 
     it("the Knight drops from its hand-built mesh count to the budget", async () => {

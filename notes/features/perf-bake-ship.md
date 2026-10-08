@@ -24,8 +24,16 @@ a baked one is at most `MESH_BUDGET` = 14 meshes and at most 5 materials.
   double-sided.
 - Over budget: lockstep legs (a mount's front pair) share a mesh exactly;
   then the nodes that move least fold into their parent (the head's stun
-  wobble first, then a tail or an ear); then the pupils join the eyes. A node
-  that travels more than 0.45 rig units never folds.
+  wobble first, then a tail or an ear). A node that travels more than 0.45 rig
+  units never folds.
+- Small bodies (radius <= 0.32: skeletons, bats, minions) and the tower crews
+  bake their faces in static: at that size a blink is under a pixel and five
+  face meshes are five draws. They lose the blink/brow/mouth animation and,
+  with no face to find, shatter instead of toppling. Cards that field six or
+  more units (the Skeleton Army) also bake to 5 meshes.
+- The first bake of a card costs 30-80 ms (a string-free vertex weld keeps it
+  there), so both decks' troop cards are baked one per timer tick when a
+  battle's first sync arrives (`prewarmBakes`); a deploy is then a cache hit.
 - Geometry and the audit are cached per card and edition and shared by
   reference (`userData.shared`), so `disposeDeep` skips them and every unit
   of a card draws from the same buffers. The Studio champion is never cached.

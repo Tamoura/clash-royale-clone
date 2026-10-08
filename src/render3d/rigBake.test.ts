@@ -3,8 +3,8 @@ import * as THREE from "three";
 import type { CardId } from "../game/cards";
 import { archetypeFor, setRigArchetype } from "./anim/archetypes";
 import { faceOf, poseFace } from "./anim/face";
-import { animateTroop, bakedToon, buildTroop, type TroopRig } from "./characters3d";
-import { bakeCacheSize, bakeRig, clearBakeCache, countMeshes, MESH_BUDGET } from "./rigBake";
+import { animateTroop, articulate, bakedToon, buildTowerCannoneer, buildTowerDuchess, buildTowerKing, buildTowerPrincess, buildTroop, type TroopRig } from "./characters3d";
+import { bakeCacheSize, bakeRig, clearBakeCache, countMeshes, MESH_BUDGET, prewarmBakes } from "./rigBake";
 import { collectFlashMats } from "./scene/views/troops";
 import { disposeDeep } from "./scene/common";
 import { ARABIC } from "./theme";
@@ -215,7 +215,7 @@ describe("bakeRig", () => {
     ];
     // Cards whose nodes all stay (a bake that folds a tail or an ear for the
     // budget is checked separately below).
-    for (const id of ["knight", "musketeer", "witch", "baby-dragon", "skeleton-army", "valkyrie", "wizard"] as CardId[]) {
+    for (const id of ["knight", "musketeer", "witch", "baby-dragon", "valkyrie", "wizard"] as CardId[]) {
       const raw = buildTroop(id, "player");
       const rig = baked(id);
       const arch = archetypeFor(id, { arabic: ARABIC });
@@ -234,7 +234,7 @@ describe("bakeRig", () => {
 
   it("folds only quiet nodes when it must: any drift stays under half a unit", () => {
     const pose = { moving: true, swing: 0, time: 2.1, phase: 0.4, stride: 2.9 };
-    for (const id of ["giant", "hog-rider", "ice-wizard", "prince", "pekka"] as CardId[]) {
+    for (const id of ["giant", "hog-rider", "ice-wizard", "prince", "pekka", "skeleton-army"] as CardId[]) {
       const raw = buildTroop(id, "player");
       const rig = baked(id);
       const arch = archetypeFor(id, { arabic: ARABIC });
@@ -259,5 +259,44 @@ describe("bakeRig", () => {
     rig.group.scale.setScalar(1.25);
     animateTroop(rig, { moving: false, swing: 0, time: 0.5, phase: 0 });
     expect(rig.group.scale.x).toBeCloseTo(1.25, 1);
+  });
+
+  it("prewarm bakes a deck's troop cards one per tick, so the first deploy finds them cached", async () => {
+    vi.useFakeTimers();
+    try {
+      expect(bakeCacheSize()).toBe(0);
+      prewarmBakes(["knight", "musketeer", "fireball", "champion", "knight"]); // a spell, the champion, a duplicate
+      expect(bakeCacheSize()).toBe(0); // nothing happens inside the call itself
+      await vi.advanceTimersByTimeAsync(0);
+      const afterOne = bakeCacheSize();
+      expect(afterOne).toBeGreaterThan(0);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(bakeCacheSize()).toBeGreaterThan(afterOne);
+      // A real deploy of a warmed card is now a cache hit (no new geometry).
+      const n = bakeCacheSize();
+      baked("knight");
+      baked("musketeer");
+      expect(bakeCacheSize()).toBe(n);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("bakes the tower crews too, with their (never animated) faces folded in", () => {
+    for (const [name, build] of [
+      ["princess", buildTowerPrincess],
+      ["cannoneer", buildTowerCannoneer],
+      ["duchess", buildTowerDuchess],
+      ["king", buildTowerKing],
+    ] as const) {
+      const rig = build();
+      articulate(rig);
+      const before = countMeshes(rig.group);
+      const stats = bakeRig(rig, `tower-${name}:player:${edition}:default`);
+      expect(stats.baked, name).toBe(true);
+      expect(stats.parts, name).toBeLessThanOrEqual(8);
+      expect(stats.after, name).toBeLessThan(before / 3);
+      rig.group.traverse((o) => expect(["eye", "pupil", "brow", "mouth"], name).not.toContain(o.name));
+    }
   });
 });
