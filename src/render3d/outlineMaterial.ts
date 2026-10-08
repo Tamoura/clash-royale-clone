@@ -95,10 +95,31 @@ export function fitInk(renderer: THREE.WebGLRenderer): void {
   if (shared) shared.uniformsNeedUpdate = true;
 }
 
+/**
+ * Baked geometries whose ink triangles sit after the body's in one index
+ * buffer, with the body's index count. With ink off the draw range stops at
+ * the body, so the hidden shell costs no vertex work at all.
+ */
+const inkGeometries = new Map<THREE.BufferGeometry, number>();
+let inkVisible = true;
+
+function applyInkRange(g: THREE.BufferGeometry, bodyCount: number): void {
+  g.setDrawRange(0, inkVisible ? Infinity : bodyCount);
+}
+
+/** Track a baked geometry whose first `bodyIndexCount` indices are the body. */
+export function registerInkGeometry(g: THREE.BufferGeometry, bodyIndexCount: number): void {
+  inkGeometries.set(g, bodyIndexCount);
+  applyInkRange(g, bodyIndexCount);
+  g.addEventListener("dispose", () => inkGeometries.delete(g));
+}
+
 /** Show or hide every outline at once (quality L4 turns them off). */
 export function setOutlinesVisible(on: boolean): void {
   outlineMaterial().visible = on;
   INK.uInkOn.value = on ? 1 : 0;
+  inkVisible = on;
+  for (const [g, n] of inkGeometries) applyInkRange(g, n);
 }
 
 /**

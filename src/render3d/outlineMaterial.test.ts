@@ -7,6 +7,7 @@ import {
   installInk,
   outlineHull,
   outlineMaterial,
+  registerInkGeometry,
   setOutlinesVisible,
   smoothedNormals,
 } from "./outlineMaterial";
@@ -75,5 +76,21 @@ describe("outline material", () => {
     expect(shader.vertexShader).toContain("gl_Position.xy +=");
     expect(shader.fragmentShader).toContain("uInkColor");
     expect(shader.uniforms.uInkPx).toBe(INK.uInkPx); // shared by reference
+  });
+});
+
+describe("ink draw range", () => {
+  it("stops at the body when outlines are off and disposes cleanly", () => {
+    const g = new THREE.BoxGeometry(1, 1, 1);
+    registerInkGeometry(g, 12);
+    expect(g.drawRange.count).toBe(Infinity);
+    setOutlinesVisible(false);
+    expect(g.drawRange.count).toBe(12);
+    setOutlinesVisible(true);
+    expect(g.drawRange.count).toBe(Infinity);
+    g.dispose();
+    setOutlinesVisible(false);
+    expect(g.drawRange.count).toBe(Infinity);
+    setOutlinesVisible(true);
   });
 });

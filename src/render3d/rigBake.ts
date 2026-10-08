@@ -36,7 +36,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { weldVertices } from "./weld";
 import { DEFAULT_ARCHETYPE, archetypeFor } from "./anim/archetypes";
 import { type AnimateOpts, GRAINLESS_UV, animateTroop, bakedToon, buildTroop, teamToon, unitBakedToon, type TroopRig } from "./characters3d";
-import { OUTLINE_MIN_RADIUS, ensureOutlineNormals, fitInk, outlineHull } from "./outlineMaterial";
+import { OUTLINE_MIN_RADIUS, ensureOutlineNormals, fitInk, outlineHull, registerInkGeometry } from "./outlineMaterial";
 import { bake as bakeWorld } from "./staticBatch";
 import { ARABIC } from "./theme";
 import { TEAM_MESH } from "./teamColors";
@@ -453,6 +453,7 @@ function withInk(
   const uv = new Float32Array(count * 2).fill(GRAINLESS_UV);
   h.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
   prepare?.(h);
+  const bodyIndexCount = body.index ? body.index.count : 0;
   const merged = mergeGeometries([body, h], false);
   body.dispose();
   h.dispose();
@@ -460,6 +461,7 @@ function withInk(
   merged.computeBoundingSphere();
   merged.computeBoundingBox();
   merged.userData.shared = true;
+  if (bodyIndexCount > 0 && merged.index) registerInkGeometry(merged, bodyIndexCount);
   return merged;
 }
 
