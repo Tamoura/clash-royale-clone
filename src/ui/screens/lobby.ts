@@ -2,11 +2,24 @@
 import type { AppCtx, LobbyOpts } from "../../app/ctx";
 import type { CardId } from "../../game/cards";
 import { RoomClient, type NetSocket } from "../../net/roomClient";
+import { resolveRelayUrl } from "../../net/relayUrl";
 import { netGameMode, onlineSession, startOnlineMatch } from "../../match/online";
 
-function connectRoom(): RoomClient {
-  const sock = new WebSocket(`ws://${location.hostname}:3110`) as unknown as NetSocket;
-  return new RoomClient(sock);
+/** The relay for this page: ?relay=, the build's VITE_RELAY_URL, or the LAN relay. */
+function relayTarget() {
+  let store: Storage | undefined;
+  try {
+    store = localStorage;
+  } catch {
+    /* storage blocked */
+  }
+  return resolveRelayUrl(location, { VITE_RELAY_URL: import.meta.env.VITE_RELAY_URL }, store);
+}
+
+function connectRoom(): RoomClient | null {
+  const url = relayTarget().url;
+  if (!url) return null;
+  return new RoomClient(new WebSocket(url) as unknown as NetSocket);
 }
 
 export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {}): void {
@@ -18,10 +31,16 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
 
   const hint = document.createElement("p");
   hint.className = "lobby-hint";
-  hint.innerHTML = tr(
-    `Mode: <b>${netGameMode(meta.gameMode).name}</b><br/>You both need to be on the same Wi-Fi.`,
-    `النمط: <b>${netGameMode(meta.gameMode).nameAr}</b><br/>يجب أن تكونا على شبكة الواي فاي نفسها.`,
-  );
+  const lan = relayTarget().lan;
+  hint.innerHTML = lan
+    ? tr(
+        `Mode: <b>${netGameMode(meta.gameMode).name}</b><br/>You both need to be on the same Wi-Fi.`,
+        `النمط: <b>${netGameMode(meta.gameMode).nameAr}</b><br/>يجب أن تكونا على شبكة الواي فاي نفسها.`,
+      )
+    : tr(
+        `Mode: <b>${netGameMode(meta.gameMode).name}</b><br/>Play a friend anywhere online.`,
+        `النمط: <b>${netGameMode(meta.gameMode).nameAr}</b><br/>العب مع صديق من أي مكان عبر الإنترنت.`,
+      );
   pickerRoot.appendChild(hint);
 
   const status = document.createElement("div");
@@ -82,8 +101,12 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
   createBtn.addEventListener("click", () => {
     if (client) return;
     status.textContent = tr("Connecting…", "جارٍ الاتصال…");
-    createBtn.disabled = true;
     const c = connectRoom();
+    if (!c) {
+      status.textContent = tr("Online play isn't set up for this page.", "اللعب عبر الإنترنت غير مفعّل لهذه الصفحة.");
+      return;
+    }
+    createBtn.disabled = true;
     wire(c);
     const netMode = netGameMode(meta.gameMode);
     const hostDeck = netMode.mirror ? ctx.botDeck() : deck;
@@ -95,8 +118,12 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
       status.textContent = tr("Type your friend's code first.", "اكتب رمز صديقك أولًا.");
       return;
     }
-    status.textContent = tr("Connecting…", "جارٍ الاتصال…");
     const c = connectRoom();
+    if (!c) {
+      status.textContent = tr("Online play isn't set up for this page.", "اللعب عبر الإنترنت غير مفعّل لهذه الصفحة.");
+      return;
+    }
+    status.textContent = tr("Connecting…", "جارٍ الاتصال…");
     wire(c);
     c.join(code, deck);
   });

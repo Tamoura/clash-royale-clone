@@ -21,7 +21,7 @@ function renderPortrait(id: CardId): HTMLCanvasElement | null {
       renderer.toneMappingExposure = 1.15;
     }
     const scene = new THREE.Scene();
-    const rig = buildTroop(id); // buildings reuse their troop-style rigs? no:
+    const rig = buildTroop(id, "player"); // the HUD shows your own cards
     outlineRig(rig.group);
     if (rig.arm) rig.arm.rotation.x = rig.armRest;
     animateTroop(rig, { moving: false, swing: 0, time: 0.6, phase: 0 });

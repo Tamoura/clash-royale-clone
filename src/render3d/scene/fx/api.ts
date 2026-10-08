@@ -1,13 +1,22 @@
 /**
  * The FX contract the rest of the scene talks to. Callers name a preset
- * ("dust", "smoke", ...) at an arena point and leave the look to whichever
- * implementation Battle3D carries in `fx`; ground decals (scorch, frost...)
- * go through the same seam. LegacyFx keeps today's look by mapping presets
- * onto the existing puff() and ignoring decals.
+ * ("dust", "smoke", ...) at an arena point and leave the look to the
+ * implementation Battle3D carries in `fx` (VfxPool, see pool.ts); ground
+ * decals (scorch, frost...) go through the same seam.
+ *
+ * Preset names other packages rely on: 'dust', 'smoke', 'smoke-column',
+ * 'chips', 'ring'; decal kind 'crater'. presets.ts lists the rest.
+ *
+ * LegacyFx is the wave-1 fallback, kept exported for callers that test
+ * `b.fx instanceof LegacyFx` to draw their own stand-ins; Battle3D no longer
+ * installs it, so that check is false in a running battle.
  */
 import type { Side } from "../../../game/arena";
 import type { Battle3D } from "../../scene3d";
 import { puff } from "./effects";
+
+/** Ground mark kinds: the public six plus the falling shadow and rune circle. */
+export type DecalKindName = "scorch" | "frost" | "crack" | "heal" | "crater" | "ring" | "shadow" | "rune";
 
 export interface FxApi {
   /** One-shot effect `preset` at arena tile (x, y). */
@@ -18,13 +27,7 @@ export interface FxApi {
     opts?: { z?: number; color?: number; radius?: number; count?: number; side?: Side },
   ): void;
   /** A ground mark of radius `r` tiles that fades over `life` seconds. */
-  decal(
-    kind: "scorch" | "frost" | "crack" | "heal" | "crater" | "ring",
-    x: number,
-    y: number,
-    r: number,
-    opts?: { color?: number; life?: number },
-  ): void;
+  decal(kind: DecalKindName, x: number, y: number, r: number, opts?: { color?: number; life?: number }): void;
   /** Advance by the presentation dt (called once per rendered frame). */
   update(dt: number): void;
   /** Drop everything in flight (battle restart). */
@@ -39,8 +42,8 @@ const PUFF_PRESETS: Record<string, { color: number; size: number }> = {
 };
 
 /**
- * Today's effects behind the FxApi: presets become puffs (timed effects the
- * Battle3D render loop already ages and clears), decals are not drawn.
+ * The wave-1 effects behind the FxApi: presets become puffs, decals are not
+ * drawn. Unused by Battle3D (initFx installs VfxPool); kept for compatibility.
  */
 export class LegacyFx implements FxApi {
   constructor(private readonly b: Battle3D) {}

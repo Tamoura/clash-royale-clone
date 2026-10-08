@@ -92,7 +92,7 @@ export function startOnlineMatch(
   client.onSync = (tick, checksum) => {
     const mine = session.sums.get(tick);
     if (mine !== undefined && mine !== checksum) {
-      showBanner("Connection out of sync");
+      showBanner(ctx.tr("Connection out of sync", "انقطع التزامن مع الخصم"), { priority: "phase" });
     }
   };
 

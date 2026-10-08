@@ -45,3 +45,82 @@ describe("disposeDeep (three-best-practices: memory-dispose)", () => {
     expect(geoSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("Battle3D.reset after shatter deaths", () => {
+  it("leaves no meshes behind and frees every shattered piece", async () => {
+    const { Battle3D } = await import("./scene3d");
+    const { beginDeath, updateTroopDeath } = await import("./scene/views/animate");
+    const { buildTroop } = await import("./characters3d");
+    const { HitStopController } = await import("./hitstop");
+    const { ShakeController } = await import("./shake");
+    type View = import("./scene/common").EntityView;
+
+    // A Battle3D without a GPU: only the fields reset() and the death
+    // animation touch (the constructor needs WebGL, which node lacks).
+    const scene = new THREE.Scene();
+    const fx = { emit: () => {}, decal: () => {}, update: () => {}, reset: () => {} };
+    const b = Object.assign(Object.create(Battle3D.prototype), {
+      scene,
+      fx,
+      views: new Map(),
+      effects: [],
+      dying: [],
+      ghost: null,
+      rubble: [],
+      projViews: new Map(),
+      hitStop: new HitStopController(),
+      shakeCtl: new ShakeController(),
+      sparks: { particles: [] },
+      sparkMesh: { count: 0 },
+      camera: new THREE.OrthographicCamera(),
+      syncState: { time: 3 },
+    }) as InstanceType<typeof Battle3D>;
+
+    const mats = new Set<THREE.Material>();
+    for (let i = 0; i < 6; i++) {
+      const rig = buildTroop("skeletons");
+      const root = new THREE.Group();
+      root.add(rig.group);
+      const hpGroup = new THREE.Group();
+      root.add(hpGroup);
+      root.position.set(i - 3, 0, 2);
+      scene.add(root);
+      rig.group.traverse((o) => {
+        const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+        if (m && !m.userData.shared) mats.add(m);
+      });
+      const view = {
+        root,
+        rig,
+        hpGroup,
+        hpFill: new THREE.Mesh(),
+        flashMats: [],
+        lastHp: 0,
+        flashT: 0,
+        spawnT: 1,
+        isTroop: true,
+        // A faceless skeleton (the classic edition's): it shatters.
+        anim: { cardId: "skeletons", face: null, recoilX: 1, recoilZ: 0, recoilAt: 3, blink: { seed: i } },
+      } as unknown as View;
+      beginDeath(b, view);
+    }
+    expect(b.dying.every((d) => d.anim?.motion === "shatter")).toBe(true);
+    expect(b.dying.reduce((n, d) => n + (d.anim?.parts?.length ?? 0), 0)).toBeGreaterThan(20);
+    // Mid-flight: pieces are scattered but still under their unit's root.
+    for (const d of b.dying) updateTroopDeath(d, 0.3, 0.05);
+    for (const d of b.dying) {
+      for (const p of d.anim!.parts!) expect(p.obj.parent).toBe(d.view.root);
+    }
+    const spies = [...mats].map((m) => vi.spyOn(m, "dispose"));
+
+    b.reset();
+
+    expect(b.dying.length).toBe(0);
+    let meshes = 0;
+    scene.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) meshes++;
+    });
+    expect(meshes).toBe(0);
+    for (const s of spies) expect(s).toHaveBeenCalled();
+  });
+});

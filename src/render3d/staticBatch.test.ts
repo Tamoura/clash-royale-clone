@@ -81,4 +81,143 @@ describe("static batching", () => {
       expect(n.z).toBeGreaterThan(0);
     }
   });
+
+  it("skips noBatch subtrees", () => {
+    const root = new THREE.Group();
+    const mat = new THREE.MeshBasicMaterial();
+    const flag = new THREE.Group();
+    flag.userData.noBatch = true;
+    flag.add(new THREE.Mesh(new THREE.BoxGeometry(), mat), new THREE.Mesh(new THREE.BoxGeometry(), mat));
+    root.add(flag, new THREE.Mesh(new THREE.BoxGeometry(), mat), new THREE.Mesh(new THREE.BoxGeometry(), mat));
+    batchStatic(root, () => false);
+    expect(meshCount(flag)).toBe(2);
+    expect(meshCount(root)).toBe(3);
+  });
+});
+
+describe("tinted batching", () => {
+  it("merges parts that differ only in colour and keeps each colour per vertex", () => {
+    const root = new THREE.Group();
+    const colors = [0xff0000, 0x00ff00, 0x0000ff];
+    colors.forEach((c, i) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshToonMaterial({ color: c }));
+      m.position.x = i * 3;
+      root.add(m);
+    });
+    expect(batchStatic(root, () => false, { tint: true })).toBe(2);
+    const merged = root.children[0] as THREE.Mesh;
+    const mat = merged.material as THREE.MeshToonMaterial;
+    expect(mat.vertexColors).toBe(true);
+    expect(mat.color.getHex()).toBe(0xffffff);
+    const pos = merged.geometry.getAttribute("position");
+    const col = merged.geometry.getAttribute("color");
+    expect(col.count).toBe(pos.count);
+    // Every vertex keeps the colour of the box it came from.
+    for (let i = 0; i < pos.count; i++) {
+      const box = Math.round(pos.getX(i) / 3);
+      const want = new THREE.Color(colors[box]);
+      expect(col.getX(i)).toBeCloseTo(want.r);
+      expect(col.getY(i)).toBeCloseTo(want.g);
+      expect(col.getZ(i)).toBeCloseTo(want.b);
+    }
+  });
+
+  it("carries shader hooks over to the merged material and leaves the originals alone", () => {
+    const root = new THREE.Group();
+    const shared = new THREE.MeshToonMaterial({ color: 0x884422 });
+    const hook = (): void => undefined;
+    shared.onBeforeCompile = hook;
+    shared.customProgramCacheKey = () => "rim";
+    const other = new THREE.MeshToonMaterial({ color: 0x224488 });
+    other.onBeforeCompile = hook;
+    other.customProgramCacheKey = () => "rim";
+    const keep = new THREE.Mesh(new THREE.BoxGeometry(), shared);
+    keep.userData.noBatch = true;
+    root.add(keep, new THREE.Mesh(new THREE.BoxGeometry(), shared), new THREE.Mesh(new THREE.BoxGeometry(), other));
+    batchStatic(root, () => false, { tint: true });
+    const merged = root.children.find((c) => c.name === "batched") as THREE.Mesh;
+    const mat = merged.material as THREE.MeshToonMaterial;
+    expect(mat).not.toBe(shared);
+    expect(mat.onBeforeCompile).toBe(hook);
+    expect(mat.customProgramCacheKey()).toBe("rim");
+    expect(shared.color.getHex()).toBe(0x884422); // the unbatched part still uses it
+    expect(shared.vertexColors).toBe(false);
+  });
+
+  it("still keeps different textures apart", () => {
+    const root = new THREE.Group();
+    const tex = new THREE.Texture();
+    root.add(
+      new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshToonMaterial({ color: 0xff0000, map: tex })),
+      new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshToonMaterial({ color: 0x00ff00, map: tex })),
+      new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshToonMaterial({ color: 0x0000ff })),
+    );
+    batchStatic(root, () => false, { tint: true });
+    expect(meshCount(root)).toBe(2);
+  });
+});
+
+describe("root-local batching (rigs)", () => {
+  /** A tiny rig: torso parts on the body, an arm group with two parts, a head with an eye. */
+  function rig(): { body: THREE.Group; arm: THREE.Group; head: THREE.Mesh; eye: THREE.Mesh; outline: THREE.Material } {
+    const body = new THREE.Group();
+    const outline = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide });
+    const part = (color: number, x: number, y: number): THREE.Mesh => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), new THREE.MeshToonMaterial({ color }));
+      m.position.set(x, y, 0);
+      const hull = new THREE.Mesh(m.geometry, outline);
+      hull.name = "outline";
+      hull.scale.setScalar(1.075);
+      m.add(hull);
+      return m;
+    };
+    body.add(part(0xff0000, 0, 0.3), part(0x00ff00, 0, 0.7));
+    const head = part(0xffcc99, 0, 1.2);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05), new THREE.MeshBasicMaterial());
+    eye.name = "eye";
+    head.add(eye);
+    body.add(head);
+    const team = part(0x3b82f6, 0.3, 0.5);
+    team.name = "team";
+    body.add(team);
+    const arm = new THREE.Group();
+    arm.position.set(0.4, 0.8, 0);
+    const shoulder = part(0xffcc99, 0, 0);
+    shoulder.name = "joint-shoulder"; // articulate()'s balls move with their limb
+    arm.add(part(0xffcc99, 0, -0.1), part(0x888888, 0, -0.4), shoulder);
+    body.add(arm);
+    return { body, arm, head, eye, outline };
+  }
+
+  it("merges each node's own parts and outline hulls, never across groups", () => {
+    const { body, arm, head, eye } = rig();
+    const before = worldBox(body);
+    batchStatic(body, () => false, { tint: true, local: true });
+    const direct = (g: THREE.Object3D, name: string) => g.children.filter((c) => c.name === name).length;
+    // body: one merged torso + one merged hull; the head (has an eye) and the team part stay.
+    expect(direct(body, "batched")).toBe(1);
+    expect(direct(body, "outline")).toBe(1);
+    expect(head.parent).toBe(body);
+    expect(eye.parent).toBe(head);
+    expect(body.getObjectByName("team")).toBeDefined();
+    // The arm is still its own group, with its two parts merged inside it.
+    expect(arm.parent).toBe(body);
+    expect(direct(arm, "batched")).toBe(1);
+    expect(direct(arm, "outline")).toBe(1);
+    expect(meshCount(arm)).toBe(2);
+    const after = worldBox(body);
+    expect(after.min.distanceTo(before.min)).toBeLessThan(1e-5);
+    expect(after.max.distanceTo(before.max)).toBeLessThan(1e-5);
+  });
+
+  it("keeps the arm's parts moving with the arm", () => {
+    const { body, arm } = rig();
+    batchStatic(body, () => false, { tint: true, local: true });
+    const merged = arm.children.find((c) => c.name === "batched")!;
+    const a = worldBox(merged);
+    arm.rotation.x = Math.PI / 2;
+    body.updateMatrixWorld(true);
+    const b = worldBox(merged);
+    expect(b.max.z - b.min.z).toBeGreaterThan(a.max.z - a.min.z + 0.2);
+  });
 });
