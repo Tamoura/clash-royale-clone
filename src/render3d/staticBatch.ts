@@ -80,7 +80,7 @@ function eligible(o: THREE.Object3D): o is THREE.Mesh {
 }
 
 /** A world-baked, non-indexed position/normal/uv copy of `mesh`'s geometry. */
-function bake(mesh: THREE.Mesh, toRoot: THREE.Matrix4, tint = false): THREE.BufferGeometry {
+export function bake(mesh: THREE.Mesh, toRoot: THREE.Matrix4, tint = false): THREE.BufferGeometry {
   const src = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", src.getAttribute("position"));
@@ -91,11 +91,21 @@ function bake(mesh: THREE.Mesh, toRoot: THREE.Matrix4, tint = false): THREE.Buff
     "uv",
     src.getAttribute("uv") ?? new THREE.BufferAttribute(new Float32Array(count * 2), 2),
   );
+  // An outline hull's extrusion directions ride along (rotated like normals).
+  const ink = src.getAttribute("outlineNormal");
+  if (ink) g.setAttribute("outlineNormal", ink);
   TMP.multiplyMatrices(toRoot, mesh.matrixWorld);
   g.applyMatrix4(TMP);
+  if (ink) {
+    const nm = new THREE.Matrix3().getNormalMatrix(TMP);
+    const inkOut = g.getAttribute("outlineNormal") as THREE.BufferAttribute;
+    for (let i = 0; i < inkOut.count; i++) {
+      inkOut.setXYZ(i, ...new THREE.Vector3().fromBufferAttribute(inkOut, i).applyMatrix3(nm).normalize().toArray());
+    }
+  }
   // A mirrored transform flips the triangle winding; flip it back.
   if (TMP.determinant() < 0) {
-    for (const name of ["position", "normal", "uv"]) {
+    for (const name of ink ? ["position", "normal", "uv", "outlineNormal"] : ["position", "normal", "uv"]) {
       const attr = g.getAttribute(name) as THREE.BufferAttribute;
       const n = attr.itemSize;
       const arr = attr.array as Float32Array;

@@ -4,6 +4,7 @@ import type { Side } from "../game/arena";
 import { getCard, CARDS, DECK, type CardId } from "../game/cards";
 import { animateTroop, buildTroop, toon } from "./characters3d";
 import { TEAM, isTeamPart, type TeamShade } from "./teamColors";
+import { INK, OUTLINE_CSS_PX, fitInk, outlineMaterial } from "./outlineMaterial";
 
 const TROOP_IDS = DECK.filter((id) => getCard(id).kind === "troop");
 
@@ -142,19 +143,36 @@ describe("cel outlines", () => {
     }
   });
 
-  it("outlines are bold — thick and near-black — for the CR cartoon look", () => {
+  it("outlines are bold, constant-width and near-black for the CR cartoon look", () => {
     let outline: THREE.Mesh | null = null;
     buildTroop("knight").group.traverse((o) => {
       if (o.name === "outline" && !outline) outline = o as THREE.Mesh;
     });
     expect(outline).not.toBeNull();
     const o = outline as unknown as THREE.Mesh;
-    expect(o.scale.x).toBeGreaterThanOrEqual(1.07);
-    expect(o.scale.x).toBeLessThan(1.09); // strong silhouette without swallowing details
-    const mat = o.material as THREE.MeshBasicMaterial;
-    expect(mat.color.r).toBeLessThan(0.08); // near-black, not navy
-    expect(mat.color.g).toBeLessThan(0.08);
-    expect(mat.color.b).toBeLessThan(0.08);
+    // Not scaled up any more: the width is a clip-space extrusion in screen px.
+    expect(o.scale.x).toBe(1);
+    expect(OUTLINE_CSS_PX).toBeGreaterThanOrEqual(1.5); // 1.5-2.5 CSS px on screen
+    expect(OUTLINE_CSS_PX).toBeLessThanOrEqual(2.5);
+    const mat = o.material as THREE.ShaderMaterial;
+    expect(mat).toBe(outlineMaterial()); // one shared material for every unit
+    expect(mat.side).toBe(THREE.BackSide);
+    expect(mat.userData.shared).toBe(true);
+    const ink = mat.uniforms.uColor.value as THREE.Color;
+    expect(ink.r).toBeLessThan(0.08); // near-black, not navy
+    expect(ink.g).toBeLessThan(0.08);
+    expect(ink.b).toBeLessThan(0.08);
+    expect(o.geometry.getAttribute("outlineNormal")).toBeDefined();
+  });
+
+  it("the hull's line stays 2 CSS px wide at any device pixel ratio", () => {
+    const fake = (w: number, h: number, dpr: number) =>
+      ({ getDrawingBufferSize: (v: THREE.Vector2) => v.set(w, h), getPixelRatio: () => dpr }) as unknown as THREE.WebGLRenderer;
+    fitInk(fake(780, 1688, 2));
+    expect(INK.uInkPx.value).toBeCloseTo(OUTLINE_CSS_PX * 2);
+    expect(INK.uInkViewport.value.x).toBe(780);
+    fitInk(fake(585, 1266, 1.5));
+    expect(INK.uInkPx.value).toBeCloseTo(OUTLINE_CSS_PX * 1.5);
   });
 
   it("outlines are skipped for tiny detail meshes", () => {
