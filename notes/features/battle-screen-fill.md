@@ -29,36 +29,55 @@ against a verbatim copy, plus golden values).
 
 ## The layout (`src/ui/layout.ts`, `src/ui/layoutWire.ts`)
 
-`battleLayout(w, h, safeArea)` picks one of two modes. `layoutWire.ts`
-applies it only while a battle is on screen (`closeDeckPicker` /
-`showPicker` call `setBattle`): `:root[data-layout]`, `--side`, `--field-w`
-for the CSS, and the matching framing for the camera.
+`battleLayout(w, h, safeArea)` builds both candidates (`tallLayout`,
+`wideLayout`) from the stylesheet's own numbers and keeps the one that draws
+the bigger board (`tile`, CSS px per tile). `layoutWire.ts` applies it only
+while a battle is on screen (`closeDeckPicker` / `showPicker` call
+`setBattle`): `:root[data-layout]`, `[data-side]` (narrow under 240px),
+`[data-panel]` (stacked / inline), `--side`, `--field-w`, `--card-w`,
+`--hand-cols`, `--hand-w` for the CSS, and the matching framing for the
+camera. Keep the constants at the top of `layout.ts` in step with
+`styles/hud.css`.
 
-- **wide** when two side panels of at least 176px (`SIDE_MIN`) fit beside a
-  full-height board (0.7425 x the height, plus an 8px gap each side). The
-  board is then height-bound and centred; the hand is a 2x2 panel on the
-  right (Next + elixir under it), the clock, menu, scores, King and chat on
-  the left. Panels are at most 320px and hug the board (`--hug`). The camera
-  insets are exactly the panels, so they never cover a tile.
-- **tall** otherwise (phones, portrait tablets, near-square windows): the
-  board spans the width under the floating scoreboard band, the tray below.
-  The band inset is measured at the bottom of the chips, clock and menu (not
-  the topbar's fade padding) and kept as a high-water mark per match, so the
-  board never jumps when the clock turns into "OVERTIME". The hand is capped
-  at 480px, and tablets and short phones (`min-width: 600px` or
-  `min-aspect-ratio: 47/100`) get a one-row band (names hidden under 600px;
-  under 600px the row also tightens and "OVERTIME 1:59" drops to 14px, 12px
-  under 340px, so the menu button stays on screen; the band keeps its
-  height, so the board does not move).
+- **wide**: two side panels, the hand on the right, the clock, menu, scores,
+  King and chat on the left. When both panels (at least 176px, `SIDE_MIN`)
+  fit beside a full-height board (0.7425 x the height, plus an 8px gap each
+  side) the board is height-bound and centred; panels are at most 320px and
+  hug the board (`--hug`). On narrower windows (near-square and small
+  landscape ones) the panels keep 176px and the board gives up height
+  instead (width-bound between them), so the board shrinks smoothly as a
+  window narrows: no cliff at a threshold. The camera insets are the panels
+  plus their gaps, so they never cover a tile. Panels of 240px and up keep
+  the 2x2 hand with Next beside the elixir bar; narrower ones take whichever
+  arrangement gives the biggest cards (a 2x2 or one tall column, Next beside
+  the bar or on its own row on top so the bar gets the full width), with the
+  cards sized for the panel's height and the safe area (`handPanelHeight`).
+- **tall** (phones, portrait tablets): the board spans the width under the
+  floating scoreboard band, the tray below. The band inset is measured at
+  the bottom of the chips, clock and menu (not the topbar's fade padding)
+  and kept as a high-water mark per match. The hand row is `--hand-w`: the
+  screen's width, at most 560px, and short enough that a card is at most 16%
+  of the screen's height. Tablets and short phones (`min-width: 600px` or
+  `min-aspect-ratio: 47/100`) get a one-row band; under 600px it shows only
+  the opponent's name (as much as fits), the clock loses its "TIME LEFT"
+  caption and overtime shows OVERTIME over the time, so the row always fits
+  and keeps its height. King and the chat bubble sit small and low on the
+  tray's edge, over the board's near corners; the canvas's no-op click
+  listener keeps the browser's touch adjustment from pulling taps on the
+  board beside them onto them.
 - Menus: the column is `min(100vw, max(52vh, 420px))`, so landscape phones
   get a usable home screen. Between battles the HUD keeps its layout but is
   hidden: its floating Next, King and chat would show through the home
   screen's window onto the arena.
+- Narrow side panels (under 240px) tighten the clock, and in overtime show
+  OVERTIME over the time instead of "TIME LEFT", so the menu stays in the
+  panel.
 - Wide extras: the card tooltip opens beside the panel, the emote tray opens
   sideways (never over King), the online RTT pip follows the left panel, the
   sandbox and replay buttons sit mid-height in the left panel, the
   tutorial coach docks at the screen's top or bottom over the board, and a
-  soft edge shade hides the bare world past the stands in some arenas.
+  soft edge shade (ending where the board's column starts) hides the bare
+  world past the stands in some arenas.
 - King is `position: fixed` inside `#hud` in wide mode: never put a
   `transform` or `filter` on `#app` or `#hud`.
 
@@ -79,16 +98,22 @@ battle. Software-GL frame time at 1440x900@2 rose in step with the pixels
 
 ## Sizes (CSS px per tile, before -> after)
 
-| Viewport | Mode | Tile | Board share of screen |
+| Viewport | Mode | Tile | Hand card width |
 |---|---|---|---|
-| 390x844 phone | tall | 19.6 -> 21.1 | 51% -> 59% |
-| 360x740 phone | tall, one-row band | 17.2 -> 18.7 | 49% -> 57% |
-| 375x667 iPhone SE | tall, one-row band | 14.7 -> 15.8 | 37% -> 43% |
-| 820x1180 iPad Air | tall, one-row band | 30.5 -> 33.6 | 42% -> 51% |
-| 844x390 landscape phone | wide | 7.3 -> 14.6 | 7% -> 28% |
-| 1180x820 iPad landscape | wide | 19.4 -> 30.6 | 17% -> 42% |
-| 1440x900 desktop | wide | 21.9 -> 33.6 | 16% -> 38% |
-| 1920x1080 | wide | 27.4 -> 40.3 | 16% -> 34% |
+| 390x844 phone | tall | 19.6 -> 21.1 | 84 |
+| 360x740 phone | tall, one-row band | 17.2 -> 18.7 | 76 |
+| 375x667 iPhone SE | tall, one-row band | 14.7 -> 15.8 | 80 |
+| 820x1180 iPad Air | tall, one-row band | 30.5 -> 32.6 | 136 -> 126 |
+| 568x320 iPhone SE landscape | wide (176px panels) | 5.7 -> 10.1 | 59, 2x2 |
+| 667x375 landscape phone | wide | 7.0 -> 14.0 | 64, 2x2 |
+| 844x390 landscape phone | wide | 7.3 -> 14.6 | 85, 2x2 |
+| 800x600 window | wide (176px panels) | 12.6 -> 21.7 | 68, one column |
+| 850x700 window | wide (176px panels) | 15.7 -> 24.2 | 87, one column |
+| 1000x1000 window | wide (176px panels) | 24.9 -> 31.8 | 130, one column |
+| 1024x768 | wide | 17.8 -> 28.7 | 99, one column |
+| 1180x820 iPad landscape | wide | 19.4 -> 30.6 | 110, 2x2 |
+| 1440x900 desktop | wide | 21.9 -> 33.6 | 131, 2x2 |
+| 1920x1080 | wide | 27.4 -> 40.3 | 131, 2x2 |
 
 Verify with `node tools/visual-sheet.mjs --view 1440x900` (or any WxH[@dpr])
 and `node tools/perf-budget.mjs --view 1440x900@2`; in the dev build
