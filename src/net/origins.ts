@@ -8,7 +8,7 @@
  * per-IP caps are what stop those.)
  *
  * A socket is allowed when any of these holds:
- *   - ALLOWED_ORIGINS is "*" (the dev default);
+ *   - ALLOWED_ORIGINS is "*" (the default for a relay-only dev server);
  *   - its Origin is listed in ALLOWED_ORIGINS, or is one of the server's own
  *     public URLs (RENDER_EXTERNAL_URL on Render);
  *   - its Origin names the same host the socket connected to (the Host
@@ -42,16 +42,16 @@ export function originOf(raw: string | null | undefined): string | null {
 }
 
 /**
- * The policy from ALLOWED_ORIGINS (comma list; unset means "*" in dev and
- * PRODUCTION_DEFAULT_ORIGINS in production) plus the server's own public
+ * The policy from ALLOWED_ORIGINS (comma list; unset means "*", or
+ * PRODUCTION_DEFAULT_ORIGINS when `strict`) plus the server's own public
  * URLs (e.g. RENDER_EXTERNAL_URL), which are always allowed.
  */
 export function originPolicy(
   raw: string | undefined,
-  production: boolean,
+  strict: boolean,
   selfUrls: readonly (string | undefined)[] = [],
 ): OriginPolicy {
-  const listed = (raw ?? (production ? PRODUCTION_DEFAULT_ORIGINS : "*"))
+  const listed = (raw ?? (strict ? PRODUCTION_DEFAULT_ORIGINS : "*"))
     .split(",")
     .map((s) => s.trim().replace(/\/+$/, ""))
     .filter(Boolean);
@@ -67,6 +67,24 @@ export function originPolicy(
     if (norm) allowed.add(norm);
   }
   return { any: listed.includes("*"), allowed: [...allowed] };
+}
+
+/** The relay environment variables the origin policy reads. */
+export interface OriginEnv {
+  ALLOWED_ORIGINS?: string;
+  NODE_ENV?: string;
+  RENDER_EXTERNAL_URL?: string;
+}
+
+/**
+ * The relay's policy. With ALLOWED_ORIGINS unset, only a relay-only server
+ * outside production lets any site in. A server that also hands out the
+ * game (`npm start` on any host, whatever NODE_ENV says) only accepts its
+ * own pages and PRODUCTION_DEFAULT_ORIGINS, so a forgotten NODE_ENV never
+ * opens it to every website. ALLOWED_ORIGINS="*" still opens it on purpose.
+ */
+export function relayOriginPolicy(env: OriginEnv, servesGame: boolean): OriginPolicy {
+  return originPolicy(env.ALLOWED_ORIGINS, env.NODE_ENV === "production" || servesGame, [env.RENDER_EXTERNAL_URL]);
 }
 
 /** A Host-header value: a host name or [IPv6], optionally with a port. */

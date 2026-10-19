@@ -9,8 +9,8 @@
 // game itself (server/static.ts), so one process at one address is the whole
 // online deploy: `npm run build:all && npm start`, Render, the Dockerfile.
 //
-// Dev:   npm run relay                 (runs this file through vite-node)
-// Prod:  npm run build:relay && npm run relay:prod   (bundled dist-server/relay.mjs)
+// Dev:   npm run relay                 (vite-node, relay only)
+// Prod:  npm run build:relay && npm run relay:prod   (bundled dist-server/relay.mjs, relay only)
 // Both:  npm run build:all && npm start               (game + relay on $PORT)
 import { createServer, type IncomingMessage } from "node:http";
 import { randomBytes, randomInt } from "node:crypto";
@@ -19,20 +19,13 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { RoomHub, type Outbound } from "../src/net/rooms";
 import { makeCodeGen } from "../src/net/codewords";
-import { originAllowed, originPolicy } from "../src/net/origins";
+import { originAllowed, relayOriginPolicy } from "../src/net/origins";
 import { PROTOCOL_VERSION, type ErrorReason, type ServerMsg } from "../src/net/protocol";
 import { MAX_MESSAGE_BYTES, isParseError, parseClientMsg, playableCardIds } from "../src/net/validate";
 import { openStaticSite } from "./static";
 
 const env = process.env;
 const PORT = Number(env.PORT ?? env.RELAY_PORT ?? 3110);
-const PRODUCTION = env.NODE_ENV === "production";
-/**
- * Page origins allowed to connect (src/net/origins.ts): the ALLOWED_ORIGINS
- * comma list ("*" allows any), the service's own public URL on Render
- * (RENDER_EXTERNAL_URL), and always a page from this server's own host.
- */
-const ORIGINS = originPolicy(env.ALLOWED_ORIGINS, PRODUCTION, [env.RENDER_EXTERNAL_URL]);
 const MAX_CONN_PER_IP = Number(env.MAX_CONN_PER_IP ?? 8);
 /**
  * Where the client IP comes from behind a proxy. "1": the right-most
@@ -41,19 +34,24 @@ const MAX_CONN_PER_IP = Number(env.MAX_CONN_PER_IP ?? 8);
  * edge proxy sets itself, e.g. "fly-client-ip", "cf-connecting-ip" or
  * "true-client-ip". Unset or "0": the socket address.
  *
- * On Render (RENDER_EXTERNAL_URL is set) the default is "true-client-ip":
- * Render's edge overwrites that header with the real client address, while
- * X-Forwarded-For keeps whatever the client sent and ends in Render's own
- * internal proxy, so "1" would lump every player under one address.
+ * On Render (RENDER_EXTERNAL_URL is set) the default is "true-client-ip".
+ * Render's edge has been observed to overwrite that header with the real
+ * client address (Render does not document it), while X-Forwarded-For keeps
+ * whatever the client sent and ends in Render's own internal proxy, so "1"
+ * would lump every player under one address. If the header ever goes
+ * missing, clientIp() falls back to the socket address: every player then
+ * shares one budget (see "Check the per-player limits" in the deploy guide).
  */
 const TRUST_PROXY = (env.TRUST_PROXY ?? (env.RENDER_EXTERNAL_URL ? "true-client-ip" : "")).trim().toLowerCase();
 /**
  * The built game to serve next to the relay. Unset: the dist/ folder beside
  * this file's folder (the repo's dist/ for both server/relay.ts and
- * dist-server/relay.mjs), used only when it holds an index.html. "off":
- * relay only.
+ * dist-server/relay.mjs), used only when it holds an index.html. "off", or
+ * the --relay-only flag (`npm run relay`, `npm run relay:prod`): relay only,
+ * even when an old dist/ is lying around.
  */
-const STATIC_DIR = (env.STATIC_DIR ?? "").trim();
+const RELAY_ONLY = process.argv.slice(2).includes("--relay-only");
+const STATIC_DIR = RELAY_ONLY ? "off" : (env.STATIC_DIR ?? "").trim();
 const QUICK_MATCH = env.QUICK_MATCH !== "off";
 /** "debug" adds client IPs and per-message detail; never on by default. */
 const LOG_LEVEL = env.LOG_LEVEL === "debug" ? "debug" : "info";
@@ -250,6 +248,18 @@ const site =
 if (!site && STATIC_DIR && STATIC_DIR.toLowerCase() !== "off") {
   log("warn", "static-missing", { dir: STATIC_DIR, hint: "no index.html there; run npm run build:all" });
 }
+
+/**
+ * Page origins allowed to connect (src/net/origins.ts): the ALLOWED_ORIGINS
+ * comma list ("*" allows any), the service's own public URL on Render
+ * (RENDER_EXTERNAL_URL), and always a page from this server's own host.
+ * Left unset, it allows every site only on a relay-only server outside
+ * NODE_ENV=production; a server that hands out the game takes its own pages.
+ */
+const ORIGINS = relayOriginPolicy(
+  { ALLOWED_ORIGINS: env.ALLOWED_ORIGINS, NODE_ENV: env.NODE_ENV, RENDER_EXTERNAL_URL: env.RENDER_EXTERNAL_URL },
+  site !== null,
+);
 
 /** The request path, parsed so "//x" stays a path (not a host). */
 function requestUrl(req: IncomingMessage): URL {

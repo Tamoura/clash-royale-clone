@@ -65,8 +65,9 @@ console.log("\n" + "=".repeat(46));
 console.log("  Clash Royale — LAN 1v1 is ready!");
 console.log("  On each kid's device (same WiFi), open:");
 console.log(`\n      http://${ip}:${VITE_PORT}\n`);
-console.log("  One taps 'Play a Friend' → Create, reads the code");
-console.log("  aloud; the other taps Join and types it in.");
+console.log("  Tap the sliders row under Battle → Play online");
+console.log("  → Play a friend. One taps Create a game and reads");
+console.log("  the code aloud; the other types it and taps Join.");
 console.log("=".repeat(46) + "\n");
 
 function shutdown() {

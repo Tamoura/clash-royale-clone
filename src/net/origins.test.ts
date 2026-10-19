@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { originAllowed, originOf, originPolicy } from "./origins";
+import { originAllowed, originOf, originPolicy, relayOriginPolicy } from "./origins";
 
 describe("originPolicy", () => {
   it("defaults to any origin in dev and the local dev page in production", () => {
@@ -71,6 +71,46 @@ describe("originAllowed", () => {
     // Garbage Host headers never match.
     expect(originAllowed("https://a.example", ["a.example/evil", "a.example@b", " "], prod)).toBe(false);
     expect(originAllowed("https://a.example", [undefined, []], prod)).toBe(false);
+  });
+});
+
+describe("relayOriginPolicy", () => {
+  const evil = "https://evil.example";
+
+  it("lets any site use a relay-only server outside production (LAN, dev, tunnels)", () => {
+    for (const NODE_ENV of [undefined, "development", ""]) {
+      const p = relayOriginPolicy({ NODE_ENV }, false);
+      expect(p.any).toBe(true);
+      expect(originAllowed(evil, ["relay.example"], p)).toBe(true);
+    }
+  });
+
+  it("serving the game means own pages only, even with NODE_ENV unset (plain npm start)", () => {
+    for (const NODE_ENV of [undefined, "development", "production"]) {
+      const p = relayOriginPolicy({ NODE_ENV }, true);
+      expect(p.any).toBe(false);
+      expect(originAllowed(evil, ["my-game.example"], p)).toBe(false);
+      expect(originAllowed("https://my-game.example", ["my-game.example"], p)).toBe(true);
+      expect(originAllowed("http://192.168.1.20:3110", ["192.168.1.20:3110"], p)).toBe(true);
+      expect(originAllowed("http://localhost:3101", ["localhost:3110"], p)).toBe(true);
+    }
+  });
+
+  it("production is strict for a relay-only server too", () => {
+    const p = relayOriginPolicy({ NODE_ENV: "production" }, false);
+    expect(p.any).toBe(false);
+    expect(originAllowed(evil, ["relay.fly.dev"], p)).toBe(false);
+  });
+
+  it("ALLOWED_ORIGINS always wins, and RENDER_EXTERNAL_URL is always allowed", () => {
+    expect(relayOriginPolicy({ ALLOWED_ORIGINS: "*" }, true).any).toBe(true);
+    const p = relayOriginPolicy(
+      { ALLOWED_ORIGINS: "https://tamoura.github.io", RENDER_EXTERNAL_URL: "https://cr.onrender.com" },
+      true,
+    );
+    expect(p.any).toBe(false);
+    expect(p.allowed).toEqual(expect.arrayContaining(["https://tamoura.github.io", "https://cr.onrender.com"]));
+    expect(p.allowed).not.toContain("http://localhost:3101");
   });
 });
 

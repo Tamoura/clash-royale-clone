@@ -33,15 +33,15 @@ this service on the Free plan.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/tamoura/clash-royale-clone/tree/claude/game-visuals-character-balance-w122wb)
 
-Render reads `render.yaml` from the repository and shows one service,
+Or paste this into your browser: `https://render.com/deploy?repo=https://github.com/tamoura/clash-royale-clone/tree/claude/game-visuals-character-balance-w122wb`
+
+Render reads `render.yaml` from that branch and shows one service,
 `clash-royale-clone`, on the **Free** plan. Type any Blueprint name and
 click **Deploy Blueprint** (or **Apply**).
 
-> If the button says it cannot find `render.yaml`, Render looked at the
-> `main` branch, which does not have it yet. Same result by hand: dashboard
-> → **New → Blueprint** → connect `tamoura/clash-royale-clone` → **Branch:**
-> `claude/game-visuals-character-balance-w122wb` → **Deploy Blueprint**.
-> Once this work is merged into `main`, the button works as it is.
+> If Render cannot find `render.yaml`, the branch on GitHub does not have it
+> yet: push this work to `claude/game-visuals-character-balance-w122wb` first.
+> By hand: **New → Blueprint** → `tamoura/clash-royale-clone` → that branch.
 
 **3. Wait for the first build** (about 5–10 minutes). When the service says
 **Live**, its address is at the top of its page (Render may add a few letters
@@ -49,9 +49,10 @@ if the name is taken). `https://<your-address>/healthz` should say
 `{"ok":true,...}`, and `https://<your-address>` is the game.
 
 **4. Play.** Both kids open the same address, on any network, and tap the
-sliders button under **Battle** → **Play online** → **Play a friend**. One
-taps **Create a game** and reads the code aloud (or sends the invite link,
-which joins by itself). The other types the code and taps **Join**.
+sliders row under **Battle** → **Play online** → **Play a friend**. One taps
+**Create a game** and reads the code aloud (or sends the invite link, which
+joins by itself). The other types the code and taps **Join**. If **Play
+online** is greyed out, take the Champion out of the deck (bot battles only).
 
 Good to know about the free plan:
 
@@ -84,6 +85,7 @@ npm run build:all   # the game (dist/) + the relay bundle (dist-server/)
 npm start           # game and relay on $PORT (default 3110): http://localhost:3110
 ```
 
+It only lets in pages from its own address (add others with `ALLOWED_ORIGINS`).
 Behind a host's HTTPS proxy, set `TRUST_PROXY` ([section (h)](#h-configuration-reference)).
 The `Dockerfile` builds the same thing for container hosts.
 
@@ -119,8 +121,7 @@ The `Dockerfile` builds the same thing for container hosts.
 * **Small traffic.** A frame is about 60–80 bytes and each side sends 30 per
   second: **about 1 MB per player** for a 3-minute match.
 * **Single instance.** Rooms, codes and the quick-match queue live in the
-  relay's memory. Two relay copies would not see each other's rooms. Always
-  run exactly **one** relay.
+  relay's memory, unseen by any other copy: run exactly **one** relay.
 * **One box or two.** On Render (or `npm start`, or the Docker image) the
   relay also serves the page, so both boxes above are the same server. GitHub
   Pages hosts only static files and cannot run the relay, so the Pages copy
@@ -140,8 +141,7 @@ missing or out of date. It then starts the game on port 3101 and the relay on
 port 3110, and prints a link like `http://192.168.1.20:3101`. Open that link
 on each device on the same Wi-Fi. It works on Node 20 and Node 22.
 
-* One player taps **Play a Friend → Create a game** and reads the code aloud.
-* The other taps **Join** and types it in.
+Then play as in [step 4 of the Render section](#easiest-one-click-on-render).
 
 On a plain `http://` page the game connects to `ws://<same host>:3110` by
 itself. If a device cannot connect, allow Node through your computer's
@@ -176,8 +176,7 @@ https://tamoura.github.io/clash-royale-clone/?relay=wss://quiet-river-1234.trycl
 * Use `wss://` (not `https://`) and keep `/ws` at the end.
 * The game remembers the relay on that device, so later visits need no
   `?relay=`. Open `?relay=clear` once to forget it.
-* Check it from your computer:
-  `node tools/relay-smoke.mjs wss://quiet-river-1234.trycloudflare.com/ws`
+* Check it: `node tools/relay-smoke.mjs wss://quiet-river-1234.trycloudflare.com/ws`
 * The address changes every time you restart `cloudflared`.
 * Through the tunnel every player shares your computer's IP limits (8
   sockets). For more devices, start the relay with
@@ -224,12 +223,8 @@ real secrets. Its settings live in `fly.toml` under `[env]`:
   TRUST_PROXY = "fly-client-ip"                   # the client IP header Fly's edge sets
 ```
 
-To change a value without committing it, use a Fly secret (also passed to
-the program as an environment variable):
-
-```sh
-fly secrets set ALLOWED_ORIGINS="https://tamoura.github.io,http://localhost:3101"
-```
+To change one without a commit, use a Fly secret (it reaches the relay as an
+environment variable too): `fly secrets set ALLOWED_ORIGINS="https://tamoura.github.io,http://localhost:3101"`.
 
 **5. Deploy as ONE machine**
 
@@ -256,9 +251,8 @@ The smoke test needs `--origin`, because the relay only accepts pages from
 `ALLOWED_ORIGINS` and from its own address. Without it you get
 `FAIL … HTTP 403`, which also proves the origin check works.
 
-Your relay address is `wss://clash-royale-clone-relay.fly.dev/ws`. Try it with
-`https://tamoura.github.io/clash-royale-clone/?relay=wss://clash-royale-clone-relay.fly.dev/ws`,
-then bake it into the page.
+Your relay is `wss://clash-royale-clone-relay.fly.dev/ws`. Try it with
+`https://tamoura.github.io/clash-royale-clone/?relay=wss://clash-royale-clone-relay.fly.dev/ws`, then bake it into the page.
 
 ---
 
@@ -378,13 +372,13 @@ socket glue would need rewriting. Not needed at kid-and-friends scale.
 | ------------------ | --------------- | ----------------------------------------- | ------------ |
 | `PORT`             | relay env       | `RELAY_PORT`, else `3110`                 | Port to listen on. Hosts usually set this (Render uses 10000); the Docker image uses 8080. |
 | `RELAY_PORT`       | relay env       | `3110`                                    | Older name for the port; `PORT` wins if both are set. |
-| `ALLOWED_ORIGINS`  | relay env       | `*`, or `http://localhost:3101` when `NODE_ENV=production` | Comma list of extra page origins (`https://host`, no path) allowed to connect; `*` allows any. Others get HTTP 403. A page from the relay's own host is always allowed. |
+| `ALLOWED_ORIGINS`  | relay env       | `http://localhost:3101`; `*` for a relay-only server without `NODE_ENV=production` | Comma list of extra page origins (`https://host`, no path) allowed to connect; `*` allows any. Others get HTTP 403. A page from the relay's own host is always allowed. |
 | `RENDER_EXTERNAL_URL` | set by Render | none                                    | The service's public address. It is always an allowed origin, and its presence makes `TRUST_PROXY` default to `true-client-ip`. |
-| `STATIC_DIR`       | relay env       | the `dist/` beside the relay's folder     | Folder of the built game to serve at `/` (used when it has an `index.html`). `off` serves only the relay. |
+| `STATIC_DIR`       | relay env       | the `dist/` beside the relay's folder     | Folder of the built game to serve at `/` (used when it has an `index.html`). `off`, or the `--relay-only` flag that `npm run relay:prod` passes, serves only the relay. |
 | `MAX_CONN_PER_IP`  | relay env       | `8`                                       | Open sockets per client IP. Raise it if a whole school shares one IP. |
-| `TRUST_PROXY`      | relay env       | off (`true-client-ip` on Render)          | Where the per-IP limits get the client IP behind a proxy. `1` = the right-most `X-Forwarded-For` entry (the one your proxy appended), for Caddy or nginx. Any other value names a header the edge sets itself: `true-client-ip` on Render, `fly-client-ip` on Fly, `cf-connecting-ip` behind Cloudflare. Leave it off when nothing sits in front of the relay, or clients could pick their own IP. |
+| `TRUST_PROXY`      | relay env       | off (`true-client-ip` on Render)          | Where the per-IP limits get the client IP behind a proxy. `1` = the right-most `X-Forwarded-For` entry (the one your proxy appended), for Caddy or nginx. Any other value names a header the edge sets itself: `true-client-ip` on Render (observed; Render does not document it, see [(j)](#j-operations-and-cost)), `fly-client-ip` on Fly, `cf-connecting-ip` behind Cloudflare. Leave it off when nothing sits in front of the relay, or clients could pick their own IP. |
 | `QUICK_MATCH`      | relay env       | on                                        | `off` disables the quick-match queue; codes still work. |
-| `NODE_ENV`         | relay env       | unset                                     | `production` tightens the default `ALLOWED_ORIGINS`. |
+| `NODE_ENV`         | relay env       | unset                                     | `production` tightens the default `ALLOWED_ORIGINS` of a relay-only server too. |
 | `LOG_LEVEL`        | relay env       | `info`                                    | `debug` adds IPs and invalid-message detail. Use it briefly. |
 | `VITE_RELAY_URL`   | page build env  | unset (`same-origin` in `npm run build:all`) | Relay baked into the page: a `wss://` address (from the `RELAY_URL` repo variable), or `same-origin` for the server the page came from. |
 | `?relay=`          | page link       | none                                      | Per-device override, remembered; `?relay=clear` forgets it. Only `ws://` and `wss://` are accepted. |
@@ -421,11 +415,18 @@ The page and the relay must speak the same protocol. `PROTOCOL_VERSION` in
 * **Logs:** Render's **Logs** tab, `fly logs`, or your host's log view. Each
   line is one JSON event (`connect`, `create`, `match-start`, `refused`, …).
   IPs are not logged at the default level.
+* **Check the per-player limits once (Render).** They read `True-Client-IP`,
+  which Render's edge sets (observed; Render does not document it). Add
+  `LOG_LEVEL` = `debug` under **Environment**, open the game on two networks
+  (Wi-Fi and mobile data), and compare the `ip` of the two `connect-ip` lines
+  in **Logs**. If it is the same, every player shares one limit: set
+  `MAX_CONN_PER_IP` to `50`. Then delete `LOG_LEVEL`.
 * **Restarts and deploys** end matches in progress. Players see "server
   restart" and can start a new game. Deploy when nobody is playing.
 * **Memory:** a room keeps its match's frames so a dropped player can catch
   up: about 1 MB per 3-minute match, at most 4 MB before the 12-minute
-  expiry. The served game adds up to 20 MB. 256 MB is plenty.
+  expiry. The served game adds about 50 MB (the files plus their compressed
+  copies). 256 MB is plenty.
 * **Cost:** Render's free plan and the Cloudflare tunnel cost nothing. On Fly,
   one `shared-cpu-1x` 256 MB machine is about $2/month if it never sleeps,
   cents with `auto_stop_machines`. Prices change: see
@@ -444,18 +445,18 @@ The page and the relay must speak the same protocol. `PROTOCOL_VERSION` in
 * **No accounts and no storage.** The relay keeps nothing on disk and logs
   no IP addresses by default. Resume tokens are random, sent only to their
   owner, and forgotten with the room.
-* **Only your pages may connect** in production: the relay's own address
-  and `ALLOWED_ORIGINS`. Rate limits and connection caps stop spam. Quick
-  match pairs anyone on the same server; set `QUICK_MATCH=off` to allow
-  only code games.
+* **Only your pages may connect** when the server hands out the game, and
+  in production: its own address and `ALLOWED_ORIGINS`. Rate limits and
+  connection caps stop spam. Quick match pairs anyone on the same server;
+  set `QUICK_MATCH=off` to allow only code games.
 
 ---
 
 ## (l) Troubleshooting
 
-**Render build failed.** Open the deploy's log. A red `npm ci` step usually
-means a temporary network problem: click **Manual Deploy → Deploy latest
-commit**. If `tsc` or a test failed, the code on the branch has an error.
+**Render build failed.** Open the deploy's log. A red `npm ci` step is usually
+a network hiccup: **Manual Deploy → Deploy latest commit**. If `tsc` or `vite
+build` failed, the branch has an error; the last good version keeps running.
 
 **"Couldn't reach the game server" right away, on the Pages site.**
 Mixed content: an `https://` page may not open a `ws://` socket. Use a `wss://`

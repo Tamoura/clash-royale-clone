@@ -31,6 +31,16 @@ describe("multiplayer docs", () => {
     for (const name of used) expect(scripts, `npm run ${name}`).toContain(name);
   });
 
+  it("keep the relay scripts relay-only and npm start serving the game", () => {
+    // A leftover dist/ must not turn `npm run relay:prod` (the tunnel path,
+    // any origin allowed) into a game server that only takes its own pages.
+    const pkgScripts = (JSON.parse(pkgRaw) as { scripts: Record<string, string> }).scripts;
+    expect(pkgScripts.relay).toMatch(/server\/relay\.ts --relay-only$/);
+    expect(pkgScripts["relay:prod"]).toMatch(/dist-server\/relay\.mjs --relay-only$/);
+    expect(pkgScripts.start).not.toContain("--relay-only");
+    expect(relaySource).toContain('includes("--relay-only")');
+  });
+
   it("list only settings the code reads", () => {
     const vars = configTableVars(deployDoc);
     expect(vars).toEqual(

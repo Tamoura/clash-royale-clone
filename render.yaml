@@ -1,6 +1,7 @@
 # Render Blueprint: the whole game AND its multiplayer relay as ONE free web
 # service at one address (https://<name>.onrender.com). Kids open that
-# address, tap Play a Friend, and play; nothing else to wire up.
+# address, tap the sliders row under Battle → Play online → Play a friend,
+# and play; nothing else to wire up.
 # Step by step: docs/deploy-multiplayer.md, "Easiest: one click on Render".
 #
 # Runtime: Render's native Node runtime rather than Docker. The build is the
@@ -46,9 +47,10 @@ services:
         value: "22"
       - key: NODE_ENV
         value: production
-      # Render's edge overwrites True-Client-IP with the real client address
-      # (X-Forwarded-For keeps whatever the client sent, then ends in Render's
-      # own proxy), so the per-player limits use this header.
+      # Render's edge sets True-Client-IP to the real client address (observed;
+      # Render does not document it). X-Forwarded-For keeps whatever the client
+      # sent, then ends in Render's own proxy, so the per-player limits use
+      # this header. How to check it once: the deploy guide, section (j).
       - key: TRUST_PROXY
         value: true-client-ip
       # This service's own page is always allowed. This also lets the GitHub
