@@ -854,6 +854,11 @@
 :root[data-layout="wide"] #hud.v2::before {
   display: none;
 }
+/* The Islamic edition's teal-and-gold tray, as a panel. */
+:root[data-edition="arabic"][data-layout="wide"] #hud.v2 {
+  background: var(--ar-khatam), linear-gradient(180deg, rgba(22, 128, 126, 0.95) 0%, rgba(14, 95, 102, 0.95) 40%, rgba(10, 61, 74, 0.96) 100%);
+  border-color: #caa23f;
+}
 :root[data-layout="wide"] #hud.v2 .hand-row {
   grid-area: hand;
   grid-template-columns: repeat(2, var(--card-w));
