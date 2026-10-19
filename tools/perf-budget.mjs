@@ -4,7 +4,7 @@
 //
 //   node tools/perf-budget.mjs [--url http://127.0.0.1:3101] [--edition arabic]
 //                              [--arena <id>] [--max-calls N] [--max-empty-calls N]
-//                              [--chrome <path>]
+//                              [--view WxH[@dpr]] [--chrome <path>]
 //
 // {"empty":{calls,triangles,geometries,textures},"fight":{...}}
 // Enforced budgets (exit code 2 when exceeded): the 12-card fight may draw
@@ -36,6 +36,9 @@ const limit = (name, fallback) => {
 const MAX_FIGHT_CALLS = limit("max-calls", 450);
 const MAX_EMPTY_CALLS = limit("max-empty-calls", 220);
 const CHROME = opt("chrome", process.env.CHROME_PATH ?? "/opt/pw-browsers/chromium");
+// --view 1440x900@2: the viewport (default: a phone at 2x).
+const [, vw = "390", vh = "844", vd = "2"] = /^(\d+)x(\d+)(?:@([\d.]+))?$/.exec(opt("view", "")) ?? [];
+const VIEW = { width: Number(vw), height: Number(vh), deviceScaleFactor: Number(vd) };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // The same 12 cards every run, spread over both lanes so they meet mid-field.
@@ -70,7 +73,7 @@ const errors = [];
 let result = null;
 try {
   const page = await browser.newPage();
-  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
+  await page.setViewport(VIEW);
   await page.evaluateOnNewDocument((edition) => {
     localStorage.setItem("cr-clone-arena-theme", edition);
     localStorage.setItem("cr-clone-tutored", "1");

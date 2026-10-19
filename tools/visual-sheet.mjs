@@ -9,7 +9,7 @@
 //
 // Options: --out <dir>  --baseline <dir>  --url <running dev server>
 //          --only <arena id,...>  --edition clash|arabic  --chrome <path>
-//          (or CHROME_PATH)
+//          (or CHROME_PATH)  --view WxH[@dpr] (default 390x844, a phone)
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import puppeteer from "puppeteer-core";
@@ -24,7 +24,8 @@ const BASELINE = opt("baseline", null);
 const ONLY = opt("only", null)?.split(",");
 const EDITION = opt("edition", "clash") === "arabic" ? "arabic" : "normal";
 const CHROME = opt("chrome", process.env.CHROME_PATH ?? "/opt/pw-browsers/chromium");
-const VIEW = { width: 390, height: 844, deviceScaleFactor: 1 };
+const [, vw = "390", vh = "844", vd = "1"] = /^(\d+)x(\d+)(?:@([\d.]+))?$/.exec(opt("view", "")) ?? [];
+const VIEW = { width: Number(vw), height: Number(vh), deviceScaleFactor: Number(vd) };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Same line-up every run so shots are comparable.
@@ -79,7 +80,8 @@ async function startBattle(page) {
     )
     .catch(() => null);
   if (start) await start.evaluate((b) => b.click());
-  await page.waitForFunction(() => window.__cr.phase() === "playing", { timeout: 30000 });
+  // Generous: software GL draws a full-screen desktop battle at a few frames a second.
+  await page.waitForFunction(() => window.__cr.phase() === "playing", { timeout: 120000 });
   await page.evaluate(
     (player, enemy) => {
       for (const [id, x, y] of player) window.__cr.spawn("player", id, x, y);
