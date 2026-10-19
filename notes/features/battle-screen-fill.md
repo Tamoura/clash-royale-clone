@@ -56,6 +56,7 @@ for the CSS, and the matching framing for the camera.
   screen's window onto the arena.
 - Wide extras: the card tooltip opens beside the panel, the emote tray opens
   sideways (never over King), the online RTT pip follows the left panel, the
+  sandbox and replay buttons sit mid-height in the left panel, the
   tutorial coach docks at the screen's top or bottom over the board, and a
   soft edge shade hides the bare world past the stands in some arenas.
 - King is `position: fixed` inside `#hud` in wide mode: never put a
