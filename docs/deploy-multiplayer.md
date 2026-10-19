@@ -60,9 +60,9 @@ Good to know about the free plan:
   match in progress keeps it awake.
 * **Updates are automatic.** Every push to the branch rebuilds and restarts
   the server (docs-only pushes are skipped), which ends matches in progress.
-  To update only when you choose: **Settings → Auto-Deploy → Off**, then
-  **Manual Deploy → Deploy latest commit** when nobody is playing.
-* **Limits:** 750 free hours a month (enough to never sleep) and a limited
+  To update only when you choose, set `autoDeployTrigger: "off"` in
+  `render.yaml`, then use **Manual Deploy → Deploy latest commit**.
+* **Limits:** 750 free hours a month (enough to run all month) and a limited
   amount of outbound traffic (5 GB a month when this was written). A first
   visit downloads about 0.5 MB (3 MB more with the optional `?models=kaykit`
   3D models); return visits mostly use the device's cache. With a card on
