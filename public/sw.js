@@ -15,6 +15,25 @@
 const BUILD_ID = "__BUILD_ID__";
 const CACHE = `cr-clone-${BUILD_ID}`;
 const ASSETS = new URL("assets/", self.registration.scope).pathname;
+/** Only the game's own index.html holds this (src/app/sw.test.ts checks it). */
+const SHELL_MARK = "<title>Clash Royale Clone</title>";
+
+/**
+ * Keep a navigation response as the offline shell only when it is the game's
+ * page. The server that hands out the game also answers /healthz (JSON), and
+ * a sleeping host may answer with its own wake-up page or an error page:
+ * caching any of those would show it instead of the game when offline.
+ */
+function keepShell(res) {
+  const type = res.headers.get("content-type") || "";
+  if (!res.ok || !type.includes("text/html")) return Promise.resolve();
+  const probe = res.clone();
+  const copy = res.clone();
+  return probe
+    .text()
+    .then((html) => (html.includes(SHELL_MARK) ? caches.open(CACHE).then((cache) => cache.put("./", copy)) : undefined))
+    .catch(() => undefined);
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -42,8 +61,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(req)
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((cache) => cache.put("./", copy));
+          keepShell(res);
           return res;
         })
         .catch(() => caches.match("./")),
