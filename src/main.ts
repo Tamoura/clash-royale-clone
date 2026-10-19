@@ -1065,6 +1065,11 @@ function tryDeployAt(clientX: number, clientY: number): void {
 scene.renderer.domElement.addEventListener("pointerup", (ev) => {
   tryDeployAt(ev.clientX, ev.clientY);
 });
+// A click listener (a no-op) makes the board a tap target to the browser's
+// touch adjustment, which otherwise pulls a fingertip tap on the board next
+// to the chat bubble or King onto that button (on phones the board spans
+// the screen's width, so they float over its near corners).
+scene.renderer.domElement.addEventListener("click", () => {});
 
 // Show the ghost wherever the pointer goes while a card is selected
 // (window-level so a drag started on a hand card previews immediately).

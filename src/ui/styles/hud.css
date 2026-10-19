@@ -795,6 +795,26 @@
   margin-inline: auto;
   box-sizing: border-box;
 }
+/* The board spans the width, so King and the chat bubble float over its
+   near corners: keep them small and low (docked on the tray's edge) so they
+   cover as few deploy tiles as they can, and taps beside them still land on
+   the board. */
+:root[data-layout="tall"] #hud.v2 .hud-ability {
+  width: 46px;
+  height: 46px;
+  bottom: calc(100% + 2px);
+}
+:root[data-layout="tall"] #hud.v2 .hud-ability-icon .ui-icon {
+  width: 22px;
+  height: 22px;
+}
+:root[data-layout="tall"] .hud-v2 .emote-bar {
+  bottom: 2px;
+}
+:root[data-layout="tall"] .hud-v2 .emote-bar .emote-toggle {
+  width: 44px;
+  height: 44px;
+}
 /* Height-bound portrait screens (tablets, short phones): a one-row
    scoreboard band, so the board can start higher and grow. */
 @media (min-width: 600px), (min-aspect-ratio: 47/100) {
