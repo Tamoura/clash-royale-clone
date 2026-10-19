@@ -76,10 +76,26 @@ Both devices run the identical, fully-deterministic simulation in lockstep —
 the relay (`server/relay.ts`) only forwards each player's deploys, never the
 game state. See `notes/features/online-1v1.md` for the design.
 
-## Play online
+## Play online: one click on Render (easiest)
 
-To play friends on other networks, host the same relay somewhere with HTTPS
-and point the game at it:
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/tamoura/clash-royale-clone/tree/claude/game-visuals-character-balance-w122wb)
+
+Sign up at Render with GitHub, click the button, and wait for the build. You get
+one free address (`https://<name>.onrender.com`) that serves the game *and* the
+online server: both kids open it and go to **Play online → Play a friend**. Steps,
+the free-plan sleep, and what to do if the button cannot find `render.yaml`:
+[docs/deploy-multiplayer.md](docs/deploy-multiplayer.md#easiest-one-click-on-render).
+
+On any other Node host (or your own computer) it is the same two steps:
+
+```sh
+npm ci --include=dev && npm run build:all   # the game + the relay bundle
+npm start                                   # both on $PORT (default 3110)
+```
+
+## Other ways to play online
+
+To keep the game on GitHub Pages and run only the relay elsewhere:
 
 ```sh
 npm run build:relay   # bundle the relay into dist-server/relay.mjs

@@ -4,6 +4,7 @@ import readme from "../README.md?raw";
 import pkgRaw from "../package.json?raw";
 import relaySource from "../server/relay.ts?raw";
 import relayUrlSource from "./net/relayUrl.ts?raw";
+import renderYaml from "../render.yaml?raw";
 
 /**
  * Keeps the multiplayer docs honest: every `npm run <script>` they tell the
@@ -49,6 +50,23 @@ describe("multiplayer docs", () => {
       expect(read, `${v} is documented but not read by server/relay.ts or src/net/relayUrl.ts`).toBe(true);
     }
     expect(deployDoc).toContain("`?relay=`");
+  });
+
+  it("match render.yaml: real scripts, the start command, one branch everywhere", () => {
+    const field = (name: string) => new RegExp(`^\\s*${name}:\\s*(.+)$`, "m").exec(renderYaml)?.[1].trim();
+    expect(field("plan")).toBe("free");
+    expect(field("healthCheckPath")).toBe("/healthz");
+    for (const name of npmRuns(field("buildCommand") ?? "")) expect(scripts, `npm run ${name}`).toContain(name);
+    expect(field("buildCommand")).toContain("npm run build:all");
+    const pkgScripts = (JSON.parse(pkgRaw) as { scripts: Record<string, string> }).scripts;
+    expect(field("startCommand")).toBe(pkgScripts.start);
+    // The Deploy to Render buttons and the dashboard steps name the branch render.yaml deploys.
+    const branch = field("branch") ?? "";
+    expect(branch).not.toBe("");
+    for (const text of [readme, deployDoc]) {
+      expect(text).toContain(`https://render.com/deploy?repo=https://github.com/tamoura/clash-royale-clone/tree/${branch}`);
+    }
+    expect(deployDoc).toContain(`\`${branch}\``);
   });
 
   it("stay within the 350-500 line budget and keep the README link", () => {
