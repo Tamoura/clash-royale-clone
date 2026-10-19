@@ -69,21 +69,42 @@ npm run play     # starts the game + a small relay, prints a link to share
 ```
 
 Open the printed `http://<your-ip>:3101` link on each device (same Wi-Fi),
-build a deck, and tap **Play a Friend**. One player taps **Create a game** and
-reads the code aloud; the other taps **Join** and types it in.
+then tap the sliders row under **Battle** → **Play online** → **Play a friend**.
+One player taps **Create a game** and reads the code aloud; the other types it
+in and taps **Join**. If **Play online** is greyed out, take the Champion out
+of your deck (it is for bot battles only).
 
 Both devices run the identical, fully-deterministic simulation in lockstep —
 the relay (`server/relay.ts`) only forwards each player's deploys, never the
 game state. See `notes/features/online-1v1.md` for the design.
 
-## Play online
+## Play online: one click on Render (easiest)
 
-To play friends on other networks, host the same relay somewhere with HTTPS
-and point the game at it:
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/tamoura/clash-royale-clone/tree/claude/game-visuals-character-balance-w122wb)
+
+Sign up at Render with GitHub, click the button, and wait for the build. You get
+one free address (`https://<name>.onrender.com`) that serves the game *and* the
+online server: both kids open it and tap the sliders row under **Battle** →
+**Play online** → **Play a friend**. Steps, the free-plan sleep, and what to do
+if the button cannot find `render.yaml`:
+[docs/deploy-multiplayer.md](docs/deploy-multiplayer.md#easiest-one-click-on-render).
+
+On any other Node host (or your own computer) it is the same two steps:
+
+```sh
+npm ci --include=dev && npm run build:all   # the game + the relay bundle
+npm start                                   # both on $PORT (default 3110)
+```
+
+It only lets in pages from its own address; add others with `ALLOWED_ORIGINS`.
+
+## Other ways to play online
+
+To keep the game on GitHub Pages and run only the relay elsewhere:
 
 ```sh
 npm run build:relay   # bundle the relay into dist-server/relay.mjs
-npm run relay:prod    # run it (or deploy the Dockerfile / fly.toml)
+npm run relay:prod    # run it, relay only (or deploy the Dockerfile / fly.toml)
 ```
 
 [docs/deploy-multiplayer.md](docs/deploy-multiplayer.md) walks through it

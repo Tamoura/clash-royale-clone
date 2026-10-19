@@ -5,7 +5,9 @@
  * Priority:
  *   1. `?relay=ws(s)://…` in the page URL (remembered in storage;
  *      `?relay=clear` forgets it), else a previously remembered one
- *   2. the build's VITE_RELAY_URL
+ *   2. the build's VITE_RELAY_URL: a ws(s):// URL, or "same-origin" / a
+ *      path like "/ws" when the relay serves the page itself (one service,
+ *      one address: `npm run build:all && npm start`, Render, Docker)
  *   3. a plain-http page (LAN dev or `npm run play`): ws://<host>:3110
  *   4. nothing: online play is unavailable
  * On an https page a ws: URL is upgraded to wss: (browsers block mixed content).
@@ -13,15 +15,21 @@
 
 export const RELAY_STORE_KEY = "cr-clone-relay";
 export const LAN_RELAY_PORT = 3110;
+/** VITE_RELAY_URL value meaning "the relay is this page's own server, at <base>ws". */
+export const SAME_ORIGIN = "same-origin";
 
 export interface PageLocation {
   search: string;
   protocol: string;
   hostname: string;
+  /** hostname plus port when there is one (Location.host); hostname if absent. */
+  host?: string;
 }
 
 export interface RelayEnv {
   VITE_RELAY_URL?: string;
+  /** The build's base path (Vite's BASE_URL, e.g. "/" or "/clash-royale-clone/"). */
+  BASE_URL?: string;
 }
 
 export interface RelayTarget {
@@ -64,6 +72,30 @@ function write(store: Storage | undefined, value: string | null): void {
   }
 }
 
+/** A same-origin path: "/" then URL-safe path characters (no "//", no query). */
+const PATH_RE = /^\/(?!\/)[A-Za-z0-9._~\-/]*$/;
+
+/**
+ * The build's relay (VITE_RELAY_URL) as a socket URL for this page, or null.
+ * "same-origin" means <page host><base path>ws; a value starting with "/"
+ * is a path on the page's host. Both use wss: on https pages and ws: on
+ * http ones. An absolute ws(s):// URL is used as-is (upgraded on https).
+ */
+export function buildRelayUrl(loc: PageLocation, env: RelayEnv): string | null {
+  const raw = env.VITE_RELAY_URL?.trim();
+  if (!raw) return null;
+  if (raw.toLowerCase() === SAME_ORIGIN || raw.startsWith("/")) {
+    const host = loc.host || loc.hostname;
+    if (!host || (loc.protocol !== "http:" && loc.protocol !== "https:")) return null;
+    const base = env.BASE_URL?.startsWith("/") ? env.BASE_URL.replace(/\/*$/, "/") : "/";
+    const path = raw.startsWith("/") ? raw : `${base}ws`;
+    if (!PATH_RE.test(path)) return null;
+    return `${loc.protocol === "https:" ? "wss:" : "ws:"}//${host}${path}`;
+  }
+  const url = wsUrl(raw);
+  return url ? upgrade(url, loc.protocol) : null;
+}
+
 export function resolveRelayUrl(loc: PageLocation, env: RelayEnv, store?: Storage): RelayTarget {
   const param = new URLSearchParams(loc.search).get("relay");
   if (param !== null) {
@@ -80,8 +112,8 @@ export function resolveRelayUrl(loc: PageLocation, env: RelayEnv, store?: Storag
   const remembered = param?.trim().toLowerCase() === "clear" ? null : wsUrl(read(store));
   if (remembered) return { url: upgrade(remembered, loc.protocol), lan: false };
 
-  const fromEnv = wsUrl(env.VITE_RELAY_URL);
-  if (fromEnv) return { url: upgrade(fromEnv, loc.protocol), lan: false };
+  const fromEnv = buildRelayUrl(loc, env);
+  if (fromEnv) return { url: fromEnv, lan: false };
 
   if (loc.protocol === "http:" && loc.hostname) {
     return { url: `ws://${loc.hostname}:${LAN_RELAY_PORT}`, lan: true };

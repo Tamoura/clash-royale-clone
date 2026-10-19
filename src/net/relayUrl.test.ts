@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RELAY_STORE_KEY, resolveRelayUrl } from "./relayUrl";
+import { RELAY_STORE_KEY, buildRelayUrl, resolveRelayUrl } from "./relayUrl";
 
 /** In-memory Storage stand-in. */
 class MemStore implements Storage {
@@ -85,6 +85,68 @@ describe("resolveRelayUrl", () => {
     );
     expect(resolveRelayUrl({ ...PAGES, search: "?relay=ws://10.0.0.5:3110" }, {}).url).toBe("wss://10.0.0.5:3110");
     expect(resolveRelayUrl({ ...LAN, search: "?relay=ws://10.0.0.5:3110" }, {}).url).toBe("ws://10.0.0.5:3110");
+  });
+
+  it('"same-origin" points at the page\'s own server, wss on https', () => {
+    const SAME = { VITE_RELAY_URL: "same-origin", BASE_URL: "/" };
+    const render = { search: "", protocol: "https:", hostname: "my-game.onrender.com", host: "my-game.onrender.com" };
+    expect(resolveRelayUrl(render, SAME, new MemStore())).toEqual({ url: "wss://my-game.onrender.com/ws", lan: false });
+    // Plain http keeps ws: and the port (npm start on a computer or the LAN).
+    const local = { search: "", protocol: "http:", hostname: "localhost", host: "localhost:3310" };
+    expect(resolveRelayUrl(local, SAME)).toEqual({ url: "ws://localhost:3310/ws", lan: false });
+    expect(resolveRelayUrl({ ...LAN, host: "192.168.1.20:3110" }, SAME)).toEqual({
+      url: "ws://192.168.1.20:3110/ws",
+      lan: false,
+    });
+    // Without Location.host the hostname alone is used.
+    expect(resolveRelayUrl(PAGES, SAME).url).toBe("wss://tamoura.github.io/ws");
+    // Case and spaces do not matter; BASE_URL defaults to "/".
+    expect(resolveRelayUrl(render, { VITE_RELAY_URL: " Same-Origin " }).url).toBe("wss://my-game.onrender.com/ws");
+  });
+
+  it('"same-origin" follows the build\'s base path; a "/path" value is used as given', () => {
+    const page = { ...PAGES, host: "tamoura.github.io" };
+    expect(buildRelayUrl(page, { VITE_RELAY_URL: "same-origin", BASE_URL: "/clash-royale-clone/" })).toBe(
+      "wss://tamoura.github.io/clash-royale-clone/ws",
+    );
+    expect(buildRelayUrl(page, { VITE_RELAY_URL: "same-origin", BASE_URL: "/sub" })).toBe("wss://tamoura.github.io/sub/ws");
+    // A relative base ("./") cannot name a socket path: fall back to the root.
+    expect(buildRelayUrl(page, { VITE_RELAY_URL: "same-origin", BASE_URL: "./" })).toBe("wss://tamoura.github.io/ws");
+    expect(buildRelayUrl(page, { VITE_RELAY_URL: "/ws", BASE_URL: "/clash-royale-clone/" })).toBe(
+      "wss://tamoura.github.io/ws",
+    );
+    expect(buildRelayUrl({ ...LAN, host: "192.168.1.20:8080" }, { VITE_RELAY_URL: "/relay/ws" })).toBe(
+      "ws://192.168.1.20:8080/relay/ws",
+    );
+  });
+
+  it("refuses same-origin values that are not plain paths or pages that are not http(s)", () => {
+    for (const bad of ["//evil.example/ws", "/ws?x=1", "/ws#x", "/w s", "/ws\\x"]) {
+      expect(buildRelayUrl(PAGES, { VITE_RELAY_URL: bad }), bad).toBeNull();
+    }
+    const file = { search: "", protocol: "file:", hostname: "", host: "" };
+    expect(buildRelayUrl(file, { VITE_RELAY_URL: "same-origin" })).toBeNull();
+    expect(resolveRelayUrl(file, { VITE_RELAY_URL: "same-origin" })).toEqual({ url: null, lan: false });
+  });
+
+  it("a ?relay= link still beats a same-origin build, and ?relay=clear returns to it", () => {
+    const store = new MemStore();
+    const SAME = { VITE_RELAY_URL: "same-origin", BASE_URL: "/" };
+    const page = { ...PAGES, host: "tamoura.github.io" };
+    expect(resolveRelayUrl({ ...page, search: "?relay=wss://other.example/ws" }, SAME, store).url).toBe(
+      "wss://other.example/ws",
+    );
+    expect(resolveRelayUrl({ ...page, search: "?relay=clear" }, SAME, store).url).toBe("wss://tamoura.github.io/ws");
+    expect(store.getItem(RELAY_STORE_KEY)).toBeNull();
+  });
+
+  it("buildRelayUrl matches the old handling of absolute URLs", () => {
+    expect(buildRelayUrl(PAGES, ENV)).toBe("wss://relay.example.com/ws");
+    expect(buildRelayUrl(PAGES, { VITE_RELAY_URL: "ws://relay.example.com/ws" })).toBe("wss://relay.example.com/ws");
+    expect(buildRelayUrl(LAN, { VITE_RELAY_URL: "ws://relay.example.com/ws" })).toBe("ws://relay.example.com/ws");
+    expect(buildRelayUrl(PAGES, { VITE_RELAY_URL: "https://relay.example.com/ws" })).toBeNull();
+    expect(buildRelayUrl(PAGES, { VITE_RELAY_URL: "  " })).toBeNull();
+    expect(buildRelayUrl(PAGES, {})).toBeNull();
   });
 
   it("survives storage that throws", () => {

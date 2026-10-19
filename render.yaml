@@ -1,0 +1,59 @@
+# Render Blueprint: the whole game AND its multiplayer relay as ONE free web
+# service at one address (https://<name>.onrender.com). Kids open that
+# address, tap the sliders row under Battle → Play online → Play a friend,
+# and play; nothing else to wire up.
+# Step by step: docs/deploy-multiplayer.md, "Easiest: one click on Render".
+#
+# Runtime: Render's native Node runtime rather than Docker. The build is the
+# same two commands you can run on any computer (`npm run build:all`, then
+# `npm start`), so what is tested locally is exactly what runs here, and
+# there is no image to build and push on every deploy. The Dockerfile stays
+# for Fly.io and other container hosts.
+services:
+  - type: web
+    name: clash-royale-clone
+    runtime: node
+    # Free: 512 MB, 0.1 CPU, always a single instance (rooms live in memory,
+    # so one instance is exactly right). Sleeps after 15 idle minutes and
+    # takes about a minute to wake on the next visit.
+    plan: free
+    # Closest Render region to the Gulf. Pick before the first deploy:
+    # Render may not let you move a service later.
+    region: frankfurt
+    # The branch the game lives on. Change it if you move the game to main.
+    branch: claude/game-visuals-character-balance-w122wb
+    # NODE_ENV=production (below) also applies to the build, so ask npm for
+    # the dev dependencies (Vite, TypeScript, esbuild) explicitly.
+    buildCommand: npm ci --include=dev && npm run build:all
+    startCommand: node dist-server/relay.mjs
+    healthCheckPath: /healthz
+    # Every push to the branch redeploys (and restarts the server, which ends
+    # any match in progress). Use "off" to update only with Manual Deploy.
+    autoDeployTrigger: commit
+    # Pushes that only touch these never redeploy.
+    buildFilter:
+      ignoredPaths:
+        - "docs/**"
+        - "notes/**"
+        - "tools/**"
+        - "Clash-Royale-Kids-Presentation/**"
+        - "**/*.md"
+        - ".github/**"
+        - "Dockerfile"
+        - ".dockerignore"
+        - "fly.toml"
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # Render's edge sets True-Client-IP to the real client address (observed;
+      # Render does not document it). X-Forwarded-For keeps whatever the client
+      # sent, then ends in Render's own proxy, so the per-player limits use
+      # this header. How to check it once: the deploy guide, section (j).
+      - key: TRUST_PROXY
+        value: true-client-ip
+      # This service's own page is always allowed. This also lets the GitHub
+      # Pages copy of the game use this relay (see the docs, optional step).
+      - key: ALLOWED_ORIGINS
+        value: https://tamoura.github.io

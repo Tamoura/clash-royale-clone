@@ -1,4 +1,7 @@
-# Only package*.json, tsconfig.json, server/ and src/ are needed to build the relay.
+# The image builds the game and the relay (npm run build:all), which needs
+# package*.json, tsconfig.json, vite.config.ts, index.html, public/,
+# scripts/build-all.mjs, server/ and src/. Everything else stays out.
+# (Patterns without a "/" match at the top level only.)
 .git
 .github
 node_modules
@@ -6,13 +9,11 @@ dist
 dist-server
 docs
 notes
-public
 tools
-scripts
 visual-sheet
 Clash-Royale-Kids-Presentation
+viewer.html
 *.png
 *.jpg
 *.md
-*.html
 .DS_Store
