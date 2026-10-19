@@ -913,6 +913,13 @@
   flex-direction: row-reverse;
   align-items: center;
 }
+/* Sandbox reset / replay speed: mid-height in the left panel, between the
+   scoreboard and King (top-right is under the hand panel on short screens). */
+:root[data-layout="wide"] .sandbox-reset {
+  top: calc(50% - 16px);
+  right: auto;
+  inset-inline-start: max(var(--hug), env(safe-area-inset-left));
+}
 /* The world past the stands is bare in some arenas: shade the outer edges
    so the eye stays on the board (which starts at 29%+ of the width). The
    banner, chat and sandbox buttons in the stage sit above it (z-index 4). */
