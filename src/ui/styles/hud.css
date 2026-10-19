@@ -898,3 +898,13 @@
   flex-direction: row-reverse;
   align-items: center;
 }
+/* The world past the stands is bare in some arenas: shade the outer edges
+   so the eye stays on the board (which starts at 29%+ of the width). The
+   banner, chat and sandbox buttons in the stage sit above it (z-index 4). */
+:root[data-layout="wide"] #stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(4, 8, 20, 0.45), transparent 22%, transparent 78%, rgba(4, 8, 20, 0.45));
+}
