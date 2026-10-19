@@ -148,6 +148,10 @@
   pointer-events: auto;
   cursor: default;
 }
+/* Wide battles: no wider than the board, so it never covers the side panels. */
+:root[data-layout="wide"] .tut-coach {
+  width: min(360px, calc(var(--field-w) + 2 * var(--sp-2)));
+}
 .tut[data-tap="1"] .tut-coach {
   cursor: pointer;
 }

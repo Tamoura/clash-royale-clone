@@ -35,13 +35,14 @@ import { applyEndStrings, arenaOnEvent, buildArena, updateCrowd, updateRiver } f
 import { applyLookSky, buildLights, gradeSky, initSky, updateBirds } from "./scene/sky";
 import {
   applyLookFog,
+  applyFraming,
   applyShake,
-  applyTopInset,
   frameOrtho,
   initFog,
   koZoomActive,
   showcase,
   updateShowcase,
+  type Framing,
 } from "./scene/camera";
 import {
   applyGrade,
@@ -133,8 +134,8 @@ export class Battle3D {
   endStringPlayer: THREE.Object3D | null = null;
   /** @internal */
   endStringEnemy: THREE.Object3D | null = null;
-  /** @internal Screen pixels covered by the HUD overlay across the top of the stage. */
-  topInsetPx = 0;
+  /** @internal What the battle frame keeps clear of the HUD (null: the whole board, no insets). */
+  framing: Framing | null = null;
   /** @internal Fog-immune glow materials (lanterns, neon, torches) with base colors. */
   glowMats: Array<{ mat: THREE.MeshBasicMaterial; base: THREE.Color }> = [];
   /** @internal The light rig (rebuilt with the look; graded by the living sky). */
@@ -190,6 +191,8 @@ export class Battle3D {
   /** @internal */
   readonly container: HTMLElement;
   private readonly onResize = (): void => this.resize();
+  /** Follows the container itself, so CSS-only size changes (a layout flip) re-fit too. */
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -293,7 +296,13 @@ export class Battle3D {
     this.bloom = post.bloom;
 
     this.resize();
-    window.addEventListener("resize", this.onResize);
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", this.onResize);
+    } else {
+      // setSize(w, h, false) never touches the container's own size: no loop.
+      this.resizeObserver = new ResizeObserver(this.onResize);
+      this.resizeObserver.observe(container);
+    }
   }
 
   /** @internal Light rig handles, re-graded every frame by the living sky. */
@@ -366,9 +375,12 @@ export class Battle3D {
     showcase(this, on, windowFrac);
   }
 
-  /** The HUD overlay height; the frame keeps the arena clear of it. */
-  setTopInset(px: number): void {
-    applyTopInset(this, px);
+  /**
+   * Keep the board clear of the HUD: its insets around the canvas and the
+   * content box to fit (see ui/layoutWire.ts). Re-fits only on a change.
+   */
+  setFraming(f: Framing): void {
+    applyFraming(this, f);
   }
 
   resize(): void {
@@ -748,6 +760,8 @@ export class Battle3D {
   /** Release renderer-owned resources when the battle view is permanently removed. */
   dispose(): void {
     window.removeEventListener("resize", this.onResize);
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     this.reset();
     disposeDeep(this.scene);
     this.scene.clear();

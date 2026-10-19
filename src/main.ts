@@ -115,6 +115,7 @@ import {
   tickCountdown,
 } from "./ui/banner";
 import { fmtNum, tr } from "./ui/i18n";
+import { installLayout } from "./ui/layoutWire";
 import { getPrefs } from "./ui/prefs";
 import { isChestReady } from "./meta/chests";
 import { MATCH_TROPHIES } from "./meta/economy";
@@ -446,6 +447,8 @@ try {
     "(Safari and Firefox usually work out of the box.)</div>";
   throw new Error("WebGL unavailable");
 }
+// Battles fill the screen (tall or wide, see ui/layout.ts); menus keep the column.
+const layout = installLayout(scene, topbar);
 const audio = new SoundEngine();
 
 // Dev aid: ?viewpoint=enemy previews the online guest's flipped camera.
@@ -710,6 +713,7 @@ function showPicker(id: string): void {
   sandboxResetBtn.style.display = "none";
   // The home shell is a cut-out onto the live arena; every other screen is opaque.
   const diorama = pickerRoot.querySelector(":scope > .home-shell") !== null;
+  layout.setBattle(false); // back to the menu column before the scene re-fits for it
   emit("screen", { id, sceneMode: diorama ? "diorama" : "none" });
 }
 
@@ -723,6 +727,7 @@ function openHome(): void {
 function closeDeckPicker(): void {
   pickerRoot.classList.remove("show");
   topbar.style.display = "";
+  layout.setBattle(true);
   emit("screen", { id: "battle", sceneMode: "battle" });
 }
 
@@ -833,9 +838,6 @@ registerLifecycle(scene); // idle rendering behind opaque screens, hidden-tab si
 
 const clockEl = topbar.querySelector<HTMLElement>(".clock");
 if (clockEl) clockEl.dataset.label = tr("Time left", "الوقت المتبقي");
-
-// The top bar floats over the arena; tell the camera how much it covers.
-new ResizeObserver(() => scene.setTopInset(topbar.offsetHeight)).observe(topbar);
 
 function legacyPlayed(): boolean {
   try {
@@ -1063,6 +1065,11 @@ function tryDeployAt(clientX: number, clientY: number): void {
 scene.renderer.domElement.addEventListener("pointerup", (ev) => {
   tryDeployAt(ev.clientX, ev.clientY);
 });
+// A click listener (a no-op) makes the board a tap target to the browser's
+// touch adjustment, which otherwise pulls a fingertip tap on the board next
+// to the chat bubble or King onto that button (on phones the board spans
+// the screen's width, so they float over its near corners).
+scene.renderer.domElement.addEventListener("click", () => {});
 
 // Show the ghost wherever the pointer goes while a card is selected
 // (window-level so a drag started on a hand card previews immediately).
@@ -1297,6 +1304,15 @@ if (import.meta.env.DEV) {
       spawnUnits(battle, side, id, x, y).length,
     arenas: () => ARENAS.map((a) => a.id),
     phase: () => getPhase(),
+    layout: () => ({ mode: document.documentElement.dataset.layout ?? null, framing: scene.framing }),
+    /** The field's tiles 0..18 x 0..32 on screen (page px; either viewpoint). */
+    fieldRect: () => {
+      const a = scene.arenaToClient(0, 0);
+      const b = scene.arenaToClient(18, 32);
+      const x = Math.min(a.x, b.x);
+      const y = Math.min(a.y, b.y);
+      return { x, y, w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
+    },
   };
 }
 

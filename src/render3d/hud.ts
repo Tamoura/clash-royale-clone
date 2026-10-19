@@ -88,6 +88,13 @@ function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 /**
+ * Backing width (CSS px) of the hand's card art. CSS sizes the canvas to its
+ * card (up to 131px wide in the desktop side panel), so this only sets how
+ * sharp the art stays at that size.
+ */
+const HAND_ART_W = 136;
+
+/**
  * A full-bleed 3:4 card portrait: the card's colour as a lit backdrop, the
  * pre-rendered 3D character cropped to fill it (spells keep painted art).
  */
@@ -669,7 +676,7 @@ export class Hud {
     const key = document.createElement("div");
     key.className = "key-chip";
     key.textContent = String(i + 1); // keyboard shortcut hint
-    const parts: HTMLElement[] = [handCardCanvas(id), name, s.veil, s.need, s.cost, key];
+    const parts: HTMLElement[] = [handCardCanvas(id, HAND_ART_W), name, s.veil, s.need, s.cost, key];
     const me = mySide === "player" ? state.player : state.enemy;
     const lvl = me.levels[id] ?? 1;
     if (lvl > 1) {

@@ -783,3 +783,243 @@
     animation: none;
   }
 }
+
+/* ══ Battle layouts: src/ui/layoutWire.ts sets :root[data-layout] during battles only ══ */
+
+/* ── Tall (portrait): the board spans the width; the hand stays a comfortable
+   size, capped by the screen's height as well as its width (--hand-w, from
+   layout.ts), so the tray never eats a short screen. ── */
+:root[data-layout="tall"] #hud.v2 .hand-row,
+:root[data-layout="tall"] #hud.v2 .elixir-row {
+  max-width: var(--hand-w, 480px);
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+/* The board spans the width, so King and the chat bubble float over its
+   near corners: keep them small and low (docked on the tray's edge) so they
+   cover as few deploy tiles as they can, and taps beside them still land on
+   the board. */
+:root[data-layout="tall"] #hud.v2 .hud-ability {
+  width: 46px;
+  height: 46px;
+  bottom: calc(100% + 2px);
+}
+:root[data-layout="tall"] #hud.v2 .hud-ability-icon .ui-icon {
+  width: 22px;
+  height: 22px;
+}
+:root[data-layout="tall"] .hud-v2 .emote-bar {
+  bottom: 2px;
+}
+:root[data-layout="tall"] .hud-v2 .emote-bar .emote-toggle {
+  width: 44px;
+  height: 44px;
+}
+/* Height-bound portrait screens (tablets, short phones): a one-row
+   scoreboard band, so the board can start higher and grow. */
+@media (min-width: 600px), (min-aspect-ratio: 47/100) {
+  :root[data-layout="tall"] #topbar.v2 {
+    grid-template-columns: auto auto 1fr auto auto;
+    grid-template-rows: auto;
+  }
+  :root[data-layout="tall"] #topbar.v2 .crowns.enemy { grid-column: 1; grid-row: 1; }
+  :root[data-layout="tall"] #topbar.v2 .crowns.player { grid-column: 2; grid-row: 1; }
+  :root[data-layout="tall"] #topbar.v2 .clock { grid-column: 4; grid-row: 1; }
+  :root[data-layout="tall"] #topbar.v2 .battle-menu { grid-column: 5; grid-row: 1; }
+}
+@media (max-width: 599px) and (min-aspect-ratio: 47/100) {
+  /* No room for both names on one row: the opponent's stays (as much of it
+     as fits, see the name rule below), yours goes (the blue shield chip is
+     you), and the clock drops its "TIME LEFT" caption to make room (the
+     countdown speaks for itself; the menu button sets the band's height). */
+  :root[data-layout="tall"] #topbar.v2 .crowns.player .hud-who,
+  :root[data-layout="tall"] #topbar.v2 .crowns.enemy .ptrophies,
+  :root[data-layout="tall"] #topbar.v2 .clock::before { display: none; }
+  :root[data-layout="tall"] #topbar.v2 { column-gap: 6px; padding-inline: 8px; }
+  /* Overtime: OVERTIME over the time in a fixed small size, so the row
+     never outgrows the screen and pushes the menu off it. */
+  :root[data-layout="tall"] #topbar.v2 .clock.overtime {
+    white-space: normal;
+    font-size: 13px;
+    line-height: 1.15;
+    padding: 4px;
+    /* Wide enough for OVERTIME (or وقت إضافي) on one line, the time under it. */
+    min-width: 6.3em;
+  }
+}
+@media (max-width: 339px) and (min-aspect-ratio: 47/100) {
+  /* 320px phones: tighter still. */
+  :root[data-layout="tall"] #topbar.v2 { column-gap: 4px; padding-inline: 6px; }
+  :root[data-layout="tall"] #topbar.v2 .crowns { padding-inline-end: 6px; }
+  :root[data-layout="tall"] #topbar.v2 .clock.overtime { font-size: 12px; }
+  :root[data-layout="tall"] #topbar.v2 .menu-toggle { width: 44px; }
+}
+/* A name in a tight spot (the one-row band, a narrow side panel) shows as
+   much as fits on one line, then an ellipsis: it may break anywhere, so it
+   never forces its row wider than the screen or panel, and only its first
+   line shows. The crown count beside it always stays whole. */
+:root[data-layout] #topbar.v2 .pname {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* ── Wide (landscape, laptops, desktops, near-square windows): the board sits
+   in the middle; the hand is in a panel on the right, the clock, scores, King
+   and chat on the left. The battle HUD is LTR in both editions, so these
+   inline insets are the same physical sides the camera keeps clear
+   (layout.ts). layout.ts also sizes the cards (--card-w) and picks the hand's
+   columns (--hand-cols: a 2x2 or one tall column) to fit the panel's width
+   and height, safe area included. ── */
+:root[data-layout="wide"] {
+  /* Panels hug the board on big screens (short mouse and finger travel). */
+  --hug: max(12px, calc((100vw - var(--field-w)) / 2 - var(--side) + 12px));
+}
+:root[data-layout="wide"] #stage {
+  position: absolute;
+  inset: 0;
+}
+/* Right panel: the hand, then Next + elixir (a stacked panel: Next on top and
+   the elixir bar across the foot, see below).
+   NOTE: no transform or filter on #app / #hud: KING below is position: fixed. */
+:root[data-layout="wide"] #hud.v2 {
+  position: absolute;
+  inset-inline-end: max(var(--hug), env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: calc(var(--side) - 24px);
+  box-sizing: border-box;
+  padding: 16px 8px 12px;
+  border: 3px solid #0d1c4a;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(45, 92, 192, 0.93) 0%, rgba(29, 63, 150, 0.93) 45%, rgba(20, 42, 104, 0.95) 100%);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: "hand hand" "next elixir";
+  align-items: center;
+  column-gap: 10px;
+}
+:root[data-layout="wide"] #hud.v2::before {
+  display: none;
+}
+/* The Islamic edition's teal-and-gold tray, as a panel. */
+:root[data-edition="arabic"][data-layout="wide"] #hud.v2 {
+  background: var(--ar-khatam), linear-gradient(180deg, rgba(22, 128, 126, 0.95) 0%, rgba(14, 95, 102, 0.95) 40%, rgba(10, 61, 74, 0.96) 100%);
+  border-color: #caa23f;
+}
+:root[data-layout="wide"] #hud.v2 .hand-row {
+  grid-area: hand;
+  grid-template-columns: repeat(var(--hand-cols, 2), var(--card-w));
+  justify-content: center;
+  gap: 22px 12px;
+  padding: 0;
+}
+:root[data-layout="wide"] #hud.v2 .hud-next {
+  grid-area: next;
+  position: static;
+  margin-top: 18px;
+}
+:root[data-layout="wide"] #hud.v2 .elixir-row {
+  grid-area: elixir;
+  margin-top: 18px;
+  padding: 0;
+}
+/* Stacked panel (most panels under 240px, layout.ts): Next on its own row at
+   the top, so the elixir bar gets the panel's full width and its ten
+   segments stay readable. */
+:root[data-layout="wide"][data-panel="stacked"] #hud.v2 {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "next" "hand" "elixir";
+}
+:root[data-layout="wide"][data-panel="stacked"] #hud.v2 .hud-next {
+  flex-direction: row;
+  justify-self: start;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+/* The stats tooltip opens beside the panel, toward the board. */
+:root[data-layout="wide"] #hud.v2 .card-tip {
+  left: auto !important;
+  right: calc(100% + 10px);
+  bottom: auto;
+  top: 12px;
+  transform: none;
+}
+/* Left panel: clock + menu, then the two scoreboard pills. */
+:root[data-layout="wide"] #topbar {
+  inset-inline: max(var(--hug), env(safe-area-inset-left)) auto;
+  width: calc(var(--side) - 24px);
+  box-sizing: border-box;
+  padding: max(12px, env(safe-area-inset-top)) 0 0;
+  background: none;
+  /* The clock's column may shrink (its label then wraps) so the menu never
+     leaves the panel. */
+  grid-template-columns: minmax(0, auto) auto 1fr;
+  grid-template-rows: auto auto auto;
+  gap: 8px;
+}
+:root[data-layout="wide"] #topbar .clock { grid-column: 1; grid-row: 1; justify-self: start; }
+:root[data-layout="wide"] #topbar .battle-menu { grid-column: 2; grid-row: 1; }
+:root[data-layout="wide"] #topbar .crowns.enemy { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
+:root[data-layout="wide"] #topbar .crowns.player { grid-column: 1 / -1; grid-row: 3; justify-self: start; }
+:root[data-layout="wide"] #topbar .crowns { max-width: 100%; box-sizing: border-box; }
+/* Narrow left panel (under 240px): a tighter clock keeps "TIME LEFT" on one
+   line beside the menu. In overtime the word OVERTIME stands in for that
+   label, over the time (it wraps there), in a fixed size that always fits:
+   "OVERTIME 1:59" on one line would push the menu onto the board. */
+:root[data-layout="wide"][data-side="narrow"] #topbar.v2 {
+  column-gap: 6px;
+}
+:root[data-layout="wide"][data-side="narrow"] #topbar.v2 .clock {
+  padding-inline: 5px;
+}
+:root[data-layout="wide"][data-side="narrow"] #topbar.v2 .clock.overtime {
+  white-space: normal;
+  font-size: 13px;
+  line-height: 1.15;
+  padding-block: 5px;
+  /* Wide enough for OVERTIME (or وقت إضافي) on one line, the time under it. */
+  min-width: 6.3em;
+}
+:root[data-layout="wide"][data-side="narrow"] #topbar.v2 .clock.overtime::before {
+  display: none;
+}
+/* King's ability: bottom of the left panel, above the chat bubble. */
+:root[data-layout="wide"] #hud.v2 .hud-ability {
+  position: fixed;
+  inset-inline: calc(max(var(--hug), env(safe-area-inset-left)) + 6px) auto;
+  bottom: calc(max(12px, env(safe-area-inset-bottom)) + 64px);
+}
+/* Chat bubble bottom-left; its tray opens sideways (toward the board) so it
+   never covers King. DOM order is tray, toggle: row-reverse puts the toggle first. */
+:root[data-layout="wide"] .hud-v2 .emote-bar {
+  inset-inline-start: max(var(--hug), env(safe-area-inset-left));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  flex-direction: row-reverse;
+  align-items: center;
+}
+/* Sandbox reset / replay speed: mid-height in the left panel, between the
+   scoreboard and King (top-right is under the hand panel on short screens). */
+:root[data-layout="wide"] .sandbox-reset {
+  top: calc(50% - 16px);
+  right: auto;
+  inset-inline-start: max(var(--hug), env(safe-area-inset-left));
+}
+/* The world past the stands is bare in some arenas: shade the outer edges
+   so the eye stays on the board (the shade ends before the board does). The
+   banner, chat and sandbox buttons in the stage sit above it (z-index 4). */
+:root[data-layout="wide"] #stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    rgba(4, 8, 20, 0.45),
+    transparent min(22%, calc(50% - var(--field-w) / 2)),
+    transparent max(78%, calc(50% + var(--field-w) / 2)),
+    rgba(4, 8, 20, 0.45)
+  );
+}

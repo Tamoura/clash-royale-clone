@@ -447,10 +447,17 @@ function drawCoach(s: Session, b: BattleState, step: TutorialStep, holding: bool
   s.root.dataset.tap = tap ? "1" : "";
 }
 
-/** Keep the bubble clear of the top bar and the HUD tray. */
+/**
+ * Keep the bubble clear of the top bar and the HUD tray. In the wide
+ * layout both sit in side panels, so the bubble docks at the screen's own
+ * top or bottom, over the board (the board is centred, like the bubble).
+ */
 function placeCoach(s: Session): void {
-  const top = document.getElementById("topbar")?.getBoundingClientRect().bottom ?? 0;
-  const hud = document.getElementById("hud")?.getBoundingClientRect().top ?? window.innerHeight;
+  const wide = document.documentElement.dataset.layout === "wide";
+  const top = wide ? 0 : (document.getElementById("topbar")?.getBoundingClientRect().bottom ?? 0);
+  const hud = wide
+    ? window.innerHeight
+    : (document.getElementById("hud")?.getBoundingClientRect().top ?? window.innerHeight);
   s.root.style.setProperty("--tut-top", `${Math.max(0, top)}px`);
   s.root.style.setProperty("--tut-bottom", `${Math.max(0, window.innerHeight - hud)}px`);
 }
