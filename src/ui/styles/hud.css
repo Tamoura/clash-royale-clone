@@ -783,3 +783,30 @@
     animation: none;
   }
 }
+
+/* ══ Battle layouts: src/ui/layoutWire.ts sets :root[data-layout] during battles only ══ */
+
+/* ── Tall (portrait): the board spans the width; the hand stays a comfortable size ── */
+:root[data-layout="tall"] #hud.v2 .hand-row,
+:root[data-layout="tall"] #hud.v2 .elixir-row {
+  max-width: 480px;
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+/* Height-bound portrait screens (tablets, short phones): a one-row
+   scoreboard band, so the board can start higher and grow. */
+@media (min-width: 600px), (min-aspect-ratio: 47/100) {
+  :root[data-layout="tall"] #topbar.v2 {
+    grid-template-columns: auto auto 1fr auto auto;
+    grid-template-rows: auto;
+  }
+  :root[data-layout="tall"] #topbar.v2 .crowns.enemy { grid-column: 1; grid-row: 1; }
+  :root[data-layout="tall"] #topbar.v2 .crowns.player { grid-column: 2; grid-row: 1; }
+  :root[data-layout="tall"] #topbar.v2 .clock { grid-column: 4; grid-row: 1; }
+  :root[data-layout="tall"] #topbar.v2 .battle-menu { grid-column: 5; grid-row: 1; }
+}
+@media (max-width: 599px) and (min-aspect-ratio: 47/100) {
+  /* No room for names on one row: the badge and crown count stay. */
+  :root[data-layout="tall"] #topbar.v2 .hud-who { display: none; }
+}
+

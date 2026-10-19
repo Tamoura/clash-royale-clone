@@ -29,7 +29,7 @@
 .v2-screen {
   display: flex;
   flex-direction: column;
-  width: min(100vw, 52vh);
+  width: min(100vw, max(52vh, 420px));
   height: 100%;
   margin: 0 auto;
 }
@@ -1099,7 +1099,7 @@
 
 /* ── Sheets ──────────────────────────────────────────────── */
 .v2-sheet .ui-sheet__panel {
-  width: min(100vw, 52vh, 560px);
+  width: min(100vw, max(52vh, 420px), 560px);
   margin-inline: auto;
   font-family: var(--cr-font);
 }

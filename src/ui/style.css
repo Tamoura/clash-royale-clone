@@ -34,7 +34,9 @@ body {
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  width: min(100vw, 52vh);
+  /* Menus keep a phone-width column (never under 420px, so landscape phones
+     get a usable one); battles fill the screen (see below). */
+  width: min(100vw, max(52vh, 420px));
   margin: 0 auto;
 }
 
@@ -2057,6 +2059,11 @@ button.card.ready-pop {
 #app {
   position: relative;
 }
+/* Battles use the whole screen: src/ui/layoutWire.ts sets :root[data-layout]
+   only while one is on screen (tall or wide, rules in styles/hud.css). */
+:root[data-layout] #app {
+  width: 100%;
+}
 #topbar {
   position: absolute;
   top: 0;
@@ -2407,7 +2414,7 @@ button.card.locked {
 .home-shell {
   display: flex;
   flex-direction: column;
-  width: min(100vw, 52vh);
+  width: min(100vw, max(52vh, 420px));
   min-height: 100%;
   height: 100%;
   margin: 0 auto;
