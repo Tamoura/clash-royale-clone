@@ -12,7 +12,7 @@ import type { Side } from "../game/arena";
 import type { CardId } from "../game/cards";
 import { DEFAULT_DECK } from "../game/cards";
 import type { Loadout, MatchMode } from "../net/protocol";
-import { resolveRelayUrl, type RelayTarget } from "../net/relayUrl";
+import { buildRelayUrl, resolveRelayUrl, type RelayTarget } from "../net/relayUrl";
 import { OnlineSession, type MatchInfo } from "../net/session";
 import type { AppCtx } from "../app/ctx";
 import { emit, on, setPendingSpend } from "../app/hooks";
@@ -56,12 +56,13 @@ export function relayTarget(): RelayTarget {
 /**
  * The relay to name in invite links: only one the player chose by hand
  * (?relay=), so a friend opening the link reaches the same server. The
- * build's own relay and the implied LAN relay need no parameter.
+ * build's own relay (including a same-origin one) and the implied LAN relay
+ * need no parameter.
  */
 export function inviteRelayParam(): string | null {
   const t = relayTarget();
   if (!t.url || t.lan) return null;
-  const env = import.meta.env.VITE_RELAY_URL?.trim();
+  const env = buildRelayUrl(location, import.meta.env);
   if (env && t.url.replace(/^ws:/, "wss:") === env.replace(/^ws:/, "wss:")) return null;
   return t.url;
 }
