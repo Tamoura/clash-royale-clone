@@ -810,3 +810,91 @@
   :root[data-layout="tall"] #topbar.v2 .hud-who { display: none; }
 }
 
+/* ── Wide (landscape, laptops, desktops): the board fills the height in the
+   middle; the hand sits in a panel on the right, the clock, scores, King and
+   chat on the left. The battle HUD is LTR in both editions, so these inline
+   insets are the same physical sides the camera keeps clear (layout.ts). ── */
+:root[data-layout="wide"] {
+  /* Panels hug the board on big screens (short mouse and finger travel). */
+  --hug: max(12px, calc((100vw - var(--field-w)) / 2 - var(--side) + 12px));
+  --card-w: min(calc((var(--side) - 58px) / 2), calc((100dvh - 160px) * 0.375));
+}
+:root[data-layout="wide"] #stage {
+  position: absolute;
+  inset: 0;
+}
+/* Right panel: a 2x2 hand, then Next + elixir.
+   NOTE: no transform or filter on #app / #hud: KING below is position: fixed. */
+:root[data-layout="wide"] #hud.v2 {
+  position: absolute;
+  inset-inline-end: max(var(--hug), env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: calc(var(--side) - 24px);
+  box-sizing: border-box;
+  padding: 16px 12px 12px;
+  border: 3px solid #0d1c4a;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(45, 92, 192, 0.93) 0%, rgba(29, 63, 150, 0.93) 45%, rgba(20, 42, 104, 0.95) 100%);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: "hand hand" "next elixir";
+  align-items: center;
+  column-gap: 10px;
+}
+:root[data-layout="wide"] #hud.v2::before {
+  display: none;
+}
+:root[data-layout="wide"] #hud.v2 .hand-row {
+  grid-area: hand;
+  grid-template-columns: repeat(2, var(--card-w));
+  justify-content: center;
+  gap: 22px 12px;
+  padding: 0;
+}
+:root[data-layout="wide"] #hud.v2 .hud-next {
+  grid-area: next;
+  position: static;
+  margin-top: 18px;
+}
+:root[data-layout="wide"] #hud.v2 .elixir-row {
+  grid-area: elixir;
+  margin-top: 18px;
+  padding: 0;
+}
+/* The stats tooltip opens beside the panel, toward the board. */
+:root[data-layout="wide"] #hud.v2 .card-tip {
+  left: auto !important;
+  right: calc(100% + 10px);
+  bottom: auto;
+  top: 12px;
+  transform: none;
+}
+/* Left panel: clock + menu, then the two scoreboard pills. */
+:root[data-layout="wide"] #topbar {
+  inset-inline: max(var(--hug), env(safe-area-inset-left)) auto;
+  width: calc(var(--side) - 24px);
+  box-sizing: border-box;
+  padding: max(12px, env(safe-area-inset-top)) 0 0;
+  background: none;
+  grid-template-columns: auto auto 1fr;
+  grid-template-rows: auto auto auto;
+  gap: 8px;
+}
+:root[data-layout="wide"] #topbar .clock { grid-column: 1; grid-row: 1; justify-self: start; }
+:root[data-layout="wide"] #topbar .battle-menu { grid-column: 2; grid-row: 1; }
+:root[data-layout="wide"] #topbar .crowns.enemy { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
+:root[data-layout="wide"] #topbar .crowns.player { grid-column: 1 / -1; grid-row: 3; justify-self: start; }
+/* King's ability: bottom of the left panel, above the chat bubble. */
+:root[data-layout="wide"] #hud.v2 .hud-ability {
+  position: fixed;
+  inset-inline: calc(max(var(--hug), env(safe-area-inset-left)) + 6px) auto;
+  bottom: calc(max(12px, env(safe-area-inset-bottom)) + 64px);
+}
+/* Chat bubble bottom-left; its tray opens sideways (toward the board) so it
+   never covers King. DOM order is tray, toggle: row-reverse puts the toggle first. */
+:root[data-layout="wide"] .hud-v2 .emote-bar {
+  inset-inline-start: max(var(--hug), env(safe-area-inset-left));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  flex-direction: row-reverse;
+  align-items: center;
+}

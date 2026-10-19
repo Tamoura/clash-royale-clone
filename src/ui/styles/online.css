@@ -445,6 +445,10 @@
   color: var(--on-surface-dim);
   font-variant-numeric: tabular-nums;
 }
+/* Wide battles: under the left panel (src/ui/styles/hud.css). */
+:root[data-layout="wide"] .oo-pip {
+  inset-inline-start: var(--hug);
+}
 .oo-pip__dot {
   width: 8px;
   height: 8px;
