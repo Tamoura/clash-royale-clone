@@ -57,7 +57,8 @@ const vite = spawn(`node_modules/.bin/${bin}`, ["--host", "--port", String(VITE_
 const relay = spawn(process.execPath, [RELAY_BUNDLE], {
   stdio: "inherit",
   // PORT wins over RELAY_PORT in the relay, so pin both for the LAN setup.
-  env: { ...process.env, PORT: String(RELAY_PORT), RELAY_PORT: String(RELAY_PORT) },
+  // Vite serves the game here, so the relay serves no (possibly stale) dist/.
+  env: { ...process.env, PORT: String(RELAY_PORT), RELAY_PORT: String(RELAY_PORT), STATIC_DIR: "off" },
 });
 
 console.log("\n" + "=".repeat(46));

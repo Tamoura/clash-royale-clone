@@ -57,6 +57,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    // server/ holds the relay's Node-only glue (static file serving).
+    include: ["src/**/*.test.ts", "server/**/*.test.ts"],
   },
 });

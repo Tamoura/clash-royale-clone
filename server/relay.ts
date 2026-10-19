@@ -5,34 +5,55 @@
 // rate limits, a per-IP connection cap, heartbeats, expiry sweeps, a health
 // endpoint and graceful shutdown.
 //
+// When a built game is next to it (dist/, see STATIC_DIR) it also serves the
+// game itself (server/static.ts), so one process at one address is the whole
+// online deploy: `npm run build:all && npm start`, Render, the Dockerfile.
+//
 // Dev:   npm run relay                 (runs this file through vite-node)
 // Prod:  npm run build:relay && npm run relay:prod   (bundled dist-server/relay.mjs)
+// Both:  npm run build:all && npm start               (game + relay on $PORT)
 import { createServer, type IncomingMessage } from "node:http";
 import { randomBytes, randomInt } from "node:crypto";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { RoomHub, type Outbound } from "../src/net/rooms";
 import { makeCodeGen } from "../src/net/codewords";
+import { originAllowed, originPolicy } from "../src/net/origins";
 import { PROTOCOL_VERSION, type ErrorReason, type ServerMsg } from "../src/net/protocol";
 import { MAX_MESSAGE_BYTES, isParseError, parseClientMsg, playableCardIds } from "../src/net/validate";
+import { openStaticSite } from "./static";
 
 const env = process.env;
 const PORT = Number(env.PORT ?? env.RELAY_PORT ?? 3110);
 const PRODUCTION = env.NODE_ENV === "production";
-/** Comma list of page origins allowed to connect; "*" allows any. */
-const ALLOWED_ORIGINS = (env.ALLOWED_ORIGINS ?? (PRODUCTION ? "http://localhost:3101" : "*"))
-  .split(",")
-  .map((s) => s.trim().replace(/\/+$/, ""))
-  .filter(Boolean);
-const ANY_ORIGIN = ALLOWED_ORIGINS.includes("*");
+/**
+ * Page origins allowed to connect (src/net/origins.ts): the ALLOWED_ORIGINS
+ * comma list ("*" allows any), the service's own public URL on Render
+ * (RENDER_EXTERNAL_URL), and always a page from this server's own host.
+ */
+const ORIGINS = originPolicy(env.ALLOWED_ORIGINS, PRODUCTION, [env.RENDER_EXTERNAL_URL]);
 const MAX_CONN_PER_IP = Number(env.MAX_CONN_PER_IP ?? 8);
 /**
  * Where the client IP comes from behind a proxy. "1": the right-most
  * X-Forwarded-For entry (the one our proxy appended; anything left of it was
  * sent by the client and can be forged). Any other value names a header the
- * edge proxy sets itself, e.g. "fly-client-ip" or "cf-connecting-ip".
- * Unset or "0": the socket address.
+ * edge proxy sets itself, e.g. "fly-client-ip", "cf-connecting-ip" or
+ * "true-client-ip". Unset or "0": the socket address.
+ *
+ * On Render (RENDER_EXTERNAL_URL is set) the default is "true-client-ip":
+ * Render's edge overwrites that header with the real client address, while
+ * X-Forwarded-For keeps whatever the client sent and ends in Render's own
+ * internal proxy, so "1" would lump every player under one address.
  */
-const TRUST_PROXY = (env.TRUST_PROXY ?? "").trim().toLowerCase();
+const TRUST_PROXY = (env.TRUST_PROXY ?? (env.RENDER_EXTERNAL_URL ? "true-client-ip" : "")).trim().toLowerCase();
+/**
+ * The built game to serve next to the relay. Unset: the dist/ folder beside
+ * this file's folder (the repo's dist/ for both server/relay.ts and
+ * dist-server/relay.mjs), used only when it holds an index.html. "off":
+ * relay only.
+ */
+const STATIC_DIR = (env.STATIC_DIR ?? "").trim();
 const QUICK_MATCH = env.QUICK_MATCH !== "off";
 /** "debug" adds client IPs and per-message detail; never on by default. */
 const LOG_LEVEL = env.LOG_LEVEL === "debug" ? "debug" : "info";
@@ -220,8 +241,29 @@ function handle(conn: Conn, data: RawData, isBinary: boolean): void {
   }
 }
 
+const site =
+  STATIC_DIR.toLowerCase() === "off"
+    ? null
+    : openStaticSite(STATIC_DIR ? resolve(STATIC_DIR) : fileURLToPath(new URL("../dist", import.meta.url)), (err) =>
+        log("error", "static", { err: String(err) }),
+      );
+if (!site && STATIC_DIR && STATIC_DIR.toLowerCase() !== "off") {
+  log("warn", "static-missing", { dir: STATIC_DIR, hint: "no index.html there; run npm run build:all" });
+}
+
+/** The request path, parsed so "//x" stays a path (not a host). */
+function requestUrl(req: IncomingMessage): URL {
+  const raw = req.url ?? "/";
+  return new URL(raw.startsWith("/") ? `http://relay${raw}` : `http://relay/${raw}`);
+}
+
 const server = createServer((req, res) => {
-  const path = new URL(req.url ?? "/", "http://relay").pathname;
+  const url = requestUrl(req);
+  const path = url.pathname;
+  if (site && path !== "/healthz" && path !== "/ws") {
+    void site.serve(req, res, url);
+    return;
+  }
   if (req.method === "GET" && path === "/healthz") {
     const { rooms, queue } = hub.stats();
     const body = {
@@ -250,9 +292,9 @@ const wss = new WebSocketServer({
   verifyClient: (info, done) => {
     const path = new URL(info.req.url ?? "/", "http://relay").pathname;
     if (!WS_PATHS.has(path)) return done(false, 404, "Not Found");
-    const origin = (info.origin ?? "").replace(/\/+$/, "");
-    if (!ANY_ORIGIN && !ALLOWED_ORIGINS.includes(origin)) {
-      log("info", "refused", { reason: "origin", origin: origin || null });
+    const { host, "x-forwarded-host": forwardedHost } = info.req.headers;
+    if (!originAllowed(info.origin, [host, forwardedHost], ORIGINS)) {
+      log("info", "refused", { reason: "origin", origin: info.origin || null });
       return done(false, 403, "Origin not allowed");
     }
     const ip = clientIp(info.req);
@@ -363,8 +405,9 @@ server.listen(PORT, () => {
   log("info", "listening", {
     port: PORT,
     v: PROTOCOL_VERSION,
-    origins: ALLOWED_ORIGINS,
+    origins: ORIGINS.any ? ["*"] : [...ORIGINS.allowed, "(same host)"],
     quickMatch: QUICK_MATCH,
     trustProxy: TRUST_PROXY || "off",
+    static: site?.root ?? "off",
   });
 });
