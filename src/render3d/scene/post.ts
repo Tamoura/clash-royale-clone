@@ -222,13 +222,27 @@ export function setDioramaQuality(b: Battle3D, on: boolean): void {
 /** The resolution cap for the diorama window. */
 export const DIORAMA_DPR = 1.25;
 
+/**
+ * Device pixels a battle frame may cost: a full-screen desktop battle
+ * would draw 4x the pixels of the old phone-width column, so big canvases
+ * trade resolution (never below 1 device px per CSS px) for frame rate.
+ * Phones (390x653 @3 = 2.3M) stay under it.
+ */
+export const PIXEL_BUDGET = 2.6e6;
+
+/** The pixel ratio to render a w x h (CSS px) canvas at. */
+export function renderDpr(w: number, h: number, device: number, cap: number, diorama: boolean): number {
+  const budget = Math.max(1, Math.sqrt(PIXEL_BUDGET / Math.max(1, w * h)));
+  return Math.min(cap, diorama ? DIORAMA_DPR : Infinity, device || 1, budget);
+}
+
 /** Size the renderer and post stack for the container at the current quality. */
 export function applyQuality(b: Battle3D): void {
   const w = b.container.clientWidth || 1;
   const h = b.container.clientHeight || 1;
   const level = b.quality.level;
   const diorama = dioramaMode.has(b);
-  const dpr = Math.min(level.dprCap, diorama ? DIORAMA_DPR : Infinity, window.devicePixelRatio || 1);
+  const dpr = renderDpr(w, h, window.devicePixelRatio, level.dprCap, diorama);
   const bloomScale = diorama ? 0 : level.bloom;
   b.bloom.enabled = bloomScale > 0;
   b.renderer.setPixelRatio(dpr);

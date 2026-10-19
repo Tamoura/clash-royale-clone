@@ -988,7 +988,7 @@ export function updateCrowd(b: Battle3D, dt: number): void {
   if (b.cheer > 0) {
     b.cheer = Math.max(0, b.cheer - dt);
     if (!b.crowd) return;
-    const sidesOnScreen = b.showcase || b.camera.right > STAND_INNER_X;
+    const sidesOnScreen = b.showcase || Math.max(-b.camera.left, b.camera.right) > STAND_INNER_X;
     const n = sidesOnScreen ? Infinity : (ART.get(b)?.kitSeats.length ?? Infinity);
     poseCrowd(b, b.cheer > 0 ? b.waterTime : -1, n);
   }
