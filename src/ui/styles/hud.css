@@ -808,18 +808,43 @@
   :root[data-layout="tall"] #topbar.v2 .battle-menu { grid-column: 5; grid-row: 1; }
 }
 @media (max-width: 599px) and (min-aspect-ratio: 47/100) {
-  /* No room for names on one row: the badge and crown count stay. */
-  :root[data-layout="tall"] #topbar.v2 .hud-who { display: none; }
-  /* "OVERTIME 1:59" must still fit beside the menu: a tighter row. */
+  /* No room for both names on one row: the opponent's stays (as much of it
+     as fits, see the name rule below), yours goes (the blue shield chip is
+     you), and the clock drops its "TIME LEFT" caption to make room (the
+     countdown speaks for itself; the menu button sets the band's height). */
+  :root[data-layout="tall"] #topbar.v2 .crowns.player .hud-who,
+  :root[data-layout="tall"] #topbar.v2 .crowns.enemy .ptrophies,
+  :root[data-layout="tall"] #topbar.v2 .clock::before { display: none; }
   :root[data-layout="tall"] #topbar.v2 { column-gap: 6px; padding-inline: 8px; }
-  :root[data-layout="tall"] #topbar.v2 .clock.overtime { font-size: var(--fs-sm); padding-inline: var(--sp-1); }
+  /* Overtime: OVERTIME over the time in a fixed small size, so the row
+     never outgrows the screen and pushes the menu off it. */
+  :root[data-layout="tall"] #topbar.v2 .clock.overtime {
+    white-space: normal;
+    font-size: 13px;
+    line-height: 1.15;
+    padding: 4px;
+    /* Wide enough for OVERTIME (or وقت إضافي) on one line, the time under it. */
+    min-width: 6.3em;
+  }
 }
 @media (max-width: 339px) and (min-aspect-ratio: 47/100) {
   /* 320px phones: tighter still. */
   :root[data-layout="tall"] #topbar.v2 { column-gap: 4px; padding-inline: 6px; }
   :root[data-layout="tall"] #topbar.v2 .crowns { padding-inline-end: 6px; }
-  :root[data-layout="tall"] #topbar.v2 .clock.overtime { font-size: var(--fs-xs); }
+  :root[data-layout="tall"] #topbar.v2 .clock.overtime { font-size: 12px; }
   :root[data-layout="tall"] #topbar.v2 .menu-toggle { width: 44px; }
+}
+/* A name in a tight spot (the one-row band, a narrow side panel) shows as
+   much as fits on one line, then an ellipsis: it may break anywhere, so it
+   never forces its row wider than the screen or panel, and only its first
+   line shows. The crown count beside it always stays whole. */
+:root[data-layout] #topbar.v2 .pname {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* ── Wide (landscape, laptops, desktops, near-square windows): the board sits
@@ -909,7 +934,9 @@
   box-sizing: border-box;
   padding: max(12px, env(safe-area-inset-top)) 0 0;
   background: none;
-  grid-template-columns: auto auto 1fr;
+  /* The clock's column may shrink (its label then wraps) so the menu never
+     leaves the panel. */
+  grid-template-columns: minmax(0, auto) auto 1fr;
   grid-template-rows: auto auto auto;
   gap: 8px;
 }
@@ -917,6 +944,28 @@
 :root[data-layout="wide"] #topbar .battle-menu { grid-column: 2; grid-row: 1; }
 :root[data-layout="wide"] #topbar .crowns.enemy { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
 :root[data-layout="wide"] #topbar .crowns.player { grid-column: 1 / -1; grid-row: 3; justify-self: start; }
+:root[data-layout="wide"] #topbar .crowns { max-width: 100%; box-sizing: border-box; }
+/* Narrow left panel (under 240px): a tighter clock keeps "TIME LEFT" on one
+   line beside the menu. In overtime the word OVERTIME stands in for that
+   label, over the time (it wraps there), in a fixed size that always fits:
+   "OVERTIME 1:59" on one line would push the menu onto the board. */
+:root[data-layout="wide"][data-side="narrow"] #topbar.v2 {
+  column-gap: 6px;
+}
+:root[data-layout="wide"][data-side="narrow"] #topbar.v2 .clock {
+  padding-inline: 5px;
+}
+:root[data-layout="wide"][data-side="narrow"] #topbar.v2 .clock.overtime {
+  white-space: normal;
+  font-size: 13px;
+  line-height: 1.15;
+  padding-block: 5px;
+  /* Wide enough for OVERTIME (or وقت إضافي) on one line, the time under it. */
+  min-width: 6.3em;
+}
+:root[data-layout="wide"][data-side="narrow"] #topbar.v2 .clock.overtime::before {
+  display: none;
+}
 /* King's ability: bottom of the left panel, above the chat bubble. */
 :root[data-layout="wide"] #hud.v2 .hud-ability {
   position: fixed;
