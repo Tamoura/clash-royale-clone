@@ -808,6 +808,16 @@
 @media (max-width: 599px) and (min-aspect-ratio: 47/100) {
   /* No room for names on one row: the badge and crown count stay. */
   :root[data-layout="tall"] #topbar.v2 .hud-who { display: none; }
+  /* "OVERTIME 1:59" must still fit beside the menu: a tighter row. */
+  :root[data-layout="tall"] #topbar.v2 { column-gap: 6px; padding-inline: 8px; }
+  :root[data-layout="tall"] #topbar.v2 .clock.overtime { font-size: var(--fs-sm); padding-inline: var(--sp-1); }
+}
+@media (max-width: 339px) and (min-aspect-ratio: 47/100) {
+  /* 320px phones: tighter still. */
+  :root[data-layout="tall"] #topbar.v2 { column-gap: 4px; padding-inline: 6px; }
+  :root[data-layout="tall"] #topbar.v2 .crowns { padding-inline-end: 6px; }
+  :root[data-layout="tall"] #topbar.v2 .clock.overtime { font-size: var(--fs-xs); }
+  :root[data-layout="tall"] #topbar.v2 .menu-toggle { width: 44px; }
 }
 
 /* ── Wide (landscape, laptops, desktops): the board fills the height in the
