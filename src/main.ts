@@ -42,6 +42,7 @@ import type { Side } from "./game/arena";
 import { isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
 import { Battle3D, setTowerFlair } from "./render3d/scene3d";
+import { BATTLE_BOX, ZERO_INSETS } from "./render3d/scene/fit";
 import {
   ARENA_THEME_KEY,
   ARABIC,
@@ -835,7 +836,9 @@ const clockEl = topbar.querySelector<HTMLElement>(".clock");
 if (clockEl) clockEl.dataset.label = tr("Time left", "الوقت المتبقي");
 
 // The top bar floats over the arena; tell the camera how much it covers.
-new ResizeObserver(() => scene.setTopInset(topbar.offsetHeight)).observe(topbar);
+new ResizeObserver(() =>
+  scene.setFraming({ insets: { ...ZERO_INSETS, top: topbar.offsetHeight }, box: BATTLE_BOX }),
+).observe(topbar);
 
 function legacyPlayed(): boolean {
   try {

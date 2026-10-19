@@ -27,7 +27,7 @@ function battleCamera(w: number, h: number, camZ: number): THREE.OrthographicCam
   const camera = new THREE.OrthographicCamera(-10, 10, 18, -18, -50, 120);
   camera.position.set(CAM_HOME.x, CAM_HOME.y, camZ);
   camera.lookAt(0, 0, 0);
-  const stub = { camera, container: { clientWidth: w, clientHeight: h }, topInsetPx: 0, showcase: false };
+  const stub = { camera, container: { clientWidth: w, clientHeight: h }, framing: null, showcase: false };
   frameOrtho(stub as unknown as Battle3D);
   camera.updateMatrixWorld(true);
   return camera;

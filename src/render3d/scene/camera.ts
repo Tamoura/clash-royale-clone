@@ -1,5 +1,5 @@
 /**
- * The battle camera: the orthographic fit around the HUD inset, the home
+ * The battle camera: the orthographic fit around the HUD insets, the home
  * diorama framing and sway, trauma shake, the king-tower KO zoom, and the
  * depth fog per look (fitted so it never reaches the playfield).
  */
@@ -8,6 +8,17 @@ import type { Battle3D } from "../scene3d";
 import { fitFog, viewMatrixAt } from "../fogfit";
 import { reducedMotion } from "../../ui/prefs";
 import { CAM_HOME, LOOK, cameraZForView, toWorld } from "./common";
+import { BATTLE_BOX, ZERO_INSETS, fitBattleFrustum, type ContentBox, type Frustum, type Insets } from "./fit";
+
+/**
+ * Where the battle board must stay visible: the HUD's insets on each side
+ * of the canvas (CSS px) and the content box to fit between them. Set by
+ * the layout (ui/layoutWire.ts); null frames the whole board with no insets.
+ */
+export interface Framing {
+  insets: Insets;
+  box: ContentBox;
+}
 
 /** Distance fog in the sky colour (gradeSky re-tints it every frame). */
 export function initFog(b: Battle3D): void {
@@ -71,23 +82,32 @@ export function showcase(b: Battle3D, on: boolean, windowFrac = 0.5): void {
   }
 }
 
-/** The HUD overlay height; the frame keeps the arena clear of it. */
-export function applyTopInset(b: Battle3D, px: number): void {
-  if (Math.abs(px - b.topInsetPx) < 0.5) return;
-  b.topInsetPx = px;
+/**
+ * Re-fit when the HUD's insets or the content box change (sub-pixel
+ * jitter from layout rounding is ignored).
+ */
+export function applyFraming(b: Battle3D, f: Framing): void {
+  const cur = b.framing;
+  if (cur && cur.box === f.box) {
+    const a = cur.insets;
+    const n = f.insets;
+    const near = (x: number, y: number): boolean => Math.abs(x - y) < 0.5;
+    if (near(a.top, n.top) && near(a.right, n.right) && near(a.bottom, n.bottom) && near(a.left, n.left)) return;
+  }
+  b.framing = f;
   frameOrtho(b);
 }
 
 /** The resting battle frustum (before any KO zoom), per camera. */
-interface Frustum {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-}
 const restFrustum = new WeakMap<THREE.OrthographicCamera, Frustum>();
 
-/** Fit the arena to the viewport with an orthographic frustum. */
+/**
+ * Fit the arena to the viewport with an orthographic frustum (fit.ts).
+ * The shallow camera foreshortens the field, so the frame zooms in; the
+ * frustum always matches the canvas aspect (a fixed min-width once
+ * stretched phones ~8% sideways). The board is fitted edge to edge into
+ * what the HUD leaves free; squat screens fit its depth instead.
+ */
 export function frameOrtho(b: Battle3D): void {
   if (b.showcase) {
     showcase(b, true, b.showcaseWindow);
@@ -95,24 +115,8 @@ export function frameOrtho(b: Battle3D): void {
   }
   const w = b.container.clientWidth || 1;
   const h = b.container.clientHeight || 1;
-  const aspect = w / h;
-  // World-units of half-height the view must cover so the whole
-  // board (incl. towers + edging) fits; width follows the aspect.
-  // The shallower camera foreshortens the field, so the frame zooms
-  // in — characters render ~15% larger than under the old angle.
-  // The frustum always matches the canvas aspect (an older fixed
-  // min-width stretched phones ~8% sideways). Fit the field's width
-  // edge to edge; on squat screens fit its depth instead. The HUD
-  // overlay covers `f` of the top, so centre the arena in what's left.
-  const NEED_HALF_W = 9.95; // field half-width + edging
-  const CONTENT_H = 26.8; // screen-space depth: near fence to far lanterns
-  const CONTENT_MID = 0.6; // its centre, in camera-up units
-  const f = Math.min(0.25, b.topInsetPx / h);
-  const halfH = Math.max(NEED_HALF_W / aspect, CONTENT_H / 2 / (1 - f));
-  const halfW = halfH * aspect;
-  const V = halfH * 2;
-  const top = CONTENT_MID + (V * (1 + f)) / 2;
-  restFrustum.set(b.camera, { left: -halfW, right: halfW, top, bottom: top - V });
+  const fr = b.framing ?? { insets: ZERO_INSETS, box: BATTLE_BOX };
+  restFrustum.set(b.camera, fitBattleFrustum(w, h, fr.insets, fr.box));
   applyFrustum(b);
   applyFogRange(b);
 }
