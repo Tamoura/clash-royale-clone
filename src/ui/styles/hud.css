@@ -830,9 +830,11 @@
 @media (max-width: 599px) and (min-aspect-ratio: 47/100) {
   /* No room for both names on one row: the opponent's stays (as much of it
      as fits, see the name rule below), yours goes (the blue shield chip is
-     you), and the clock drops its "TIME LEFT" caption to make room (the
-     countdown speaks for itself; the menu button sets the band's height). */
+     you), the opponent's rank badge goes so their name gets its width, and
+     the clock drops its "TIME LEFT" caption to make room (the countdown
+     speaks for itself; the menu button sets the band's height). */
   :root[data-layout="tall"] #topbar.v2 .crowns.player .hud-who,
+  :root[data-layout="tall"] #topbar.v2 .crowns.enemy .hud-badge,
   :root[data-layout="tall"] #topbar.v2 .crowns.enemy .ptrophies,
   :root[data-layout="tall"] #topbar.v2 .clock::before { display: none; }
   :root[data-layout="tall"] #topbar.v2 { column-gap: 6px; padding-inline: 8px; }

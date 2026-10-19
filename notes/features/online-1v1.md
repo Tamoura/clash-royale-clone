@@ -48,8 +48,13 @@ accumulator loop already drives it. So:
 1. `npm install` once (pulls `ws`).
 2. `npm run play` on one computer — it prints `http://<your-ip>:3101`.
 3. Each kid opens that link on their device (same Wi-Fi), builds a deck,
-   taps **Play a Friend**. One taps **Create a game** and reads the code
-   aloud; the other types it and taps **Join**. Match starts.
+   then taps the sliders row under **Battle** → **Play online** → **Play a
+   friend**. One taps **Create a game** and reads the code aloud; the other
+   types it and taps **Join**. Match starts. If **Play online** is greyed
+   out, take the Champion out of the deck (bot battles only).
+
+To play over the internet instead, see `docs/deploy-multiplayer.md` (one
+click on Render).
 
 ## Verification
 - `src/net/integration.test.ts`: two full peers over the lockstep transport,
