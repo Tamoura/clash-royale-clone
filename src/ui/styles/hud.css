@@ -786,10 +786,12 @@
 
 /* ══ Battle layouts: src/ui/layoutWire.ts sets :root[data-layout] during battles only ══ */
 
-/* ── Tall (portrait): the board spans the width; the hand stays a comfortable size ── */
+/* ── Tall (portrait): the board spans the width; the hand stays a comfortable
+   size, capped by the screen's height as well as its width (--hand-w, from
+   layout.ts), so the tray never eats a short screen. ── */
 :root[data-layout="tall"] #hud.v2 .hand-row,
 :root[data-layout="tall"] #hud.v2 .elixir-row {
-  max-width: 480px;
+  max-width: var(--hand-w, 480px);
   margin-inline: auto;
   box-sizing: border-box;
 }
@@ -820,20 +822,23 @@
   :root[data-layout="tall"] #topbar.v2 .menu-toggle { width: 44px; }
 }
 
-/* ── Wide (landscape, laptops, desktops): the board fills the height in the
-   middle; the hand sits in a panel on the right, the clock, scores, King and
-   chat on the left. The battle HUD is LTR in both editions, so these inline
-   insets are the same physical sides the camera keeps clear (layout.ts). ── */
+/* ── Wide (landscape, laptops, desktops, near-square windows): the board sits
+   in the middle; the hand is in a panel on the right, the clock, scores, King
+   and chat on the left. The battle HUD is LTR in both editions, so these
+   inline insets are the same physical sides the camera keeps clear
+   (layout.ts). layout.ts also sizes the cards (--card-w) and picks the hand's
+   columns (--hand-cols: a 2x2 or one tall column) to fit the panel's width
+   and height, safe area included. ── */
 :root[data-layout="wide"] {
   /* Panels hug the board on big screens (short mouse and finger travel). */
   --hug: max(12px, calc((100vw - var(--field-w)) / 2 - var(--side) + 12px));
-  --card-w: min(calc((var(--side) - 58px) / 2), calc((100dvh - 160px) * 0.375));
 }
 :root[data-layout="wide"] #stage {
   position: absolute;
   inset: 0;
 }
-/* Right panel: a 2x2 hand, then Next + elixir.
+/* Right panel: the hand, then Next + elixir (a stacked panel: Next on top and
+   the elixir bar across the foot, see below).
    NOTE: no transform or filter on #app / #hud: KING below is position: fixed. */
 :root[data-layout="wide"] #hud.v2 {
   position: absolute;
@@ -841,7 +846,7 @@
   bottom: max(12px, env(safe-area-inset-bottom));
   width: calc(var(--side) - 24px);
   box-sizing: border-box;
-  padding: 16px 12px 12px;
+  padding: 16px 8px 12px;
   border: 3px solid #0d1c4a;
   border-radius: 20px;
   background: linear-gradient(180deg, rgba(45, 92, 192, 0.93) 0%, rgba(29, 63, 150, 0.93) 45%, rgba(20, 42, 104, 0.95) 100%);
@@ -861,7 +866,7 @@
 }
 :root[data-layout="wide"] #hud.v2 .hand-row {
   grid-area: hand;
-  grid-template-columns: repeat(2, var(--card-w));
+  grid-template-columns: repeat(var(--hand-cols, 2), var(--card-w));
   justify-content: center;
   gap: 22px 12px;
   padding: 0;
@@ -875,6 +880,19 @@
   grid-area: elixir;
   margin-top: 18px;
   padding: 0;
+}
+/* Stacked panel (most panels under 240px, layout.ts): Next on its own row at
+   the top, so the elixir bar gets the panel's full width and its ten
+   segments stay readable. */
+:root[data-layout="wide"][data-panel="stacked"] #hud.v2 {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "next" "hand" "elixir";
+}
+:root[data-layout="wide"][data-panel="stacked"] #hud.v2 .hud-next {
+  flex-direction: row;
+  justify-self: start;
+  gap: 6px;
+  margin: 0 0 10px;
 }
 /* The stats tooltip opens beside the panel, toward the board. */
 :root[data-layout="wide"] #hud.v2 .card-tip {
@@ -921,12 +939,18 @@
   inset-inline-start: max(var(--hug), env(safe-area-inset-left));
 }
 /* The world past the stands is bare in some arenas: shade the outer edges
-   so the eye stays on the board (which starts at 29%+ of the width). The
+   so the eye stays on the board (the shade ends before the board does). The
    banner, chat and sandbox buttons in the stage sit above it (z-index 4). */
 :root[data-layout="wide"] #stage::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(90deg, rgba(4, 8, 20, 0.45), transparent 22%, transparent 78%, rgba(4, 8, 20, 0.45));
+  background: linear-gradient(
+    90deg,
+    rgba(4, 8, 20, 0.45),
+    transparent min(22%, calc(50% - var(--field-w) / 2)),
+    transparent max(78%, calc(50% + var(--field-w) / 2)),
+    rgba(4, 8, 20, 0.45)
+  );
 }

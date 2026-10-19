@@ -1,8 +1,9 @@
 /**
  * Applies the battle layout (layout.ts) to the page while a battle is on
- * screen: :root[data-layout] with --side / --field-w for the CSS
- * (styles/hud.css), and the matching frame for the camera. Menus and the
- * home diorama keep their phone-width column (no data-layout at all).
+ * screen: :root[data-layout] / [data-side] / [data-panel] with --side, --field-w,
+ * --card-w, --hand-cols and --hand-w for the CSS (styles/hud.css), and the
+ * matching frame for the camera. Menus and the home diorama keep their
+ * phone-width column (no data-layout at all).
  *
  * Tall mode measures the scoreboard band floating over the top of the
  * board and frames the board just under it; wide mode frames it between
@@ -10,7 +11,7 @@
  */
 import type { Battle3D } from "../render3d/scene3d";
 import { TALL_BOX, ZERO_INSETS, type Insets } from "../render3d/scene/fit";
-import { battleLayout } from "./layout";
+import { SIDE_ROOMY, battleLayout } from "./layout";
 
 export interface LayoutControl {
   /** A battle is (or is no longer) on screen: lay out and re-size the canvas now. */
@@ -57,13 +58,20 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
   const relayout = (): void => {
     if (!battle) {
       delete root.dataset.layout;
+      delete root.dataset.side;
+      delete root.dataset.panel;
       return;
     }
     const lay = battleLayout(window.innerWidth, window.innerHeight, readSafeArea());
     // Set the mode first: the band's own size depends on it.
     root.dataset.layout = lay.mode;
+    root.dataset.side = lay.side >= SIDE_ROOMY ? "roomy" : "narrow";
+    root.dataset.panel = lay.stacked ? "stacked" : "inline";
     root.style.setProperty("--side", `${lay.side}px`);
     root.style.setProperty("--field-w", `${lay.fieldW}px`);
+    root.style.setProperty("--card-w", `${lay.cardW}px`);
+    root.style.setProperty("--hand-cols", String(lay.handCols));
+    root.style.setProperty("--hand-w", `${lay.handW}px`);
     scene.setFraming(
       lay.mode === "wide"
         ? { insets: lay.insets, box: lay.box }
