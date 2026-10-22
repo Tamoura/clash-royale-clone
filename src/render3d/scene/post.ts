@@ -14,7 +14,7 @@ import type { Battle3D } from "../scene3d";
 import { getPrefs, onPrefs } from "../../ui/prefs";
 import { LOOK } from "./common";
 import { setOutlinesVisible } from "../outlineMaterial";
-import { outlinesEnabled } from "../quality";
+import { outlinesEnabled, type QualityLevel } from "../quality";
 
 /** Display-space colour grade defaults: saturation, contrast, tint, vignette. */
 const DEFAULT_GRADE = { saturation: 1.1, contrast: 1.05, tint: [1, 1, 1] as [number, number, number], vignette: 0.3 };
@@ -22,15 +22,21 @@ const DEFAULT_GRADE = { saturation: 1.1, contrast: 1.05, tint: [1, 1, 1] as [num
 /**
  * The whole display transform in one full-screen pass:
  *   graded(uv) = grade(sRGB(ACES(exposure · hdr(uv))))   (the old Output + Grade passes)
- * FXAA then runs on the graded colour: three's FXAA reads every texel
- * through one Sample() hook, which is rewired to graded(). A white
+ * FXAA then runs on the graded colour: three's FXAA reads the colour it
+ * outputs through one Sample() hook, which is rewired to graded(). Its 9 to
+ * 21 luma reads for edge detection only need a perceptual brightness, so
+ * they read the HDR buffer directly (Reinhard, then a square-root gamma)
+ * instead of running the full grade each: one grade per pixel, not 10-22.
+ * Then the wide layout's edge shade (see setEdgeShade), and a white
  * additive flash goes on last.
  */
 export function finalFragmentShader(): string {
   const fxaa = FXAAShader.fragmentShader;
   const sample = /vec4 Sample\(\s*sampler2D\s+tex2D,\s*vec2 uv\s*\)\s*\{[^}]*\}/;
+  // The 2-argument overload only (the 5-argument one takes texSize second).
+  const luma = /float SampleLuminance\(\s*sampler2D\s+tex2D,\s*vec2 uv\s*\)\s*\{[^}]*\}/;
   const main = /void main\(\)\s*\{[^}]*\}\s*$/;
-  if (!sample.test(fxaa) || !main.test(fxaa)) {
+  if (!sample.test(fxaa) || !luma.test(fxaa) || !main.test(fxaa)) {
     throw new Error("FXAAShader layout changed: update finalFragmentShader()");
   }
   const graded = /* glsl */ `
@@ -40,6 +46,7 @@ export function finalFragmentShader(): string {
     uniform float vignette;
     uniform float uFlash;
     uniform float uFxaa;
+    uniform vec3 uEdge; // edge shade: alpha, left stop, right stop (vUv.x)
 
     #include <tonemapping_pars_fragment>
 
@@ -67,9 +74,18 @@ export function finalFragmentShader(): string {
     .replace("varying vec2 vUv;", `varying vec2 vUv;\n${graded}`)
     .replace(sample, "vec4 Sample( sampler2D tex2D, vec2 uv ) {\n\t\t\treturn graded( tex2D, uv );\n\t\t}")
     .replace(
+      luma,
+      /* glsl */ `float SampleLuminance( sampler2D tex2D, vec2 uv ) {
+        float l = dot( texture( tex2D, uv ).rgb, vec3( 0.3, 0.59, 0.11 ) ) * toneMappingExposure;
+        return sqrt( l / ( 1.0 + l ) );
+      }`,
+    )
+    .replace(
       main,
       /* glsl */ `void main() {
         vec4 col = uFxaa > 0.5 ? ApplyFXAA( tDiffuse, resolution.xy, vUv ) : graded( tDiffuse, vUv );
+        float edge = max( 1.0 - vUv.x / uEdge.y, ( vUv.x - uEdge.z ) / ( 1.0 - uEdge.z ) );
+        col.rgb = mix( col.rgb, vec3( 4.0, 8.0, 20.0 ) / 255.0, uEdge.x * clamp( edge, 0.0, 1.0 ) );
         gl_FragColor = vec4( min( col.rgb + uFlash, 1.0 ), col.a );
       }`,
     );
@@ -99,6 +115,7 @@ function finalShader(renderer: THREE.WebGLRenderer): THREE.ShaderMaterialParamet
       vignette: { value: DEFAULT_GRADE.vignette },
       uFlash: { value: 0 },
       uFxaa: { value: 1 },
+      uEdge: { value: new THREE.Vector3(...edgeShadeStops(0, 1)) },
     },
     vertexShader: FXAAShader.vertexShader,
     fragmentShader: finalFragmentShader(),
@@ -118,6 +135,39 @@ export function applyGrade(b: Battle3D): void {
   // and rim settings to the new lights and re-render the shadow map.
   applyLightQuality(b);
   markShadowsDirty(b);
+}
+
+/** The edge shade's darkest alpha (over rgb(4, 8, 20)) at the screen's sides. */
+const EDGE_SHADE = 0.45;
+
+/**
+ * The edge shade's uniform for a board `fieldW` CSS px wide, centred on a
+ * `w` CSS px wide canvas: [alpha, left stop, right stop] in uv. It fades
+ * from the sides to clear at 22% / 78% of the width, or sooner where the
+ * board starts further out; off (alpha 0) without a board or room for it.
+ */
+export function edgeShadeStops(fieldW: number, w: number): [number, number, number] {
+  const half = fieldW / (2 * Math.max(1, w));
+  const left = Math.min(0.22, 0.5 - half);
+  if (!(fieldW > 0) || left <= 0) return [0, 0.22, 0.78];
+  return [EDGE_SHADE, left, Math.max(0.78, 0.5 + half)];
+}
+
+/**
+ * Wide battles: the world past the stands is bare in some arenas, so shade
+ * the screen's outer edges to keep the eye on the board (`fieldW` CSS px
+ * wide; 0 turns it off). Drawn in the final pass rather than as a CSS
+ * overlay, which was one more full-screen layer to composite every frame.
+ */
+export function setEdgeShade(b: Battle3D, fieldW: number): void {
+  if (fieldW === b.edgeFieldW) return; // a canvas resize re-applies it (applyQuality)
+  b.edgeFieldW = fieldW;
+  applyEdgeShade(b, b.container.clientWidth || 1);
+}
+
+function applyEdgeShade(b: Battle3D, w: number): void {
+  if (!b.finalPass) return;
+  (b.finalPass.material.uniforms["uEdge"].value as THREE.Vector3).set(...edgeShadeStops(b.edgeFieldW, w));
 }
 
 /** Additive white over the whole frame, 0..1 (spell impacts, KOs). */
@@ -210,8 +260,13 @@ const dioramaMode = new WeakSet<Battle3D>();
  * The home screen's live arena is a small framed window behind the menus:
  * it renders at most at 1.25x without bloom (lifecycle.ts also halves its
  * frame rate). Off restores the quality level's own settings.
+ *
+ * Called on every screen change, so off also re-arms the governor: a new
+ * battle's start-up hitches (a rematch never passes the diorama) aren't
+ * judged as its speed.
  */
 export function setDioramaQuality(b: Battle3D, on: boolean): void {
+  if (!on) b.quality.rearm();
   if (on === dioramaMode.has(b)) return;
   if (on) dioramaMode.add(b);
   else dioramaMode.delete(b);
@@ -223,17 +278,43 @@ export function setDioramaQuality(b: Battle3D, on: boolean): void {
 export const DIORAMA_DPR = 1.25;
 
 /**
- * Device pixels a battle frame may cost: a full-screen desktop battle
- * would draw 4x the pixels of the old phone-width column, so big canvases
- * trade resolution (never below 1 device px per CSS px) for frame rate.
- * Phones (390x653 @3 = 2.3M) stay under it.
+ * The pixel ratio to render a w x h (CSS px) canvas at. A full-screen
+ * desktop battle would draw up to 4x the pixels of the old phone-width
+ * column, so each quality level holds a big canvas to its pixel budget,
+ * trading resolution (never below the level's minScale device px per CSS
+ * px) for frame rate. Phones (390x653 @3 at a 2x cap = 1.02M) sit under
+ * every budget, so only dprCap moves them.
  */
-export const PIXEL_BUDGET = 2.6e6;
+export function renderDpr(
+  w: number,
+  h: number,
+  device: number,
+  level: Pick<QualityLevel, "dprCap" | "pixelBudget" | "minScale">,
+  diorama: boolean,
+): number {
+  const budget = Math.max(level.minScale, Math.sqrt(level.pixelBudget / Math.max(1, w * h)));
+  return Math.min(level.dprCap, diorama ? DIORAMA_DPR : Infinity, device || 1, budget);
+}
 
-/** The pixel ratio to render a w x h (CSS px) canvas at. */
-export function renderDpr(w: number, h: number, device: number, cap: number, diorama: boolean): number {
-  const budget = Math.max(1, Math.sqrt(PIXEL_BUDGET / Math.max(1, w * h)));
-  return Math.min(cap, diorama ? DIORAMA_DPR : Infinity, device || 1, budget);
+/**
+ * Device pixels above which full-size bloom drops to half size. Most phones
+ * (a 390x844 screen's 390x653 board @2 = 1.02M) and a 1366x768 laptop
+ * (1.05M) keep full bloom. The biggest phones do not: a 430x932 screen's
+ * board is 430x727 @2 = 1.25M, as many pixels as a 1440x900 laptop (1.30M)
+ * on a phone GPU, so it gets the same half-size bloom. Pixel count can't
+ * tell those two apart, and the cheaper frame is the point.
+ */
+export const BLOOM_HALF_PX = 1.2e6;
+
+/**
+ * Bloom resolution as a share of the canvas (1 full, 0.5 half, 0 off) for a
+ * level's `levelBloom` on a canvas of `devicePx` device pixels: full-size
+ * bloom on a big canvas costs about 30% of the frame and looks much the
+ * same at half size (L1's setting). The diorama never blooms.
+ */
+export function bloomScaleFor(levelBloom: number, devicePx: number, diorama: boolean): number {
+  if (diorama) return 0;
+  return levelBloom >= 1 && devicePx > BLOOM_HALF_PX ? 0.5 : levelBloom;
 }
 
 /** Size the renderer and post stack for the container at the current quality. */
@@ -242,8 +323,8 @@ export function applyQuality(b: Battle3D): void {
   const h = b.container.clientHeight || 1;
   const level = b.quality.level;
   const diorama = dioramaMode.has(b);
-  const dpr = renderDpr(w, h, window.devicePixelRatio, level.dprCap, diorama);
-  const bloomScale = diorama ? 0 : level.bloom;
+  const dpr = renderDpr(w, h, window.devicePixelRatio, level, diorama);
+  const bloomScale = bloomScaleFor(level.bloom, w * h * dpr * dpr, diorama);
   b.bloom.enabled = bloomScale > 0;
   b.renderer.setPixelRatio(dpr);
   b.renderer.setSize(w, h, false);
@@ -257,6 +338,7 @@ export function applyQuality(b: Battle3D): void {
   const u = b.finalPass.material.uniforms;
   (u["resolution"].value as THREE.Vector2).set(1 / (w * dpr), 1 / (h * dpr));
   u["uFxaa"].value = level.fxaa ? 1 : 0;
+  applyEdgeShade(b, w);
   applyLightQuality(b);
   setOutlinesVisible(outlinesEnabled());
 }

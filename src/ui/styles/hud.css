@@ -1009,19 +1009,3 @@
   right: auto;
   inset-inline-start: max(var(--hug), env(safe-area-inset-left));
 }
-/* The world past the stands is bare in some arenas: shade the outer edges
-   so the eye stays on the board (the shade ends before the board does). The
-   banner, chat and sandbox buttons in the stage sit above it (z-index 4). */
-:root[data-layout="wide"] #stage::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    90deg,
-    rgba(4, 8, 20, 0.45),
-    transparent min(22%, calc(50% - var(--field-w) / 2)),
-    transparent max(78%, calc(50% + var(--field-w) / 2)),
-    rgba(4, 8, 20, 0.45)
-  );
-}
