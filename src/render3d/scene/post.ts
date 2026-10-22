@@ -22,15 +22,20 @@ const DEFAULT_GRADE = { saturation: 1.1, contrast: 1.05, tint: [1, 1, 1] as [num
 /**
  * The whole display transform in one full-screen pass:
  *   graded(uv) = grade(sRGB(ACES(exposure · hdr(uv))))   (the old Output + Grade passes)
- * FXAA then runs on the graded colour: three's FXAA reads every texel
- * through one Sample() hook, which is rewired to graded(). A white
- * additive flash goes on last.
+ * FXAA then runs on the graded colour: three's FXAA reads the colour it
+ * outputs through one Sample() hook, which is rewired to graded(). Its 9 to
+ * 21 luma reads for edge detection only need a perceptual brightness, so
+ * they read the HDR buffer directly (Reinhard, then a square-root gamma)
+ * instead of running the full grade each: one grade per pixel, not 10-22.
+ * A white additive flash goes on last.
  */
 export function finalFragmentShader(): string {
   const fxaa = FXAAShader.fragmentShader;
   const sample = /vec4 Sample\(\s*sampler2D\s+tex2D,\s*vec2 uv\s*\)\s*\{[^}]*\}/;
+  // The 2-argument overload only (the 5-argument one takes texSize second).
+  const luma = /float SampleLuminance\(\s*sampler2D\s+tex2D,\s*vec2 uv\s*\)\s*\{[^}]*\}/;
   const main = /void main\(\)\s*\{[^}]*\}\s*$/;
-  if (!sample.test(fxaa) || !main.test(fxaa)) {
+  if (!sample.test(fxaa) || !luma.test(fxaa) || !main.test(fxaa)) {
     throw new Error("FXAAShader layout changed: update finalFragmentShader()");
   }
   const graded = /* glsl */ `
@@ -66,6 +71,13 @@ export function finalFragmentShader(): string {
   return fxaa
     .replace("varying vec2 vUv;", `varying vec2 vUv;\n${graded}`)
     .replace(sample, "vec4 Sample( sampler2D tex2D, vec2 uv ) {\n\t\t\treturn graded( tex2D, uv );\n\t\t}")
+    .replace(
+      luma,
+      /* glsl */ `float SampleLuminance( sampler2D tex2D, vec2 uv ) {
+        float l = dot( texture( tex2D, uv ).rgb, vec3( 0.3, 0.59, 0.11 ) ) * toneMappingExposure;
+        return sqrt( l / ( 1.0 + l ) );
+      }`,
+    )
     .replace(
       main,
       /* glsl */ `void main() {

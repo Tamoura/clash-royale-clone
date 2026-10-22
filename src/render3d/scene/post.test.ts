@@ -3,12 +3,24 @@ import { DIORAMA_DPR, finalFragmentShader, renderDpr } from "./post";
 import { MIN_RENDER_SCALE, QUALITY_LEVELS } from "../quality";
 
 describe("fused final pass", () => {
-  it("routes every FXAA texel fetch through the tone map and grade", () => {
+  it("routes FXAA's output colour through the tone map and grade", () => {
     const src = finalFragmentShader();
-    // The only raw fetch left is inside graded(); FXAA's Sample() calls it.
-    expect(src.match(/texture\(\s*tex2D,\s*uv\s*\)/g)).toHaveLength(1);
     expect(src).toMatch(/vec4 Sample\( sampler2D tex2D, vec2 uv \) \{\s*return graded\( tex2D, uv \);/);
     expect(src).toContain("ApplyFXAA( tDiffuse, resolution.xy, vUv )");
+  });
+
+  it("reads FXAA's edge-detection luma straight from the HDR buffer", () => {
+    const src = finalFragmentShader();
+    const luma = src.match(/float SampleLuminance\( sampler2D tex2D, vec2 uv \) \{[^}]*\}/);
+    expect(luma).not.toBeNull();
+    expect(luma![0]).toContain("texture( tex2D, uv )");
+    expect(luma![0]).toContain("toneMappingExposure");
+    expect(luma![0]).not.toContain("graded(");
+    expect(luma![0]).not.toContain("Sample(");
+    // The only raw fetches: graded() (one per pixel) and the luma reads.
+    expect(src.match(/texture\(\s*tex2D,\s*uv\s*\)/g)).toHaveLength(2);
+    // The 5-argument overload still forwards to the 2-argument one.
+    expect(src).toMatch(/float SampleLuminance\( sampler2D tex2D, vec2 texSize, vec2 uv, float uOffset, float vOffset \)/);
   });
 
   it("tone-maps, converts to sRGB, grades, and adds the flash", () => {
