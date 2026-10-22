@@ -210,8 +210,13 @@ const dioramaMode = new WeakSet<Battle3D>();
  * The home screen's live arena is a small framed window behind the menus:
  * it renders at most at 1.25x without bloom (lifecycle.ts also halves its
  * frame rate). Off restores the quality level's own settings.
+ *
+ * Called on every screen change, so off also re-arms the governor: a new
+ * battle's start-up hitches (a rematch never passes the diorama) aren't
+ * judged as its speed.
  */
 export function setDioramaQuality(b: Battle3D, on: boolean): void {
+  if (!on) b.quality.rearm();
   if (on === dioramaMode.has(b)) return;
   if (on) dioramaMode.add(b);
   else dioramaMode.delete(b);

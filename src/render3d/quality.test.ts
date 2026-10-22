@@ -3,6 +3,9 @@ import {
   MIN_RENDER_SCALE,
   QUALITY_LEVELS,
   QualityGovernor,
+  SETTLE,
+  WARMUP,
+  WINDOW,
   currentQuality,
   outlinesEnabled,
   particleScale,
@@ -69,6 +72,20 @@ describe("quality ladder", () => {
   });
 });
 
+/** Frame time rounded up to whole 60 Hz refreshes, as vsync presents it. */
+const vsync = (s: number): number => Math.ceil(s * 60 - 1e-9) / 60;
+
+/** The levels a governor passes through (and when) over `seconds` of frames. */
+function trace(gov: QualityGovernor, frameAt: (level: number) => number, seconds: number): { at: number; to: number }[] {
+  const steps: { at: number; to: number }[] = [];
+  for (let t = 0; t < seconds; ) {
+    const dt = frameAt(gov.index);
+    if (gov.sample(dt)) steps.push({ at: t, to: gov.index });
+    t += dt;
+  }
+  return steps;
+}
+
 describe("adaptive quality governor", () => {
   it("holds full quality on a device that keeps 60 fps", () => {
     const gov = new QualityGovernor();
@@ -76,35 +93,88 @@ describe("adaptive quality governor", () => {
     expect(gov.level).toEqual(QUALITY_LEVELS[0]);
   });
 
-  it("walks down the ladder in order while each step really helps", () => {
-    // GPU-bound phone: every step down buys real frame time.
+  it("walks down in order while slow and stops at the first fast-enough level", () => {
+    // GPU-bound: every step buys frame time; L3 is the first under 1/45 s.
+    const cost = [1 / 30, 1 / 36, 1 / 42, 1 / 52, 1 / 65];
     const gov = new QualityGovernor();
-    const cost = [1 / 20, 1 / 26, 1 / 32, 1 / 38, 1 / 50];
-    run(gov, (i) => cost[i], 9); // warm-up 5 s + one 2 s window
+    run(gov, (i) => cost[i], WARMUP + WINDOW + 0.1);
     expect(gov.index).toBe(1);
-    expect(gov.level.dprCap).toBe(2); // the first cut keeps full resolution
-    const seen = [gov.index];
-    for (let k = 0; k < 40; k++) {
-      run(gov, (i) => cost[i], 1);
-      if (seen[seen.length - 1] !== gov.index) seen.push(gov.index);
-    }
-    expect(seen).toEqual([1, 2, 3, 4]);
-    expect(gov.level.dprCap).toBe(1.25); // floor of the ladder
+    expect(gov.level.dprCap).toBe(2); // the first cut keeps full resolution on phones
+    const steps = trace(gov, (i) => cost[i], 60);
+    expect(steps.map((s) => s.to)).toEqual([2, 3]);
+    expect(gov.index).toBe(3);
+    // Not locked: if L3 gets slow later (a busier fight), the walk carries
+    // on from here.
+    expect(trace(gov, (i) => (i < 4 ? 1 / 30 : 1 / 65), 10).map((s) => s.to)).toEqual([4]);
   });
 
-  it("undoes a step that doesn't help and stops (30 fps cap, Low Power Mode)", () => {
+  it("goes back to full quality and stops when no level helps (30 fps cap, Low Power Mode)", () => {
     const gov = new QualityGovernor();
-    run(gov, () => 1 / 30, 120);
+    run(gov, () => 1 / 30, 30);
     expect(gov.index).toBe(0);
     expect(gov.level).toEqual(QUALITY_LEVELS[0]); // sharp, with bloom
+    expect(trace(gov, () => 1 / 30, 120)).toEqual([]); // and stays there
+    expect(trace(gov, () => 1 / 10, 30)).toEqual([]);
+  });
+
+  it("keeps walking when vsync hides a step's gain (the old probe locked at L0)", () => {
+    // 30 ms at L0; each step's real cost is rounded up to whole refreshes,
+    // so L1 (22.5 ms) still presents at 33 ms but L2 (15 ms) makes 60 fps.
+    const ratio = [1, 0.75, 0.5, 0.42, 0.25];
+    const gov = new QualityGovernor();
+    const steps = trace(gov, (i) => vsync(0.03 * ratio[i]), 60);
+    expect(gov.index).toBe(2);
+    expect(steps.map((s) => s.to)).toEqual([1, 2]);
+    expect(steps[steps.length - 1].at).toBeLessThan(12); // settled within 12 s
+  });
+
+  it("keeps stepping through levels that change nothing", () => {
+    const ms = [50, 48, 47, 47, 25];
+    const gov = new QualityGovernor();
+    run(gov, (i) => ms[i] / 1000, 60);
+    expect(gov.index).toBe(4);
+  });
+
+  it("settles on the best-looking level of a plateau (frame cap below the target)", () => {
+    const ms = [50, 40, 100 / 3, 100 / 3, 100 / 3];
+    const gov = new QualityGovernor();
+    run(gov, (i) => ms[i] / 1000, 60);
+    expect(gov.index).toBe(2);
+    expect(trace(gov, () => 1 / 10, 30)).toEqual([]); // locked
+  });
+
+  it("ignores isolated hitches in a 60 fps game (5% of frames at 0.2 s)", () => {
+    const gov = new QualityGovernor();
+    let n = 0;
+    run(gov, () => (++n % 20 === 0 ? 0.2 : 1 / 60), 60);
+    expect(gov.index).toBe(0);
+  });
+
+  it("steps two levels at once when frames take over twice the target", () => {
+    const gov = new QualityGovernor();
+    const steps = trace(gov, () => 1 / 15, WARMUP + WINDOW + 0.5);
+    expect(steps).toHaveLength(1);
+    expect(steps[0].to).toBe(2);
   });
 
   it("ignores start-up hitches and long pauses such as a tab switch", () => {
     const gov = new QualityGovernor();
-    for (let i = 0; i < 40; i++) gov.sample(0.1); // 4 s of loading jank
+    for (let i = 0; i < 25; i++) gov.sample(0.1); // 2.5 s of loading jank
     for (let i = 0; i < 20; i++) gov.sample(1.5);
     run(gov, () => 1 / 60, 20);
     expect(gov.index).toBe(0);
+  });
+
+  it("rearm() gives a new battle's start-up a grace period", () => {
+    const slowStart = (rearm: boolean): number => {
+      const gov = new QualityGovernor();
+      run(gov, () => 1 / 60, 10);
+      if (rearm) gov.rearm();
+      run(gov, () => 1 / 20, SETTLE + WINDOW - 0.1);
+      return gov.index;
+    };
+    expect(slowStart(false)).toBe(2); // judged on the first slow window
+    expect(slowStart(true)).toBe(0); // still settling
   });
 });
 
