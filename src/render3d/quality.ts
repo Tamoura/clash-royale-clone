@@ -23,6 +23,18 @@
  * the bottleneck), so it goes back to the shallowest level it measured as
  * fast as the best (within TIE) and stops for the session. It never steps
  * back up, so the picture doesn't flicker.
+ *
+ * The step into L4 is the one exception to "whether or not the last step
+ * helped": it turns off the shadow map and the rim light, which changes the
+ * light state, so every lit material compiles a new shader on its next draw
+ * (9 programs, most of a second on a phone), and the way back up compiles
+ * again. So the governor only takes it once some step this session has
+ * bought frame time (a level measured faster than its walk's first by more
+ * than TIE, or fast enough). A walk that is flat from L0 to L3 is a frame
+ * cap (or a CPU no level helps): it ends there, back at the shallowest tied
+ * level, after about 9 s at L1-L3 and with no compile stall. A
+ * device that only L4's cuts would help therefore stays put; Settings >
+ * Quality > Low is its way out.
  */
 
 export interface QualityLevel {
@@ -145,6 +157,8 @@ export class QualityGovernor {
   private settle = WARMUP;
   /** While walking down: each level's measured frame time on this walk. */
   private walk: Map<number, number> | null = null;
+  /** A step down has bought frame time this session (gates the step into L4). */
+  private stepsHelped = false;
   private locked = false;
 
   /**
@@ -198,6 +212,7 @@ export class QualityGovernor {
     this.acc = 0;
     this.settle = WARMUP;
     this.walk = null;
+    this.stepsHelped = false;
     this.locked = false;
     current = this.level;
   }
@@ -205,12 +220,6 @@ export class QualityGovernor {
   private step(to: number): void {
     this.levelIdx = to;
     current = this.level;
-  }
-
-  /** One step down (two when far too slow), then let the new level settle. */
-  private stepDown(t: number): void {
-    this.step(Math.min(QUALITY_LEVELS.length - 1, this.levelIdx + (t > 2 * SLOW_FRAME ? 2 : 1)));
-    this.settle = SETTLE;
   }
 
   /** Feed one frame's wall time in seconds; true when the level changed. */
@@ -232,25 +241,33 @@ export class QualityGovernor {
 
     if (!this.walk) {
       if (t <= SLOW_FRAME || this.levelIdx === bottom) return false;
-      this.walk = new Map([[this.levelIdx, t]]);
-      this.stepDown(t);
-      return true;
+      this.walk = new Map();
     }
-    this.walk.set(this.levelIdx, t);
+    const walk = this.walk;
+    const first = walk.size > 0 ? (walk.values().next().value as number) : t;
+    walk.set(this.levelIdx, t);
     if (t <= SLOW_FRAME) {
+      this.stepsHelped = true;
       this.walk = null; // fast enough: stay here, free to walk on later
       return false;
     }
-    if (this.levelIdx < bottom) {
-      this.stepDown(t);
+    if (t < first * (1 - TIE)) this.stepsHelped = true;
+    // One step down (two when far too slow), then let the new level settle.
+    // The step into the bottom level recompiles every lit material's shader,
+    // so it waits until some step has shown that our pixels are the problem.
+    const to = Math.min(bottom, this.levelIdx + (t > 2 * SLOW_FRAME ? 2 : 1));
+    if (this.levelIdx < bottom && (to < bottom || this.stepsHelped)) {
+      this.step(to);
+      this.settle = SETTLE;
       return true;
     }
-    // Slow even at the bottom: not (only) our pixels (frame cap, CPU,
-    // thermal). Keep the best-looking level that was as fast, and stop.
+    // Slow at the bottom, or flat all the way down to it: not (only) our
+    // pixels (frame cap, CPU, thermal). Keep the best-looking level that was
+    // as fast, and stop.
     let best = Infinity;
-    for (const v of this.walk.values()) best = Math.min(best, v);
+    for (const v of walk.values()) best = Math.min(best, v);
     let pick = bottom;
-    for (const [i, v] of this.walk) if (v <= best * (1 + TIE)) pick = Math.min(pick, i);
+    for (const [i, v] of walk) if (v <= best * (1 + TIE)) pick = Math.min(pick, i);
     this.walk = null;
     this.locked = true;
     if (pick === this.levelIdx) return false;

@@ -110,7 +110,10 @@ describe("adaptive quality governor", () => {
 
   it("goes back to full quality and stops when no level helps (30 fps cap, Low Power Mode)", () => {
     const gov = new QualityGovernor();
-    run(gov, () => 1 / 30, 30);
+    const walk = trace(gov, () => 1 / 30, 30);
+    // L1-L3 cost no shader compiles; L4 (light state change) is never tried.
+    expect(walk.map((s) => s.to)).toEqual([1, 2, 3, 0]);
+    expect(walk[walk.length - 1].at).toBeLessThan(14);
     expect(gov.index).toBe(0);
     expect(gov.level).toEqual(QUALITY_LEVELS[0]); // sharp, with bloom
     expect(trace(gov, () => 1 / 30, 120)).toEqual([]); // and stays there
@@ -128,10 +131,30 @@ describe("adaptive quality governor", () => {
     expect(steps[steps.length - 1].at).toBeLessThan(12); // settled within 12 s
   });
 
-  it("keeps stepping through levels that change nothing", () => {
-    const ms = [50, 48, 47, 47, 25];
+  it("keeps stepping through levels that change nothing once a step has helped", () => {
+    const ms = [60, 40, 39, 38, 20];
     const gov = new QualityGovernor();
     run(gov, (i) => ms[i] / 1000, 60);
+    expect(gov.index).toBe(4);
+  });
+
+  it("does not take the shader-recompiling step into L4 when no step has helped", () => {
+    // Flat from L0 to L3 looks like a frame cap: L4's shadow map and rim
+    // light changes would recompile every lit material for nothing.
+    const ms = [50, 48, 47, 47, 25];
+    const gov = new QualityGovernor();
+    const walk = trace(gov, (i) => ms[i] / 1000, 60);
+    expect(walk.map((s) => s.to)).not.toContain(4);
+    expect(gov.index).toBe(0);
+    expect(trace(gov, () => 1 / 10, 30)).toEqual([]); // locked
+  });
+
+  it("lets a later walk reach L4 when an earlier step bought frame time", () => {
+    const gov = new QualityGovernor();
+    run(gov, (i) => [1 / 30, 1 / 50][Math.min(i, 1)], 20); // L1 is fast enough
+    expect(gov.index).toBe(1);
+    // A busier fight later: L1-L3 are equally slow, only L4 helps.
+    run(gov, (i) => (i < 4 ? 1 / 30 : 1 / 60), 30);
     expect(gov.index).toBe(4);
   });
 
