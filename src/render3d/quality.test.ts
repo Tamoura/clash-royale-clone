@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  MIN_RENDER_SCALE,
   QUALITY_LEVELS,
   QualityGovernor,
   currentQuality,
@@ -24,6 +25,9 @@ describe("quality ladder", () => {
       const a = QUALITY_LEVELS[i - 1];
       const b = QUALITY_LEVELS[i];
       expect(b.dprCap).toBeLessThanOrEqual(a.dprCap);
+      expect(b.pixelBudget).toBeLessThanOrEqual(a.pixelBudget);
+      expect(b.minScale).toBeLessThanOrEqual(a.minScale);
+      expect(b.minScale).toBeGreaterThanOrEqual(MIN_RENDER_SCALE);
       expect(b.bloom).toBeLessThanOrEqual(a.bloom);
       expect(b.shadowSize).toBeLessThanOrEqual(a.shadowSize);
       expect(b.particles).toBeLessThanOrEqual(a.particles);
@@ -37,11 +41,31 @@ describe("quality ladder", () => {
 
   it("matches the documented levels", () => {
     const [l0, l1, l2, l3, l4] = QUALITY_LEVELS;
-    expect(l0).toEqual({ dprCap: 2, bloom: 1, shadowSize: 2048, fxaa: true, particles: 1, outlines: true, rimLight: true });
-    expect(l1).toMatchObject({ dprCap: 2, bloom: 0.5, shadowSize: 1024 });
-    expect(l2).toMatchObject({ dprCap: 1.75, bloom: 0, particles: 0.75 });
-    expect(l3).toMatchObject({ dprCap: 1.5, shadowSize: 512, particles: 0.5 });
-    expect(l4).toEqual({ dprCap: 1.25, bloom: 0, shadowSize: 0, fxaa: false, particles: 0.35, outlines: false, rimLight: false });
+    expect(l0).toEqual({
+      dprCap: 2,
+      pixelBudget: 2.2e6,
+      minScale: 1,
+      bloom: 1,
+      shadowSize: 2048,
+      fxaa: true,
+      particles: 1,
+      outlines: true,
+      rimLight: true,
+    });
+    expect(l1).toMatchObject({ dprCap: 2, pixelBudget: 1.7e6, minScale: 0.9, bloom: 0.5, shadowSize: 1024 });
+    expect(l2).toMatchObject({ dprCap: 1.75, pixelBudget: 1.3e6, minScale: 0.8, bloom: 0, particles: 0.75 });
+    expect(l3).toMatchObject({ dprCap: 1.5, pixelBudget: 1e6, minScale: 0.75, shadowSize: 512, particles: 0.5 });
+    expect(l4).toEqual({
+      dprCap: 1.25,
+      pixelBudget: 0.75e6,
+      minScale: 0.7,
+      bloom: 0,
+      shadowSize: 0,
+      fxaa: false,
+      particles: 0.35,
+      outlines: false,
+      rimLight: false,
+    });
   });
 });
 

@@ -14,7 +14,7 @@ import type { Battle3D } from "../scene3d";
 import { getPrefs, onPrefs } from "../../ui/prefs";
 import { LOOK } from "./common";
 import { setOutlinesVisible } from "../outlineMaterial";
-import { outlinesEnabled } from "../quality";
+import { outlinesEnabled, type QualityLevel } from "../quality";
 
 /** Display-space colour grade defaults: saturation, contrast, tint, vignette. */
 const DEFAULT_GRADE = { saturation: 1.1, contrast: 1.05, tint: [1, 1, 1] as [number, number, number], vignette: 0.3 };
@@ -223,17 +223,22 @@ export function setDioramaQuality(b: Battle3D, on: boolean): void {
 export const DIORAMA_DPR = 1.25;
 
 /**
- * Device pixels a battle frame may cost: a full-screen desktop battle
- * would draw 4x the pixels of the old phone-width column, so big canvases
- * trade resolution (never below 1 device px per CSS px) for frame rate.
- * Phones (390x653 @3 = 2.3M) stay under it.
+ * The pixel ratio to render a w x h (CSS px) canvas at. A full-screen
+ * desktop battle would draw up to 4x the pixels of the old phone-width
+ * column, so each quality level holds a big canvas to its pixel budget,
+ * trading resolution (never below the level's minScale device px per CSS
+ * px) for frame rate. Phones (390x653 @3 at a 2x cap = 1.02M) sit under
+ * every budget, so only dprCap moves them.
  */
-export const PIXEL_BUDGET = 2.6e6;
-
-/** The pixel ratio to render a w x h (CSS px) canvas at. */
-export function renderDpr(w: number, h: number, device: number, cap: number, diorama: boolean): number {
-  const budget = Math.max(1, Math.sqrt(PIXEL_BUDGET / Math.max(1, w * h)));
-  return Math.min(cap, diorama ? DIORAMA_DPR : Infinity, device || 1, budget);
+export function renderDpr(
+  w: number,
+  h: number,
+  device: number,
+  level: Pick<QualityLevel, "dprCap" | "pixelBudget" | "minScale">,
+  diorama: boolean,
+): number {
+  const budget = Math.max(level.minScale, Math.sqrt(level.pixelBudget / Math.max(1, w * h)));
+  return Math.min(level.dprCap, diorama ? DIORAMA_DPR : Infinity, device || 1, budget);
 }
 
 /** Size the renderer and post stack for the container at the current quality. */
@@ -242,7 +247,7 @@ export function applyQuality(b: Battle3D): void {
   const h = b.container.clientHeight || 1;
   const level = b.quality.level;
   const diorama = dioramaMode.has(b);
-  const dpr = renderDpr(w, h, window.devicePixelRatio, level.dprCap, diorama);
+  const dpr = renderDpr(w, h, window.devicePixelRatio, level, diorama);
   const bloomScale = diorama ? 0 : level.bloom;
   b.bloom.enabled = bloomScale > 0;
   b.renderer.setPixelRatio(dpr);

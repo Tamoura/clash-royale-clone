@@ -2,7 +2,9 @@
  * Render quality ladder. Five ordered levels trade picture for frame time,
  * cheapest cuts first: bloom resolution and shadow-map size (barely
  * visible), then bloom itself, resolution and particle density, and last
- * the shadow map, FXAA, rim light and outlines.
+ * the shadow map, FXAA, rim light and outlines. Every level also has a
+ * pixel budget, so a big (full-screen desktop) canvas sheds resolution on
+ * each step, down to MIN_RENDER_SCALE, even where the device ratio is 1.
  *
  * The player's Settings pick the level (prefs.quality): 'high', 'medium'
  * and 'low' pin L0, L2 and L4; 'auto' lets the governor below walk the
@@ -18,6 +20,13 @@
 export interface QualityLevel {
   /** Upper bound on the device pixel ratio we render at. */
   dprCap: number;
+  /**
+   * Device pixels a frame may cost: a big canvas renders below its device
+   * ratio to stay under it (see renderDpr in scene/post.ts).
+   */
+  pixelBudget: number;
+  /** ...but never below this many device px per CSS px (the budget's floor). */
+  minScale: number;
   /** Bloom resolution as a share of the canvas (1 full, 0.5 half, 0 off). */
   bloom: number;
   /** Sun shadow-map size in texels; 0 = no shadow map (contact/blob shadows only). */
@@ -31,8 +40,18 @@ export interface QualityLevel {
   rimLight: boolean;
 }
 
+/**
+ * The lowest render scale any level allows (device px per CSS px). The old
+ * phone-width column was 52vh wide and the wide-screen board is 0.7425x the
+ * height, so at 0.7 the board itself never gets fewer device pixels than it
+ * had in that column: big screens can always get as cheap as it was.
+ */
+export const MIN_RENDER_SCALE = 0.7;
+
 const L0: QualityLevel = {
   dprCap: 2,
+  pixelBudget: 2.2e6,
+  minScale: 1,
   bloom: 1,
   shadowSize: 2048,
   fxaa: true,
@@ -40,12 +59,14 @@ const L0: QualityLevel = {
   outlines: true,
   rimLight: true,
 };
-const L1: QualityLevel = { ...L0, bloom: 0.5, shadowSize: 1024 };
-const L2: QualityLevel = { ...L1, dprCap: 1.75, bloom: 0, particles: 0.75 };
-const L3: QualityLevel = { ...L2, dprCap: 1.5, shadowSize: 512, particles: 0.5 };
+const L1: QualityLevel = { ...L0, pixelBudget: 1.7e6, minScale: 0.9, bloom: 0.5, shadowSize: 1024 };
+const L2: QualityLevel = { ...L1, dprCap: 1.75, pixelBudget: 1.3e6, minScale: 0.8, bloom: 0, particles: 0.75 };
+const L3: QualityLevel = { ...L2, dprCap: 1.5, pixelBudget: 1e6, minScale: 0.75, shadowSize: 512, particles: 0.5 };
 const L4: QualityLevel = {
   ...L3,
   dprCap: 1.25,
+  pixelBudget: 0.75e6,
+  minScale: MIN_RENDER_SCALE,
   shadowSize: 0,
   fxaa: false,
   rimLight: false,
