@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DIORAMA_DPR, finalFragmentShader, renderDpr } from "./post";
+import { BLOOM_HALF_PX, DIORAMA_DPR, bloomScaleFor, finalFragmentShader, renderDpr } from "./post";
 import { MIN_RENDER_SCALE, QUALITY_LEVELS } from "../quality";
 
 describe("fused final pass", () => {
@@ -30,6 +30,28 @@ describe("fused final pass", () => {
     expect(src).toContain("sRGBTransferOETF( c )");
     expect(src).toMatch(/col\.rgb \+ uFlash/);
     expect(src.match(/void main\(\)/g)).toHaveLength(1);
+  });
+});
+
+describe("bloomScaleFor", () => {
+  it("keeps full-size bloom on phones and small laptops", () => {
+    expect(bloomScaleFor(1, 390 * 653 * 4, false)).toBe(1); // 1.02M
+    expect(bloomScaleFor(1, 1366 * 768, false)).toBe(1); // 1.05M
+  });
+
+  it("halves bloom on a big canvas", () => {
+    expect(bloomScaleFor(1, 1920 * 1080, false)).toBe(0.5); // 2.07M
+    expect(BLOOM_HALF_PX).toBeLessThan(1920 * 1080);
+  });
+
+  it("leaves a level's own reduced or absent bloom alone", () => {
+    expect(bloomScaleFor(0.5, 1920 * 1080, false)).toBe(0.5);
+    expect(bloomScaleFor(0, 1920 * 1080, false)).toBe(0);
+    expect(bloomScaleFor(QUALITY_LEVELS[2].bloom, 390 * 653 * 4, false)).toBe(0);
+  });
+
+  it("never blooms the diorama", () => {
+    expect(bloomScaleFor(1, 468 * 900, true)).toBe(0);
   });
 });
 

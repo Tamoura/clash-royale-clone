@@ -258,6 +258,23 @@ export function renderDpr(
   return Math.min(level.dprCap, diorama ? DIORAMA_DPR : Infinity, device || 1, budget);
 }
 
+/**
+ * Device pixels above which full-size bloom drops to half size. Phones
+ * (390x653 @2 = 1.02M) and a 1366x768 laptop (1.05M) keep full bloom.
+ */
+export const BLOOM_HALF_PX = 1.2e6;
+
+/**
+ * Bloom resolution as a share of the canvas (1 full, 0.5 half, 0 off) for a
+ * level's `levelBloom` on a canvas of `devicePx` device pixels: full-size
+ * bloom on a big canvas costs about 30% of the frame and looks much the
+ * same at half size (L1's setting). The diorama never blooms.
+ */
+export function bloomScaleFor(levelBloom: number, devicePx: number, diorama: boolean): number {
+  if (diorama) return 0;
+  return levelBloom >= 1 && devicePx > BLOOM_HALF_PX ? 0.5 : levelBloom;
+}
+
 /** Size the renderer and post stack for the container at the current quality. */
 export function applyQuality(b: Battle3D): void {
   const w = b.container.clientWidth || 1;
@@ -265,7 +282,7 @@ export function applyQuality(b: Battle3D): void {
   const level = b.quality.level;
   const diorama = dioramaMode.has(b);
   const dpr = renderDpr(w, h, window.devicePixelRatio, level, diorama);
-  const bloomScale = diorama ? 0 : level.bloom;
+  const bloomScale = bloomScaleFor(level.bloom, w * h * dpr * dpr, diorama);
   b.bloom.enabled = bloomScale > 0;
   b.renderer.setPixelRatio(dpr);
   b.renderer.setSize(w, h, false);
