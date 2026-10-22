@@ -175,6 +175,8 @@ export class Battle3D {
   readonly bloom: UnrealBloomPass;
   /** @internal Tone mapping, sRGB, per-arena grade, FXAA and flash in one pass. */
   finalPass!: ShaderPass;
+  /** @internal Board width (CSS px) the edge shade fades out before; 0 = no shade (setEdgeShade). */
+  edgeFieldW = 0;
   /** Shadow-map renders so far: shadows are static and re-render only when marked dirty. */
   shadowRenders = 0;
   private readonly zonePlane: THREE.Mesh; // own-half deploy area (blue)

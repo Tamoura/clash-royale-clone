@@ -27,7 +27,8 @@ const DEFAULT_GRADE = { saturation: 1.1, contrast: 1.05, tint: [1, 1, 1] as [num
  * 21 luma reads for edge detection only need a perceptual brightness, so
  * they read the HDR buffer directly (Reinhard, then a square-root gamma)
  * instead of running the full grade each: one grade per pixel, not 10-22.
- * A white additive flash goes on last.
+ * Then the wide layout's edge shade (see setEdgeShade), and a white
+ * additive flash goes on last.
  */
 export function finalFragmentShader(): string {
   const fxaa = FXAAShader.fragmentShader;
@@ -45,6 +46,7 @@ export function finalFragmentShader(): string {
     uniform float vignette;
     uniform float uFlash;
     uniform float uFxaa;
+    uniform vec3 uEdge; // edge shade: alpha, left stop, right stop (vUv.x)
 
     #include <tonemapping_pars_fragment>
 
@@ -82,6 +84,8 @@ export function finalFragmentShader(): string {
       main,
       /* glsl */ `void main() {
         vec4 col = uFxaa > 0.5 ? ApplyFXAA( tDiffuse, resolution.xy, vUv ) : graded( tDiffuse, vUv );
+        float edge = max( 1.0 - vUv.x / uEdge.y, ( vUv.x - uEdge.z ) / ( 1.0 - uEdge.z ) );
+        col.rgb = mix( col.rgb, vec3( 4.0, 8.0, 20.0 ) / 255.0, uEdge.x * clamp( edge, 0.0, 1.0 ) );
         gl_FragColor = vec4( min( col.rgb + uFlash, 1.0 ), col.a );
       }`,
     );
@@ -111,6 +115,7 @@ function finalShader(renderer: THREE.WebGLRenderer): THREE.ShaderMaterialParamet
       vignette: { value: DEFAULT_GRADE.vignette },
       uFlash: { value: 0 },
       uFxaa: { value: 1 },
+      uEdge: { value: new THREE.Vector3(...edgeShadeStops(0, 1)) },
     },
     vertexShader: FXAAShader.vertexShader,
     fragmentShader: finalFragmentShader(),
@@ -130,6 +135,39 @@ export function applyGrade(b: Battle3D): void {
   // and rim settings to the new lights and re-render the shadow map.
   applyLightQuality(b);
   markShadowsDirty(b);
+}
+
+/** The edge shade's darkest alpha (over rgb(4, 8, 20)) at the screen's sides. */
+const EDGE_SHADE = 0.45;
+
+/**
+ * The edge shade's uniform for a board `fieldW` CSS px wide, centred on a
+ * `w` CSS px wide canvas: [alpha, left stop, right stop] in uv. It fades
+ * from the sides to clear at 22% / 78% of the width, or sooner where the
+ * board starts further out; off (alpha 0) without a board or room for it.
+ */
+export function edgeShadeStops(fieldW: number, w: number): [number, number, number] {
+  const half = fieldW / (2 * Math.max(1, w));
+  const left = Math.min(0.22, 0.5 - half);
+  if (!(fieldW > 0) || left <= 0) return [0, 0.22, 0.78];
+  return [EDGE_SHADE, left, Math.max(0.78, 0.5 + half)];
+}
+
+/**
+ * Wide battles: the world past the stands is bare in some arenas, so shade
+ * the screen's outer edges to keep the eye on the board (`fieldW` CSS px
+ * wide; 0 turns it off). Drawn in the final pass rather than as a CSS
+ * overlay, which was one more full-screen layer to composite every frame.
+ */
+export function setEdgeShade(b: Battle3D, fieldW: number): void {
+  if (fieldW === b.edgeFieldW) return; // a canvas resize re-applies it (applyQuality)
+  b.edgeFieldW = fieldW;
+  applyEdgeShade(b, b.container.clientWidth || 1);
+}
+
+function applyEdgeShade(b: Battle3D, w: number): void {
+  if (!b.finalPass) return;
+  (b.finalPass.material.uniforms["uEdge"].value as THREE.Vector3).set(...edgeShadeStops(b.edgeFieldW, w));
 }
 
 /** Additive white over the whole frame, 0..1 (spell impacts, KOs). */
@@ -296,6 +334,7 @@ export function applyQuality(b: Battle3D): void {
   const u = b.finalPass.material.uniforms;
   (u["resolution"].value as THREE.Vector2).set(1 / (w * dpr), 1 / (h * dpr));
   u["uFxaa"].value = level.fxaa ? 1 : 0;
+  applyEdgeShade(b, w);
   applyLightQuality(b);
   setOutlinesVisible(outlinesEnabled());
 }

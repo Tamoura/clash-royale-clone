@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BLOOM_HALF_PX, DIORAMA_DPR, bloomScaleFor, finalFragmentShader, renderDpr } from "./post";
+import { BLOOM_HALF_PX, DIORAMA_DPR, bloomScaleFor, edgeShadeStops, finalFragmentShader, renderDpr } from "./post";
+import hudCss from "../../ui/styles/hud.css?raw";
 import { MIN_RENDER_SCALE, QUALITY_LEVELS } from "../quality";
 
 describe("fused final pass", () => {
@@ -30,6 +31,34 @@ describe("fused final pass", () => {
     expect(src).toContain("sRGBTransferOETF( c )");
     expect(src).toMatch(/col\.rgb \+ uFlash/);
     expect(src.match(/void main\(\)/g)).toHaveLength(1);
+  });
+});
+
+describe("edge shade", () => {
+  it("is drawn by the final pass, not a full-screen CSS layer", () => {
+    const src = finalFragmentShader();
+    expect(src).toContain("uniform vec3 uEdge;");
+    expect(src).toMatch(/mix\( col\.rgb, vec3\( 4\.0, 8\.0, 20\.0 \) \/ 255\.0, uEdge\.x \* clamp\( edge, 0\.0, 1\.0 \) \)/);
+    // Before the flash, after FXAA.
+    expect(src.indexOf("uEdge.x *")).toBeGreaterThan(src.indexOf("ApplyFXAA( tDiffuse"));
+    expect(src.indexOf("uEdge.x *")).toBeLessThan(src.indexOf("col.rgb + uFlash"));
+    expect(hudCss).not.toMatch(/#stage::after/);
+  });
+
+  it("fades out at 22% / 78% of the width, or where a wide board begins", () => {
+    expect(edgeShadeStops(668, 1440)).toEqual([0.45, 0.22, 0.78]);
+    const [a, l, r] = edgeShadeStops(1000, 1440);
+    expect(a).toBe(0.45);
+    expect(l).toBeCloseTo(0.5 - 500 / 1440, 9);
+    expect(r).toBeCloseTo(0.5 + 500 / 1440, 9);
+  });
+
+  it("is off without a board or room beside it", () => {
+    expect(edgeShadeStops(0, 1440)[0]).toBe(0);
+    expect(edgeShadeStops(1440, 1440)[0]).toBe(0);
+    // Off still leaves stops the shader can divide by.
+    expect(edgeShadeStops(0, 1440)[1]).toBeGreaterThan(0);
+    expect(edgeShadeStops(0, 1440)[2]).toBeLessThan(1);
   });
 });
 

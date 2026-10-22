@@ -11,6 +11,7 @@
  */
 import type { Battle3D } from "../render3d/scene3d";
 import { TALL_BOX, ZERO_INSETS, type Insets } from "../render3d/scene/fit";
+import { setEdgeShade } from "../render3d/scene/post";
 import { SIDE_ROOMY, battleLayout } from "./layout";
 
 export interface LayoutControl {
@@ -60,6 +61,7 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
       delete root.dataset.layout;
       delete root.dataset.side;
       delete root.dataset.panel;
+      setEdgeShade(scene, 0);
       return;
     }
     const lay = battleLayout(window.innerWidth, window.innerHeight, readSafeArea());
@@ -72,6 +74,8 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
     root.style.setProperty("--card-w", `${lay.cardW}px`);
     root.style.setProperty("--hand-cols", String(lay.handCols));
     root.style.setProperty("--hand-w", `${lay.handW}px`);
+    // Wide mode shades the world past the stands (drawn by the final pass).
+    setEdgeShade(scene, lay.mode === "wide" ? lay.fieldW : 0);
     scene.setFraming(
       lay.mode === "wide"
         ? { insets: lay.insets, box: lay.box }
