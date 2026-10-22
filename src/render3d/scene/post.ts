@@ -297,8 +297,12 @@ export function renderDpr(
 }
 
 /**
- * Device pixels above which full-size bloom drops to half size. Phones
- * (390x653 @2 = 1.02M) and a 1366x768 laptop (1.05M) keep full bloom.
+ * Device pixels above which full-size bloom drops to half size. Most phones
+ * (a 390x844 screen's 390x653 board @2 = 1.02M) and a 1366x768 laptop
+ * (1.05M) keep full bloom. The biggest phones do not: a 430x932 screen's
+ * board is 430x727 @2 = 1.25M, as many pixels as a 1440x900 laptop (1.30M)
+ * on a phone GPU, so it gets the same half-size bloom. Pixel count can't
+ * tell those two apart, and the cheaper frame is the point.
  */
 export const BLOOM_HALF_PX = 1.2e6;
 

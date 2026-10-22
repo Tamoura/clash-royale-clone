@@ -63,13 +63,16 @@ describe("edge shade", () => {
 });
 
 describe("bloomScaleFor", () => {
-  it("keeps full-size bloom on phones and small laptops", () => {
-    expect(bloomScaleFor(1, 390 * 653 * 4, false)).toBe(1); // 1.02M
+  it("keeps full-size bloom on most phones and small laptops", () => {
+    expect(bloomScaleFor(1, 390 * 653 * 4, false)).toBe(1); // 1.02M, 390x844 @2+
     expect(bloomScaleFor(1, 1366 * 768, false)).toBe(1); // 1.05M
   });
 
-  it("halves bloom on a big canvas", () => {
+  it("halves bloom on a big canvas, the biggest phones included", () => {
     expect(bloomScaleFor(1, 1920 * 1080, false)).toBe(0.5); // 2.07M
+    expect(bloomScaleFor(1, 1440 * 900, false)).toBe(0.5); // 1.30M
+    // A 430x932 phone's board (430x727 @2, 1.25M) costs as much as that laptop.
+    expect(bloomScaleFor(1, 430 * 727 * 4, false)).toBe(0.5);
     expect(BLOOM_HALF_PX).toBeLessThan(1920 * 1080);
   });
 
