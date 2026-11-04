@@ -15,6 +15,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "balance": "vite-node scripts/balance.ts --",
+    "lab": "vite-node scripts/lab.ts",
     "relay": "vite-node server/relay.ts --relay-only",
     "build:relay": "esbuild server/relay.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist-server/relay.mjs --external:ws",
     "relay:prod": "node dist-server/relay.mjs --relay-only",
