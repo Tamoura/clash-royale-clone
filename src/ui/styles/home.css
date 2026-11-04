@@ -263,21 +263,28 @@
   z-index: 2;
   border-color: var(--accent);
 }
+/*
+ * The glove sits inside the cell's top end corner and points down at the
+ * chest, so it never covers the tile above (there is only a thin gap) or
+ * the next slot. It bobs along its own finger, toward the chest.
+ */
 .home-chest-hand {
+  --hand-turn: 225deg; /* finger down and toward the start side */
   position: absolute;
-  left: 50%;
-  top: -40px;
-  width: 40px;
+  top: 0;
+  inset-inline-end: 2px;
+  width: 26px;
   color: var(--accent);
   pointer-events: none;
-  transform: translateX(-50%) rotate(180deg);
-  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.5));
+  transform: rotate(var(--hand-turn));
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
   animation: homeHandBob 0.8s ease-in-out infinite alternate;
 }
+[dir="rtl"] .home-chest-hand { --hand-turn: 135deg; }
 .home-chest-hand svg { display: block; width: 100%; height: auto; }
 @keyframes homeHandBob {
-  from { transform: translateX(-50%) rotate(180deg) translateY(0); }
-  to { transform: translateX(-50%) rotate(180deg) translateY(-9px); }
+  from { transform: rotate(var(--hand-turn)) translateY(0); }
+  to { transform: rotate(var(--hand-turn)) translateY(-4px); }
 }
 .v2-calm .home-chest-hand { animation: none; }
 @media (prefers-reduced-motion: reduce) {
