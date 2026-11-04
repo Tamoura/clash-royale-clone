@@ -23,11 +23,13 @@ export const TIERS: readonly Tier[] = ["practice", "rookie", "easy", "normal", "
  * nearly all of them. Rookie thinks every 6 s, notices each invader late,
  * slips up on almost half its plays, only spells big clusters and never
  * finishes a tower with a spell. Practice (where auto steps a kid down to
- * after two straight losses) is slower and sloppier still.
+ * after two straight losses) is slower and sloppier still: it thinks only
+ * every 10 s, so even the cycle personality's speed-up (archetypeTweak:
+ * 8.5 s, push at 8) stays well below rookie.
  */
 const TIER_PROFILES: Record<Tier, BotProfile> = {
   practice: {
-    thinkInterval: 8,
+    thinkInterval: 10,
     pushAt: 10,
     mistakeRate: 0.6,
     allowFinisher: false,
@@ -247,6 +249,47 @@ export function resolveTier(option: string, auto: AutoState): Tier {
 /** The bot profile for a tier. */
 export function tierProfile(tier: Tier): BotProfile {
   return TIER_PROFILES[tier];
+}
+
+// ---- Ladder personalities ----------------------------------------------------
+
+/** A ladder bot's personality (main.ts picks one per match). */
+export type BotArchetype = "balanced" | "beatdown" | "cycle" | "siege";
+
+/**
+ * The first-hour tiers are calibrated as a whole against a novice
+ * (novice.test.ts), so a ladder personality never changes their pace.
+ */
+export function keepsOwnPace(tier: Tier): boolean {
+  return tier === "practice" || tier === "rookie";
+}
+
+/**
+ * A personality's tweak to a profile: beatdown banks bigger pushes, cycle
+ * plays faster, siege turtles behind buildings and only commits when
+ * fully loaded. Balanced plays the profile as it is.
+ */
+export function archetypeTweak(base: BotProfile, archetype: BotArchetype): BotProfile {
+  switch (archetype) {
+    case "beatdown":
+      return { ...base, pushAt: Math.min(10, base.pushAt + 1) };
+    case "cycle":
+      return { ...base, thinkInterval: base.thinkInterval * 0.85, pushAt: Math.max(4, base.pushAt - 2) };
+    case "siege":
+      return { ...base, thinkInterval: base.thinkInterval * 1.1, pushAt: 10 };
+    default:
+      return base;
+  }
+}
+
+/**
+ * The ladder bot's profile for a tier and personality, before the champion
+ * or mercy banding: practice and rookie keep their own pace, every other
+ * tier gets the personality's tweak.
+ */
+export function ladderProfile(tier: Tier, archetype: BotArchetype): BotProfile {
+  const base = tierProfile(tier);
+  return keepsOwnPace(tier) ? base : archetypeTweak(base, archetype);
 }
 
 /** Ladder matches the player has finished (for the bots' manners). */

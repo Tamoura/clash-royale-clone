@@ -20,7 +20,12 @@ import {
   outcomeFor,
   sampleOutcome,
   TIERS,
+  archetypeTweak,
+  keepsOwnPace,
+  ladderProfile,
+  tierProfile,
   type AutoState,
+  type BotArchetype,
   type MatchSample,
 } from "./difficulty";
 
@@ -51,13 +56,40 @@ describe("difficulty options", () => {
   it("makes practice softer than rookie on every knob", () => {
     const p = DIFFICULTIES.practice;
     const r = DIFFICULTIES.rookie;
-    expect(p).toEqual({ thinkInterval: 8, pushAt: 10, mistakeRate: 0.6, allowFinisher: false, spellIQ: 3, reactionDelay: 2.5 });
+    expect(p).toEqual({ thinkInterval: 10, pushAt: 10, mistakeRate: 0.6, allowFinisher: false, spellIQ: 3, reactionDelay: 2.5 });
     expect(p.thinkInterval).toBeGreaterThan(r.thinkInterval);
     expect(p.mistakeRate!).toBeGreaterThan(r.mistakeRate!);
     expect(p.reactionDelay!).toBeGreaterThan(r.reactionDelay!);
     expect(p.spellIQ!).toBeGreaterThan(r.spellIQ!);
     expect(DIFF_AR.practice).toBe("تمرين");
     expect(DIFF_BLURB.practice[0].length).toBeGreaterThan(0);
+  });
+});
+
+describe("ladder personalities", () => {
+  const ARCHETYPES: BotArchetype[] = ["balanced", "beatdown", "cycle", "siege"];
+
+  it("leave practice and rookie at their own pace", () => {
+    expect(TIERS.filter(keepsOwnPace)).toEqual(["practice", "rookie"]);
+    for (const a of ARCHETYPES) {
+      expect(ladderProfile("practice", a)).toEqual(DIFFICULTIES.practice);
+      expect(ladderProfile("rookie", a)).toEqual(DIFFICULTIES.rookie);
+    }
+  });
+
+  it("tweak every other tier as main.ts always has", () => {
+    const n = tierProfile("normal");
+    expect(ladderProfile("normal", "balanced")).toEqual(n);
+    expect(ladderProfile("normal", "beatdown")).toEqual({ ...n, pushAt: 9 });
+    expect(ladderProfile("normal", "cycle")).toEqual({ ...n, thinkInterval: 0.85, pushAt: 6 });
+    expect(ladderProfile("normal", "siege")).toEqual({ ...n, thinkInterval: 1.1, pushAt: 10 });
+    expect(ladderProfile("hard", "cycle").pushAt).toBe(4);
+    expect(ladderProfile("easy", "beatdown").pushAt).toBe(10);
+  });
+
+  it("keep practice slower than rookie even if the cycle speed-up were applied", () => {
+    const p = archetypeTweak(DIFFICULTIES.practice, "cycle");
+    expect(p.thinkInterval).toBeGreaterThan(DIFFICULTIES.rookie.thinkInterval);
   });
 });
 

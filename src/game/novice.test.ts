@@ -8,20 +8,20 @@
  */
 import { describe, expect, it } from "vitest";
 import { createBattle } from "./battle";
-import { createBot, tickBot } from "./bot";
+import { createBot, tickBot, type BotProfile } from "./bot";
 import { DEFAULT_DECK } from "./cards";
 import { createPilot, tickPilot } from "./pilot";
 import { BATTLE_DURATION, OVERTIME_DURATION, tick } from "./sim";
-import { DIFFICULTIES } from "../match/difficulty";
+import { DIFFICULTIES, archetypeTweak } from "../match/difficulty";
 
 const DT = 1 / 30;
 const SEEDS = 20;
 
-function pilotWinRate(tier: "practice" | "rookie" | "hard"): number {
+function pilotWinRate(tier: "practice" | "rookie" | "hard", profile: BotProfile = DIFFICULTIES[tier]): number {
   let wins = 0;
   for (let i = 0; i < SEEDS; i++) {
     const b = createBattle(DEFAULT_DECK, DEFAULT_DECK);
-    const bot = createBot(100 + i, DIFFICULTIES[tier]);
+    const bot = createBot(100 + i, profile);
     const pilot = createPilot(7000 + i);
     while (!b.result && b.time < BATTLE_DURATION + OVERTIME_DURATION + 1) {
       tickPilot(b, pilot, DT);
@@ -41,6 +41,12 @@ describe("a novice against each bot tier", () => {
 
   it("wins at least 70% against practice", () => {
     expect(pilotWinRate("practice")).toBeGreaterThanOrEqual(0.7);
+  }, 60_000);
+
+  // Ladder personalities leave practice alone (ladderProfile), but even the
+  // fastest one, cycle, must not make it harder than rookie.
+  it("wins at least 70% against practice even with the cycle speed-up", () => {
+    expect(pilotWinRate("practice", archetypeTweak(DIFFICULTIES.practice, "cycle"))).toBeGreaterThanOrEqual(0.7);
   }, 60_000);
 
   it("wins under 15% against hard", () => {
