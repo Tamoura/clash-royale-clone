@@ -7,6 +7,11 @@
  * main.ts asks it four things: onlineSession() (is a networked match on?),
  * stepOnline(dt) from the loop, leaveOnline() on every exit and
  * restartOnline() for the result screen's button.
+ *
+ * A forfeit leaves the room at once but keeps the session (and its seat)
+ * until one of those exits, so main.ts settles it as an online loss. The
+ * result screen gets a live line from the overlay: the other player's
+ * rematch offer, or that they gave up or left.
  */
 import type { Side } from "../game/arena";
 import type { CardId } from "../game/cards";
@@ -16,6 +21,8 @@ import { buildRelayUrl, resolveRelayUrl, type RelayTarget } from "../net/relayUr
 import { OnlineSession, type MatchInfo } from "../net/session";
 import type { AppCtx } from "../app/ctx";
 import { emit, on, setPendingSpend } from "../app/hooks";
+import { registerResultExtra } from "../app/slots";
+import { normalizeCode } from "../net/codewords";
 import type { OpponentLabel } from "../render3d/hud";
 import { showBanner, showVersus, startCountdown } from "../ui/banner";
 import { getPrefs, sanitizePlayerName } from "../ui/prefs";
@@ -152,11 +159,16 @@ export function leaveOnline(): void {
 /** Kept for the solo start paths: starting solo leaves any room. */
 export const clearOnline = leaveOnline;
 
-/** Who we are playing: the opponent's name, or "Friend". */
+/** The name for an opponent who sent none: "Opponent" from quick match, else "Friend". */
+export function opponentFallbackName(quick: boolean): string {
+  return quick ? tr("Opponent", "خصم") : tr("Friend", "صديق");
+}
+
+/** Who we are playing: the opponent's name, or "Friend" ("Opponent" for a quick match). */
 export function onlineOpponentName(): string | null {
   const s = onlineSession();
   if (!s) return null;
-  return s.opponent?.name || tr("Friend", "صديق");
+  return s.opponent?.name || opponentFallbackName(s.quickMatch);
 }
 
 /** The HUD banner for the online opponent (name and crest), or null off-line. */
@@ -174,7 +186,7 @@ export function onlineOpponentLabel(): OpponentLabel | null {
 export function beginOnlineMatch(ctx: AppCtx, m: MatchInfo): void {
   if (!session) return;
   const { hud, scene, sound: audio, meta } = ctx;
-  const label = onlineOpponentName() ?? tr("Friend", "صديق");
+  const label = onlineOpponentName() ?? opponentFallbackName(session.quickMatch);
   ctx.hideSandboxReset();
   ctx.closeDeckPicker();
   ctx.setBattle(m.battle);
@@ -214,6 +226,7 @@ export function restartOnline(ctx: AppCtx): void {
     s.rematch();
     return;
   }
+  ctx.hud.dismiss();
   leaveOnline();
   ctx.openLobby();
 }
@@ -256,10 +269,13 @@ function showOnlineEmote(ctx: AppCtx, side: Side, e: number): void {
 
 // ---- Invite links --------------------------------------------------------------
 
-/** A room code as typed or linked: upper-case letters, digits and '-'. */
+/**
+ * A room code as typed or linked, made canonical (normalizeCode: dashes,
+ * spaces and case don't matter), or null if it can't be one.
+ */
 export function cleanCode(raw: string | null | undefined): string | null {
-  const c = (raw ?? "").trim().toUpperCase();
-  return /^[A-Z0-9-]{3,12}$/.test(c) ? c : null;
+  const c = normalizeCode(raw ?? "");
+  return /^[A-Z0-9]{3,12}$/.test(c) ? c : null;
 }
 
 /** The link a friend opens to join `code` (carries a hand-picked relay too). */
@@ -299,6 +315,7 @@ function ensureOverlay(ctx: AppCtx): OnlineOverlay {
       ctx.openHome();
     },
     onLobby: () => {
+      ctx.hud.dismiss(); // the result screen may be up (Find a new game)
       leaveOnline();
       ctx.openLobby();
     },
@@ -306,10 +323,27 @@ function ensureOverlay(ctx: AppCtx): OnlineOverlay {
       leaveOnline();
       ctx.openHome();
     },
-    onOpponentLeft: () => showBanner(tr("Your opponent left — you win!", "غادر خصمك — لقد فزت!")),
+    onOpponentLeft: (exit) =>
+      showBanner(
+        exit === "gave-up"
+          ? tr("Your opponent gave up — you win!", "استسلم خصمك — لقد فزت!")
+          : tr("Your opponent left — you win!", "غادر خصمك — لقد فزت!"),
+      ),
+    onRematch: () => restartOnline(ctx),
   });
   return overlay;
 }
+
+/**
+ * The result screen's online line, for the match the session played: the
+ * other player's rematch offer, or that they gave up or left (the overlay
+ * keeps it current while the result is up). Solo results get nothing.
+ */
+registerResultExtra((end) => {
+  const s = session;
+  if (!end.online || !overlay || !s?.inMatch || s.battle !== end.battle) return null;
+  return overlay.resultLine();
+});
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -329,8 +363,12 @@ if (typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => session?.setPaused(document.hidden));
   window.addEventListener("pagehide", (e) => {
     // The tab is closing (not just cached): leave now so the friend isn't
-    // left watching a 20 s reconnect countdown that can't succeed.
-    if (!e.persisted) leaveOnline();
+    // left watching a 20 s reconnect countdown that can't succeed. Say
+    // "paused" first, as a hidden page does: a leave from a page that was
+    // still on screen reads as Forfeit ("gave up") on the friend's side.
+    if (e.persisted) return;
+    session?.setPaused(true);
+    leaveOnline();
   });
 }
 

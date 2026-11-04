@@ -5,10 +5,16 @@
  * rematch, and matches that end without a winner — plus a small RTT pip
  * under the top bar. It reads OnlineSession.view() once per frame and only
  * touches the DOM when what it shows changes.
+ *
+ * It also keeps the result screen honest (match/online.ts places it there
+ * through registerResultExtra): a bouncing "Your friend wants a rematch!"
+ * banner with its own Rematch button when the other player asks first,
+ * and "Your friend left the match" (or "Your opponent gave up") with a
+ * Find-a-new-game button once they are gone.
  */
 import "./styles/online.css";
 import { on } from "../app/hooks";
-import type { OnlineSession, SessionView } from "../net/session";
+import type { OnlineSession, OpponentExit, SessionView } from "../net/session";
 import { RESUME_BACKOFF_MS } from "../net/session";
 import { button } from "./components";
 import { fmtNum, fmtTime, tr } from "./i18n";
@@ -25,7 +31,67 @@ export interface OverlayActions {
   onLobby(): void;
   onLeave(): void;
   /** The opponent left mid-match (the result screen shows our win). */
-  onOpponentLeft(): void;
+  onOpponentLeft(exit: OpponentExit | null): void;
+  /** Accept the other player's rematch offer (the result banner's button). */
+  onRematch(): void;
+}
+
+/** What the result screen says about the other player after the match. */
+export type ResultOffer =
+  | "none"
+  /** They asked for a rematch: offer ours right there. */
+  | "rematch"
+  /** They forfeited mid-match. */
+  | "gave-up"
+  /** They left: dropped past the grace or closed the page mid-match, or left after it. */
+  | "left";
+
+/** The session facts the result line depends on. */
+export interface OfferInput {
+  view: SessionView;
+  peerWantsRematch: boolean;
+  opponentExit: OpponentExit | null;
+}
+
+/** Pick the result line for a session (pure; see {@link ResultOffer}). */
+export function resultOffer(i: OfferInput): ResultOffer {
+  if (i.view.t !== "ended") return "none";
+  if (i.view.reason === "opponent-left") return i.opponentExit === "gave-up" ? "gave-up" : "left";
+  if (i.view.reason !== "finished") return "none";
+  if (i.peerWantsRematch) return "rematch";
+  return i.opponentExit ? "left" : "none";
+}
+
+/** Words, icon and button for a result line; quick = a quick-match stranger. */
+export function offerContent(
+  o: ResultOffer,
+  quick: boolean,
+): { text: string; icon: IconName; button: string; action: "rematch" | "lobby" } | null {
+  const findGame = tr("Find a new game", "ابحث عن مباراة جديدة");
+  switch (o) {
+    case "rematch":
+      return {
+        text: quick
+          ? tr("Your opponent wants a rematch! Tap Rematch", "خصمك يريد مباراة ثأرية! اضغط «مباراة ثأرية»")
+          : tr("Your friend wants a rematch! Tap Rematch", "صديقك يريد مباراة ثأرية! اضغط «مباراة ثأرية»"),
+        icon: "handshake",
+        button: tr("Rematch", "مباراة ثأرية"),
+        action: "rematch",
+      };
+    case "gave-up":
+      return { text: tr("Your opponent gave up", "استسلم خصمك"), icon: "flag", button: findGame, action: "lobby" };
+    case "left":
+      return {
+        text: quick
+          ? tr("Your opponent left the match", "غادر خصمك المباراة")
+          : tr("Your friend left the match", "غادر صديقك المباراة"),
+        icon: "users",
+        button: findGame,
+        action: "lobby",
+      };
+    case "none":
+      return null;
+  }
 }
 
 type Action = "home" | "lobby" | "leave" | "cancel";
@@ -219,6 +285,9 @@ export class OnlineOverlay {
   private prevView: SessionView["t"] | null = null;
   private topbarH = 0;
   private topbarCheckedAt = 0;
+  /** The result screen's online line (see {@link resultLine}). */
+  private offerEl: HTMLElement | null = null;
+  private offerKey = "";
 
   constructor(private readonly actions: OverlayActions) {
     const root = document.createElement("div");
@@ -257,6 +326,7 @@ export class OnlineOverlay {
     this.unsub?.();
     this.unsub = null;
     this.session = null;
+    this.showOffer("none", false);
     this.cardKey = "";
     this.pipKey = "";
     this.lastView = null;
@@ -267,9 +337,72 @@ export class OnlineOverlay {
     this.pip.hidden = true;
   }
 
+  /**
+   * The live line for the result screen: what the other player did after
+   * the match (or how they quit it). The same element is returned every
+   * time and kept current each frame, so an offer that arrives while the
+   * result is up shows at once. Hidden while there is nothing to say.
+   */
+  resultLine(): HTMLElement {
+    if (!this.offerEl) {
+      const el = document.createElement("div");
+      el.className = "oo-offer";
+      el.setAttribute("role", "status");
+      el.setAttribute("aria-live", "polite");
+      el.hidden = true;
+      this.offerEl = el;
+    }
+    this.offerKey = "";
+    this.renderOffer();
+    return this.offerEl;
+  }
+
+  private renderOffer(): void {
+    const s = this.session;
+    if (!s || !s.inMatch) {
+      this.showOffer("none", false);
+      return;
+    }
+    const offer = resultOffer({ view: s.view(), peerWantsRematch: s.peerWantsRematch, opponentExit: s.opponentExit });
+    this.showOffer(offer, s.quickMatch);
+  }
+
+  private showOffer(offer: ResultOffer, quick: boolean): void {
+    const el = this.offerEl;
+    const key = `${offer}:${quick ? 1 : 0}`;
+    if (!el || key === this.offerKey) return;
+    this.offerKey = key;
+    const c = offerContent(offer, quick);
+    el.hidden = !c;
+    el.dataset.kind = offer;
+    el.classList.toggle("is-still", reducedMotion());
+    if (!c) {
+      el.replaceChildren();
+      return;
+    }
+    const ic = document.createElement("span");
+    ic.className = "oo-offer__icon";
+    ic.innerHTML = icon(c.icon);
+    const text = document.createElement("span");
+    text.className = "oo-offer__text";
+    text.textContent = c.text;
+    const btn = button({
+      variant: c.action === "rematch" ? "cta" : "primary",
+      label: c.button,
+      onClick: () => (c.action === "rematch" ? this.actions.onRematch() : this.actions.onLobby()),
+    });
+    btn.classList.add("oo-offer__btn");
+    el.replaceChildren(ic, text, btn);
+    // A landscape phone may have scrolled the result past it: bring it in.
+    if (el.isConnected && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
+    }
+  }
+
   private render(): void {
     const s = this.session;
     if (!s) return;
+    this.renderOffer();
     // Nothing to show until the match is on screen (the lobby has its own status).
     if (!s.inMatch || document.getElementById("deckpicker")?.classList.contains("show")) {
       this.showCard(null);
@@ -281,7 +414,7 @@ export class OnlineOverlay {
       this.prevView = this.lastView;
       this.lastView = v.t;
       if (v.t === "ended" && v.reason === "opponent-left" && this.prevView !== "rematchWait") {
-        this.actions.onOpponentLeft();
+        this.actions.onOpponentLeft(s.opponentExit);
       }
     }
     this.showCard(overlayCard(v, this.prevView));

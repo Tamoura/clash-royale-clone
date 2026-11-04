@@ -10,6 +10,7 @@ import { on } from "../../app/hooks";
 import { ABILITIES } from "../../game/abilities";
 import type { CardId } from "../../game/cards";
 import { TOWER_TROOPS } from "../../game/towers";
+import { normalizeCode } from "../../net/codewords";
 import type { FailReason, MatchInfo, OnlineSession } from "../../net/session";
 import {
   ONLINE_MODE_IDS,
@@ -19,6 +20,7 @@ import {
   leaveOnline,
   newOnlineSession,
   onOnlineChange,
+  opponentFallbackName,
   onlineDeck,
   onlineMode,
   relayTarget,
@@ -63,6 +65,15 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: s
   e.className = cls;
   if (text !== undefined) e.textContent = text;
   return e;
+}
+
+/**
+ * The code box's sanitizer: whatever a kid types or pastes ("carp-86 ",
+ * "Lion 42", "lion4o") becomes the code the relay knows (CARP86, LION42,
+ * LION40). See normalizeCode in src/net/codewords.ts.
+ */
+export function sanitizeCode(raw: string): string {
+  return normalizeCode(raw);
 }
 
 /** Every relay refusal, in words a kid understands. */
@@ -255,8 +266,8 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
   codeInput.dir = "ltr";
   codeInput.setAttribute("aria-label", tr("Friend's game code", "رمز مباراة صديقك"));
   codeInput.addEventListener("input", () => {
-    const up = codeInput.value.toUpperCase().replace(/[^A-Z0-9-]/g, "");
-    if (up !== codeInput.value) codeInput.value = up;
+    const clean = sanitizeCode(codeInput.value);
+    if (clean !== codeInput.value) codeInput.value = clean;
   });
   const joinBtn = button({ variant: "primary", label: tr("Join", "انضم"), onClick: () => undefined });
   joinBtn.type = "submit";
@@ -480,7 +491,7 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
     if (found) {
       const opp = found.opponent;
       foundCard.innerHTML = `<span class="lobby-found__crest">${icon(`crest-${((opp?.crest ?? 0) % 12) as CrestIndex}`)}</span><span class="lobby-found__name"></span>`;
-      foundCard.querySelector(".lobby-found__name")!.textContent = opp?.name || tr("Friend", "صديق");
+      foundCard.querySelector(".lobby-found__name")!.textContent = opp?.name || opponentFallbackName(flow === "quick");
     }
 
     // Status line.
