@@ -40,6 +40,11 @@ export function battleMenuPausing(): boolean {
   return openMenu !== null && !online;
 }
 
+/** True while the battle menu is open (solo or online). */
+export function battleMenuOpen(): boolean {
+  return openMenu !== null;
+}
+
 export function closeBattleMenu(): void {
   openMenu?.close();
 }

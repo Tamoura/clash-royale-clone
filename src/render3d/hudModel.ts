@@ -8,9 +8,17 @@
  * tower timeline merge, the loss tip and the tower-damage attribution that
  * feeds it. Nothing in this file touches the DOM.
  */
-import type { AbilityId } from "../game/abilities";
-import type { Side } from "../game/arena";
-import { effectiveCard, type BattleEvent, type BattleState, type Entity } from "../game/battle";
+import { ABILITIES, type AbilityId } from "../game/abilities";
+import { canDeployTroopAt, type Side } from "../game/arena";
+import {
+  checkDeploy,
+  effectiveCard,
+  isBuilding,
+  openLanes,
+  type BattleEvent,
+  type BattleState,
+  type Entity,
+} from "../game/battle";
 import { getCard, type CardId } from "../game/cards";
 import { ELIXIR_MAX } from "../game/elixir";
 import {
@@ -41,9 +49,21 @@ export interface ResultModel {
   theirCrowns: number;
 }
 
+/**
+ * What the clock counts: the match clock, or a challenge's survive goal
+ * ("SURVIVE 0:45", counting down to the win).
+ */
+export type ClockMode = { kind: "match" } | { kind: "survive"; seconds: number };
+
+export const MATCH_CLOCK: ClockMode = Object.freeze({ kind: "match" }) as ClockMode;
+
 export interface HudModel {
   clockText: string;
   overtime: boolean;
+  /** The clock counts down a challenge's survive goal. */
+  survive: boolean;
+  /** A short line under the clock (overtime: how a tie is broken), or null. */
+  hint: string | null;
   crowns: { me: number; them: number };
   elixirInt: number;
   /** Bar fill, 0..100, in 0.5% steps. */
@@ -76,10 +96,11 @@ export function clockSeconds(state: BattleState): number {
  * promised to plays that have not executed yet (online lockstep), so a card
  * the player cannot actually afford never lights up.
  */
-export function hudModel(state: BattleState, side: Side, pendingSpend = 0): HudModel {
+export function hudModel(state: BattleState, side: Side, pendingSpend = 0, clock: ClockMode = MATCH_CLOCK): HudModel {
   const me = side === "player" ? state.player : state.enemy;
   const foe = side === "player" ? state.enemy : state.player;
-  const time = fmtTime(clockSeconds(state));
+  const survive = clock.kind === "survive";
+  const time = fmtTime(survive ? surviveSecondsLeft(state, clock.seconds) : clockSeconds(state));
   const amount = me.elixir.amount;
   const available = Math.max(0, amount - Math.max(0, pendingSpend));
   const multValue = effectiveElixirMultiplier(state);
@@ -96,8 +117,14 @@ export function hudModel(state: BattleState, side: Side, pendingSpend = 0): HudM
     };
   });
   return {
-    clockText: state.overtime ? `${tr("OVERTIME", "وقت إضافي")} ${time}` : time,
-    overtime: state.overtime,
+    clockText: survive
+      ? `${tr("SURVIVE", "اصمد")} ${time}`
+      : state.overtime
+        ? `${tr("OVERTIME", "وقت إضافي")} ${time}`
+        : time,
+    overtime: state.overtime && !survive,
+    survive,
+    hint: !survive && state.overtime && !state.result ? overtimeHint() : null,
     crowns: { me: me.crowns, them: foe.crowns },
     elixirInt: Math.floor(amount),
     elixirPct: quantiseElixirPct(amount),
@@ -122,6 +149,144 @@ export function resultModel(state: BattleState, side: Side): ResultModel | null 
     myCrowns: side === "player" ? r.playerCrowns : r.enemyCrowns,
     theirCrowns: side === "player" ? r.enemyCrowns : r.playerCrowns,
   };
+}
+
+// ---- Challenge goal ----------------------------------------------------------
+
+/**
+ * The clock for a challenge with this survive goal. Goals that fit inside a
+ * match count down; anything else (the tutorial's never-ending 1e9, a bad
+ * value) keeps the normal match clock.
+ */
+export function challengeClock(surviveFor: number | null | undefined): ClockMode {
+  return typeof surviveFor === "number" && Number.isFinite(surviveFor) && surviveFor > 0 && surviveFor < BATTLE_DURATION
+    ? { kind: "survive", seconds: surviveFor }
+    : MATCH_CLOCK;
+}
+
+/** Whole seconds still to survive (0 once the goal is reached). */
+export function surviveSecondsLeft(state: BattleState, seconds: number): number {
+  return Math.max(0, Math.ceil(seconds - state.time));
+}
+
+/** The banner at the start of a survive challenge. */
+export function goalText(seconds: number): string {
+  const t = fmtTime(seconds);
+  return tr(`Keep all 3 towers standing for ${t}!`, `أبقِ أبراجك الثلاثة صامدة لمدة ${t}!`);
+}
+
+/** The local side has lost a tower (the challenge rule: any fallen tower loses). */
+export function towerFell(state: BattleState, side: Side): boolean {
+  let standing = 0;
+  for (const e of state.entities) {
+    if (e.side === side && (e.kind === "princess-tower" || e.kind === "king-tower") && e.hp > 0) standing++;
+  }
+  return standing < 3;
+}
+
+// ---- Tiebreak ------------------------------------------------------------------
+
+/** The hint under the clock in overtime. */
+export function overtimeHint(): string {
+  return tr("Tie? Weakest tower loses", "تعادل؟ يخسر صاحب أضعف برج");
+}
+
+/**
+ * HP of a side's weakest tower, by the sim's own tiebreak rule (towerHpTiebreak
+ * in game/sim.ts: the lowest building with no card, i.e. a tower). Null when
+ * the side has no tower left.
+ */
+export function weakestTowerHp(state: BattleState, side: Side): number | null {
+  let low = Infinity;
+  for (const e of state.entities) {
+    if (e.side === side && isBuilding(e) && e.cardId === null) low = Math.min(low, e.hp);
+  }
+  return low === Infinity ? null : low;
+}
+
+/**
+ * A finished match decided on tower HP (crowns tied when overtime ran out):
+ * each side's weakest tower, read from the battle at the finish. Null for
+ * any other ending (crowns, a forfeit, a match still running).
+ */
+export function tiebreakInfo(state: BattleState, side: Side): { mine: number; theirs: number } | null {
+  const r = state.result;
+  if (!r || r.playerCrowns !== r.enemyCrowns) return null;
+  if (!state.overtime || state.time < BATTLE_DURATION + OVERTIME_DURATION - 1e-6) return null;
+  const mine = weakestTowerHp(state, side);
+  const theirs = weakestTowerHp(state, side === "player" ? "enemy" : "player");
+  if (mine === null || theirs === null) return null;
+  return { mine, theirs };
+}
+
+/** "Crowns tied: your weakest tower had N HP, theirs had M" (a draw reads the same). */
+export function tiebreakText(t: { mine: number; theirs: number }): string {
+  // A tower on 0.3 HP is still standing: round up, never show 0.
+  const n = fmtNum(Math.max(1, Math.ceil(t.mine)));
+  const m = fmtNum(Math.max(1, Math.ceil(t.theirs)));
+  return tr(
+    `Crowns tied: your weakest tower had ${n} HP, theirs had ${m}`,
+    `تعادل في التيجان: أضعف أبراجك كان فيه ${n} نقطة صحة، وأضعف أبراجهم ${m}`,
+  );
+}
+
+/**
+ * Why the match ended the way it did, for the result screen: a challenge's
+ * goal ("You held on!" / a tower fell) or a tower-HP tiebreak. Null when the
+ * crowns already tell the story.
+ */
+export function resultReason(state: BattleState, side: Side, clock: ClockMode = MATCH_CLOCK): string | null {
+  const r = resultModel(state, side);
+  if (!r) return null;
+  if (clock.kind === "survive") {
+    if (r.outcome === "win") return tr("You held on!", "صمدت حتى النهاية!");
+    if (r.outcome === "loss" && towerFell(state, side)) {
+      return tr("A tower fell! Keep every tower standing", "سقط برج! أبقِ كل أبراجك قائمة");
+    }
+    return null;
+  }
+  const tb = tiebreakInfo(state, side);
+  return tb ? tiebreakText(tb) : null;
+}
+
+// ---- King's ability ------------------------------------------------------------
+
+/** Whole seconds until the side's ability is charged; null with no ability chosen. */
+export function abilitySecondsLeft(state: BattleState, side: Side): number | null {
+  const me = side === "player" ? state.player : state.enemy;
+  if (!me.ability) return null;
+  const left = (1 - clamp01(me.abilityCharge)) * ABILITIES[me.ability].chargeSeconds;
+  return Math.max(0, Math.ceil(left - 1e-9));
+}
+
+/** The bubble over a KING that is not ready yet. */
+export function chargingText(seconds: number): string {
+  return tr(`Charging… ${fmtNum(seconds)}s`, `يشحن… ${fmtNum(seconds)} ث`);
+}
+
+// ---- Refused drops -------------------------------------------------------------
+
+export type BadSpotReason = "side" | "tower";
+
+/**
+ * Why a troop or building cannot go down at (x, y), mirroring checkDeploy:
+ * outside the deployable area (canDeployTroopAt: the enemy half while its
+ * lane is shut, the river) reads "side"; inside it, the only other refusal is
+ * the clearance around a standing enemy tower, which reads "tower". Null when
+ * the spot is fine or the refusal is not about the spot (spells, a Mirror
+ * with nothing to copy).
+ */
+export function badSpotReason(state: BattleState, side: Side, cardId: CardId, x: number, y: number): BadSpotReason | null {
+  if (checkDeploy(state, side, cardId, x, y) !== "bad-spot") return null;
+  const eff = effectiveCard(state, side, cardId);
+  if (!eff || eff.card.kind === "spell") return null;
+  return canDeployTroopAt(side, x, y, openLanes(state, side)) ? "tower" : "side";
+}
+
+export function badSpotText(reason: BadSpotReason): string {
+  return reason === "side"
+    ? tr("Your side only!", "في جهتك فقط!")
+    : tr("Too close to a tower!", "قريب جدًا من البرج!");
 }
 
 // ---- Tower damage attribution ----------------------------------------------

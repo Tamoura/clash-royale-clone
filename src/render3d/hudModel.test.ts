@@ -13,6 +13,22 @@ import {
   resultModel,
   type ResultStats,
 } from "./hudModel";
+import { tick, BATTLE_DURATION, OVERTIME_DURATION } from "../game/sim";
+import { tr } from "../ui/i18n";
+import {
+  MATCH_CLOCK,
+  abilitySecondsLeft,
+  badSpotReason,
+  badSpotText,
+  challengeClock,
+  chargingText,
+  goalText,
+  overtimeHint,
+  resultReason,
+  tiebreakInfo,
+  tiebreakText,
+  weakestTowerHp,
+} from "./hudModel";
 
 function battleWithHand(cards: CardId[], elixir: number): BattleState {
   const b = createBattle();
@@ -160,5 +176,162 @@ describe("TowerDamageTracker", () => {
     tracker.reset();
     expect(s.towerDamage.enemy.giant).toBeGreaterThan(300);
     expect(tracker.bySide.enemy).toEqual({});
+  });
+});
+
+// ---- battle-clarity: the HUD explains goals, tiebreaks and refusals ------------
+
+const towers = (b: BattleState, side: "player" | "enemy") =>
+  b.entities.filter((e) => e.side === side && (e.kind === "princess-tower" || e.kind === "king-tower"));
+
+describe("challenge goal clock", () => {
+  it("counts down a survive goal; the tutorial and other modes keep the match clock", () => {
+    expect(challengeClock(45)).toEqual({ kind: "survive", seconds: 45 });
+    expect(challengeClock(1e9)).toBe(MATCH_CLOCK); // the guided first battle
+    expect(challengeClock(Number.NaN)).toBe(MATCH_CLOCK);
+    expect(challengeClock(undefined)).toBe(MATCH_CLOCK);
+    expect(challengeClock(0)).toBe(MATCH_CLOCK);
+  });
+
+  it("shows SURVIVE 0:45 counting down to the win", () => {
+    const b = createBattle();
+    const clock = challengeClock(45);
+    const start = hudModel(b, "player", 0, clock);
+    expect(start.survive).toBe(true);
+    expect(start.clockText).toBe(`${tr("SURVIVE", "اصمد")} ${fmtTime(45)}`);
+    b.time = 10.2;
+    expect(hudModel(b, "player", 0, clock).clockText.endsWith(fmtTime(35))).toBe(true);
+    b.time = 50;
+    expect(hudModel(b, "player", 0, clock).clockText.endsWith(fmtTime(0))).toBe(true);
+    // The match clock is untouched by default.
+    b.time = 10;
+    const normal = hudModel(b, "player");
+    expect(normal.survive).toBe(false);
+    expect(normal.clockText).toBe(fmtTime(BATTLE_DURATION - 10));
+  });
+
+  it("states the goal and explains the ending", () => {
+    expect(goalText(45)).toContain(fmtTime(45));
+    const clock = challengeClock(45);
+    const won = createBattle();
+    won.time = 45;
+    won.result = { winner: "player", playerCrowns: 0, enemyCrowns: 0 };
+    expect(resultReason(won, "player", clock)).toBe(tr("You held on!", "صمدت حتى النهاية!"));
+
+    const lost = createBattle();
+    const fallen = towers(lost, "player").find((t) => t.kind === "princess-tower")!;
+    lost.entities = lost.entities.filter((e) => e !== fallen);
+    lost.result = { winner: "enemy", playerCrowns: 0, enemyCrowns: 1 };
+    expect(resultReason(lost, "player", clock)).toBe(
+      tr("A tower fell! Keep every tower standing", "سقط برج! أبقِ كل أبراجك قائمة"),
+    );
+
+    // A forfeit with every tower standing is not blamed on a tower.
+    const quit = createBattle();
+    quit.result = { winner: "enemy", playerCrowns: 0, enemyCrowns: 0 };
+    expect(resultReason(quit, "player", clock)).toBeNull();
+    expect(resultReason(createBattle(), "player", clock)).toBeNull(); // still playing
+  });
+});
+
+describe("tiebreak", () => {
+  /** A 0-0 match about to run out of overtime, with the given weakest-tower HP. */
+  function tiedAtTheWire(playerHp: number, enemyHp: number): BattleState {
+    const b = createBattle();
+    b.overtime = true;
+    b.time = BATTLE_DURATION + OVERTIME_DURATION - 0.01;
+    towers(b, "player").find((t) => t.kind === "princess-tower")!.hp = playerHp;
+    towers(b, "enemy").find((t) => t.kind === "princess-tower")!.hp = enemyHp;
+    return b;
+  }
+
+  it("hints at the rule under the clock during overtime only", () => {
+    const b = createBattle();
+    expect(hudModel(b, "player").hint).toBeNull();
+    b.overtime = true;
+    b.time = BATTLE_DURATION + 5;
+    expect(hudModel(b, "player").hint).toBe(overtimeHint());
+    expect(overtimeHint()).toBe(tr("Tie? Weakest tower loses", "تعادل؟ يخسر صاحب أضعف برج"));
+    b.result = { winner: "draw", playerCrowns: 0, enemyCrowns: 0 };
+    expect(hudModel(b, "player").hint).toBeNull();
+  });
+
+  it("explains a result decided on tower HP with both numbers, from either seat", () => {
+    const b = tiedAtTheWire(404, 1200);
+    tick(b, 1 / 30);
+    expect(b.result?.winner).toBe("enemy"); // the sim's own tiebreak
+    expect(weakestTowerHp(b, "player")).toBe(404);
+    expect(tiebreakInfo(b, "player")).toEqual({ mine: 404, theirs: 1200 });
+    expect(tiebreakInfo(b, "enemy")).toEqual({ mine: 1200, theirs: 404 });
+    const text = resultReason(b, "player")!;
+    expect(text).toBe(tiebreakText({ mine: 404, theirs: 1200 }));
+    expect(text).toContain(fmtNum(404));
+    expect(text).toContain(fmtNum(1200));
+  });
+
+  it("explains a draw the same way", () => {
+    const b = tiedAtTheWire(900, 900);
+    tick(b, 1 / 30);
+    expect(b.result?.winner).toBe("draw");
+    expect(resultReason(b, "player")).toBe(tiebreakText({ mine: 900, theirs: 900 }));
+  });
+
+  it("stays quiet for crowns, forfeits and running matches", () => {
+    const crowns = createBattle();
+    crowns.overtime = true;
+    crowns.time = BATTLE_DURATION + OVERTIME_DURATION;
+    crowns.result = { winner: "player", playerCrowns: 1, enemyCrowns: 0 };
+    expect(tiebreakInfo(crowns, "player")).toBeNull();
+    const forfeit = createBattle();
+    forfeit.time = 100;
+    forfeit.result = { winner: "enemy", playerCrowns: 0, enemyCrowns: 0 };
+    expect(tiebreakInfo(forfeit, "player")).toBeNull();
+    expect(resultReason(forfeit, "player")).toBeNull();
+    expect(tiebreakInfo(tiedAtTheWire(5, 9), "player")).toBeNull();
+  });
+
+  it("never shows a standing tower as 0 HP", () => {
+    expect(tiebreakText({ mine: 0.3, theirs: 1999.2 })).toContain(fmtNum(1));
+    expect(tiebreakText({ mine: 0.3, theirs: 1999.2 })).toContain(fmtNum(2000));
+  });
+});
+
+describe("KING not ready", () => {
+  it("counts the seconds until the ability is charged", () => {
+    const b = createBattle(undefined, undefined, {}, 1, {}, { player: "rally" });
+    b.player.abilityCharge = 0.5;
+    expect(abilitySecondsLeft(b, "player")).toBe(28); // 27.5 s of a 55 s meter, rounded up
+    b.player.abilityCharge = 1;
+    expect(abilitySecondsLeft(b, "player")).toBe(0);
+    expect(abilitySecondsLeft(createBattle(), "player")).toBeNull();
+    expect(chargingText(28)).toContain(fmtNum(28));
+  });
+});
+
+describe("refused drops", () => {
+  it("says 'your side only' for the shut enemy half and the river", () => {
+    const b = createBattle();
+    expect(badSpotReason(b, "player", b.player.hand.cards[0], 9, 8)).toBe("side");
+    expect(badSpotReason(b, "player", "knight", 9, 8)).toBe("side");
+    expect(badSpotReason(b, "player", "knight", 9, 16)).toBe("side"); // the river
+    expect(badSpotText("side")).toBe(tr("Your side only!", "في جهتك فقط!"));
+    // The guest's own half is the top one.
+    expect(badSpotReason(b, "enemy", b.enemy.hand.cards[0], 9, 24)).toBe("side");
+  });
+
+  it("says 'too close to a tower' inside an opened lane", () => {
+    const b = createBattle();
+    const left = towers(b, "enemy").find((t) => t.kind === "princess-tower" && t.x < 9)!;
+    b.entities = b.entities.filter((e) => e !== left); // the left lane opens
+    expect(badSpotReason(b, "player", "knight", 3.5, 5)).toBeNull(); // clear of the king
+    expect(badSpotReason(b, "player", "knight", 8, 4)).toBe("tower"); // inside the king's buffer
+    expect(badSpotText("tower")).toBe(tr("Too close to a tower!", "قريب جدًا من البرج!"));
+  });
+
+  it("has nothing to say for good spots, spells and cards not in hand", () => {
+    const b = createBattle();
+    expect(badSpotReason(b, "player", "knight", 9, 24)).toBeNull();
+    expect(badSpotReason(b, "player", "fireball", -3, 8)).toBeNull();
+    expect(badSpotReason(b, "player", "pekka", 9, 8)).toBeNull();
   });
 });
