@@ -280,6 +280,23 @@ unchanged. It sits inside the band, 1.6 pooled standard errors above the
 floor. The next balance pass should look at how the bot plays the Giant
 rather than at its stats.
 
+**Independent check (round-1 review, 8400 more matches).** The reviewer ran
+`npm run lab -- random 700` at offsets 41-43 and 61-63 on the shipped sim
+(4200 matches each):
+
+| Card | Offsets 41-43 | Offsets 61-63 |
+|---|---:|---:|
+| mini-pekka | 62.6% (n=1366) | 62.6% (n=1322) |
+| baby-dragon | 59.5% | 59.3% |
+| royal-giant | 37.6% | 41.5% |
+| giant | 38.4% | 40.1% |
+
+Pooled with the 12000 matches above (about 20000), Mini P.E.K.K.A is about
+60.8% and Royal Giant about 39.6%, so the band is met; which edge a card
+touches depends on the seeds sampled. First candidates for the next balance
+pass: Mini P.E.K.K.A at the top, Giant and Royal Giant at the bottom. No sim
+change was made for this (it would force another golden re-capture).
+
 ## Tower troops and King's abilities (192 matches each)
 
 Targets: Duchess and Cannoneer vs Princess 42-58%, Restore vs no ability 62%
@@ -408,6 +425,10 @@ Rookie knob probes on this sim (first 20 seeds / 100 seeds):
 
 `thinkInterval` 6.5 is the smallest step that passes, and practice (8.5 s
 with the cycle speed-up) stays slower.
+
+After the round-1 merge (`wip/round1`) first-hour's rookie ships at
+`thinkInterval` 6.5: 13/20 on the test seeds and 0.64 pooled over 300 other
+seeds (see first-hour.md). Every challenge clears 10/10 for the normal bot.
 
 ## How to verify
 - `npx tsc --noEmit`, `npx vitest run` (20 s timeout from vite.config),
