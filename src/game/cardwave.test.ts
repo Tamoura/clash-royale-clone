@@ -5,7 +5,17 @@
  */
 import { describe, expect, it } from "vitest";
 import { ARENA_WIDTH, RIVER_Y } from "./arena";
-import { createBattle, levelMultiplier, spawnUnits, type BattleState } from "./battle";
+import {
+  burrowSeconds,
+  checkDeploy,
+  createBattle,
+  deployCard,
+  levelMultiplier,
+  spawnUnits,
+  type BattleState,
+  type Entity,
+} from "./battle";
+import { createHand } from "./hand";
 import { CARDS, DECK, TOKEN_IDS, getCard, isDeckable, type CardId } from "./cards";
 import { createDraft } from "./draft";
 import { dailyDeck, isFairDailyDeck } from "./daily";
@@ -21,6 +31,17 @@ function run(b: BattleState, seconds: number): void {
 
 function pebbles(b: BattleState): ReturnType<typeof spawnUnits> {
   return b.entities.filter((e) => e.cardId === "pebble-golem");
+}
+
+/** Put specific cards in a side's hand with a full bar. */
+function giveHand(b: BattleState, side: "player" | "enemy", cards: CardId[]): void {
+  const me = side === "player" ? b.player : b.enemy;
+  me.hand = createHand([...cards, "knight", "archers", "giant", "fireball", "musketeer", "zap", "bats", "minions"].slice(0, 8) as CardId[]);
+  me.elixir = { amount: 10 };
+}
+
+function enemyPrincess(b: BattleState, left = true): Entity {
+  return b.entities.find((e) => e.side === "enemy" && e.kind === "princess-tower" && e.x < 9 === left)!;
 }
 
 describe("stone golem", () => {
@@ -150,5 +171,112 @@ describe("tokens", () => {
     expect(c.cost).toBe(0);
     expect(c.count).toBe(1);
     expect(c.token).toBe(true);
+  });
+});
+
+describe("digger", () => {
+  it("deploys anywhere dry on the field, the enemy half included", () => {
+    const b = createBattle();
+    giveHand(b, "player", ["digger"]);
+    expect(checkDeploy(b, "player", "digger", 9, 9)).toBe("ok");
+    expect(checkDeploy(b, "player", "digger", 1, 1)).toBe("ok"); // the enemy's back corner
+    expect(checkDeploy(b, "player", "digger", 9, 24)).toBe("ok"); // own half too
+    expect(checkDeploy(b, "player", "digger", 3.5, 16)).toBe("ok"); // a bridge
+    // A normal troop still can't go there.
+    giveHand(b, "player", ["knight"]);
+    expect(checkDeploy(b, "player", "knight", 9, 9)).toBe("bad-spot");
+  });
+
+  it("is rejected in the river and on a tower or building body", () => {
+    const b = createBattle();
+    giveHand(b, "player", ["digger", "cannon"]);
+    const tower = enemyPrincess(b);
+    expect(checkDeploy(b, "player", "digger", 9, 16)).toBe("bad-spot"); // river water
+    expect(checkDeploy(b, "player", "digger", 9, 15.5)).toBe("bad-spot");
+    expect(checkDeploy(b, "player", "digger", tower.x, tower.y)).toBe("bad-spot");
+    expect(checkDeploy(b, "player", "digger", tower.x, tower.y + 1.5)).toBe("bad-spot"); // < radius + 0.6
+    expect(checkDeploy(b, "player", "digger", tower.x, tower.y + 1.7)).toBe("ok");
+    expect(checkDeploy(b, "player", "digger", 9, 2.5)).toBe("bad-spot"); // the enemy King
+    expect(checkDeploy(b, "player", "digger", 9, 29.5)).toBe("bad-spot"); // our own King
+    expect(deployCard(b, "player", "cannon", 9, 24)).toBe(true);
+    expect(checkDeploy(b, "player", "digger", 9.5, 24)).toBe("bad-spot"); // a building body
+    expect(checkDeploy(b, "player", "digger", 18.5, 9)).toBe("bad-spot"); // off the field
+  });
+
+  it("costs 3 and burrows for the King-to-spot distance at 8 tiles/s, at most 3.3 s", () => {
+    const b = createBattle();
+    giveHand(b, "player", ["digger"]);
+    expect(deployCard(b, "player", "digger", 9, 9)).toBe(true);
+    expect(b.player.elixir.amount).toBeCloseTo(7, 9);
+    const dig = b.entities.find((e) => e.cardId === "digger")!;
+    expect(dig.burrowTotal).toBeCloseTo((29.5 - 9) / 8, 9);
+    expect(dig.burrowTimer).toBe(dig.burrowTotal);
+    expect(burrowSeconds(b, "player", 1, 1)).toBe(3.3);
+    expect(burrowSeconds(b, "enemy", 9, 2.5)).toBe(0);
+    // spawnUnits (challenge waves, tests) fields it on the surface.
+    expect(spawnUnits(b, "player", "digger", 9, 20)[0].burrowTimer).toBe(0);
+  });
+
+  it("is invisible to towers and immune to Arrows while burrowed", () => {
+    const b = createBattle();
+    const tower = enemyPrincess(b);
+    giveHand(b, "player", ["digger"]);
+    giveHand(b, "enemy", ["arrows"]);
+    expect(deployCard(b, "player", "digger", tower.x, tower.y + 2.2)).toBe(true);
+    const dig = b.entities.find((e) => e.cardId === "digger")!;
+    run(b, 1);
+    expect(dig.burrowTimer).toBeGreaterThan(0);
+    expect(tower.targetId).not.toBe(dig.id);
+    expect(b.projectiles.some((p) => p.targetId === dig.id)).toBe(false);
+    expect(deployCard(b, "enemy", "arrows", dig.x, dig.y)).toBe(true);
+    expect(dig.hp).toBe(dig.maxHp);
+    // Nor does anything shove it around underground.
+    const [k] = spawnUnits(b, "enemy", "knight", dig.x, dig.y);
+    const before = { x: dig.x, y: dig.y };
+    tick(b, DT);
+    expect({ x: dig.x, y: dig.y }).toEqual(before);
+    expect(k.hp).toBeGreaterThan(0);
+  });
+
+  it("surfaces after its tunnel, then fights after the usual 1 s pop-up", () => {
+    const b = createBattle();
+    const tower = enemyPrincess(b);
+    giveHand(b, "player", ["digger"]);
+    deployCard(b, "player", "digger", tower.x, tower.y + 2.2);
+    const dig = b.entities.find((e) => e.cardId === "digger")!;
+    const total = dig.burrowTotal;
+    let emergedAt = -1;
+    let firstHitAt = -1;
+    const startHp = tower.hp;
+    while (b.time < total + 2 && firstHitAt < 0) {
+      b.events.length = 0;
+      tick(b, DT);
+      if (emergedAt < 0 && b.events.some((e) => e.type === "emerge" && e.cardId === "digger")) emergedAt = b.time;
+      if (tower.hp < startHp) firstHitAt = b.time;
+    }
+    expect(emergedAt).toBeGreaterThan(total - DT);
+    expect(emergedAt).toBeLessThan(total + DT * 1.5);
+    // It cannot swing before the pop-up ends: burrowTotal + 1 s.
+    expect(firstHitAt).toBeGreaterThan(total + 1);
+    expect(firstHitAt).toBeLessThan(total + 1 + 0.2);
+    expect(dig.targetId).toBe(tower.id);
+  });
+
+  it("chips crown towers for 35% (56 a hit) but hits troops in full", () => {
+    const b = createBattle();
+    const tower = enemyPrincess(b);
+    const [dig] = spawnUnits(b, "player", "digger", tower.x, tower.y + 2.2);
+    dig.deployTimer = 0;
+    const before = tower.hp;
+    for (let i = 0; i < 60 && tower.hp === before; i++) tick(b, DT);
+    expect(before - tower.hp).toBeCloseTo(56, 9);
+
+    const b2 = createBattle();
+    const [d2] = spawnUnits(b2, "player", "digger", 9, RIVER_Y + 3);
+    const [k] = spawnUnits(b2, "enemy", "knight", 9, RIVER_Y + 3.9);
+    d2.deployTimer = 0;
+    k.deployTimer = 5;
+    for (let i = 0; i < 60 && k.hp === k.maxHp; i++) tick(b2, DT);
+    expect(k.maxHp - k.hp).toBe(160);
   });
 });

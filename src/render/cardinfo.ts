@@ -90,6 +90,11 @@ export function cardStatLines(id: CardId): string[] {
   if (u.recoil > 0) traits.push(tr("recoil kick", "ارتداد"));
   if (u.chargeDistance > 0) traits.push(tr("charges (2x)", "شحنة (×2)"));
   if (u.jumpsRiver) traits.push(tr("jumps the river", "يقفز النهر"));
+  if (card.kind === "troop" && card.deployAnywhere) traits.push(tr("Digs to any spot", "يحفر إلى أي مكان"));
+  if (u.towerDamageFactor !== 1) {
+    const pct = Math.round(u.towerDamageFactor * 100);
+    traits.push(tr(`${pct}% damage to towers`, `${pct}٪ ضرر للأبراج`));
+  }
   if (traits.length) lines.push(traits.join(" · "));
   const powers: string[] = [];
   if (u.spawnUnitId) {

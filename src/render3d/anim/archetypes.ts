@@ -76,6 +76,8 @@ export const ARCHETYPES: Readonly<Record<CardId, Archetype>> = {
   // Card wave 3: a boulder that slams buildings, and the pebbles it bursts into.
   "stone-golem": A("slam", "heavy"),
   "pebble-golem": A("slam", "medium"),
+  // The Digger swings a pickaxe.
+  digger: A("chop", "medium"),
 };
 
 /**

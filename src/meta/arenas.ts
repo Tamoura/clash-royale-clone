@@ -52,7 +52,7 @@ export const ARENAS: ArenaDef[] = [
     name: "Barbarian Bowl",
     ar: "سوق التوابل",
     trophies: 400,
-    unlocks: ["hog-rider", "wizard", "gargoyles"],
+    unlocks: ["hog-rider", "wizard", "gargoyles", "digger"],
   },
   {
     id: "pekka-playhouse",

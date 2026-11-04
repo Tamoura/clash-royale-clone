@@ -12,6 +12,8 @@ import {
   applySpell,
   distance,
   isBuilding,
+  isBurrowed,
+  isCrownTower,
   sideState,
   spawnDeathUnits,
   spawnUnits,
@@ -59,8 +61,14 @@ export function effectiveElixirMultiplier(state: BattleState): number {
   return state.elixirRate > 1 ? state.elixirRate : elixirMultiplier(state);
 }
 
+/** Enemies that can be seen and hit right now (a burrowing Digger can't). */
 function livingEnemiesOf(state: BattleState, e: Entity): Entity[] {
-  return state.entities.filter((o) => o.side !== e.side && o.hp > 0);
+  return state.entities.filter((o) => o.side !== e.side && o.hp > 0 && !isBurrowed(o));
+}
+
+/** Damage a hit deals to `target`: chip units (the Digger) hit crown towers softly. */
+function hitDamage(damage: number, towerDamageFactor: number, target: Entity): number {
+  return isCrownTower(target) ? damage * towerDamageFactor : damage;
 }
 
 /** Distance between hull edges, used for both range and sight checks. */
@@ -218,12 +226,14 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
         stunOnHit: e.stunOnHit,
         slowOnHit: e.slowOnHit,
         splashDamageFactor: e.splashDamageFactor,
+        towerDamageFactor: e.towerDamageFactor,
       });
     }
   } else {
     for (const t of targets) {
-      t.hp -= damage;
-      creditDamage(state, e.side, e.sourceCardId, damage);
+      const dealt = hitDamage(damage, e.towerDamageFactor, t);
+      t.hp -= dealt;
+      creditDamage(state, e.side, e.sourceCardId, dealt);
       if (e.stunOnHit > 0) t.stunTimer = Math.max(t.stunTimer, e.stunOnHit);
       if (e.slowOnHit > 0) t.slowTimer = Math.max(t.slowTimer, e.slowOnHit);
     }
@@ -231,7 +241,7 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
       for (const o of livingEnemiesOf(state, e)) {
         if (targets.includes(o) || !canHit(e, o)) continue;
         if (distance(o, target) <= e.splashRadius + o.radius) {
-          const splashDmg = damage * e.splashDamageFactor;
+          const splashDmg = hitDamage(damage * e.splashDamageFactor, e.towerDamageFactor, o);
           o.hp -= splashDmg;
           creditDamage(state, e.side, e.sourceCardId, splashDmg);
           if (e.stunOnHit > 0) o.stunTimer = Math.max(o.stunTimer, e.stunOnHit);
@@ -293,11 +303,12 @@ function tickPierce(state: BattleState, p: Projectile, dt: number): boolean {
   p.y += p.dirY * step;
   p.range -= step;
   for (const o of state.entities) {
-    if (o.side === p.side || o.hp <= 0 || p.hitIds.includes(o.id)) continue;
+    if (o.side === p.side || o.hp <= 0 || isBurrowed(o) || p.hitIds.includes(o.id)) continue;
     if (o.flying && !p.targetsAir) continue;
     if (segmentDistance(fromX, fromY, p.x, p.y, o.x, o.y) <= o.radius + PIERCE_HALF_WIDTH) {
-      o.hp -= p.damage;
-      creditDamage(state, p.side, p.sourceCardId, p.damage);
+      const dealt = hitDamage(p.damage, p.towerDamageFactor, o);
+      o.hp -= dealt;
+      creditDamage(state, p.side, p.sourceCardId, dealt);
       p.hitIds.push(o.id);
     }
   }
@@ -316,16 +327,17 @@ function tickProjectiles(state: BattleState, dt: number): void {
     const step = p.speed * dt;
     if (d <= step + target.radius * 0.5) {
       // Impact: damage the target, splash around it.
-      target.hp -= p.damage;
-      creditDamage(state, p.side, p.sourceCardId, p.damage);
+      const dealt = hitDamage(p.damage, p.towerDamageFactor, target);
+      target.hp -= dealt;
+      creditDamage(state, p.side, p.sourceCardId, dealt);
       if (p.stunOnHit > 0) target.stunTimer = Math.max(target.stunTimer, p.stunOnHit);
       if (p.slowOnHit > 0) target.slowTimer = Math.max(target.slowTimer, p.slowOnHit);
       if (p.splashRadius > 0) {
         for (const o of state.entities) {
-          if (o.side === p.side || o.hp <= 0 || o === target) continue;
+          if (o.side === p.side || o.hp <= 0 || o === target || isBurrowed(o)) continue;
           if (o.flying && !p.targetsAir) continue;
           if (distance(o, target) <= p.splashRadius + o.radius) {
-            const splashDmg = p.damage * p.splashDamageFactor;
+            const splashDmg = hitDamage(p.damage * p.splashDamageFactor, p.towerDamageFactor, o);
             o.hp -= splashDmg;
             creditDamage(state, p.side, p.sourceCardId, splashDmg);
             if (p.stunOnHit > 0) o.stunTimer = Math.max(o.stunTimer, p.stunOnHit);
@@ -384,6 +396,16 @@ function tickCollector(state: BattleState, e: Entity, dt: number): void {
 }
 
 function actEntity(state: BattleState, e: Entity, dt: number): void {
+  // Tunnelling (the Digger): nothing to do but dig. It surfaces with an
+  // 'emerge' event, then runs the normal deploy pop-up from the next tick.
+  if (isBurrowed(e)) {
+    e.burrowTimer -= dt;
+    if (e.burrowTimer <= 1e-9) {
+      e.burrowTimer = 0;
+      state.events.push({ type: "emerge", side: e.side, cardId: e.cardId!, x: e.x, y: e.y });
+    }
+    return;
+  }
   // Chilled units (Ice Wizard) crawl and swing at half speed until it wears off.
   if (e.slowTimer > 0) e.slowTimer -= dt;
   const slowFactor = e.slowTimer > 0 ? 0.5 : 1;
@@ -491,7 +513,8 @@ const COLLISION_SLACK = 0.9;
  * dense crowds stable without a physics engine.
  */
 function resolveCollisions(state: BattleState): void {
-  const solids = state.entities.filter((e) => e.hp > 0);
+  // A burrowing troop is underground: nothing bumps into it.
+  const solids = state.entities.filter((e) => e.hp > 0 && !isBurrowed(e));
   for (let pass = 0; pass < 2; pass++) {
     for (let i = 0; i < solids.length; i++) {
       for (let j = i + 1; j < solids.length; j++) {

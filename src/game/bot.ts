@@ -12,6 +12,7 @@ import {
   deployCard,
   distance,
   effectiveCard,
+  isBurrowed,
   levelMultiplier,
   sideState,
   TOWER_SPELL_DAMAGE_FACTOR,
@@ -121,8 +122,9 @@ function fy(c: Ctx, y: number): number {
   return c.side === "enemy" ? y : ARENA_HEIGHT - y;
 }
 
+/** Opposing troops the bot can see (a burrowing Digger is underground). */
 function oppTroops(c: Ctx): Entity[] {
-  return c.s.entities.filter((e) => e.side === c.opp && e.kind === "troop");
+  return c.s.entities.filter((e) => e.side === c.opp && e.kind === "troop" && !isBurrowed(e));
 }
 
 function affordableTroops(c: Ctx): CardId[] {

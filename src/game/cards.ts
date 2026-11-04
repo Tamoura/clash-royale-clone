@@ -39,7 +39,8 @@ export type CardId =
   | "mirror"
   | "champion"
   | "stone-golem"
-  | "pebble-golem";
+  | "pebble-golem"
+  | "digger";
 
 export type Speed = "slow" | "medium" | "fast";
 
@@ -125,6 +126,11 @@ export interface TroopCard {
    * Stone Golem bursts into): never in a deck, a chest, a draft or online.
    */
   token?: boolean;
+  /**
+   * Deploys anywhere on the field (the Digger): it tunnels from its King,
+   * untouchable while burrowed, and pops up at the spot.
+   */
+  deployAnywhere?: boolean;
 }
 
 export interface BuildingCard {
@@ -931,6 +937,26 @@ export const CARDS: Record<CardId, Card> = {
       deathRadius: 1.5,
     }),
   },
+  /** Tunnels to any spot on the field and pops up swinging; chips towers lightly. */
+  digger: {
+    id: "digger",
+    name: "Digger",
+    rarity: "epic",
+    kind: "troop",
+    cost: 3,
+    count: 1,
+    deployAnywhere: true,
+    unit: unit({
+      maxHp: 1000,
+      damage: 160,
+      hitSpeed: 1.2,
+      attackRange: MELEE,
+      sightRange: 5.5,
+      speed: "fast",
+      towerDamageFactor: 0.35, // 56 a hit on a crown tower
+      radius: 0.5,
+    }),
+  },
 };
 
 /** Deck order doubles as the starting draw: the first 4 are the opening hand. */
@@ -966,6 +992,7 @@ export const DECK: CardId[] = [
   "mega-knight",
   "royal-giant",
   "stone-golem",
+  "digger",
   "arrows",
   "zap",
   "rage",

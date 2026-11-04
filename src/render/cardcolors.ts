@@ -47,4 +47,5 @@ export const CARD_COLOR: Record<CardId, string> = {
   // Card wave 3 placeholders (final palette arrives with the wave's art).
   "stone-golem": "#6b7a5c",
   "pebble-golem": "#8c927c",
+  digger: "#9a6b34",
 };
