@@ -5,21 +5,23 @@
  * saved the moment they are made (the same keys main.ts loads at boot),
  * so the one-tap Battle button always plays the saved setup.
  *
- * Options gated by unlocks.ts show a lock and the arena that opens them.
+ * Options gated by unlocks.ts show a lock with the arena that opens them,
+ * by name and trophies ("Goblin Stadium · 100"), never a bare "Arena N".
  */
 import type { AppCtx } from "../../app/ctx";
 import { ABILITIES, ABILITY_IDS, saveAbility, type AbilityId } from "../../game/abilities";
 import { TOWER_TROOPS, TOWER_TROOP_IDS, saveTowerTroop, type TowerTroopId } from "../../game/towers";
 import * as Difficulty from "../../match/difficulty";
 import { GAME_MODES, MODE_KEY, type GameMode } from "../../match/modes";
+import { ARENAS, type ArenaDef } from "../../meta/arenas";
 import { isOwnedDeck, ownedSet } from "../../meta/progress";
-import { modeFeature, type Feature } from "../../meta/unlocks";
+import { featureArena, modeFeature, type Feature } from "../../meta/unlocks";
+import { fmtNum } from "../i18n";
 import { segmented, type SegmentOption } from "../components";
 import { icon, type IconName } from "../icons";
 import {
   isFeatureNew,
   isUnlocked,
-  lockBadge,
   markFeaturesSeen,
   newBadge,
   openSheet,
@@ -31,9 +33,10 @@ const { DIFFICULTIES, DIFF_AR, DIFF_KEY } = Difficulty;
 // ---- Labels -------------------------------------------------------------------------
 
 /** Known difficulty keys in easy-to-hard order (unknown keys follow). */
-const DIFF_ORDER = ["auto", "rookie", "easy", "normal", "hard"];
+const DIFF_ORDER = ["auto", "practice", "rookie", "easy", "normal", "hard"];
 const DIFF_TEXT: Record<string, { en: string; ar: string; blurbEn: string; blurbAr: string }> = {
   auto: { en: "Auto", ar: "تلقائي", blurbEn: "Adjusts to how you play", blurbAr: "يتكيّف مع طريقة لعبك" },
+  practice: { en: "Practice", ar: "تمرين", blurbEn: "A sleepy sparring partner", blurbAr: "شريك تدريب نعسان" },
   rookie: { en: "Rookie", ar: "مبتدئ", blurbEn: "Gentle and forgiving", blurbAr: "لطيف ومتسامح" },
   easy: { en: "Easy", ar: "سهل", blurbEn: "Slow to react", blurbAr: "بطيء في الرد" },
   normal: { en: "Normal", ar: "عادي", blurbEn: "A fair fight", blurbAr: "قتال متكافئ" },
@@ -51,6 +54,54 @@ const MODE_TEXT: Record<string, { en: string; ar: string; icon: IconName }> = {
 };
 const TOWER_ICON: Record<TowerTroopId, IconName> = { princess: "arrow", cannoneer: "burst", duchess: "sword" };
 const ABILITY_ICON: Record<AbilityId, IconName> = { rally: "flag", restore: "heart", salvo: "bomb" };
+
+// ---- Lock captions ----------------------------------------------------------------
+
+/** The arena whose trophies open a feature. */
+export function lockArena(f: Feature): ArenaDef {
+  return ARENAS[Math.min(ARENAS.length - 1, Math.max(0, featureArena(f)))];
+}
+
+/** The lock caption in words: [English, Arabic], e.g. "Goblin Stadium · 100". */
+export function lockCaption(f: Feature, num: (n: number) => string = String): [string, string] {
+  const a = lockArena(f);
+  return [`${a.name} · ${num(a.trophies)}`, `${a.ar} · ${num(a.trophies)}`];
+}
+
+/**
+ * A lock pill naming the arena that opens `f` and its trophies:
+ * lock icon, "Goblin Stadium", "·", trophy icon, "100". The parts are
+ * separate spans so a narrow option can stack them on two lines.
+ */
+export function arenaLockBadge(ctx: AppCtx, f: Feature): HTMLElement {
+  const a = lockArena(f);
+  const b = document.createElement("span");
+  b.className = "v2-lock v2-lock--arena";
+  const [en, ar] = lockCaption(f, fmtNum);
+  b.title = ctx.tr(en, ar);
+  b.setAttribute(
+    "aria-label",
+    ctx.tr(`Unlocks at ${a.name}, ${a.trophies} trophies`, `يُفتح في ${a.ar} عند ${fmtNum(a.trophies)} كأس`),
+  );
+  const name = document.createElement("span");
+  name.className = "v2-lock__arena";
+  name.innerHTML = icon("lock");
+  const label = document.createElement("span");
+  label.textContent = ctx.tr(a.name, a.ar);
+  name.appendChild(label);
+  const dot = document.createElement("span");
+  dot.className = "v2-lock__dot";
+  dot.textContent = "·";
+  dot.setAttribute("aria-hidden", "true");
+  const cups = document.createElement("span");
+  cups.className = "v2-lock__trophies";
+  cups.innerHTML = icon("trophy");
+  const n = document.createElement("span");
+  n.textContent = fmtNum(a.trophies);
+  cups.appendChild(n);
+  b.append(name, dot, cups);
+  return b;
+}
 
 const noEmoji = (s: string): string =>
   s.replace(/[\p{Extended_Pictographic}\u{FE0F}]/gu, "").replace(/\s{2,}/g, " ").trim();
@@ -178,7 +229,7 @@ function setupGroup<T>(ctx: AppCtx, o: GroupOpts<T>): HTMLElement {
 
   const groupLocked = o.lockedBy && !isUnlocked(ctx, o.lockedBy) ? o.lockedBy : null;
   if (groupLocked) {
-    head.appendChild(lockBadge(ctx, groupLocked));
+    head.appendChild(arenaLockBadge(ctx, groupLocked));
     g.classList.add("is-locked");
   } else if (o.lockedBy && isFeatureNew(ctx, o.lockedBy)) {
     head.appendChild(newBadge(ctx));
@@ -209,7 +260,7 @@ function setupGroup<T>(ctx: AppCtx, o: GroupOpts<T>): HTMLElement {
     if (locked) {
       b.disabled = true;
       b.classList.add("is-locked");
-      if (!groupLocked) b.appendChild(lockBadge(ctx, locked));
+      if (!groupLocked) b.appendChild(arenaLockBadge(ctx, locked));
     } else if (opt.feature && isFeatureNew(ctx, opt.feature)) {
       b.appendChild(newBadge(ctx));
     }
@@ -234,7 +285,7 @@ export function openBattleSetup(ctx: AppCtx, onChange: () => void = () => undefi
   content.className = "v2-setup";
 
   // Difficulty
-  content.appendChild(
+  const diff = content.appendChild(
     setupGroup<string>(ctx, {
       title: tr("Bot difficulty", "صعوبة الروبوت"),
       options: difficultyKeys(meta.difficulty).map((k) => {
@@ -249,6 +300,7 @@ export function openBattleSetup(ctx: AppCtx, onChange: () => void = () => undefi
       },
     }),
   );
+  diff.classList.add("v2-setup-group--diff");
 
   // Game mode
   const modes = setupGroup<string>(ctx, {

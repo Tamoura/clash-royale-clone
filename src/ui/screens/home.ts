@@ -31,7 +31,7 @@ import { button, toast } from "../components";
 import { fmtNum } from "../i18n";
 import { icon, type IconName } from "../icons";
 import { reducedMotion } from "../prefs";
-import { enforceUnlocks, setupChipRow } from "./battleSetup";
+import { arenaLockBadge, enforceUnlocks, setupChipRow } from "./battleSetup";
 import { CONFIRM_GOLD, cardProgress, openCardInfo } from "./cardInfo";
 import { buildCollectionGroups, cardTile } from "./collection";
 import { cardTileCanvas } from "./common";
@@ -47,7 +47,6 @@ import {
   goalRow,
   isFeatureNew,
   isUnlocked,
-  lockBadge,
   markFeaturesSeen,
   newBadge,
   refreshTopBars,
@@ -524,7 +523,7 @@ function eventTile(ctx: AppCtx, o: TileOpts): HTMLButtonElement {
   if (locked) {
     b.classList.add("is-locked");
     b.disabled = true;
-    b.appendChild(lockBadge(ctx, locked));
+    b.appendChild(arenaLockBadge(ctx, locked));
   } else if (o.disabled) {
     b.disabled = true;
     b.classList.add("is-disabled");

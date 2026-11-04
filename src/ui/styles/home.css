@@ -417,6 +417,11 @@
   white-space: nowrap;
 }
 .v2-lock .ui-icon { width: 14px; height: 14px; }
+/* Arena locks: "[lock] Goblin Stadium · [trophy] 100" (battleSetup.ts arenaLockBadge). */
+.v2-lock--arena { gap: 4px; }
+.v2-lock__arena,
+.v2-lock__trophies { display: inline-flex; align-items: center; gap: 3px; }
+.v2-lock__dot { opacity: 0.7; }
 
 /* ── Card tiles and grids ────────────────────────────────── */
 .v2-grid {
@@ -1129,6 +1134,25 @@
 .v2-setup .ui-seg__opt.is-locked > .ui-icon,
 .v2-setup .ui-seg__opt.is-locked > span:not(.v2-lock) { filter: grayscale(1); opacity: 0.55; }
 .v2-setup .ui-seg__opt .v2-lock { padding: 1px 6px 1px 4px; background: rgba(0, 0, 0, 0.45); }
+/* Inside a narrow option the arena lock stacks: name, then trophies. */
+.v2-setup .ui-seg__opt .v2-lock--arena {
+  flex-direction: column;
+  gap: 0;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  white-space: normal;
+  text-align: center;
+  line-height: 1.15;
+}
+.v2-setup .ui-seg__opt .v2-lock--arena .v2-lock__dot { display: none; }
+.v2-setup .ui-seg__opt .v2-lock--arena .v2-lock__arena { justify-content: center; }
+/* Six difficulty options: two rows of three on phones, one row when wide. */
+.v2-setup-group--diff .ui-seg__group { flex-wrap: wrap; }
+.v2-setup-group--diff .ui-seg__opt { flex: 1 1 30%; }
+@media (min-width: 600px) {
+  .v2-setup-group--diff .ui-seg__opt { flex: 1 1 0; }
+}
 .v2-setup .ui-seg__opt .v2-new { position: absolute; top: -6px; inset-inline-end: -2px; }
 .v2-setup .ui-seg__blurb {
   padding: var(--sp-2) var(--sp-3);
