@@ -13,12 +13,12 @@ import {
 import { makeCodeGen } from "./codewords";
 import type { CardId } from "../game/cards";
 import type { InputFrame } from "./lockstep";
-import type { Loadout, ServerMsg, StartMsg } from "./protocol";
+import { PROTOCOL_VERSION, type Loadout, type ServerMsg, type StartMsg } from "./protocol";
 
 const DECK_A = ["knight", "archers", "giant", "fireball", "musketeer", "mini-pekka", "baby-dragon", "arrows"] as CardId[];
 const DECK_B = ["wizard", "witch", "skeletons", "gargoyles", "valkyrie", "hog-rider", "cannon", "zap"] as CardId[];
 const MODE = { elixirRate: 1, mirror: false };
-const V2 = { v: 2 };
+const V = { v: PROTOCOL_VERSION };
 const LOADOUT: Loadout = { name: "Sara", crest: 2, tower: "duchess", ability: "rally" };
 
 /** Deterministic code generator for tests: LION, BEAR, WOLF... */
@@ -71,15 +71,15 @@ const frame = (tick: number, side: InputFrame["side"] = "player", commands: Inpu
 /** A started v2 match LION42 between host1 and guest1. */
 function match(extra: Partial<HubDeps> = {}) {
   const ctx = makeHub(codes("LION42"), extra);
-  ctx.hub.create("host1", DECK_A, MODE, { ...V2, loadout: LOADOUT });
-  const out = ctx.hub.join("guest1", "LION42", DECK_B, V2);
+  ctx.hub.create("host1", DECK_A, MODE, { ...V, loadout: LOADOUT });
+  const out = ctx.hub.join("guest1", "LION42", DECK_B, V);
   return { ...ctx, start: { host: startFor(out, "host1"), guest: startFor(out, "guest1") } };
 }
 
 describe("RoomHub pairing", () => {
   it("hands the creator a room code and a private token", () => {
     const { hub } = makeHub(codes("LION42"));
-    const out = hub.create("host1", DECK_A, MODE, V2);
+    const out = hub.create("host1", DECK_A, MODE, V);
     expect(out).toEqual([{ to: "host1", msg: { t: "created", code: "LION42", token: "1".padStart(32, "0") } }]);
   });
 
@@ -101,9 +101,9 @@ describe("RoomHub pairing", () => {
 
   it("issues real 128-bit hex tokens and seeds by default", () => {
     const hub = new RoomHub(codes("LION42"), { rng: mulberry32(3), now: () => 0 });
-    const created = hub.create("h", DECK_A, MODE, V2)[0].msg;
+    const created = hub.create("h", DECK_A, MODE, V)[0].msg;
     expect(created.t === "created" && created.token).toMatch(/^[0-9a-f]{32}$/);
-    const s = startFor(hub.join("g", "LION42", DECK_B, V2), "g");
+    const s = startFor(hub.join("g", "LION42", DECK_B, V), "g");
     expect(s.mode.seed).toBeGreaterThanOrEqual(0);
     expect(s.mode.seed).toBeLessThan(2 ** 31);
     expect(Number.isInteger(s.mode.seed)).toBe(true);
@@ -128,10 +128,10 @@ describe("RoomHub pairing", () => {
 
   it("create() first leaves the connection's previous room", () => {
     const { hub } = makeHub(codes("LION42", "BEAR17"));
-    hub.create("host1", DECK_A, MODE, V2);
-    hub.create("host1", DECK_A, MODE, V2);
+    hub.create("host1", DECK_A, MODE, V);
+    hub.create("host1", DECK_A, MODE, V);
     expect(hub.stats().rooms).toBe(1);
-    expect(hub.join("guest1", "LION42", DECK_B, V2)).toMatchObject([{ msg: { reason: "no-such-room" } }]);
+    expect(hub.join("guest1", "LION42", DECK_B, V)).toMatchObject([{ msg: { reason: "no-such-room" } }]);
   });
 });
 
@@ -141,7 +141,7 @@ describe("RoomHub codes", () => {
     const { hub } = makeHub(makeCodeGen(rng), { rng });
     const seen = new Set<string>();
     for (let i = 0; i < 2100; i++) {
-      const [o] = hub.create(`c${i}`, DECK_A, MODE, V2);
+      const [o] = hub.create(`c${i}`, DECK_A, MODE, V);
       if (o.msg.t !== "created") throw new Error("expected created");
       seen.add(o.msg.code);
       expect(o.msg.code).toMatch(/^[A-Z0-9-]{3,12}$/);
@@ -153,15 +153,15 @@ describe("RoomHub codes", () => {
   it("25 creates from one socket do not hang and leave a single room", () => {
     const { hub } = makeHub(() => "LION42");
     for (let i = 0; i < 25; i++) {
-      expect(hub.create("spammer", DECK_A, MODE, V2)).toMatchObject([{ msg: { t: "created", code: "LION42" } }]);
+      expect(hub.create("spammer", DECK_A, MODE, V)).toMatchObject([{ msg: { t: "created", code: "LION42" } }]);
     }
     expect(hub.stats().rooms).toBe(1);
   });
 
   it("retries code generation on collision", () => {
     const { hub } = makeHub(codes("LION42", "LION42", "BEAR17"));
-    hub.create("host1", DECK_A, MODE, V2);
-    const out = hub.create("host2", DECK_A, MODE, V2); // first pick LION42 collides → BEAR17
+    hub.create("host1", DECK_A, MODE, V);
+    const out = hub.create("host2", DECK_A, MODE, V); // first pick LION42 collides → BEAR17
     expect(out).toMatchObject([{ to: "host2", msg: { t: "created", code: "BEAR17" } }]);
   });
 
@@ -171,9 +171,9 @@ describe("RoomHub codes", () => {
       calls++;
       return "LION42";
     });
-    hub.create("host1", DECK_A, MODE, V2);
+    hub.create("host1", DECK_A, MODE, V);
     expect(calls).toBe(1);
-    const [o] = hub.create("host2", DECK_A, MODE, V2);
+    const [o] = hub.create("host2", DECK_A, MODE, V);
     expect(calls).toBe(11); // the first try + 10 retries, never more
     expect(o.msg.t === "created" && o.msg.code).toMatch(/^[0-9A-HJKMNP-TV-Z]{6}$/);
     // v1 fallbacks still fit the old 5-character code box.
@@ -186,7 +186,7 @@ describe("RoomHub codes", () => {
     const { hub } = makeHub(() => "LION42", { rng: () => 0 });
     const got = new Set<string>();
     for (let i = 0; i < 5; i++) {
-      const [o] = hub.create(`c${i}`, DECK_A, MODE, V2);
+      const [o] = hub.create(`c${i}`, DECK_A, MODE, V);
       if (o.msg.t === "created") got.add(o.msg.code);
     }
     expect(got.size).toBe(5); // LION42, 000000, then serial codes
@@ -243,8 +243,8 @@ describe("RoomHub frames", () => {
 
   it("checks mirror-match guests against the host's deck", () => {
     const { hub } = makeHub(codes("LION42"));
-    hub.create("host1", DECK_A, { elixirRate: 1, mirror: true }, V2);
-    hub.join("guest1", "LION42", DECK_B, V2);
+    hub.create("host1", DECK_A, { elixirRate: 1, mirror: true }, V);
+    hub.join("guest1", "LION42", DECK_B, V);
     const out = hub.relayFrame("guest1", frame(0, "enemy", [
       { side: "enemy", cardId: "wizard", x: 9, y: 10 },
       { side: "enemy", cardId: "knight", x: 9, y: 10 },
@@ -254,7 +254,7 @@ describe("RoomHub frames", () => {
 
   it("ignores frames before the match starts", () => {
     const { hub } = makeHub(codes("LION42"));
-    hub.create("host1", DECK_A, MODE, V2);
+    hub.create("host1", DECK_A, MODE, V);
     expect(hub.relayFrame("host1", frame(0))).toEqual([]);
     expect(hub.relayFrame("stranger", frame(0))).toEqual([]);
   });
@@ -269,12 +269,12 @@ describe("RoomHub frames", () => {
 describe("RoomHub leaving", () => {
   it("tells the peer when someone leaves and frees the room", () => {
     const { hub } = makeHub(codes("LION42", "LION42"));
-    hub.create("host1", DECK_A, MODE, V2);
-    hub.join("guest1", "LION42", DECK_B, V2);
+    hub.create("host1", DECK_A, MODE, V);
+    hub.join("guest1", "LION42", DECK_B, V);
     const out = hub.leave("host1");
     expect(out).toEqual([{ to: "guest1", msg: { t: "peer-left" } }]);
     // Code is freed: a fresh create can reuse it, and the stale guest now has no peer.
-    hub.create("host2", DECK_A, MODE, V2);
+    hub.create("host2", DECK_A, MODE, V);
     expect(hub.relayFrame("guest1", frame(0, "enemy"))).toEqual([]);
   });
 
@@ -288,7 +288,7 @@ describe("RoomHub leaving", () => {
 
   it("closing a waiting room's socket frees it", () => {
     const { hub } = makeHub(codes("LION42"));
-    hub.create("host1", DECK_A, MODE, V2);
+    hub.create("host1", DECK_A, MODE, V);
     expect(hub.drop("host1")).toEqual([]);
     expect(hub.stats().rooms).toBe(0);
   });
@@ -298,15 +298,15 @@ describe("RoomHub quick match", () => {
   it("pairs the first two players per mode, FIFO, and cancel removes an entry", () => {
     const { hub } = makeHub(codes("LION42", "BEAR17"));
     const triple = { elixirRate: 3, mirror: false };
-    expect(hub.quick("a", DECK_A, MODE, { ...V2, loadout: LOADOUT })).toEqual([{ to: "a", msg: { t: "queued", position: 1 } }]);
-    expect(hub.quick("b", DECK_B, triple, V2)).toEqual([{ to: "b", msg: { t: "queued", position: 1 } }]);
-    expect(hub.quick("x", DECK_B, MODE, V2)).toHaveLength(2); // pairs with a
+    expect(hub.quick("a", DECK_A, MODE, { ...V, loadout: LOADOUT })).toEqual([{ to: "a", msg: { t: "queued", position: 1 } }]);
+    expect(hub.quick("b", DECK_B, triple, V)).toEqual([{ to: "b", msg: { t: "queued", position: 1 } }]);
+    expect(hub.quick("x", DECK_B, MODE, V)).toHaveLength(2); // pairs with a
     expect(hub.stats()).toEqual({ rooms: 1, queue: 1 });
 
     expect(hub.cancel("b")).toEqual([]);
     expect(hub.stats().queue).toBe(0);
-    expect(hub.quick("c", DECK_A, triple, V2)).toEqual([{ to: "c", msg: { t: "queued", position: 1 } }]);
-    const out = hub.quick("d", DECK_B, triple, V2);
+    expect(hub.quick("c", DECK_A, triple, V)).toEqual([{ to: "c", msg: { t: "queued", position: 1 } }]);
+    const out = hub.quick("d", DECK_B, triple, V);
     const host = startFor(out, "c");
     const guest = startFor(out, "d");
     expect(host.role).toBe("host");
@@ -318,22 +318,22 @@ describe("RoomHub quick match", () => {
 
   it("the first pair carries the earlier player's loadout as host", () => {
     const { hub } = makeHub(codes("LION42"));
-    hub.quick("a", DECK_A, MODE, { ...V2, loadout: LOADOUT });
-    const s = startFor(hub.quick("b", DECK_B, MODE, V2), "b");
+    hub.quick("a", DECK_A, MODE, { ...V, loadout: LOADOUT });
+    const s = startFor(hub.quick("b", DECK_B, MODE, V), "b");
     expect(s.hostLoadout).toEqual(LOADOUT);
     expect(s.guestLoadout).toBeNull();
   });
 
   it("a second quick from the same socket does not pair it with itself", () => {
     const { hub } = makeHub(codes("LION42"));
-    hub.quick("a", DECK_A, MODE, V2);
-    expect(hub.quick("a", DECK_A, MODE, V2)).toEqual([{ to: "a", msg: { t: "queued", position: 1 } }]);
+    hub.quick("a", DECK_A, MODE, V);
+    expect(hub.quick("a", DECK_A, MODE, V)).toEqual([{ to: "a", msg: { t: "queued", position: 1 } }]);
     expect(hub.stats().queue).toBe(1);
   });
 
   it("cancel also closes a room nobody joined yet", () => {
     const { hub } = makeHub(codes("LION42"));
-    hub.create("host1", DECK_A, MODE, V2);
+    hub.create("host1", DECK_A, MODE, V);
     hub.cancel("host1");
     expect(hub.stats().rooms).toBe(0);
   });
@@ -447,7 +447,7 @@ function logSize(hub: RoomHub): number {
 describe("RoomHub sweep", () => {
   it("expires waiting rooms after 10 minutes", () => {
     const { hub, clock } = makeHub(codes("LION42"));
-    hub.create("host1", DECK_A, MODE, V2);
+    hub.create("host1", DECK_A, MODE, V);
     expect(hub.sweep(clock.t + WAITING_TTL_MS - 1)).toEqual([]);
     expect(hub.sweep(clock.t + WAITING_TTL_MS)).toEqual([{ to: "host1", msg: { t: "error", reason: "expired" } }]);
     expect(hub.stats().rooms).toBe(0);
@@ -465,7 +465,7 @@ describe("RoomHub sweep", () => {
 
   it("expires quick-match queue entries after 2 minutes", () => {
     const { hub, clock } = makeHub(codes("LION42"));
-    hub.quick("a", DECK_A, MODE, V2);
+    hub.quick("a", DECK_A, MODE, V);
     expect(hub.sweep(clock.t + QUEUE_TTL_MS - 1)).toEqual([]);
     expect(hub.sweep(clock.t + QUEUE_TTL_MS)).toEqual([{ to: "a", msg: { t: "error", reason: "expired" } }]);
     expect(hub.stats().queue).toBe(0);
@@ -489,7 +489,7 @@ describe("adaptive input delay", () => {
     for (const rtt of [180, 5000, 200]) hub.ping("g", 0, rtt); // a spike barely moves the median
     expect(hub.rttOf("h")).toBe(200);
     expect(hub.rttOf("g")).toBe(200);
-    hub.create("h", DECK_A, MODE, V2);
-    expect(startFor(hub.join("g", "LION42", DECK_B, V2), "g").delay).toBe(8);
+    hub.create("h", DECK_A, MODE, V);
+    expect(startFor(hub.join("g", "LION42", DECK_B, V), "g").delay).toBe(8);
   });
 });

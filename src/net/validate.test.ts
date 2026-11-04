@@ -72,9 +72,12 @@ describe("parseClientMsg fuzz cases", () => {
 });
 
 describe("parseClientMsg versioning", () => {
-  it("asks an explicit v1 client to update", () => {
+  it("asks an explicit v1 or v2 client (or a newer one) to update", () => {
     expect(parse({ t: "create", v: 1, deck: DECK, mode: MODE })).toEqual({ error: "update-required" });
-    expect(parse({ t: "frame", v: 3, frame: { tick: 1, side: "player", commands: [] } })).toEqual({
+    // v2 pages run the pre-v3 sim: pairing one with a v3 page would desync.
+    expect(parse({ t: "create", v: 2, deck: DECK, mode: MODE })).toEqual({ error: "update-required" });
+    expect(parse({ t: "join", v: 2, code: "LION42", deck: DECK })).toEqual({ error: "update-required" });
+    expect(parse({ t: "frame", v: PROTOCOL_VERSION + 1, frame: { tick: 1, side: "player", commands: [] } })).toEqual({
       error: "update-required",
     });
   });
@@ -90,10 +93,10 @@ describe("parseClientMsg versioning", () => {
 });
 
 describe("parseClientMsg accepts and normalises good messages", () => {
-  it("a v2 create with a loadout, dropping unknown fields and client seeds", () => {
+  it("a current-version create with a loadout, dropping unknown fields and client seeds", () => {
     const out = parse({
       t: "create",
-      v: 2,
+      v: PROTOCOL_VERSION,
       deck: DECK,
       mode: { elixirRate: 7, mirror: false, crazy: true, seed: 99, junk: 1 },
       loadout: { ...LOADOUT, name: "  <b>Sara</b>!! " },
@@ -101,7 +104,7 @@ describe("parseClientMsg accepts and normalises good messages", () => {
     });
     expect(out).toEqual({
       t: "create",
-      v: 2,
+      v: PROTOCOL_VERSION,
       deck: DECK,
       mode: { elixirRate: 7, mirror: false, crazy: true },
       loadout: { name: "bSarab", crest: 3, tower: "cannoneer", ability: "salvo" },
@@ -109,9 +112,9 @@ describe("parseClientMsg accepts and normalises good messages", () => {
   });
 
   it("a quick match and a null ability", () => {
-    expect(parse({ t: "quick", v: 2, deck: DECK, mode: MODE, loadout: { ...LOADOUT, ability: null } })).toEqual({
+    expect(parse({ t: "quick", v: PROTOCOL_VERSION, deck: DECK, mode: MODE, loadout: { ...LOADOUT, ability: null } })).toEqual({
       t: "quick",
-      v: 2,
+      v: PROTOCOL_VERSION,
       deck: DECK,
       mode: MODE,
       loadout: { ...LOADOUT, ability: null },

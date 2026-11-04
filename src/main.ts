@@ -171,7 +171,7 @@ const REPLAY_KEY = "cr-clone-replay";
 // v2: the sim became engine-exact (no hypot/sin/cos), so v1 tapes no
 // longer reproduce their match and are ignored.
 interface ReplayData {
-  v: 2;
+  v: 3;
   playerDeck: CardId[];
   enemyDeck: CardId[];
   playerLevels: CardLevels;
@@ -197,7 +197,7 @@ function storedReplay(): ReplayData | null {
     } catch {
       /* corrupt: dropped below */
     }
-    if (rep && rep.v === 2) return rep;
+    if (rep && rep.v === 3) return rep;
     localStorage.removeItem(REPLAY_KEY);
   } catch {
     /* storage blocked */
@@ -574,7 +574,7 @@ function startLadder(): void {
     isSandbox() || meta.gameMode.id === "crazy"
       ? null
       : {
-          v: 2,
+          v: 3,
           playerDeck: [...myDeck],
           enemyDeck: [...foeDeck],
           playerLevels: { ...meta.cardLevels },

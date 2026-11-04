@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RoomClient, type NetSocket } from "./roomClient";
 import type { CardId } from "../game/cards";
-import type { Loadout, ServerMsg, StartMsg } from "./protocol";
+import { PROTOCOL_VERSION, type Loadout, type ServerMsg, type StartMsg } from "./protocol";
 
 class FakeSocket implements NetSocket {
   sent: string[] = [];
@@ -156,9 +156,9 @@ describe("RoomClient", () => {
     client.join("lion", DECK);
     expect(sock.last()).not.toHaveProperty("v");
     client.create(DECK, MODE, LOADOUT);
-    expect(sock.last()).toEqual({ t: "create", v: 2, deck: DECK, mode: MODE, loadout: LOADOUT });
+    expect(sock.last()).toEqual({ t: "create", v: PROTOCOL_VERSION, deck: DECK, mode: MODE, loadout: LOADOUT });
     client.join("lion42", DECK, LOADOUT);
-    expect(sock.last()).toEqual({ t: "join", v: 2, code: "LION42", deck: DECK, loadout: LOADOUT });
+    expect(sock.last()).toEqual({ t: "join", v: PROTOCOL_VERSION, code: "LION42", deck: DECK, loadout: LOADOUT });
   });
 
   it("sends quick, cancel, rematch, resume and pause", () => {
@@ -171,7 +171,7 @@ describe("RoomClient", () => {
     client.resume("lion42", TOKEN, 120);
     client.pause(true);
     expect(sock.nonPing()).toEqual([
-      { t: "quick", v: 2, deck: DECK, loadout: LOADOUT, mode: MODE },
+      { t: "quick", v: PROTOCOL_VERSION, deck: DECK, loadout: LOADOUT, mode: MODE },
       { t: "cancel" },
       { t: "rematch" },
       { t: "resume", code: "LION42", token: TOKEN, haveTick: 120 },
