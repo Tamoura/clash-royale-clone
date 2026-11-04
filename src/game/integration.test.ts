@@ -92,10 +92,11 @@ describe("self-play invariants", () => {
         let steps = 0;
         while (!b.result && b.time < maxTime) {
           tick(b, TICK);
+          // Right after the tick: a spell a bot casts kills on the next one.
+          if (steps++ % 15 === 0) checkInvariants(b);
           tickBot(b, botE, TICK);
           tickBot(b, botP, TICK);
           b.events.length = 0;
-          if (steps++ % 15 === 0) checkInvariants(b);
         }
         expect(b.result).not.toBeNull();
         expect(b.time).toBeLessThanOrEqual(maxTime + TICK);

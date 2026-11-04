@@ -39,8 +39,8 @@ describe("freeze vs stun", () => {
     const { b, emit } = fakeScene(10);
     const rig = buildTroop("knight");
     const a = anim();
-    const e = troop(9, 20, ew.unit.stunOnHit);
-    expect(e.stunTimer).toBe(1);
+    const e = troop(9, 20, 1); // the longest on-hit stun the game has had
+    expect(ew.unit.stunOnHit).toBeLessThanOrEqual(1);
     expect(frame(b, a, rig, e)).toBe(false);
     expect(a.ice).toBeNull();
     e.stunTimer = 0;

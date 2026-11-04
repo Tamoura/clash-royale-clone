@@ -30,7 +30,8 @@ export const TOWER_TROOPS: Record<TowerTroopId, TowerTroopDef> = {
     ar: "الأميرة",
     blurb: "Steady arrows — the all-rounder.",
     blurbAr: "سهام ثابتة — الخيار المتوازن.",
-    damage: 120,
+    // 120 to 100 (sim v3 pacing): level-1 matches ended 0-0 too often.
+    damage: 100,
     hitSpeed: 0.8,
     range: 7.5,
     splashRadius: 0,
@@ -43,7 +44,9 @@ export const TOWER_TROOPS: Record<TowerTroopId, TowerTroopDef> = {
     ar: "المدفعي",
     blurb: "Slow, heavy shells that splash — punishes swarms and tanks.",
     blurbAr: "قذائف ثقيلة بطيئة ذات انفجار — تعاقب الأسراب والدروع.",
-    damage: 330,
+    // 330 to 290 (it beat the Princess 61%), then x 100/120 with the
+    // princess pacing change: 241.7, rounded.
+    damage: 242,
     hitSpeed: 2.4,
     range: 7.0,
     splashRadius: 1.0,
@@ -54,14 +57,16 @@ export const TOWER_TROOPS: Record<TowerTroopId, TowerTroopDef> = {
     id: "duchess",
     name: "Dagger Duchess",
     ar: "دوقة الخناجر",
-    blurb: "A burst of 8 fast daggers, then a slow reload — deadly opener.",
-    blurbAr: "دفعة من ٨ خناجر سريعة ثم إعادة تعبئة بطيئة — افتتاح قاتل.",
-    damage: 70,
+    blurb: "A burst of 8 fast daggers, then a steady reload — deadly opener.",
+    blurbAr: "دفعة من ٨ خناجر سريعة ثم إعادة تعبئة متواصلة — افتتاح قاتل.",
+    // 70 x 100/120 with the princess pacing change: 58.3, rounded. The
+    // faster reload (1.1 s to 0.6 s) closes her sustained-fire gap.
+    damage: 58,
     hitSpeed: 0.3,
     range: 7.0,
     splashRadius: 0,
     ammoMax: 8,
-    reloadSeconds: 1.1,
+    reloadSeconds: 0.6,
   },
 };
 

@@ -34,8 +34,8 @@ export const ABILITIES: Record<AbilityId, AbilityDef> = {
     name: "Royal Restore",
     ar: "الترميم الملكي",
     icon: "💖",
-    blurb: "Heal your towers 500 and your troops 300.",
-    blurbAr: "اشفِ أبراجك ٥٠٠ ووحداتك ٣٠٠.",
+    blurb: "Heal your towers 250 and your troops 300.",
+    blurbAr: "اشفِ أبراجك ٢٥٠ ووحداتك ٣٠٠.",
     chargeSeconds: 55,
   },
   salvo: {
@@ -52,7 +52,7 @@ export const ABILITIES: Record<AbilityId, AbilityDef> = {
 export const ABILITY_IDS: AbilityId[] = ["rally", "restore", "salvo"];
 
 export const RALLY_SECONDS = 5;
-export const RESTORE_TOWER_HP = 500;
+export const RESTORE_TOWER_HP = 250;
 export const RESTORE_TROOP_HP = 300;
 export const SALVO_TARGETS = 4;
 export const SALVO_DAMAGE = 180;

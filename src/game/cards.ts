@@ -254,7 +254,7 @@ export const CARDS: Record<CardId, Card> = {
     cost: 3,
     count: 1,
     unit: unit({
-      maxHp: 140,
+      maxHp: 200,
       damage: 130,
       hitSpeed: 3,
       attackRange: 6,
@@ -527,7 +527,7 @@ export const CARDS: Record<CardId, Card> = {
     cost: 5,
     count: 1,
     unit: unit({
-      maxHp: 700,
+      maxHp: 1000,
       damage: 180,
       hitSpeed: 2.4,
       attackRange: 4.5,
@@ -554,7 +554,7 @@ export const CARDS: Record<CardId, Card> = {
       speed: "medium",
       targetsAir: true,
       splashRadius: 0.7, // forked lightning zaps a small cluster
-      stunOnHit: 1, // every bolt stops its targets for ~a second
+      stunOnHit: 0.5, // every bolt stops its targets for half a second
       chainCount: 2, // forks to two enemies at once
     }),
   },
@@ -604,15 +604,15 @@ export const CARDS: Record<CardId, Card> = {
     cost: 7,
     count: 1,
     unit: unit({
-      maxHp: 3400,
-      damage: 240,
+      maxHp: 3000,
+      damage: 200,
       hitSpeed: 1.7,
       attackRange: MELEE,
       sightRange: 6,
       speed: "medium",
       splashRadius: 1.6, // area slam
       splashDamageFactor: 0.5, // surrounding enemies take half a hit
-      chargeDistance: 3, // leaps in for double damage
+      // No charge: the jump below is his charge (it also slams).
       jumpRange: 4.5, // leaps onto far troops and buildings, slamming on landing
       radius: 0.8,
     }),
@@ -625,8 +625,8 @@ export const CARDS: Record<CardId, Card> = {
     cost: 6,
     count: 1,
     unit: unit({
-      maxHp: 2400,
-      damage: 200,
+      maxHp: 3100,
+      damage: 240,
       hitSpeed: 1.7,
       attackRange: 5, // shoots buildings from range
       sightRange: 7.5,
@@ -693,7 +693,7 @@ export const CARDS: Record<CardId, Card> = {
     lifetime: 30,
     unit: unit({
       maxHp: 800,
-      damage: 130,
+      damage: 160,
       hitSpeed: 0.9,
       attackRange: 5.5,
       speed: "slow", // unused: buildings don't move
@@ -715,6 +715,9 @@ export const CARDS: Record<CardId, Card> = {
       speed: "slow", // unused: buildings don't move
       spawnUnitId: "skeletons",
       spawnInterval: 6,
+      // ...and four more skeletons tumble out when it falls (as in CR).
+      deathSpawnId: "skeletons",
+      deathSpawnCount: 4,
       radius: 0.6,
     }),
   },
@@ -842,7 +845,7 @@ export const CARDS: Record<CardId, Card> = {
     rarity: "common",
     kind: "spell",
     cost: 3,
-    damage: 240,
+    damage: 300, // kills Archers and the Princess; Zap no longer does
     radius: 4,
     stunSeconds: 0,
     rageSeconds: 0,
@@ -857,7 +860,7 @@ export const CARDS: Record<CardId, Card> = {
     rarity: "common",
     kind: "spell",
     cost: 2,
-    damage: 250,
+    damage: 210, // still clears Bats, Skeletons, Minions and Gargoyles
     radius: 2,
     stunSeconds: 0.5,
     rageSeconds: 0,

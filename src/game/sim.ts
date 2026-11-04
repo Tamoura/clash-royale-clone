@@ -27,8 +27,11 @@ import { ELIXIR_MAX, SECONDS_PER_ELIXIR, tickElixir } from "./elixir";
 /** Regular time length; the final minute of it is double elixir. */
 export const BATTLE_DURATION = 180;
 export const DOUBLE_ELIXIR_AT = 120;
-/** Sudden-death overtime length (CR: 2 minutes, last one at 3x). */
-export const OVERTIME_DURATION = 120;
+/**
+ * Sudden-death overtime length. One minute, all of it at triple elixir
+ * (sim v3): the old two minutes mostly ended 0-0 on tower HP.
+ */
+export const OVERTIME_DURATION = 60;
 
 /**
  * Sandbox/practice flat rate: high enough to refill an empty bar in a
@@ -38,14 +41,12 @@ export const OVERTIME_DURATION = 120;
 export const SANDBOX_ELIXIR_RATE = 1000;
 
 /**
- * CR's elixir curve: 1x for the first two minutes, 2x for the last
- * regular minute and the first overtime minute, 3x after that.
+ * The elixir curve: 1x for the first two minutes, 2x for the last regular
+ * minute, 3x for all of overtime.
  */
 export function elixirMultiplier(state: BattleState): 1 | 2 | 3 {
-  if (state.overtime && state.time >= BATTLE_DURATION + OVERTIME_DURATION / 2) {
-    return 3;
-  }
-  if (state.overtime || state.time >= DOUBLE_ELIXIR_AT) return 2;
+  if (state.overtime) return 3;
+  if (state.time >= DOUBLE_ELIXIR_AT) return 2;
   return 1;
 }
 

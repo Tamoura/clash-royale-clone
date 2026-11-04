@@ -361,11 +361,13 @@ describe("new card abilities", () => {
   it("electro wizard stuns on hit; mega knight splashes for half", () => {
     const ew = getCard("electro-wizard");
     if (ew.kind !== "troop") throw new Error("electro-wizard troop");
-    expect(ew.unit.stunOnHit).toBeGreaterThan(0);
+    expect(ew.unit.stunOnHit).toBe(0.5); // sim v3: 1 s stunned targets ~55% of the time
 
     const mk = getCard("mega-knight");
     if (mk.kind !== "troop") throw new Error("mega-knight troop");
     expect(mk.unit.splashDamageFactor).toBe(0.5);
-    expect(mk.unit.chargeDistance).toBeGreaterThan(0);
+    // sim v3: his jump is his charge; the extra 2x charge made him a 71% outlier.
+    expect(mk.unit.chargeDistance).toBe(0);
+    expect(mk.unit.jumpRange).toBeGreaterThan(0);
   });
 });

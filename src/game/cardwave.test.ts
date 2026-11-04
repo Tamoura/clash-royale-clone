@@ -126,6 +126,83 @@ describe("stone golem", () => {
   });
 });
 
+describe("tombstone (sim v3)", () => {
+  it("releases four skeletons when it falls, at its own level, credited to it", () => {
+    const b = createBattle(undefined, undefined, { player: { tombstone: 3 } });
+    giveHand(b, "player", ["tombstone"]);
+    expect(deployCard(b, "player", "tombstone", 9, 24)).toBe(true);
+    const stone = b.entities.find((e) => e.cardId === "tombstone")!;
+    const before = new Set(b.entities.map((e) => e.id));
+    stone.hp = 0;
+    tick(b, DT);
+    const fresh = b.entities.filter((e) => !before.has(e.id) && e.cardId === "skeletons");
+    expect(fresh).toHaveLength(4);
+    for (const s of fresh) {
+      expect(s.maxHp).toBe(80 * levelMultiplier({ tombstone: 3 }, "tombstone"));
+      expect(s.sourceCardId).toBe("tombstone");
+      expect(Math.abs(s.x - 9) + Math.abs(s.y - 24)).toBeLessThan(1.5);
+    }
+  });
+
+  it("also releases them when it crumbles at the end of its lifetime", () => {
+    const b = createBattle();
+    giveHand(b, "player", ["tombstone"]);
+    deployCard(b, "player", "tombstone", 9, 24);
+    const ids = new Set<number>();
+    let sawFall = false;
+    for (let t = 0; t < 32 && !sawFall; t += DT) {
+      b.events.length = 0;
+      tick(b, DT);
+      for (const e of b.entities) if (e.cardId === "skeletons") ids.add(e.id);
+      sawFall = b.events.some((ev) => ev.type === "death" && ev.cardId === "tombstone");
+    }
+    expect(sawFall).toBe(true);
+    // Its timed waves (one at 2 s, then every 6 s) plus the 4 it leaves behind.
+    expect(ids.size).toBeGreaterThanOrEqual(5 * 3 + 4);
+  });
+});
+
+describe("rebalance (sim v3)", () => {
+  it("ships the lab-checked numbers", () => {
+    const u = (id: CardId) => {
+      const c = getCard(id);
+      if (c.kind === "spell") throw new Error(id);
+      return c.unit;
+    };
+    const spell = (id: CardId) => {
+      const c = getCard(id);
+      if (c.kind !== "spell") throw new Error(id);
+      return c;
+    };
+    expect([u("mega-knight").maxHp, u("mega-knight").damage, u("mega-knight").chargeDistance]).toEqual([3000, 200, 0]);
+    expect(spell("zap").damage).toBe(210);
+    expect(spell("arrows").damage).toBe(300);
+    expect([u("royal-giant").maxHp, u("royal-giant").damage]).toEqual([3100, 240]);
+    expect(u("executioner").maxHp).toBe(1000);
+    expect(u("firecracker").maxHp).toBe(200);
+    expect(u("cannon").damage).toBe(160);
+    expect(u("electro-wizard").stunOnHit).toBe(0.5);
+    expect(u("tombstone").spawnInterval).toBe(6);
+  });
+
+  it("Arrows now kill Archers and the Princess; Zap still clears the swarms", () => {
+    const damage = (id: CardId) => {
+      const c = getCard(id);
+      return c.kind === "spell" ? c.damage : 0;
+    };
+    const hp = (id: CardId) => {
+      const c = getCard(id);
+      return c.kind === "spell" ? 0 : c.unit.maxHp;
+    };
+    expect(damage("arrows")).toBeGreaterThanOrEqual(hp("archers"));
+    expect(damage("arrows")).toBeGreaterThanOrEqual(hp("princess"));
+    expect(damage("zap")).toBeLessThan(hp("archers"));
+    for (const id of ["bats", "skeletons", "minions", "gargoyles", "firecracker"] as const) {
+      expect(damage("zap"), id).toBeGreaterThanOrEqual(hp(id));
+    }
+  });
+});
+
 describe("tokens", () => {
   it("Pebble Golem is a token: not deckable, not in DECK", () => {
     expect(TOKEN_IDS).toEqual(["pebble-golem"]);

@@ -79,8 +79,8 @@ describe("hudModel", () => {
     b.time = 200;
     const m = hudModel(b, "player");
     expect(m.overtime).toBe(true);
-    expect(m.clockText.endsWith(fmtTime(100))).toBe(true);
-    expect(m.clockText.length).toBeGreaterThan(fmtTime(100).length);
+    expect(m.clockText.endsWith(fmtTime(40))).toBe(true); // 60 s overtime (sim v3)
+    expect(m.clockText.length).toBeGreaterThan(fmtTime(40).length);
   });
 });
 

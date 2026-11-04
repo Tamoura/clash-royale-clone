@@ -266,7 +266,7 @@ export function checkBanners(battle: BattleState, audio: SoundEngine): void {
   }
   if (!overtimeShown && battle.overtime && !battle.result) {
     overtimeShown = true;
-    showBanner(tr("OVERTIME!", "وقت إضافي!"), { priority: "phase" });
+    showBanner(tr("OVERTIME! 3x elixir", "وقت إضافي! إكسير ثلاثي"), { priority: "phase" });
     audio.sting();
   }
 }

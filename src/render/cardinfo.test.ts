@@ -34,6 +34,7 @@ describe("card stat lines", () => {
 
   it("explains the card wave 3 mechanics", () => {
     expect(cardStatLines("stone-golem").join(" ")).toMatch(/Splits into 2 Pebble Golems|ينقسم إلى 2 من حصاة/);
+    expect(cardStatLines("tombstone").join(" ")).toMatch(/Releases 4 Skeletons when it falls|يطلق 4 من ميليشيا عند سقوطه/);
     expect(cardStatLines("digger").join(" ")).toMatch(/Digs to any spot|يحفر إلى أي مكان/);
     expect(cardStatLines("digger").join(" ")).toMatch(/35% damage to towers|35٪ ضرر للأبراج/);
     const comet = cardStatLines("comet");

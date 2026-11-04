@@ -314,7 +314,9 @@ interface TowerStats {
  * 1400/2600 values melted in seconds against 3000+ HP win conditions.)
  */
 const TOWER_STATS: Record<TowerKind, TowerStats> = {
-  princess: { hp: 2534, damage: 120, hitSpeed: 0.8, range: 7.5, radius: 1.0 },
+  // Princess damage 120 to 100 (sim v3): level-1 matches ended in crowns
+  // too rarely; the tower troops in towers.ts scale by the same 100/120.
+  princess: { hp: 2534, damage: 100, hitSpeed: 0.8, range: 7.5, radius: 1.0 },
   king: { hp: 4008, damage: 130, hitSpeed: 1.0, range: 7.0, radius: 1.3 },
 };
 
