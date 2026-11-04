@@ -21,6 +21,7 @@ import { createDraft } from "./draft";
 import { dailyDeck, isFairDailyDeck } from "./daily";
 import { createBot, botThink, tickBot } from "./bot";
 import { BATTLE_DURATION, OVERTIME_DURATION, tick } from "./sim";
+import { PROTOCOL_VERSION } from "../net/protocol";
 import { parseClientMsg, playableCardIds } from "../net/validate";
 
 const DT = 1 / 30;
@@ -221,7 +222,7 @@ describe("tokens", () => {
     expect(ids.has("stone-golem")).toBe(true);
     const deck = ["knight", "archers", "giant", "fireball", "musketeer", "mini-pekka", "baby-dragon"];
     const mode = { elixirRate: 1, mirror: false };
-    const msg = (last: string) => JSON.stringify({ t: "create", deck: [...deck, last], mode });
+    const msg = (last: string) => JSON.stringify({ t: "create", v: PROTOCOL_VERSION, deck: [...deck, last], mode });
     expect(parseClientMsg(msg("pebble-golem"), ids)).toEqual({ error: "bad-message" });
     expect(parseClientMsg(msg("stone-golem"), ids)).toMatchObject({ t: "create" });
     const frame = { tick: 3, side: "player", commands: [{ side: "player", cardId: "pebble-golem", x: 9, y: 20 }] };

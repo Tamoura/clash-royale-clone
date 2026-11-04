@@ -17,26 +17,26 @@ describe("parseClientMsg fuzz cases", () => {
   const BAD: [string, unknown][] = [
     ["null", "null"],
     ["an array", "[]"],
-    ["a join with no code or deck", '{"t":"join"}'],
+    ["a join with no code or deck", JSON.stringify({ t: "join", v: PROTOCOL_VERSION })],
     ["not JSON", "{t:create"],
     ["a number", "42"],
     ["an unknown type", { t: "explode" }],
     ["a non-string type", { t: 7 }],
-    ["a 7-card deck", { t: "create", deck: DECK.slice(0, 7), mode: MODE }],
-    ["a 9-card deck", { t: "create", deck: [...DECK, "zap"], mode: MODE }],
-    ["a duplicate card", { t: "create", deck: [...DECK.slice(0, 7), DECK[0]], mode: MODE }],
-    ["a champion deck", { t: "create", deck: [...DECK.slice(0, 7), "champion"], mode: MODE }],
-    ["an unknown card", { t: "join", code: "LION42", deck: [...DECK.slice(0, 7), "dragon-king"] }],
-    ["a mode with an unused elixir rate", { t: "create", deck: DECK, mode: { elixirRate: 1000, mirror: false } }],
-    ["a mode with a string mirror", { t: "create", deck: DECK, mode: { elixirRate: 1, mirror: "yes" } }],
-    ["a mode with a numeric crazy", { t: "create", deck: DECK, mode: { elixirRate: 3, mirror: false, crazy: 1 } }],
-    ["a code with spaces", { t: "join", code: "LI ON", deck: DECK }],
-    ["a too-long code", { t: "join", code: "ABCDEFGHIJKLM", deck: DECK }],
-    ["a bad tower", { t: "create", deck: DECK, mode: MODE, loadout: { ...LOADOUT, tower: "wizard" } }],
-    ["a bad ability", { t: "create", deck: DECK, mode: MODE, loadout: { ...LOADOUT, ability: "nuke" } }],
-    ["a crest of 12", { t: "create", deck: DECK, mode: MODE, loadout: { ...LOADOUT, crest: 12 } }],
-    ["a non-string name", { t: "create", deck: DECK, mode: MODE, loadout: { ...LOADOUT, name: 5 } }],
-    ["a quick with no loadout", { t: "quick", deck: DECK, mode: MODE }],
+    ["a 7-card deck", { t: "create", v: PROTOCOL_VERSION, deck: DECK.slice(0, 7), mode: MODE }],
+    ["a 9-card deck", { t: "create", v: PROTOCOL_VERSION, deck: [...DECK, "zap"], mode: MODE }],
+    ["a duplicate card", { t: "create", v: PROTOCOL_VERSION, deck: [...DECK.slice(0, 7), DECK[0]], mode: MODE }],
+    ["a champion deck", { t: "create", v: PROTOCOL_VERSION, deck: [...DECK.slice(0, 7), "champion"], mode: MODE }],
+    ["an unknown card", { t: "join", v: PROTOCOL_VERSION, code: "LION42", deck: [...DECK.slice(0, 7), "dragon-king"] }],
+    ["a mode with an unused elixir rate", { t: "create", v: PROTOCOL_VERSION, deck: DECK, mode: { elixirRate: 1000, mirror: false } }],
+    ["a mode with a string mirror", { t: "create", v: PROTOCOL_VERSION, deck: DECK, mode: { elixirRate: 1, mirror: "yes" } }],
+    ["a mode with a numeric crazy", { t: "create", v: PROTOCOL_VERSION, deck: DECK, mode: { elixirRate: 3, mirror: false, crazy: 1 } }],
+    ["a code with spaces", { t: "join", v: PROTOCOL_VERSION, code: "LI ON", deck: DECK }],
+    ["a too-long code", { t: "join", v: PROTOCOL_VERSION, code: "ABCDEFGHIJKLM", deck: DECK }],
+    ["a bad tower", { t: "create", v: PROTOCOL_VERSION, deck: DECK, mode: MODE, loadout: { ...LOADOUT, tower: "wizard" } }],
+    ["a bad ability", { t: "create", v: PROTOCOL_VERSION, deck: DECK, mode: MODE, loadout: { ...LOADOUT, ability: "nuke" } }],
+    ["a crest of 12", { t: "create", v: PROTOCOL_VERSION, deck: DECK, mode: MODE, loadout: { ...LOADOUT, crest: 12 } }],
+    ["a non-string name", { t: "create", v: PROTOCOL_VERSION, deck: DECK, mode: MODE, loadout: { ...LOADOUT, name: 5 } }],
+    ["a quick with no loadout", { t: "quick", v: PROTOCOL_VERSION, deck: DECK, mode: MODE }],
     ["a frame without a frame", { t: "frame" }],
     ["a fractional tick", { t: "frame", frame: { tick: 1.5, side: "player", commands: [] } }],
     ["a tick past 1e6", { t: "frame", frame: { tick: 1_000_001, side: "player", commands: [] } }],
@@ -54,7 +54,7 @@ describe("parseClientMsg fuzz cases", () => {
     ["a pause with no flag", { t: "pause" }],
     ["a ping with no time", { t: "ping" }],
     ["a string version", { t: "create", v: "2", deck: DECK, mode: MODE }],
-    ["a 200KB string", JSON.stringify({ t: "create", deck: DECK, mode: MODE, pad: "x".repeat(200_000) })],
+    ["a 200KB string", JSON.stringify({ t: "create", v: PROTOCOL_VERSION, deck: DECK, mode: MODE, pad: "x".repeat(200_000) })],
   ];
   for (const [name, raw] of BAD) {
     it(`rejects ${name}`, () => {
@@ -82,9 +82,17 @@ describe("parseClientMsg versioning", () => {
     });
   });
 
-  it("treats a missing v as current (LAN clients from before v2)", () => {
-    expect(parse({ t: "create", deck: DECK, mode: MODE })).toEqual({ t: "create", deck: DECK, mode: MODE });
-    expect(parse({ t: "join", code: "lion", deck: DECK })).toEqual({ t: "join", code: "LION", deck: DECK });
+  it("asks a handshake with no v (a v1 client, older than versioning) to update", () => {
+    expect(parse({ t: "create", deck: DECK, mode: MODE })).toEqual({ error: "update-required" });
+    expect(parse({ t: "create", deck: DECK, mode: MODE, loadout: LOADOUT })).toEqual({ error: "update-required" });
+    expect(parse({ t: "join", code: "lion", deck: DECK })).toEqual({ error: "update-required" });
+    expect(parse({ t: "quick", deck: DECK, mode: MODE, loadout: LOADOUT })).toEqual({ error: "update-required" });
+  });
+
+  it("takes in-match messages without v (the handshake already checked it)", () => {
+    expect(parse({ t: "frame", frame: { tick: 1, side: "player", commands: [] } })).toMatchObject({ t: "frame" });
+    expect(parse({ t: "sync", tick: 30, checksum: 7 })).toEqual({ t: "sync", tick: 30, checksum: 7 });
+    expect(parse({ t: "rematch" })).toEqual({ t: "rematch" });
   });
 
   it("keeps v when it is current", () => {
