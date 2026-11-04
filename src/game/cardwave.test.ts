@@ -280,3 +280,59 @@ describe("digger", () => {
     expect(k.maxHp - k.hp).toBe(160);
   });
 });
+
+describe("comet", () => {
+  it("lands 1.8 s after the cast and not before, for 400 on a crown tower", () => {
+    const b = createBattle();
+    const tower = enemyPrincess(b);
+    giveHand(b, "player", ["comet"]);
+    expect(deployCard(b, "player", "comet", tower.x, tower.y)).toBe(true);
+    expect(b.player.elixir.amount).toBeCloseTo(4, 9);
+    expect(b.events).toContainEqual({ type: "spell", side: "player", cardId: "comet", x: tower.x, y: tower.y });
+    expect(b.pendingSpells).toHaveLength(1);
+    const full = tower.hp;
+    for (let i = 0; i < 53; i++) tick(b, DT); // 1.767 s
+    expect(tower.hp).toBe(full);
+    expect(b.pendingSpells).toHaveLength(1);
+    b.events.length = 0;
+    tick(b, DT); // 1.8 s
+    expect(b.pendingSpells).toHaveLength(0);
+    expect(full - tower.hp).toBeCloseTo(400, 6);
+    expect(b.events).toContainEqual({ type: "spell-land", side: "player", cardId: "comet", x: tower.x, y: tower.y });
+    expect(b.player.stats.damageByCard.comet).toBeCloseTo(400, 6);
+  });
+
+  it("knocks survivors back, and misses anyone who walked out", () => {
+    const b = createBattle();
+    giveHand(b, "player", ["comet"]);
+    const [pekka] = spawnUnits(b, "enemy", "pekka", 10, 10);
+    const [dodger] = spawnUnits(b, "enemy", "knight", 8, 10);
+    pekka.deployTimer = 99; // stands still
+    dodger.deployTimer = 99;
+    deployCard(b, "player", "comet", 9, 10);
+    run(b, 1);
+    dodger.x = 3; // walks out of the blast before it lands
+    run(b, 1);
+    expect(pekka.maxHp - pekka.hp).toBe(1000);
+    expect(pekka.x).toBeCloseTo(11, 6);
+    expect(dodger.hp).toBe(dodger.maxHp);
+  });
+
+  it("is level-scaled when cast", () => {
+    const b = createBattle(undefined, undefined, { player: { comet: 3 } });
+    giveHand(b, "player", ["comet"]);
+    deployCard(b, "player", "comet", 9, 10);
+    expect(b.pendingSpells[0].damage).toBeCloseTo(1000 * levelMultiplier({ comet: 3 }, "comet"), 9);
+  });
+
+  it("never lands once the match is over", () => {
+    const b = createBattle();
+    const tower = enemyPrincess(b);
+    giveHand(b, "player", ["comet"]);
+    deployCard(b, "player", "comet", tower.x, tower.y);
+    b.result = { winner: "enemy", playerCrowns: 0, enemyCrowns: 3 };
+    run(b, 3);
+    expect(tower.hp).toBe(tower.maxHp);
+  });
+});
+

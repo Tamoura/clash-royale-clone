@@ -101,7 +101,7 @@ export const ARENAS: ArenaDef[] = [
     name: "Legendary Peak",
     ar: "مدينة الأهلّة",
     trophies: 3000,
-    unlocks: [],
+    unlocks: ["comet"],
   },
 ];
 

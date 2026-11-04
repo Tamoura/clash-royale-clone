@@ -54,6 +54,7 @@ const ISLAMIC_NAME: Record<CardId, string> = {
   "stone-golem": "حارس الحجر",
   "pebble-golem": "حصاة",
   digger: "حفّار الرمال",
+  comet: "شهاب",
 };
 
 /** The card's name for the active mode (Islamic name in Arabic theme). */

@@ -9,7 +9,7 @@ import {
 } from "./cards";
 
 describe("cards", () => {
-  it("defines the 41-card deck (40 built-ins + the Studio champion)", () => {
+  it("defines the 42-card deck (41 built-ins + the Studio champion)", () => {
     expect(DECK).toEqual([
       "knight",
       "archers",
@@ -50,6 +50,7 @@ describe("cards", () => {
       "heal",
       "tornado",
       "skeleton-barrel",
+      "comet",
       "mirror",
       "champion",
     ]);

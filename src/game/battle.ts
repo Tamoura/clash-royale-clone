@@ -216,6 +216,20 @@ export interface Projectile {
   towerDamageFactor: number;
 }
 
+/** A cast spell still on its way down (the Comet); lands when ttl runs out. */
+export interface PendingSpell {
+  side: Side;
+  cardId: CardId;
+  x: number;
+  y: number;
+  /** Seconds until it lands. */
+  ttl: number;
+  /** Damage at landing, level-scaled when cast. */
+  damage: number;
+  radius: number;
+  knockback: number;
+}
+
 /** A lingering area that boosts one side's troops (Rage). */
 export interface BuffZone {
   side: Side;
@@ -262,6 +276,8 @@ export type BattleEvent =
   | { type: "ability"; side: Side; ability: AbilityId; x: number; y: number }
   /** A burrowing troop (the Digger) breaks the surface. Render-only. */
   | { type: "emerge"; side: Side; cardId: CardId; x: number; y: number }
+  /** A delayed spell (the Comet) hits the ground. Render-only. */
+  | { type: "spell-land"; side: Side; cardId: CardId; x: number; y: number }
   | { type: "finish"; winner: Side | "draw" };
 
 export interface BattleState {
@@ -275,6 +291,8 @@ export interface BattleState {
   effects: SpellEffect[];
   projectiles: Projectile[];
   buffZones: BuffZone[];
+  /** Delayed spells in flight, in cast order. */
+  pendingSpells: PendingSpell[];
   events: BattleEvent[];
   nextEntityId: number;
   /** Flat elixir-rate multiplier for game modes (1 = normal, 3 = triple, 7 = mega). */
@@ -423,6 +441,7 @@ export function createBattle(
     effects: [],
     projectiles: [],
     buffZones: [],
+    pendingSpells: [],
     events: [],
     nextEntityId: 1,
     elixirRate,
@@ -923,6 +942,19 @@ export function deployCard(
     if (card.rageSeconds > 0) {
       state.buffZones.push({ side, x, y, radius: card.radius, ttl: card.rageSeconds });
       state.effects.push({ cardId: card.id, x, y, radius: card.radius, ttl: card.rageSeconds });
+    } else if ((card.landDelay ?? 0) > 0) {
+      // A delayed spell (the Comet): the 'spell' event above lets the
+      // renderer telegraph it; the damage lands in sim.tick, landDelay later.
+      state.pendingSpells.push({
+        side,
+        cardId: card.id,
+        x,
+        y,
+        ttl: card.landDelay!,
+        damage: card.damage * levelMultiplier(me.levels, card.id),
+        radius: card.radius,
+        knockback: card.knockback,
+      });
     } else {
       // The Tornado drags enemies into the center BEFORE damage lands,
       // so a well-placed cast bunches a push onto its own blast.

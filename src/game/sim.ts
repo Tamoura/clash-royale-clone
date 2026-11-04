@@ -353,6 +353,23 @@ function tickProjectiles(state: BattleState, dt: number): void {
   });
 }
 
+/**
+ * Delayed spells (the Comet) count down and land in cast order: the blast
+ * goes through applySpell, so crown towers take the usual spell fraction.
+ * The epsilon lands a 1.8 s fall on its 54th 30 Hz tick, not the 55th.
+ */
+function tickPendingSpells(state: BattleState, dt: number): void {
+  if (state.pendingSpells.length === 0) return;
+  for (const p of state.pendingSpells) p.ttl -= dt;
+  const landing = state.pendingSpells.filter((p) => p.ttl <= 1e-9);
+  if (landing.length === 0) return;
+  state.pendingSpells = state.pendingSpells.filter((p) => p.ttl > 1e-9);
+  for (const p of landing) {
+    applySpell(state, p.side, p.cardId, p.x, p.y, p.damage, p.radius, 0, p.knockback);
+    state.events.push({ type: "spell-land", side: p.side, cardId: p.cardId, x: p.x, y: p.y });
+  }
+}
+
 /** Speed/attack-rate multiplier for troops inside a friendly rage zone. */
 export const RAGE_BOOST = 1.35;
 
@@ -660,6 +677,7 @@ export function tick(state: BattleState, dt: number): void {
 
   for (const zone of state.buffZones) zone.ttl -= dt;
   state.buffZones = state.buffZones.filter((z) => z.ttl > 0);
+  tickPendingSpells(state, dt);
 
   // Deployed buildings decay over their lifetime.
   for (const e of state.entities) {

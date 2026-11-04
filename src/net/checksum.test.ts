@@ -68,6 +68,13 @@ describe("state checksum (drift detection)", () => {
     expect(stateChecksum(a)).not.toBe(stateChecksum(b));
   });
 
+  it("catches a delayed spell still on its way down", () => {
+    const base = stateChecksum(createBattle());
+    const comet = createBattle();
+    comet.pendingSpells.push({ side: "player", cardId: "comet", x: 9, y: 9, ttl: 1.8, damage: 1000, radius: 2, knockback: 1 });
+    expect(stateChecksum(comet)).not.toBe(base);
+  });
+
   it("catches projectiles, buff zones, the result and overtime", () => {
     const base = stateChecksum(createBattle());
     const over = createBattle();

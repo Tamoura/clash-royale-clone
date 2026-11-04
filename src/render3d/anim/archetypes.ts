@@ -78,6 +78,7 @@ export const ARCHETYPES: Readonly<Record<CardId, Archetype>> = {
   "pebble-golem": A("slam", "medium"),
   // The Digger swings a pickaxe.
   digger: A("chop", "medium"),
+  comet: A("cast", "light"),
 };
 
 /**

@@ -62,6 +62,9 @@ export function cardStatLines(id: CardId): string[] {
         tr(`unloads ${plural(cardDisplayName(card.spawnUnit))}`, `يطلق ${cardDisplayName(card.spawnUnit)}`),
       );
     }
+    if ((card.landDelay ?? 0) > 0) {
+      bits.push(tr(`Lands after ${card.landDelay} s`, `يسقط بعد ${card.landDelay} ث`));
+    }
     bits.push(tr(`radius ${card.radius}`, `نصف قطر ${card.radius}`));
     lines.push(bits.join(" · "));
     return lines;

@@ -40,7 +40,8 @@ export type CardId =
   | "champion"
   | "stone-golem"
   | "pebble-golem"
-  | "digger";
+  | "digger"
+  | "comet";
 
 export type Speed = "slow" | "medium" | "fast";
 
@@ -164,6 +165,11 @@ export interface SpellCard {
   pull: number;
   /** Troop card whose units burst out at the target (null = none). */
   spawnUnit: CardId | null;
+  /**
+   * Seconds between the cast and the damage landing (the Comet falls from
+   * the sky; enemies can walk out of it). Absent or 0 = instant.
+   */
+  landDelay?: number;
 }
 
 export type Card = TroopCard | BuildingCard | SpellCard;
@@ -957,6 +963,23 @@ export const CARDS: Record<CardId, Card> = {
       radius: 0.5,
     }),
   },
+  /** A huge rock that crashes down 1.8 s after the cast: dodgeable, so fair. */
+  comet: {
+    id: "comet",
+    name: "Comet",
+    rarity: "epic",
+    kind: "spell",
+    cost: 6,
+    damage: 1000, // 400 to crown towers
+    radius: 2.0,
+    stunSeconds: 0,
+    rageSeconds: 0,
+    knockback: 1.0,
+    heal: 0,
+    pull: 0,
+    spawnUnit: null,
+    landDelay: 1.8,
+  },
 };
 
 /** Deck order doubles as the starting draw: the first 4 are the opening hand. */
@@ -1000,6 +1023,7 @@ export const DECK: CardId[] = [
   "heal",
   "tornado",
   "skeleton-barrel",
+  "comet",
   "mirror",
   "champion",
 ];

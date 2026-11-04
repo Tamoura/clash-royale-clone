@@ -48,4 +48,5 @@ export const CARD_COLOR: Record<CardId, string> = {
   "stone-golem": "#6b7a5c",
   "pebble-golem": "#8c927c",
   digger: "#9a6b34",
+  comet: "#e0582a",
 };

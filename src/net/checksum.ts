@@ -57,6 +57,7 @@ export function stateChecksum(state: BattleState): number {
   mixSide(state.enemy, "enemy");
   mix(state.projectiles.length);
   mix(state.buffZones.length);
+  mix(state.pendingSpells.length);
   const w = state.result?.winner;
   mix(w === "player" ? 1 : w === "enemy" ? 2 : w === "draw" ? 3 : 0);
   mix(state.overtime ? 1 : 0);
