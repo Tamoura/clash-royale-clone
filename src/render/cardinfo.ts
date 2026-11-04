@@ -62,11 +62,13 @@ export function cardStatLines(id: CardId): string[] {
         tr(`unloads ${plural(cardDisplayName(card.spawnUnit))}`, `يطلق ${cardDisplayName(card.spawnUnit)}`),
       );
     }
-    if ((card.landDelay ?? 0) > 0) {
-      bits.push(tr(`Lands after ${card.landDelay} s`, `يسقط بعد ${card.landDelay} ث`));
-    }
     bits.push(tr(`radius ${card.radius}`, `نصف قطر ${card.radius}`));
     lines.push(bits.join(" · "));
+    // Its own line, so the card sheet (which shows lines past the second)
+    // tells kids the Comet takes a moment to fall.
+    if ((card.landDelay ?? 0) > 0) {
+      lines.push(tr(`Lands after ${card.landDelay} s`, `يسقط بعد ${card.landDelay} ث`));
+    }
     return lines;
   }
   const u = card.unit;
