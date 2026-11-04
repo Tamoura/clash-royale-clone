@@ -8,6 +8,7 @@ import {
   saveProfile,
   tryOpenChest,
   tryUpgradeCard,
+  trophyLossAt,
   type MetaStorage,
   type PlayerProfile,
 } from "./progress";
@@ -72,6 +73,46 @@ describe("progress", () => {
     expect(summary.chestGranted).toBe(true);
     expect(summary.rewardLine).toContain("Chest earned");
     expect(profile.chests.some((c) => c !== null)).toBe(true);
+  });
+
+  describe("trophy floors", () => {
+    const lose = (trophies: number) => applyMatchResult(baseProfile({ trophies }), "enemy", 5_000, 7);
+
+    it("a Training Camp loss costs nothing: 50 stays 50", () => {
+      const { profile, summary } = lose(50);
+      expect(profile.trophies).toBe(50);
+      expect(summary.trophiesDelta).toBe(0);
+      expect(Object.is(summary.trophiesDelta, -0)).toBe(false);
+      expect(summary.rewardLine).toContain("unchanged");
+    });
+
+    it("never drops a kid out of an arena they reached: 110 goes to 100", () => {
+      const { profile, summary } = lose(110);
+      expect(profile.trophies).toBe(100);
+      expect(summary.trophiesDelta).toBe(-10);
+    });
+
+    it("costs the full loss when the floor is far: 130 goes to 110", () => {
+      const { profile, summary } = lose(130);
+      expect(profile.trophies).toBe(110);
+      expect(summary.trophiesDelta).toBe(-20);
+    });
+
+    it("an arena floor itself is safe: 100 stays 100", () => {
+      expect(lose(100).profile.trophies).toBe(100);
+      expect(lose(0).profile.trophies).toBe(0);
+    });
+
+    it("wins and draws are unchanged", () => {
+      expect(applyMatchResult(baseProfile({ trophies: 50 }), "player", 5_000, 7).profile.trophies).toBe(80);
+      expect(applyMatchResult(baseProfile({ trophies: 50 }), "draw", 5_000, 7).profile.trophies).toBe(50);
+    });
+
+    it("re-exports the economy's trophyLossAt", () => {
+      expect(trophyLossAt(50)).toBe(0);
+      expect(trophyLossAt(110)).toBe(10);
+      expect(trophyLossAt(130)).toBe(20);
+    });
   });
 
   it("does not invent gems from match results (kid-safe)", () => {
