@@ -83,6 +83,7 @@ import {
   installAutoDifficulty,
   ensureAutoState,
   ladderMatchesPlayed,
+  ladderProfile,
   loadAutoState,
   loadDifficulty,
   resolveTier,
@@ -528,20 +529,11 @@ function startLadder(): void {
     towers,
     abilities,
   );
-  const base = tierProfile(tier);
-  // Personality tweaks: beatdown banks bigger pushes, cycle plays faster,
-  // siege turtles behind buildings and only commits when fully loaded.
-  // The rookie is calibrated as a whole, so it keeps its own pace.
-  const tuned: BotProfile =
-    tier === "rookie"
-      ? base
-      : archetype === "beatdown"
-        ? { ...base, thinkInterval: base.thinkInterval, pushAt: Math.min(10, base.pushAt + 1) }
-        : archetype === "cycle"
-          ? { ...base, thinkInterval: base.thinkInterval * 0.85, pushAt: Math.max(4, base.pushAt - 2) }
-          : archetype === "siege"
-            ? { ...base, thinkInterval: base.thinkInterval * 1.1, pushAt: 10 }
-            : base;
+  // Personality tweaks (match/difficulty.ts archetypeTweak): beatdown banks
+  // bigger pushes, cycle plays faster, siege turtles behind buildings and
+  // only commits when fully loaded. Practice and rookie are calibrated as a
+  // whole (novice.test), so they keep their own pace.
+  const tuned: BotProfile = ladderProfile(tier, archetype);
   const banded: BotProfile = championBotMatch
     ? { ...tuned, thinkInterval: tuned.thinkInterval * 0.85, pushAt: Math.max(4, tuned.pushAt - 1) }
     : mercy
