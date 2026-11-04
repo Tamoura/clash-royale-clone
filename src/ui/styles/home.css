@@ -256,6 +256,40 @@
 .v2-setup-holder { width: 100%; }
 
 .v2-home .home-chests .home-chest { min-height: 64px; }
+/* First chest: a bouncing glove points at it (home.ts chestGuideSlot)… */
+.v2-home .home-chest.is-guided {
+  position: relative;
+  overflow: visible;
+  z-index: 2;
+  border-color: var(--accent);
+}
+.home-chest-hand {
+  position: absolute;
+  left: 50%;
+  top: -40px;
+  width: 40px;
+  color: var(--accent);
+  pointer-events: none;
+  transform: translateX(-50%) rotate(180deg);
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.5));
+  animation: homeHandBob 0.8s ease-in-out infinite alternate;
+}
+.home-chest-hand svg { display: block; width: 100%; height: auto; }
+@keyframes homeHandBob {
+  from { transform: translateX(-50%) rotate(180deg) translateY(0); }
+  to { transform: translateX(-50%) rotate(180deg) translateY(-9px); }
+}
+.v2-calm .home-chest-hand { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .home-chest-hand { animation: none; }
+}
+/* …and the free chest's glow goes quiet until that first tap. */
+.v2-home .is-chest-guide .rw-free,
+.v2-home .is-chest-guide .rw-free.is-ready,
+.v2-home .is-chest-guide .rw-free.is-ready .rw-chest {
+  animation: none;
+}
+.v2-home .is-chest-guide .rw-free { filter: saturate(0.45) brightness(0.85); }
 
 /* ── Sections and boards ─────────────────────────────────── */
 .v2-section {
