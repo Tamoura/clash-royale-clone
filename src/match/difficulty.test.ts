@@ -49,7 +49,7 @@ describe("difficulty options", () => {
 
   it("makes the rookie slow, sloppy and polite", () => {
     const r = DIFFICULTIES.rookie;
-    expect(r).toEqual({ thinkInterval: 6, pushAt: 10, mistakeRate: 0.45, allowFinisher: false, spellIQ: 2.5, reactionDelay: 1.8 });
+    expect(r).toEqual({ thinkInterval: 6.5, pushAt: 10, mistakeRate: 0.45, allowFinisher: false, spellIQ: 2.5, reactionDelay: 1.8 });
     expect(r.thinkInterval).toBeGreaterThan(DIFFICULTIES.easy.thinkInterval);
   });
 

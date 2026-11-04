@@ -53,7 +53,7 @@ their very first visit.
 | tier | thinkInterval | pushAt | mistakeRate | reactionDelay | spellIQ | finisher | card levels |
 |---|---|---|---|---|---|---|---|
 | practice (new) | 10 | 10 | 0.6 | 2.5 | 3 | no | deck avg - 2 |
-| rookie | 6 (was 5) | 10 | 0.45 (0.35) | 1.8 (1.2) | 2.5 (2.0) | no | deck avg - 2 |
+| rookie | 6.5 (was 5; 6 before the sim v3 merge) | 10 | 0.45 (0.35) | 1.8 (1.2) | 2.5 (2.0) | no | deck avg - 2 |
 
 - `TIERS` is now `practice, rookie, easy, normal, hard`; DIFF_AR
   'تمرين', blurb 'A sleepy sparring partner'. Battle setup lists Practice.
@@ -81,6 +81,13 @@ their very first visit.
   rookie result has some luck in it; if the integrator's re-run wants a
   steadier rookie, its knobs are the first to soften. Against the in-progress sim-card-wave tree the same seeds gave
   rookie 0.75, practice 0.85 (before the 10 s retune), hard 0.00.
+- Round-1 integration retune: on the merged sim v3 (pacing and overtime
+  final), rookie at 6 s fell to 0.50 on the test seeds (band >= 0.55) and
+  0.52 pooled over 300 other seeds (botSeed 300/500/1000, pilot
+  7300/7500/11000, 100 each). Thinking every 6.5 s gives 0.65 on the test
+  seeds and 0.64/0.65/0.63 (pooled 0.64) on the others; 6.75 and 7 gave
+  0.68 and 0.67 pooled. Only `thinkInterval` moved; practice (10 s) and
+  the cycle-tweaked practice are unchanged.
 
 ### 5. Trophy floors (`src/meta/economy.ts`, `progress.ts`)
 - `trophyLossAt(trophies)`: 0 below 100 (Training Camp); otherwise

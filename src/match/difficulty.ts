@@ -20,7 +20,7 @@ export const TIERS: readonly Tier[] = ["practice", "rookie", "easy", "normal", "
 /**
  * The two first-hour tiers are tuned against a near-random player
  * (novice.test.ts): it should beat rookie in most games and practice in
- * nearly all of them. Rookie thinks every 6 s, notices each invader late,
+ * nearly all of them. Rookie thinks every 6.5 s, notices each invader late,
  * slips up on almost half its plays, only spells big clusters and never
  * finishes a tower with a spell. Practice (where auto steps a kid down to
  * after two straight losses) is slower and sloppier still: it thinks only
@@ -37,7 +37,7 @@ const TIER_PROFILES: Record<Tier, BotProfile> = {
     reactionDelay: 2.5,
   },
   rookie: {
-    thinkInterval: 6,
+    thinkInterval: 6.5,
     pushAt: 10,
     mistakeRate: 0.45,
     allowFinisher: false,
