@@ -52,7 +52,7 @@ their very first visit.
 ### 4. Easier first battles (`src/match/difficulty.ts`)
 | tier | thinkInterval | pushAt | mistakeRate | reactionDelay | spellIQ | finisher | card levels |
 |---|---|---|---|---|---|---|---|
-| practice (new) | 8 | 10 | 0.6 | 2.5 | 3 | no | deck avg - 2 |
+| practice (new) | 10 | 10 | 0.6 | 2.5 | 3 | no | deck avg - 2 |
 | rookie | 6 (was 5) | 10 | 0.45 (0.35) | 1.8 (1.2) | 2.5 (2.0) | no | deck avg - 2 |
 
 - `TIERS` is now `practice, rookie, easy, normal, hard`; DIFF_AR
@@ -62,12 +62,25 @@ their very first visit.
   returns to rookie. Otherwise the 3-match crown window applies. Samples
   now record the outcome, so a 0-0 tiebreak defeat counts as a loss
   (older saves fall back to the crown difference).
+- Ladder personalities: `ladderProfile(tier, archetype)` applies the
+  archetype tweak main.ts has always used (`archetypeTweak()`: beatdown
+  push +1, cycle thinks x0.85 and pushes 2 sooner, siege thinks x1.1 and
+  pushes at 10), except for the tiers where `keepsOwnPace(tier)` is true
+  (practice and rookie), which are calibrated as a whole. main.ts does
+  not call it yet (see Notes for the integrator).
+- Practice thinks every 10 s (the plan's starting point was 8). With 8,
+  the cycle tweak (6.8 s, push at 8) dropped a random pilot's win rate to
+  0.50 over 40 seeds, below rookie's 0.60. With 10 the cycle tweak gives
+  8.5 s and the pilot still wins 0.80 (seeds 100-139, 300-339 and
+  500-539 alike), while plain practice stays at 0.93-0.95. So practice
+  is easier than rookie even before main.ts adopts `ladderProfile`.
 - novice.test (20 seeds, random pilot vs bot): rookie 0.70 (band
-  >= 0.55), practice 1.00 (>= 0.70), hard 0.10 (< 0.15). Over 80 other
-  seeds rookie wins about 0.53 and practice about 0.96, so the 20-seed
-  rookie result has some luck in it. Against the in-progress
-  sim-card-wave tree the same seeds gave rookie 0.75, practice 0.85,
-  hard 0.00.
+  >= 0.55), practice 0.95 (>= 0.70), practice with the cycle tweak 0.80
+  (>= 0.70, new band), hard 0.10 (< 0.15). In 40-seed runs at three seed
+  ranges (100, 300, 500) rookie won 0.60, 0.53 and 0.43, so the 20-seed
+  rookie result has some luck in it; if the integrator's re-run wants a
+  steadier rookie, its knobs are the first to soften. Against the in-progress sim-card-wave tree the same seeds gave
+  rookie 0.75, practice 0.85 (before the 10 s retune), hard 0.00.
 
 ### 5. Trophy floors (`src/meta/economy.ts`, `progress.ts`)
 - `trophyLossAt(trophies)`: 0 below 100 (Training Camp); otherwise
@@ -87,9 +100,17 @@ their very first visit.
      to it, or seen hitting that spot): "Put Musketeer or Archers behind
      your Knight!" (names come from the deck in the current edition;
      a generic line if the deck has no front troop or shooter);
-  3. no spell cast and the deck has Arrows, Zap or Fireball:
-     "Arrows clears groups of little troops";
+  3. no spell cast, some card played (`elixirSpent > 0`) and the deck
+     has Arrows, Zap or Fireball: "Arrows clears groups of little
+     troops";
   4. otherwise one of four basics, rotating (`cr-clone-coach-rotation`).
+     A forfeit before any card was played gets a basic, not the spell
+     nag (the Battle report would read Elixir spent 0).
+- On short screens (`max-height: 480px`, a phone held sideways) the tip
+  is one compact line (header inline, 20 px icon) and its extras group
+  sits below Play again / OK, ahead of the folded Battle report, so the
+  tip never pushes the buttons down. The rule lives in
+  `components.css` and only applies when a coach tip is present.
 - Installed from `installAutoDifficulty()`, so main.ts needs no change.
   The chooser and the watch are pure and tested.
 
@@ -111,6 +132,15 @@ Twelve survive puzzles, troop waves only, every blurb ends with the goal:
 | 11 | witch-party | 2 | 0:45 | 60 |
 | 12 | skeleton-storm | 2 | 0:40 | 60 |
 
+- Arabic text shows only in the Golden Age edition, so every `nameAr`
+  and `blurbAr` uses that edition's card names (`render/cardNames.ts`)
+  and its rules (no sorcery, no undead): Witch Party is 'حفلة الطبول'
+  (two drummers rousing the militia), Skeleton Storm 'عاصفة الميليشيا',
+  Tank Stop 'أوقف فيل الحرب', Giant Trouble 'ورطة الفيلة', Hog Rush
+  'اندفاع الجمّالة', Mega Drop names 'أمير المماليك', Little Ones names
+  'وابل السهام' and 'مسحوق الوميض'. challenges.test fails on any
+  Classic creature word (ساحر, هياكل, عملاق, دبابة, منطاد, تنين, خيّال,
+  توابع, بيكا, صاعقة…) in `nameAr`/`blurbAr`.
 - New optional `Challenge.stars` (unset reads as 2: wave-2 trials can
   leave it out). `sortedByStars()` is stable, so the three starters lead.
 - The screen sorts by stars and shows per row: name + stars, a goal chip
@@ -125,9 +155,13 @@ Twelve survive puzzles, troop waves only, every blurb ends with the goal:
 
 ### 8. Home and Battle setup
 - After a chest was earned this session (`cr-clone-pulse-chest`, set by
-  the tutorial win) the tutorial's own glove bobs over the first chest
-  slot, and the free chest's glow is muted, until the kid taps a chest
-  once (`cr-clone-chest-tapped`). Pure `chestGuideSlot()` is tested.
+  the tutorial win) the tutorial's own glove points at the first chest,
+  and the free chest's glow is muted, until the kid taps a chest once
+  (`cr-clone-chest-tapped`). Pure `chestGuideSlot()` is tested. The
+  glove (26 px) sits inside the chest cell's top end corner and points
+  diagonally down at the chest (mirrored in RTL), bobbing 4 px along its
+  finger, so it covers neither the Crown Pass tile above nor the next
+  slot (checked at 360x740, 390x844, 844x390, 1280x800, both editions).
 - Lock pills in Battle setup and on Home's event tiles name the arena and
   its trophies ('Goblin Stadium · 100' with lock and trophy icons, AR
   arena names in the Golden Age), stacked on two lines inside narrow
@@ -138,7 +172,8 @@ Twelve survive puzzles, troop waves only, every blurb ends with the goal:
 `ui/screens/editionGate.test.ts`, `ui/screens/battleSetup.test.ts` and
 `ui/screens/home.test.ts` hold the tests for the pure helpers of owned
 modules (the plan lists only the first; the others are new files only
-this package touches).
+this package touches). decks-qol (wave 2, owns `home.ts`): extend the
+existing `src/ui/screens/home.test.ts` rather than creating another.
 
 ## How to verify
 1. `npx tsc --noEmit`, `npx vitest run --testTimeout=30000`, `npm run build`.
@@ -165,9 +200,17 @@ this package touches).
 
 ## Notes for the integrator
 - main.ts `startLadder` exempts only `tier === "rookie"` from the bot
-  archetype tweaks; practice still gets them (the cycle archetype makes
-  it think every 6.8 s and push at 8). battle-clarity owns that line:
-  `tier === "rookie" || tier === "practice"` keeps practice as tuned.
+  archetype tweaks, so practice still gets them. The 10 s practice
+  retune keeps it easier than rookie anyway (novice.test band), but the
+  intended wiring is: replace the inline `tuned` ternary (main.ts
+  ~520-533, owned by battle-clarity) with
+  `const tuned: BotProfile = ladderProfile(tier, archetype);` imported
+  from `./match/difficulty` (main.ts's `ArchetypeId` is the same union
+  as `BotArchetype`). Every other tier's profile is unchanged by that.
+- main.ts ownership: besides the declared `leaveCost` expression this
+  package changed one import line (`MATCH_TROPHIES` → `trophyLossAt`
+  from `./meta/economy`), which `noUnusedLocals` requires. Take it with
+  the `leaveCost` hunk; battle-clarity's nearest hunk is 9 lines away.
 - After the sim-card-wave merge, re-run novice.test and the challenges
   solvability test. If a band fails, retune only this package's knobs:
   the TIER_PROFILES numbers and the challenge wave data.
