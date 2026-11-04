@@ -224,3 +224,17 @@ Two pages at 390x844, `?quality=low`, fresh profiles with
   500-4000 ms).
 - Offer banner bounce: 1.6 s loop after a 360 ms pop; off under reduced
   motion.
+
+## Round-1 integration changes
+
+- `cleanCode` (match/online.ts) refuses markup and script characters
+  (`< > " ' \` & \ / = ; ( ) { }`) before normalizing, so `?join=<script>`
+  is no code rather than `SCRIPT` (first-hour's edition gate test caught
+  it). Dashes, dots, underscores and spaces are still forgiven; the lobby's
+  live sanitizer is unchanged.
+- New result line `closed` ("This game room closed" / "أُغلقت غرفة اللعب
+  هذه", wifi icon, Find a new game): a finished match whose own room link
+  closed (relay restart, the room's time limit, a lost link while the
+  result is up) used to hide Rematch and leave only OK. `resultOffer` takes
+  the session's `canRematch` for this; rematch.test.ts kills the host's
+  socket after a finish and checks the line.

@@ -163,6 +163,10 @@ describe("result line", () => {
     // The forfeiter's own result offers a new game; no-contest endings say nothing here.
     expect(resultOffer({ view: ended("forfeit"), peerWantsRematch: false, opponentExit: null })).toBe("forfeit");
     expect(resultOffer({ view: ended("desync"), peerWantsRematch: false, opponentExit: null })).toBe("none");
+    // A finished match whose room is gone (no rematch possible, nobody left it).
+    expect(resultOffer({ view: ended("finished"), peerWantsRematch: false, opponentExit: null, canRematch: false })).toBe("closed");
+    expect(resultOffer({ view: ended("finished"), peerWantsRematch: false, opponentExit: null, canRematch: true })).toBe("none");
+    expect(resultOffer({ view: ended("forfeit"), peerWantsRematch: false, opponentExit: null, canRematch: false })).toBe("forfeit");
   });
 
   it("names a friend or a quick-match opponent, with the right button", () => {
@@ -177,6 +181,7 @@ describe("result line", () => {
     expect(offerContent("left", true)?.text).toBe("غادر خصمك المباراة");
     expect(offerContent("gave-up", false)).toMatchObject({ text: "استسلم خصمك", action: "lobby" });
     expect(offerContent("forfeit", false)).toMatchObject({ text: "استسلمت في هذه المباراة", icon: "flag", action: "lobby" });
+    expect(offerContent("closed", false)).toMatchObject({ text: "أُغلقت غرفة اللعب هذه", button: "ابحث عن مباراة جديدة", action: "lobby" });
     expect(offerContent("none", false)).toBeNull();
   });
 });
@@ -209,6 +214,25 @@ describe("result: the result screen's own Rematch button", () => {
     expect(open(p.guest)).toBe(false);
     // ...and the line above carries the way to a new game.
     expect(offerContent(resultOffer({ view: p.guest.view(), peerWantsRematch: false, opponentExit: p.guest.opponentExit }), false)?.action).toBe("lobby");
+  });
+
+  it("steps aside when our own room link closes after the match, and the line offers a new game", () => {
+    const p = pair();
+    finish(p);
+    expect(open(p.host)).toBe(true);
+    // The host's socket dies while the result is up (relay restart, room expiry).
+    [...p.relay.sockets.values()].find((s) => s.id === "c1")!.kill();
+    p.relay.pump();
+    expect(open(p.host)).toBe(false);
+    expect(p.host.opponentExit).toBeNull();
+    const line = resultOffer({
+      view: p.host.view(),
+      peerWantsRematch: p.host.peerWantsRematch,
+      opponentExit: p.host.opponentExit,
+      canRematch: p.host.canRematch(),
+    });
+    expect(line).toBe("closed");
+    expect(offerContent(line, p.host.quickMatch)).toMatchObject({ action: "lobby", button: "ابحث عن مباراة جديدة" });
   });
 
   it("steps aside on both screens after a forfeit, each with Find a new game", () => {

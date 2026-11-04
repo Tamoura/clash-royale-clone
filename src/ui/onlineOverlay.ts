@@ -58,13 +58,21 @@ export type ResultOffer =
   /** They left: dropped past the grace or closed the page mid-match, or left after it. */
   | "left"
   /** We forfeited (the forfeiter's own result): no rematch, a new game instead. */
-  | "forfeit";
+  | "forfeit"
+  /**
+   * The match finished but the room is gone without the other player
+   * leaving it (our link closed: a relay restart, the room's time limit,
+   * a lost connection while the result is up). No rematch: a new game.
+   */
+  | "closed";
 
 /** The session facts the result line depends on. */
 export interface OfferInput {
   view: SessionView;
   peerWantsRematch: boolean;
   opponentExit: OpponentExit | null;
+  /** session.canRematch(); omitted = still open (the line then says nothing). */
+  canRematch?: boolean;
 }
 
 /** Pick the result line for a session (pure; see {@link ResultOffer}). */
@@ -74,7 +82,10 @@ export function resultOffer(i: OfferInput): ResultOffer {
   if (i.view.reason === "forfeit") return "forfeit";
   if (i.view.reason !== "finished") return "none";
   if (i.peerWantsRematch) return "rematch";
-  return i.opponentExit ? "left" : "none";
+  if (i.opponentExit) return "left";
+  // The result's own Rematch button steps aside once a rematch can't
+  // happen, so the line must offer the way on instead of saying nothing.
+  return i.canRematch === false ? "closed" : "none";
 }
 
 /**
@@ -117,6 +128,8 @@ export function offerContent(
       };
     case "forfeit":
       return { text: tr("You gave up this match", "استسلمت في هذه المباراة"), icon: "flag", button: findGame, action: "lobby" };
+    case "closed":
+      return { text: tr("This game room closed", "أُغلقت غرفة اللعب هذه"), icon: "wifi", button: findGame, action: "lobby" };
     case "none":
       return null;
   }
@@ -403,9 +416,10 @@ export class OnlineOverlay {
       return;
     }
     const view = s.view();
-    const offer = resultOffer({ view, peerWantsRematch: s.peerWantsRematch, opponentExit: s.opponentExit });
+    const canRematch = s.canRematch();
+    const offer = resultOffer({ view, peerWantsRematch: s.peerWantsRematch, opponentExit: s.opponentExit, canRematch });
     this.showOffer(offer, s.quickMatch);
-    this.showRematch(resultRematchOpen({ view, canRematch: s.canRematch() }));
+    this.showRematch(resultRematchOpen({ view, canRematch }));
   }
 
   /** Tell the result panel whether its own Rematch button still rematches. */
