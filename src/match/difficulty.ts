@@ -8,28 +8,39 @@ import type { BotProfile } from "../game/bot";
 import { DECK, type CardId } from "../game/cards";
 import { MAX_CARD_LEVEL } from "../meta/progress";
 import { on } from "../app/hooks";
+import { installCoachTips } from "./coachTips";
 
 export const DIFF_KEY = "cr-clone-difficulty";
 export const AUTO_KEY = "cr-clone-auto-history";
 
 /** Real bot tiers, weakest first. */
-export type Tier = "rookie" | "easy" | "normal" | "hard";
-export const TIERS: readonly Tier[] = ["rookie", "easy", "normal", "hard"];
+export type Tier = "practice" | "rookie" | "easy" | "normal" | "hard";
+export const TIERS: readonly Tier[] = ["practice", "rookie", "easy", "normal", "hard"];
 
 /**
- * Rookie is tuned against a near-random player (novice.test.ts wins about
- * half its games): it thinks every 5 s, notices each invader late, slips
- * up on a third of its plays, only spells big clusters and never finishes
- * a tower with a spell.
+ * The two first-hour tiers are tuned against a near-random player
+ * (novice.test.ts): it should beat rookie in most games and practice in
+ * nearly all of them. Rookie thinks every 6 s, notices each invader late,
+ * slips up on almost half its plays, only spells big clusters and never
+ * finishes a tower with a spell. Practice (where auto steps a kid down to
+ * after two straight losses) is slower and sloppier still.
  */
 const TIER_PROFILES: Record<Tier, BotProfile> = {
-  rookie: {
-    thinkInterval: 5,
+  practice: {
+    thinkInterval: 8,
     pushAt: 10,
-    mistakeRate: 0.35,
+    mistakeRate: 0.6,
     allowFinisher: false,
-    spellIQ: 2.0,
-    reactionDelay: 1.2,
+    spellIQ: 3,
+    reactionDelay: 2.5,
+  },
+  rookie: {
+    thinkInterval: 6,
+    pushAt: 10,
+    mistakeRate: 0.45,
+    allowFinisher: false,
+    spellIQ: 2.5,
+    reactionDelay: 1.8,
   },
   easy: { thinkInterval: 1.8, pushAt: 9 },
   normal: { thinkInterval: 1.0, pushAt: 8 },
@@ -48,6 +59,7 @@ export const DIFFICULTIES: Record<string, BotProfile> = {
 
 export const DIFF_AR: Record<string, string> = {
   auto: "تلقائي",
+  practice: "تمرين",
   rookie: "مبتدئ",
   easy: "سهل",
   normal: "عادي",
@@ -57,6 +69,7 @@ export const DIFF_AR: Record<string, string> = {
 /** One-line explanation per option: [English, Arabic]. */
 export const DIFF_BLURB: Record<string, [string, string]> = {
   auto: ["Adapts to how you play", "يتكيّف مع مستواك"],
+  practice: ["A sleepy sparring partner", "شريك تدريب نعسان"],
   rookie: ["Slow and forgiving", "بطيء ومتسامح"],
   easy: ["A gentle opponent", "خصم لطيف"],
   normal: ["A fair fight", "قتال متكافئ"],
@@ -76,9 +89,13 @@ export function loadDifficulty(): string {
 
 // ---- Auto difficulty --------------------------------------------------------
 
+export type MatchOutcome = "win" | "loss" | "draw";
+
 export interface MatchSample {
   /** My crowns minus theirs. */
   crownDiff: number;
+  /** How it ended for me (a 0-0 tiebreak can still be a loss). Older saves lack it. */
+  outcome?: MatchOutcome;
 }
 
 export interface AutoState {
@@ -92,25 +109,48 @@ export interface AutoState {
 }
 
 export const HISTORY_SIZE = 5;
-/** Auto plays rookie for this many ladder matches. */
+/** Auto plays rookie (or practice below it) for this many ladder matches. */
 export const ROOKIE_MATCHES = 5;
 /** Bots keep their taunts to themselves for this many ladder matches. */
 export const POLITE_MATCHES = 10;
+/** Straight losses at a QUICK_STEP_DOWN tier that drop auto one tier at once. */
+export const STEP_DOWN_LOSSES = 2;
+/** The first-hour tiers where a losing streak steps down without waiting for the window. */
+const QUICK_STEP_DOWN: readonly Tier[] = ["rookie", "easy"];
+
+/** A sample's outcome; older samples only know their crown difference. */
+export function sampleOutcome(m: MatchSample): MatchOutcome {
+  if (m.outcome === "win" || m.outcome === "loss" || m.outcome === "draw") return m.outcome;
+  return m.crownDiff > 0 ? "win" : m.crownDiff < 0 ? "loss" : "draw";
+}
 
 /**
- * The tier auto should play next. Rookie for the first ROOKIE_MATCHES;
- * then one step up when the last 3 crown diffs add up to +3 or more, one
- * step down at -3 or less, otherwise stay at `current`.
+ * The tier auto should play next, given the results so far at `current`
+ * (the history restarts at every tier change):
+ * - practice is a short breather: one win there returns to rookie;
+ * - STEP_DOWN_LOSSES straight losses at rookie or easy drop one tier;
+ * - the first ROOKIE_MATCHES ladder matches never climb above rookie;
+ * - otherwise one step up when the last 3 crown diffs add up to +3 or
+ *   more, one step down at -3 or less, else stay at `current`.
  */
 export function autoTier(
   history: readonly MatchSample[],
   ladderMatches: number,
   current: Tier = "rookie",
 ): Tier {
-  if (ladderMatches < ROOKIE_MATCHES) return "rookie";
+  const i = TIERS.indexOf(current);
+  const last = history[history.length - 1];
+  if (current === "practice" && last && sampleOutcome(last) === "win") return "rookie";
+  if (
+    QUICK_STEP_DOWN.includes(current) &&
+    history.length >= STEP_DOWN_LOSSES &&
+    history.slice(-STEP_DOWN_LOSSES).every((m) => sampleOutcome(m) === "loss")
+  ) {
+    return TIERS[Math.max(0, i - 1)];
+  }
+  if (ladderMatches < ROOKIE_MATCHES) return current === "practice" ? "practice" : "rookie";
   if (history.length < 3) return current;
   const sum = history.slice(-3).reduce((s, m) => s + m.crownDiff, 0);
-  const i = TIERS.indexOf(current);
   if (sum >= 3) return TIERS[Math.min(TIERS.length - 1, i + 1)];
   if (sum <= -3) return TIERS[Math.max(0, i - 1)];
   return current;
@@ -118,11 +158,12 @@ export function autoTier(
 
 /**
  * Fold one finished ladder match into the auto state. A tier change starts
- * a fresh window, so the next step needs three new results.
+ * a fresh window, so the next step needs new results.
  */
-export function recordAutoResult(s: AutoState, crownDiff: number): AutoState {
+export function recordAutoResult(s: AutoState, crownDiff: number, outcome?: MatchOutcome): AutoState {
   const ladderMatches = s.ladderMatches + 1;
-  const history = [...s.history, { crownDiff }].slice(-HISTORY_SIZE);
+  const sample: MatchSample = outcome ? { crownDiff, outcome } : { crownDiff };
+  const history = [...s.history, sample].slice(-HISTORY_SIZE);
   const tier = autoTier(history, ladderMatches, s.tier);
   return { v: 1, ladderMatches, tier, history: tier === s.tier ? history : [] };
 }
@@ -151,7 +192,12 @@ export function parseAutoState(raw: string | null, trophies: number): AutoState 
       return freshAutoState(trophies);
     }
     const history = o.history
-      .map((m) => ({ crownDiff: Number((m as MatchSample)?.crownDiff) }))
+      .map((m): MatchSample => {
+        const raw = m as Partial<MatchSample> | null;
+        const crownDiff = Number(raw?.crownDiff);
+        const outcome = raw?.outcome;
+        return outcome === "win" || outcome === "loss" || outcome === "draw" ? { crownDiff, outcome } : { crownDiff };
+      })
       .filter((m) => Number.isFinite(m.crownDiff))
       .slice(-HISTORY_SIZE);
     return { v: 1, ladderMatches: Math.floor(n), tier: o.tier, history };
@@ -208,20 +254,34 @@ export function ladderMatchesPlayed(trophies: number): number {
   return loadAutoState(trophies).ladderMatches;
 }
 
+/** My outcome for a finished match. */
+export function outcomeFor(winner: string, mySide: string): MatchOutcome {
+  return winner === "draw" ? "draw" : winner === mySide ? "win" : "loss";
+}
+
 /**
  * Keep the auto record current: every finished solo ladder match (not a
- * sandbox, replay or online game) adds its crown difference.
+ * sandbox, replay or online game) adds its crown difference and outcome.
+ * Also installs the defeat coaching tips (src/match/coachTips.ts), which
+ * speak up after the same solo ladder matches, so main.ts wires both at once.
  */
 export function installAutoDifficulty(trophies: () => number): () => void {
-  return on("matchEnd", (m) => {
+  const off = on("matchEnd", (m) => {
     if (m.kind !== "ladder" || m.online || m.sandbox || m.replay) return;
-    saveAutoState(recordAutoResult(loadAutoState(trophies()), m.myCrowns - m.theirCrowns));
+    saveAutoState(
+      recordAutoResult(loadAutoState(trophies()), m.myCrowns - m.theirCrowns, outcomeFor(m.winner, m.mySide)),
+    );
   });
+  const offTips = installCoachTips();
+  return () => {
+    off();
+    offTips();
+  };
 }
 
 // ---- Bot card levels --------------------------------------------------------
 
-const LEVEL_OFFSET: Record<Tier, number> = { rookie: -2, easy: -1, normal: 0, hard: 1 };
+const LEVEL_OFFSET: Record<Tier, number> = { practice: -2, rookie: -2, easy: -1, normal: 0, hard: 1 };
 
 /** Mean level of a deck (a missing level is 1). */
 export function avgDeckLevel(deck: readonly CardId[], levels: CardLevels): number {

@@ -17,14 +17,19 @@ import {
   parseAutoState,
   recordAutoResult,
   resolveTier,
+  outcomeFor,
+  sampleOutcome,
+  TIERS,
   type AutoState,
+  type MatchSample,
 } from "./difficulty";
 
 const diffs = (...d: number[]) => d.map((crownDiff) => ({ crownDiff }));
 
 describe("difficulty options", () => {
   it("offers auto first, then every tier weakest to strongest", () => {
-    expect(Object.keys(DIFFICULTIES)).toEqual(["auto", "rookie", "easy", "normal", "hard"]);
+    expect(Object.keys(DIFFICULTIES)).toEqual(["auto", "practice", "rookie", "easy", "normal", "hard"]);
+    expect(TIERS).toEqual(["practice", "rookie", "easy", "normal", "hard"]);
     for (const k of Object.keys(DIFFICULTIES)) {
       expect(DIFF_AR[k]).toBeTruthy();
       expect(DIFF_BLURB[k]).toHaveLength(2);
@@ -39,11 +44,20 @@ describe("difficulty options", () => {
 
   it("makes the rookie slow, sloppy and polite", () => {
     const r = DIFFICULTIES.rookie;
-    expect(r.allowFinisher).toBe(false);
-    expect(r.mistakeRate).toBe(0.35);
-    expect(r.spellIQ).toBe(2);
-    expect(r.pushAt).toBe(10);
+    expect(r).toEqual({ thinkInterval: 6, pushAt: 10, mistakeRate: 0.45, allowFinisher: false, spellIQ: 2.5, reactionDelay: 1.8 });
     expect(r.thinkInterval).toBeGreaterThan(DIFFICULTIES.easy.thinkInterval);
+  });
+
+  it("makes practice softer than rookie on every knob", () => {
+    const p = DIFFICULTIES.practice;
+    const r = DIFFICULTIES.rookie;
+    expect(p).toEqual({ thinkInterval: 8, pushAt: 10, mistakeRate: 0.6, allowFinisher: false, spellIQ: 3, reactionDelay: 2.5 });
+    expect(p.thinkInterval).toBeGreaterThan(r.thinkInterval);
+    expect(p.mistakeRate!).toBeGreaterThan(r.mistakeRate!);
+    expect(p.reactionDelay!).toBeGreaterThan(r.reactionDelay!);
+    expect(p.spellIQ!).toBeGreaterThan(r.spellIQ!);
+    expect(DIFF_AR.practice).toBe("تمرين");
+    expect(DIFF_BLURB.practice[0].length).toBeGreaterThan(0);
   });
 });
 
@@ -66,8 +80,82 @@ describe("autoTier", () => {
   it("steps down at -3 or less", () => {
     expect(autoTier(diffs(-1, -1, -1), 9, "normal")).toBe("easy");
     expect(autoTier(diffs(-3, -3, -3), 9, "easy")).toBe("rookie");
-    expect(autoTier(diffs(-3, -3, -3), 9, "rookie")).toBe("rookie"); // floor
+    expect(autoTier(diffs(-3, -3, -3), 9, "practice")).toBe("practice"); // floor
     expect(autoTier(diffs(-1, -1), 9, "normal")).toBe("normal"); // needs three
+    expect(autoTier(diffs(-1, -1), 9, "hard")).toBe("hard");
+  });
+});
+
+describe("auto step-down to practice and back", () => {
+  const loss = (crownDiff = -1): MatchSample => ({ crownDiff, outcome: "loss" });
+  const win = (crownDiff = 1): MatchSample => ({ crownDiff, outcome: "win" });
+
+  it("two straight losses at rookie or easy drop one tier at once", () => {
+    expect(autoTier([loss(), loss()], 2, "rookie")).toBe("practice"); // even in the first matches
+    expect(autoTier([loss(), loss()], 9, "rookie")).toBe("practice");
+    expect(autoTier([loss(), loss()], 9, "easy")).toBe("rookie");
+    expect(autoTier([loss()], 2, "rookie")).toBe("rookie"); // one loss is not a streak
+    expect(autoTier([loss(), win(), loss()], 9, "easy")).toBe("easy"); // not straight
+  });
+
+  it("counts a 0-0 tiebreak defeat as a loss", () => {
+    expect(autoTier([loss(0), loss(0)], 1, "rookie")).toBe("practice");
+    // Older saves have no outcome: the crown difference decides.
+    expect(autoTier(diffs(-1, -2), 9, "easy")).toBe("rookie");
+    expect(autoTier(diffs(0, 0), 9, "easy")).toBe("easy");
+  });
+
+  it("normal and hard keep the three-match window", () => {
+    expect(autoTier([loss(), loss()], 9, "normal")).toBe("normal");
+    expect(autoTier([loss(), loss(), loss()], 9, "normal")).toBe("easy");
+  });
+
+  it("a win at practice returns to rookie; other results stay", () => {
+    expect(autoTier([win()], 2, "practice")).toBe("rookie");
+    expect(autoTier([win(0)], 9, "practice")).toBe("rookie"); // a tiebreak win counts
+    expect(autoTier([loss()], 2, "practice")).toBe("practice");
+    expect(autoTier([loss(), loss(), loss()], 9, "practice")).toBe("practice");
+    expect(autoTier([{ crownDiff: 0, outcome: "draw" }], 9, "practice")).toBe("practice");
+  });
+
+  it("the first matches never climb above rookie, but practice stays practice", () => {
+    expect(autoTier([], 0, "practice")).toBe("practice");
+    expect(autoTier([], 3, "easy")).toBe("rookie");
+    expect(resolveTier("auto", { v: 1, ladderMatches: 2, tier: "practice", history: [] })).toBe("practice");
+  });
+
+  it("records the outcome and steps: rookie -> practice -> rookie", () => {
+    let s = freshAutoState(0);
+    s = recordAutoResult(s, -1, "loss");
+    expect(s.tier).toBe("rookie");
+    s = recordAutoResult(s, 0, "loss"); // a tiebreak defeat
+    expect(s.tier).toBe("practice");
+    expect(s.history).toEqual([]);
+    expect(resolveTier("auto", s)).toBe("practice");
+    s = recordAutoResult(s, -1, "loss");
+    expect(s.tier).toBe("practice");
+    s = recordAutoResult(s, 1, "win");
+    expect(s.tier).toBe("rookie");
+    expect(s.history).toEqual([]);
+    expect(resolveTier("auto", s)).toBe("rookie");
+  });
+
+  it("outcomeFor reads the winner from my side", () => {
+    expect(outcomeFor("player", "player")).toBe("win");
+    expect(outcomeFor("enemy", "player")).toBe("loss");
+    expect(outcomeFor("player", "enemy")).toBe("loss");
+    expect(outcomeFor("draw", "player")).toBe("draw");
+    expect(sampleOutcome({ crownDiff: 2 })).toBe("win");
+    expect(sampleOutcome({ crownDiff: 0, outcome: "loss" })).toBe("loss");
+  });
+
+  it("parses stored outcomes and drops junk ones", () => {
+    const s = parseAutoState(
+      JSON.stringify({ v: 1, ladderMatches: 2, tier: "practice", history: [{ crownDiff: 0, outcome: "loss" }, { crownDiff: 1, outcome: "meh" }] }),
+      0,
+    );
+    expect(s.tier).toBe("practice");
+    expect(s.history).toEqual([{ crownDiff: 0, outcome: "loss" }, { crownDiff: 1 }]);
   });
 
   it("records matches as a ring and starts a fresh window after a step", () => {
@@ -120,6 +208,7 @@ describe("autoTier", () => {
 
 describe("bot levels", () => {
   it("follows the deck average, shifted by tier", () => {
+    expect(botLevel(5, "practice")).toBe(3);
     expect(botLevel(5, "rookie")).toBe(3);
     expect(botLevel(5, "easy")).toBe(4);
     expect(botLevel(5, "normal")).toBe(5);

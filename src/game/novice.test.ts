@@ -1,8 +1,10 @@
 /**
  * The first-session promise in numbers: a near-random player (a random
  * affordable card on a random legal tile every 3-5 s; see pilot.ts) wins
- * about half its games against the rookie bot and almost never against
- * hard. Bots play at level 1, as they do against a brand-new deck.
+ * most of its games against the rookie bot, nearly all against practice
+ * (where auto steps a kid down after two straight losses) and almost
+ * never against hard. Bots play at level 1, as they do against a
+ * brand-new deck.
  */
 import { describe, expect, it } from "vitest";
 import { createBattle } from "./battle";
@@ -15,7 +17,7 @@ import { DIFFICULTIES } from "../match/difficulty";
 const DT = 1 / 30;
 const SEEDS = 20;
 
-function pilotWinRate(tier: "rookie" | "hard"): number {
+function pilotWinRate(tier: "practice" | "rookie" | "hard"): number {
   let wins = 0;
   for (let i = 0; i < SEEDS; i++) {
     const b = createBattle(DEFAULT_DECK, DEFAULT_DECK);
@@ -33,10 +35,12 @@ function pilotWinRate(tier: "rookie" | "hard"): number {
 }
 
 describe("a novice against each bot tier", () => {
-  it("wins 35-65% against rookie", () => {
-    const rate = pilotWinRate("rookie");
-    expect(rate).toBeGreaterThanOrEqual(0.35);
-    expect(rate).toBeLessThanOrEqual(0.65);
+  it("wins at least 55% against rookie", () => {
+    expect(pilotWinRate("rookie")).toBeGreaterThanOrEqual(0.55);
+  }, 60_000);
+
+  it("wins at least 70% against practice", () => {
+    expect(pilotWinRate("practice")).toBeGreaterThanOrEqual(0.7);
   }, 60_000);
 
   it("wins under 15% against hard", () => {
