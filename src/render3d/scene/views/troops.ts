@@ -742,6 +742,7 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
  * host's units barred.
  */
 export function hpBarVisible(view: EntityView, e: Entity): boolean {
+  if (e.burrowTimer > 0) return (view.root.visible = false); // per frame: a tunnelling Digger stays hidden until it surfaces
   return (
     view.hpGroup.visible ||
     (e.kind === "troop" && ((teamSide(e.side) === "enemy" && !isSwarmSized(e)) || e.hp < e.maxHp))

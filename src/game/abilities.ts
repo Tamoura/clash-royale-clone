@@ -4,7 +4,7 @@
  * card play. Bots pick and use theirs too.
  */
 import { ARENA_HEIGHT, ARENA_WIDTH, type Side } from "./arena";
-import { applySpell, distance, sideState, type BattleState } from "./battle";
+import { applySpell, distance, isBurrowed, sideState, type BattleState } from "./battle";
 
 export type AbilityId = "rally" | "restore" | "salvo";
 
@@ -34,8 +34,8 @@ export const ABILITIES: Record<AbilityId, AbilityDef> = {
     name: "Royal Restore",
     ar: "الترميم الملكي",
     icon: "💖",
-    blurb: "Heal your towers 500 and your troops 300.",
-    blurbAr: "اشفِ أبراجك ٥٠٠ ووحداتك ٣٠٠.",
+    blurb: "Heal your towers 250 and your troops 300.",
+    blurbAr: "اشفِ أبراجك ٢٥٠ ووحداتك ٣٠٠.",
     chargeSeconds: 55,
   },
   salvo: {
@@ -52,7 +52,7 @@ export const ABILITIES: Record<AbilityId, AbilityDef> = {
 export const ABILITY_IDS: AbilityId[] = ["rally", "restore", "salvo"];
 
 export const RALLY_SECONDS = 5;
-export const RESTORE_TOWER_HP = 500;
+export const RESTORE_TOWER_HP = 250;
 export const RESTORE_TROOP_HP = 300;
 export const SALVO_TARGETS = 4;
 export const SALVO_DAMAGE = 180;
@@ -106,7 +106,7 @@ export function useAbility(state: BattleState, side: Side): boolean {
       break;
     case "restore":
       for (const e of state.entities) {
-        if (e.side !== side || e.hp <= 0) continue;
+        if (e.side !== side || e.hp <= 0 || isBurrowed(e)) continue;
         if (e.kind === "troop") e.hp = Math.min(e.maxHp, e.hp + RESTORE_TROOP_HP);
         else if (e.kind === "princess-tower" || e.kind === "king-tower") {
           e.hp = Math.min(e.maxHp, e.hp + RESTORE_TOWER_HP);
@@ -116,7 +116,7 @@ export function useAbility(state: BattleState, side: Side): boolean {
       break;
     case "salvo": {
       const targets = state.entities
-        .filter((e) => e.side !== side && e.hp > 0 && (e.kind === "troop" || e.kind === "building"))
+        .filter((e) => e.side !== side && e.hp > 0 && !isBurrowed(e) && (e.kind === "troop" || e.kind === "building"))
         .sort((a, b) => distance(a, { x: kx, y: ky }) - distance(b, { x: kx, y: ky }))
         .slice(0, SALVO_TARGETS);
       for (const t of targets) {

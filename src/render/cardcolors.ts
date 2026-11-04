@@ -44,4 +44,9 @@ export const CARD_COLOR: Record<CardId, string> = {
   "skeleton-barrel": "#8a5a30",
   mirror: "#9b8ec9",
   champion: "#7c3aed",
+  // Card wave 3 placeholders (final palette arrives with the wave's art).
+  "stone-golem": "#6b7a5c",
+  "pebble-golem": "#8c927c",
+  digger: "#9a6b34",
+  comet: "#e0582a",
 };

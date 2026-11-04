@@ -2780,6 +2780,12 @@ const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   princess: buildPrincess,
   "mega-knight": buildMegaKnight,
   "royal-giant": buildRoyalGiant,
+  // Card wave 3 placeholders until their own rigs land: the Stone Golem and
+  // its Pebble Golems borrow the Giant (buildTroop throws without a builder).
+  "stone-golem": buildGiant,
+  "pebble-golem": buildGiant,
+  // ...and the Digger borrows the Mini P.E.K.K.A.
+  digger: buildMiniPekka,
 };
 
 /**
@@ -3303,6 +3309,10 @@ const ISLAMIC_BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   skeletons: buildMilitia,
   "skeleton-army": buildMilitia,
   "royal-giant": buildBombardier,
+  // Card wave 3 placeholders: the edition's Giant (the war elephant).
+  "stone-golem": buildWarElephant,
+  "pebble-golem": buildWarElephant,
+  digger: buildDuelist,
 };
 
 /**

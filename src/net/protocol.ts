@@ -9,8 +9,11 @@ import type { InputFrame } from "./lockstep";
  * valid, and a message without `v` is treated as current so older LAN
  * clients keep working. A client that sends an explicit, different `v` is
  * told `update-required`. Ship relay changes before client changes.
+ * v3 is a hard break: sim v3 (src/game/version.ts) changed what a match
+ * computes, so a v2 page would desync against a v3 one. Any SIM_VERSION
+ * change must bump this too.
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** Host drives the canonical `player` side; guest drives `enemy`. */
 export type Role = "host" | "guest";

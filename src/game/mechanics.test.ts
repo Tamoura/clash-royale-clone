@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ARENA_HEIGHT, ARENA_WIDTH, BRIDGE_XS, RIVER_Y } from "./arena";
-import { createBattle, deployCard, spawnUnits, type BattleState } from "./battle";
+import { createBattle, deployCard, levelMultiplier, spawnUnits, type BattleState } from "./battle";
 import { createHand } from "./hand";
 import { isRaged, moveGoal, tick } from "./sim";
 
@@ -146,6 +146,40 @@ describe("spawners", () => {
     for (const s of skeletons) expect(s.side).toBe("player");
   });
 
+  it("a level-5 witch summons level-5 skeletons, credited to the witch", () => {
+    const b = createBattle(undefined, undefined, { player: { witch: 5 } });
+    const [witch] = spawnUnits(b, "player", "witch", 9, 24);
+    expect(witch.maxHp).toBeCloseTo(700 * levelMultiplier({ witch: 5 }, "witch"), 9);
+    run(b, 3);
+    const skeletons = b.entities.filter((e) => e.cardId === "skeletons");
+    expect(skeletons.length).toBeGreaterThanOrEqual(3);
+    for (const s of skeletons) {
+      expect(s.maxHp).toBe(80 * levelMultiplier({ witch: 5 }, "witch"));
+      expect(s.sourceCardId).toBe("witch");
+    }
+  });
+
+  it("a levelled Skeletons card no longer buffs the witch's skeletons", () => {
+    const b = createBattle(undefined, undefined, { player: { skeletons: 9 } });
+    spawnUnits(b, "player", "witch", 9, 24);
+    run(b, 3);
+    const skeletons = b.entities.filter((e) => e.cardId === "skeletons");
+    expect(skeletons.length).toBeGreaterThanOrEqual(3);
+    for (const s of skeletons) expect(s.maxHp).toBe(80);
+  });
+
+  it("the skeleton barrel's crew takes the barrel's level", () => {
+    const b = createBattle(undefined, undefined, { player: { "skeleton-barrel": 3 } });
+    giveHand(b, "player", ["skeleton-barrel"]);
+    expect(deployCard(b, "player", "skeleton-barrel", 9, 20)).toBe(true);
+    const crew = b.entities.filter((e) => e.cardId === "skeletons");
+    expect(crew).toHaveLength(3);
+    for (const s of crew) {
+      expect(s.maxHp).toBe(80 * levelMultiplier({ "skeleton-barrel": 3 }, "skeleton-barrel"));
+      expect(s.sourceCardId).toBe("skeleton-barrel");
+    }
+  });
+
   it("non-spawner troops never summon anything", () => {
     const b = createBattle();
     spawnUnits(b, "player", "knight", 9, 24);
@@ -197,6 +231,36 @@ describe("death bomb", () => {
     balloon.hp = 0;
     tick(b, TICK);
     expect(friend.hp).toBe(friend.maxHp);
+  });
+
+  it("a death blast that destroys a princess tower awards the crown", () => {
+    const b = createBattle();
+    const tower = b.entities.find((e) => e.side === "enemy" && e.kind === "princess-tower" && e.x < 9)!;
+    const [balloon] = spawnUnits(b, "player", "balloon", tower.x, tower.y + 1.5);
+    tower.hp = 100;
+    balloon.hp = 0;
+    tick(b, TICK);
+    expect(b.entities.includes(tower)).toBe(false);
+    expect(b.player.crowns).toBe(1);
+    expect(b.events).toContainEqual(
+      expect.objectContaining({ type: "death", kind: "princess-tower", side: "enemy" }),
+    );
+    expect(b.events).toContainEqual({ type: "crown", winner: "player" });
+    expect(b.events).toContainEqual({ type: "king-wake", side: "enemy" });
+    // Each death is settled once: one balloon, one tower.
+    expect(b.events.filter((e) => e.type === "death")).toHaveLength(2);
+  });
+
+  it("a death blast that destroys the king ends the match with three crowns", () => {
+    const b = createBattle();
+    const king = b.entities.find((e) => e.side === "enemy" && e.kind === "king-tower")!;
+    const [balloon] = spawnUnits(b, "player", "balloon", king.x, king.y + 1.5);
+    king.hp = 50;
+    balloon.hp = 0;
+    tick(b, TICK);
+    expect(b.result).toEqual({ winner: "player", playerCrowns: 3, enemyCrowns: 0 });
+    expect(b.player.crowns).toBe(3);
+    expect(b.events).toContainEqual(expect.objectContaining({ type: "death", kind: "king-tower" }));
   });
 
   it("ordinary troops explode into nothing", () => {

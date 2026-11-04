@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createBattle, TOWER_SPELL_DAMAGE_FACTOR, type BattleState } from "./battle";
+import { RIVER_Y } from "./arena";
+import { createBattle, spawnUnits, TOWER_SPELL_DAMAGE_FACTOR, type BattleState } from "./battle";
 import { botThink, createBot } from "./bot";
 import { getCard, type CardId } from "./cards";
 import { createHand } from "./hand";
@@ -36,5 +37,15 @@ describe("bot dirty tricks", () => {
       (e) => e.side === "player" && (e.kind === "princess-tower" || e.kind === "king-tower"),
     );
     for (const t of towers) expect(t.hp).toBe(t.maxHp);
+  });
+
+  it("zaps a full pack of bats: an even trade that clears a swarm", () => {
+    const b = createBattle();
+    giveBotHand(b, ["zap"]);
+    const bats = spawnUnits(b, "player", "bats", 9, RIVER_Y - 3);
+    expect(bats).toHaveLength(5);
+    botThink(b, createBot(1));
+    expect(b.enemy.lastPlayed).toBe("zap");
+    for (const bat of bats) expect(bat.hp).toBeLessThanOrEqual(0);
   });
 });

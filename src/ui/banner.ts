@@ -144,10 +144,28 @@ const queue = new BannerQueue();
 let bannerEl: HTMLElement | null = null;
 let pollTimer = 0;
 
+/**
+ * A banner's lines: the headline, then smaller detail lines. "\n" splits
+ * them, so a long call stays inside the field in landscape, where the hand
+ * panel covers the right of the screen.
+ */
+export function bannerLines(text: string): { head: string; details: string[] } {
+  const [head, ...details] = text.split("\n");
+  return { head, details: details.filter((d) => d.length > 0) };
+}
+
 function draw(item: BannerItem): void {
   bannerEl ??= document.getElementById("banner");
   if (!bannerEl) return;
-  bannerEl.textContent = item.text;
+  const { head, details } = bannerLines(item.text);
+  bannerEl.textContent = head;
+  for (const line of details) {
+    const sub = document.createElement("span");
+    sub.textContent = line;
+    sub.style.display = "block";
+    sub.style.fontSize = "0.55em";
+    bannerEl.appendChild(sub);
+  }
   bannerEl.dataset.priority = item.priority;
   bannerEl.classList.remove("show");
   bannerEl.classList.toggle("countdown", item.big);
@@ -261,12 +279,18 @@ export function tickCountdown(dt: number, audio: SoundEngine): void {
 export function checkBanners(battle: BattleState, audio: SoundEngine): void {
   if (!lastMinuteShown && battle.time >= 120 && !battle.result) {
     lastMinuteShown = true;
-    showBanner(tr("Last minute — 2x elixir!", "الدقيقة الأخيرة — إكسير مضاعف!"), { priority: "phase" });
+    showBanner(tr("Last minute!\n2x elixir", "آخر دقيقة!\nإكسير مضاعف"), { priority: "phase" });
     audio.sting();
   }
   if (!overtimeShown && battle.overtime && !battle.result) {
     overtimeShown = true;
-    showBanner(tr("OVERTIME!", "وقت إضافي!"), { priority: "phase" });
+    showBanner(
+      tr(
+        "OVERTIME!\n3x elixir\nTroops hit towers 3x!",
+        "وقت إضافي!\nإكسير ثلاثي\nالجنود يضربون الأبراج ×٣",
+      ),
+      { priority: "phase" },
+    );
     audio.sting();
   }
 }

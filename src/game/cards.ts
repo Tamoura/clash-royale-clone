@@ -37,7 +37,11 @@ export type CardId =
   | "tornado"
   | "skeleton-barrel"
   | "mirror"
-  | "champion";
+  | "champion"
+  | "stone-golem"
+  | "pebble-golem"
+  | "digger"
+  | "comet";
 
 export type Speed = "slow" | "medium" | "fast";
 
@@ -95,6 +99,12 @@ export interface UnitStats {
   deathRadius: number;
   /** Card whose units this troop periodically summons (null = none). */
   spawnUnitId: CardId | null;
+  /** Card whose units burst out where this unit dies (null = none). */
+  deathSpawnId: CardId | null;
+  /** How many single units of deathSpawnId burst out (0 = none). */
+  deathSpawnCount: number;
+  /** Multiplier on this unit's hits against crown towers (1 = full). */
+  towerDamageFactor: number;
   /** Seconds between summons (0 = not a spawner). */
   spawnInterval: number;
   /** Seconds per 1 elixir generated for the owner (0 = none). */
@@ -112,6 +122,16 @@ export interface TroopCard {
   /** Number of units spawned per deploy. */
   count: number;
   unit: UnitStats;
+  /**
+   * A token is a unit only something else can field (the Pebble Golems a
+   * Stone Golem bursts into): never in a deck, a chest, a draft or online.
+   */
+  token?: boolean;
+  /**
+   * Deploys anywhere on the field (the Digger): it tunnels from its King,
+   * untouchable while burrowed, and pops up at the spot.
+   */
+  deployAnywhere?: boolean;
 }
 
 export interface BuildingCard {
@@ -145,6 +165,11 @@ export interface SpellCard {
   pull: number;
   /** Troop card whose units burst out at the target (null = none). */
   spawnUnit: CardId | null;
+  /**
+   * Seconds between the cast and the damage landing (the Comet falls from
+   * the sky; enemies can walk out of it). Absent or 0 = instant.
+   */
+  landDelay?: number;
 }
 
 export type Card = TroopCard | BuildingCard | SpellCard;
@@ -178,6 +203,9 @@ function unit(stats: UnitOverrides): UnitStats {
     deathDamage: 0,
     deathRadius: 0,
     spawnUnitId: null,
+    deathSpawnId: null,
+    deathSpawnCount: 0,
+    towerDamageFactor: 1,
     spawnInterval: 0,
     elixirInterval: 0,
     radius: 0.5,
@@ -226,7 +254,7 @@ export const CARDS: Record<CardId, Card> = {
     cost: 3,
     count: 1,
     unit: unit({
-      maxHp: 140,
+      maxHp: 200,
       damage: 130,
       hitSpeed: 3,
       attackRange: 6,
@@ -265,6 +293,9 @@ export const CARDS: Record<CardId, Card> = {
     cost: 5,
     count: 1,
     unit: unit({
+      // Stays 3600 in sim v3 although the bot-vs-bot lab has it near the
+      // bottom (39%): a tankier starter-deck Giant made the rookie and
+      // practice bots beat a beginner more often (notes/features/card-wave-3.md).
       maxHp: 3600,
       damage: 240,
       hitSpeed: 1.5,
@@ -409,7 +440,8 @@ export const CARDS: Record<CardId, Card> = {
     cost: 4,
     count: 1,
     unit: unit({
-      maxHp: 1050,
+      // 1050 to 980 (sim v3): the top of the random-deck lab (62-63%).
+      maxHp: 980,
       damage: 130,
       hitSpeed: 1.5,
       attackRange: 3.5,
@@ -499,7 +531,7 @@ export const CARDS: Record<CardId, Card> = {
     cost: 5,
     count: 1,
     unit: unit({
-      maxHp: 700,
+      maxHp: 1000,
       damage: 180,
       hitSpeed: 2.4,
       attackRange: 4.5,
@@ -526,7 +558,7 @@ export const CARDS: Record<CardId, Card> = {
       speed: "medium",
       targetsAir: true,
       splashRadius: 0.7, // forked lightning zaps a small cluster
-      stunOnHit: 1, // every bolt stops its targets for ~a second
+      stunOnHit: 0.5, // every bolt stops its targets for half a second
       chainCount: 2, // forks to two enemies at once
     }),
   },
@@ -576,15 +608,15 @@ export const CARDS: Record<CardId, Card> = {
     cost: 7,
     count: 1,
     unit: unit({
-      maxHp: 3400,
-      damage: 240,
+      maxHp: 3000,
+      damage: 200,
       hitSpeed: 1.7,
       attackRange: MELEE,
       sightRange: 6,
       speed: "medium",
       splashRadius: 1.6, // area slam
       splashDamageFactor: 0.5, // surrounding enemies take half a hit
-      chargeDistance: 3, // leaps in for double damage
+      // No charge: the jump below is his charge (it also slams).
       jumpRange: 4.5, // leaps onto far troops and buildings, slamming on landing
       radius: 0.8,
     }),
@@ -597,8 +629,8 @@ export const CARDS: Record<CardId, Card> = {
     cost: 6,
     count: 1,
     unit: unit({
-      maxHp: 2400,
-      damage: 200,
+      maxHp: 3100,
+      damage: 240,
       hitSpeed: 1.7,
       attackRange: 5, // shoots buildings from range
       sightRange: 7.5,
@@ -665,7 +697,7 @@ export const CARDS: Record<CardId, Card> = {
     lifetime: 30,
     unit: unit({
       maxHp: 800,
-      damage: 130,
+      damage: 160,
       hitSpeed: 0.9,
       attackRange: 5.5,
       speed: "slow", // unused: buildings don't move
@@ -687,6 +719,9 @@ export const CARDS: Record<CardId, Card> = {
       speed: "slow", // unused: buildings don't move
       spawnUnitId: "skeletons",
       spawnInterval: 6,
+      // ...and four more skeletons tumble out when it falls (as in CR).
+      deathSpawnId: "skeletons",
+      deathSpawnCount: 4,
       radius: 0.6,
     }),
   },
@@ -743,7 +778,8 @@ export const CARDS: Record<CardId, Card> = {
     rarity: "epic",
     kind: "spell",
     cost: 3,
-    damage: 60,
+    // 60 to 150 (sim v3): the barrel's own burst; it sat at 39% in the lab.
+    damage: 150,
     radius: 1.5,
     stunSeconds: 0,
     rageSeconds: 0,
@@ -814,7 +850,7 @@ export const CARDS: Record<CardId, Card> = {
     rarity: "common",
     kind: "spell",
     cost: 3,
-    damage: 240,
+    damage: 300, // kills Archers and the Princess; Zap no longer does
     radius: 4,
     stunSeconds: 0,
     rageSeconds: 0,
@@ -829,7 +865,7 @@ export const CARDS: Record<CardId, Card> = {
     rarity: "common",
     kind: "spell",
     cost: 2,
-    damage: 250,
+    damage: 210, // still clears Bats, Skeletons, Minions and Gargoyles
     radius: 2,
     stunSeconds: 0.5,
     rageSeconds: 0,
@@ -868,6 +904,90 @@ export const CARDS: Record<CardId, Card> = {
     pull: 0,
     spawnUnit: null,
   },
+  // ---- Card wave 3 (sim v3). New cards go last: Crazy mode scrambles in
+  // key order, so earlier cards keep their rolls.
+  /** A slow boulder that marches on buildings and bursts into two Pebble Golems. */
+  "stone-golem": {
+    id: "stone-golem",
+    name: "Stone Golem",
+    rarity: "epic",
+    kind: "troop",
+    cost: 8,
+    count: 1,
+    unit: unit({
+      maxHp: 5000,
+      damage: 260,
+      hitSpeed: 2.5,
+      attackRange: MELEE,
+      sightRange: 7.5,
+      speed: "slow",
+      targetsBuildingsOnly: true,
+      radius: 0.95,
+      deathDamage: 260,
+      deathRadius: 2.0,
+      deathSpawnId: "pebble-golem",
+      deathSpawnCount: 2,
+    }),
+  },
+  /** Token: what a Stone Golem bursts into. Never in a deck. */
+  "pebble-golem": {
+    id: "pebble-golem",
+    name: "Pebble Golem",
+    rarity: "epic",
+    kind: "troop",
+    cost: 0,
+    count: 1,
+    token: true,
+    unit: unit({
+      maxHp: 950,
+      damage: 55,
+      hitSpeed: 2.5,
+      attackRange: MELEE,
+      sightRange: 7.5,
+      speed: "slow",
+      targetsBuildingsOnly: true,
+      radius: 0.6,
+      deathDamage: 55,
+      deathRadius: 1.5,
+    }),
+  },
+  /** Tunnels to any spot on the field and pops up swinging; chips towers lightly. */
+  digger: {
+    id: "digger",
+    name: "Digger",
+    rarity: "epic",
+    kind: "troop",
+    cost: 3,
+    count: 1,
+    deployAnywhere: true,
+    unit: unit({
+      maxHp: 1000,
+      damage: 160,
+      hitSpeed: 1.2,
+      attackRange: MELEE,
+      sightRange: 5.5,
+      speed: "fast",
+      towerDamageFactor: 0.35, // 56 a hit on a crown tower
+      radius: 0.5,
+    }),
+  },
+  /** A huge rock that crashes down 1.8 s after the cast: dodgeable, so fair. */
+  comet: {
+    id: "comet",
+    name: "Comet",
+    rarity: "epic",
+    kind: "spell",
+    cost: 6,
+    damage: 1000, // 400 to crown towers
+    radius: 2.0,
+    stunSeconds: 0,
+    rageSeconds: 0,
+    knockback: 1.0,
+    heal: 0,
+    pull: 0,
+    spawnUnit: null,
+    landDelay: 1.8,
+  },
 };
 
 /** Deck order doubles as the starting draw: the first 4 are the opening hand. */
@@ -902,6 +1022,8 @@ export const DECK: CardId[] = [
   "princess",
   "mega-knight",
   "royal-giant",
+  "stone-golem",
+  "digger",
   "arrows",
   "zap",
   "rage",
@@ -909,9 +1031,26 @@ export const DECK: CardId[] = [
   "heal",
   "tornado",
   "skeleton-barrel",
+  "comet",
   "mirror",
   "champion",
 ];
+
+/** Units only another card can field (never in DECK, decks, chests or drafts). */
+export const TOKEN_IDS: readonly CardId[] = (Object.keys(CARDS) as CardId[]).filter((id) => {
+  const c = CARDS[id];
+  return c.kind === "troop" && c.token === true;
+});
+
+/**
+ * May this card go in a deck, a draft, the daily deck or an online match?
+ * Not a token, and not the per-device Studio champion.
+ */
+export function isDeckable(id: CardId): boolean {
+  const c = CARDS[id];
+  if (!c || id === "champion") return false;
+  return !(c.kind === "troop" && c.token === true);
+}
 
 /**
  * Per-match card overrides (e.g. the Crazy game mode). When set, getCard
@@ -947,7 +1086,8 @@ export function crazyCards(rng: () => number = Math.random): Record<CardId, Card
 
   // The player-designed champion differs per player, so it rolls last:
   // its draws can never shift the stock cards' scramble between peers.
-  const ids: CardId[] = (Object.keys(out) as CardId[]).filter((id) => id !== "champion");
+  // Tokens are never scrambled: a cost-0 unit has no count to roll.
+  const ids: CardId[] = (Object.keys(out) as CardId[]).filter(isDeckable);
   if (out.champion) ids.push("champion");
   for (const id of ids) {
     const card = out[id];

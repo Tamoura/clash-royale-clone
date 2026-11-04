@@ -1,4 +1,4 @@
-import { CARDS, type CardId } from "../game/cards";
+import { CARDS, isDeckable, type CardId } from "../game/cards";
 import { ARENA_HEIGHT, ARENA_WIDTH, type Side } from "../game/arena";
 import { TOWER_TROOP_IDS, type TowerTroopId } from "../game/towers";
 import { ABILITY_IDS, type AbilityId } from "../game/abilities";
@@ -30,9 +30,12 @@ const MAX_NAME_INPUT = 64;
 
 export type ParseError = { error: "bad-message" | "update-required" };
 
-/** Cards a player may bring online: every card except the per-device champion. */
+/**
+ * Cards a player may bring online: every deckable card, so neither the
+ * per-device champion nor a token (a Pebble Golem only a Stone Golem fields).
+ */
 export function playableCardIds(): ReadonlySet<string> {
-  return new Set(Object.keys(CARDS).filter((id) => id !== "champion"));
+  return new Set((Object.keys(CARDS) as CardId[]).filter(isDeckable));
 }
 
 /**
@@ -155,11 +158,16 @@ function withV<T extends object>(msg: T, v: number | undefined): T & { v?: numbe
   return v === undefined ? msg : { ...msg, v };
 }
 
+/** Messages that open a match: every current client stamps them with `v`. */
+const HANDSHAKES = new Set(["create", "join", "quick"]);
+
 /**
  * Parse and validate one raw client message. `cardIds` is the set of card ids
- * a deck may contain (see {@link playableCardIds}). A missing `v` means the
- * current protocol (v1 LAN clients never sent one); any other explicit
- * version gets `update-required`.
+ * a deck may contain (see {@link playableCardIds}). A handshake (create, join,
+ * quick) must carry the current `v`: a missing one is a v1 client, older than
+ * versioning, and like any other version it gets `update-required` (pairing
+ * it with a v3 page would desync). In-match messages carry no `v`; the
+ * handshake already vouched for the connection.
  */
 export function parseClientMsg(raw: string, cardIds: ReadonlySet<string>): ClientMsg | ParseError {
   if (typeof raw !== "string" || raw.length > MAX_MESSAGE_BYTES) return { error: "bad-message" };
@@ -173,6 +181,8 @@ export function parseClientMsg(raw: string, cardIds: ReadonlySet<string>): Clien
   if (m.v !== undefined) {
     if (typeof m.v !== "number") return { error: "bad-message" };
     if (m.v !== PROTOCOL_VERSION) return { error: "update-required" };
+  } else if (HANDSHAKES.has(m.t)) {
+    return { error: "update-required" };
   }
   const v = m.v as number | undefined;
   try {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
-import { CARDS, DECK, SPEED_TILES_PER_SEC, getCard, type CardId } from "../../game/cards";
+import { CARDS, DECK, SPEED_TILES_PER_SEC, TOKEN_IDS, getCard, type CardId } from "../../game/cards";
 import { animateTroop, buildTroop } from "../characters3d";
 import { FxApi } from "../scene/fx/api";
 import {
@@ -101,7 +101,7 @@ describe("attack archetypes", () => {
       expect(archetypeFor(id).attackStyle).toBeTruthy();
     }
     expect(Object.keys(ARCHETYPES).sort()).toEqual([...ALL_IDS].sort());
-    expect(new Set(DECK)).toEqual(new Set(ALL_IDS));
+    expect(new Set([...DECK, ...TOKEN_IDS])).toEqual(new Set(ALL_IDS));
   });
 
   it("ranged troops shoot or cast; melee troops never do", () => {

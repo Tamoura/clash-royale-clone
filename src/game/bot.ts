@@ -12,6 +12,7 @@ import {
   deployCard,
   distance,
   effectiveCard,
+  isBurrowed,
   levelMultiplier,
   sideState,
   TOWER_SPELL_DAMAGE_FACTOR,
@@ -121,8 +122,9 @@ function fy(c: Ctx, y: number): number {
   return c.side === "enemy" ? y : ARENA_HEIGHT - y;
 }
 
+/** Opposing troops the bot can see (a burrowing Digger is underground). */
 function oppTroops(c: Ctx): Entity[] {
-  return c.s.entities.filter((e) => e.side === c.opp && e.kind === "troop");
+  return c.s.entities.filter((e) => e.side === c.opp && e.kind === "troop" && !isBurrowed(e));
 }
 
 function affordableTroops(c: Ctx): CardId[] {
@@ -252,8 +254,10 @@ function place(c: Ctx, id: CardId, x: number, y: number): boolean {
 
 /**
  * Find a point where a spell of this radius would hit `minCount`
- * opposing troops worth more elixir than the spell costs, or null.
- * A human never arrows a 1-elixir skeleton pack.
+ * opposing troops worth at least `minValue` elixir, or null. A human never
+ * arrows a 1-elixir skeleton pack, but an even trade that clears a swarm
+ * (Zap on 5 Bats) is a good play. The epsilon absorbs float sums: 5 Bats
+ * add up to exactly 2, 15 skeletons to 3.0000000000000004.
  */
 function findCluster(
   c: Ctx,
@@ -265,7 +269,7 @@ function findCluster(
   for (const center of troops) {
     const hit = troops.filter((t) => distance(center, t) <= radius);
     const value = hit.reduce((s, t) => s + unitValue(t), 0);
-    if (hit.length >= minCount && value > minValue) {
+    if (hit.length >= minCount && value >= minValue - 1e-9) {
       return {
         x: hit.reduce((s, t) => s + t.x, 0) / hit.length,
         y: hit.reduce((s, t) => s + t.y, 0) / hit.length,
@@ -275,12 +279,24 @@ function findCluster(
   return null;
 }
 
+/**
+ * Area spells the bot casts on a valuable cluster, and the fewest troops
+ * each needs. The Comet is a 6-elixir rock: two big troops are worth it.
+ */
+const CLUSTER_SPELLS: ReadonlyArray<{ id: CardId; minCount: number }> = [
+  { id: "fireball", minCount: 3 },
+  { id: "comet", minCount: 2 },
+  { id: "tornado", minCount: 3 },
+  { id: "arrows", minCount: 3 },
+  { id: "zap", minCount: 3 },
+];
+
 function trySpellCluster(c: Ctx): boolean {
-  for (const id of ["fireball", "tornado", "arrows", "zap"] as const) {
+  for (const { id, minCount } of CLUSTER_SPELLS) {
     if (!c.me.hand.cards.includes(id)) continue;
     const card = getCard(id);
     if (card.kind !== "spell" || card.cost > c.me.elixir.amount) continue;
-    const cluster = findCluster(c, card.radius, 3, card.cost * c.bot.spellIQ);
+    const cluster = findCluster(c, card.radius, minCount, card.cost * c.bot.spellIQ);
     if (cluster && place(c, id, cluster.x, cluster.y)) {
       return true;
     }
@@ -336,6 +352,7 @@ function tryCycle(c: Ctx): boolean {
   const cheap = c.me.hand.cards
     .filter((id) => {
       const card = getCard(id);
+      if (card.kind === "troop" && card.deployAnywhere) return false; // tryDigger's job
       return (card.kind === "troop" || card.kind === "building") && card.cost <= 3 && card.cost <= c.me.elixir.amount;
     })
     .sort(byCostAsc);
@@ -378,6 +395,30 @@ function tryBarrel(c: Ctx): boolean {
   if (pool.length === 0) return false;
   const target = pool.reduce((a, b) => (a.hp < b.hp ? a : b));
   return place(c, "skeleton-barrel", target.x, target.y);
+}
+
+/** Clearance (tiles beyond the tower's edge) a Digger surfaces behind a tower. */
+const DIG_BEHIND = 1.2;
+
+/**
+ * Tunnel the Digger behind the opponent's weakest princess tower (on the
+ * far side, away from the river), where it surfaces already swinging and
+ * pulls the tower's fire. Falls back to the other tower if that spot is
+ * blocked. Played when flush, like the Barrel; inert without a Digger.
+ */
+function tryDigger(c: Ctx): boolean {
+  if (!c.me.hand.cards.includes("digger")) return false;
+  const card = getCard("digger");
+  if (card.kind !== "troop" || card.cost > c.me.elixir.amount) return false;
+  if (c.me.elixir.amount < c.bot.pushAt) return false;
+  const towers = c.s.entities
+    .filter((e) => e.side === c.opp && e.kind === "princess-tower" && e.hp > 0)
+    .sort((a, b) => a.hp - b.hp || a.x - b.x);
+  for (const t of towers) {
+    const y = fy(c, fy(c, t.y) + t.radius + DIG_BEHIND);
+    if (checkDeploy(c.s, c.side, "digger", t.x, y) === "ok" && place(c, "digger", t.x, y)) return true;
+  }
+  return false;
 }
 
 /**
@@ -507,17 +548,28 @@ function tryAbility(c: Ctx): boolean {
   return useAbility(c.s, c.side);
 }
 
+/** Damage our own delayed spells (a falling Comet) are about to land on `t`. */
+function incomingSpellDamage(c: Ctx, t: Entity): number {
+  let sum = 0;
+  for (const p of c.s.pendingSpells) {
+    if (p.side === c.side && distance(p, t) <= p.radius + t.radius) sum += p.damage * TOWER_SPELL_DAMAGE_FACTOR;
+  }
+  return sum;
+}
+
 /**
  * The rudest play in the game: when an opposing tower is low enough that a
  * direct-damage spell finishes it outright, cast it at the tower — no
- * cluster value needed, towers don't dodge.
+ * cluster value needed, towers don't dodge. (A Comet finishes a 400 HP
+ * tower.) A tower our own Comet is already falling on is left to it.
  */
 function tryFinisher(c: Ctx): boolean {
   const towers = c.s.entities.filter(
     (e) =>
       e.side === c.opp &&
       (e.kind === "princess-tower" || e.kind === "king-tower") &&
-      e.hp > 0,
+      e.hp > 0 &&
+      e.hp > incomingSpellDamage(c, e),
   );
   if (towers.length === 0) return false;
   for (const id of c.me.hand.cards) {
@@ -547,7 +599,7 @@ function trySplit(c: Ctx): boolean {
   const cheap = c.me.hand.cards
     .filter((id) => {
       const card = getCard(id);
-      return card.kind === "troop" && card.cost <= 3 && !card.unit.targetsBuildingsOnly;
+      return card.kind === "troop" && card.cost <= 3 && !card.unit.targetsBuildingsOnly && !card.deployAnywhere;
     })
     .sort(byCostAsc);
   if (cheap.length === 0) return false;
@@ -583,6 +635,7 @@ export function botThink(state: BattleState, bot: BotState): void {
   if (tryHeal(c)) return;
   if (tryRage(c)) return;
   if (tryBarrel(c)) return;
+  if (tryDigger(c)) return;
   if (tryMirror(c)) return;
   if (tryEconomy(c)) return;
   if (tryPush(c)) return;

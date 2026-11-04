@@ -12,7 +12,10 @@ import {
   applySpell,
   distance,
   isBuilding,
+  isBurrowed,
+  isCrownTower,
   sideState,
+  spawnDeathUnits,
   spawnUnits,
   type BattleResult,
   type BattleState,
@@ -24,8 +27,18 @@ import { ELIXIR_MAX, SECONDS_PER_ELIXIR, tickElixir } from "./elixir";
 /** Regular time length; the final minute of it is double elixir. */
 export const BATTLE_DURATION = 180;
 export const DOUBLE_ELIXIR_AT = 120;
-/** Sudden-death overtime length (CR: 2 minutes, last one at 3x). */
-export const OVERTIME_DURATION = 120;
+/**
+ * Sudden-death overtime length. One minute, all of it at triple elixir
+ * (sim v3): the old two minutes mostly ended 0-0 on tower HP.
+ */
+export const OVERTIME_DURATION = 60;
+/**
+ * Overtime is decisive (sim v3): troop and building attacks, and death
+ * blasts, hit crown towers this many times harder, so a push that lands
+ * takes a crown instead of the match ending 0-0 on tower HP. Spells keep
+ * their own tower factor (TOWER_SPELL_DAMAGE_FACTOR) and are not scaled.
+ */
+export const OVERTIME_TOWER_DAMAGE = 3;
 
 /**
  * Sandbox/practice flat rate: high enough to refill an empty bar in a
@@ -35,14 +48,12 @@ export const OVERTIME_DURATION = 120;
 export const SANDBOX_ELIXIR_RATE = 1000;
 
 /**
- * CR's elixir curve: 1x for the first two minutes, 2x for the last
- * regular minute and the first overtime minute, 3x after that.
+ * The elixir curve: 1x for the first two minutes, 2x for the last regular
+ * minute, 3x for all of overtime.
  */
 export function elixirMultiplier(state: BattleState): 1 | 2 | 3 {
-  if (state.overtime && state.time >= BATTLE_DURATION + OVERTIME_DURATION / 2) {
-    return 3;
-  }
-  if (state.overtime || state.time >= DOUBLE_ELIXIR_AT) return 2;
+  if (state.overtime) return 3;
+  if (state.time >= DOUBLE_ELIXIR_AT) return 2;
   return 1;
 }
 
@@ -58,8 +69,22 @@ export function effectiveElixirMultiplier(state: BattleState): number {
   return state.elixirRate > 1 ? state.elixirRate : elixirMultiplier(state);
 }
 
+/** Enemies that can be seen and hit right now (a burrowing Digger can't). */
 function livingEnemiesOf(state: BattleState, e: Entity): Entity[] {
-  return state.entities.filter((o) => o.side !== e.side && o.hp > 0);
+  return state.entities.filter((o) => o.side !== e.side && o.hp > 0 && !isBurrowed(o));
+}
+
+/** Overtime's multiplier on troop and building damage to crown towers. */
+function towerHitScale(state: BattleState): number {
+  return state.overtime ? OVERTIME_TOWER_DAMAGE : 1;
+}
+
+/**
+ * Damage a hit deals to `target`: chip units (the Digger) hit crown towers
+ * softly, and every hit on a crown tower lands 3x in overtime.
+ */
+function hitDamage(state: BattleState, damage: number, towerDamageFactor: number, target: Entity): number {
+  return isCrownTower(target) ? damage * towerDamageFactor * towerHitScale(state) : damage;
 }
 
 /** Distance between hull edges, used for both range and sight checks. */
@@ -195,6 +220,7 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
         id: state.nextEntityId++,
         side: e.side,
         cardId: e.cardId,
+        sourceCardId: e.sourceCardId,
         sourceKind: e.kind,
         towerTroop: e.towerTroop ?? null,
         sx: e.x,
@@ -216,12 +242,14 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
         stunOnHit: e.stunOnHit,
         slowOnHit: e.slowOnHit,
         splashDamageFactor: e.splashDamageFactor,
+        towerDamageFactor: e.towerDamageFactor,
       });
     }
   } else {
     for (const t of targets) {
-      t.hp -= damage;
-      creditDamage(state, e.side, e.cardId, damage);
+      const dealt = hitDamage(state, damage, e.towerDamageFactor, t);
+      t.hp -= dealt;
+      creditDamage(state, e.side, e.sourceCardId, dealt);
       if (e.stunOnHit > 0) t.stunTimer = Math.max(t.stunTimer, e.stunOnHit);
       if (e.slowOnHit > 0) t.slowTimer = Math.max(t.slowTimer, e.slowOnHit);
     }
@@ -229,9 +257,9 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
       for (const o of livingEnemiesOf(state, e)) {
         if (targets.includes(o) || !canHit(e, o)) continue;
         if (distance(o, target) <= e.splashRadius + o.radius) {
-          const splashDmg = damage * e.splashDamageFactor;
+          const splashDmg = hitDamage(state, damage * e.splashDamageFactor, e.towerDamageFactor, o);
           o.hp -= splashDmg;
-          creditDamage(state, e.side, e.cardId, splashDmg);
+          creditDamage(state, e.side, e.sourceCardId, splashDmg);
           if (e.stunOnHit > 0) o.stunTimer = Math.max(o.stunTimer, e.stunOnHit);
           if (e.slowOnHit > 0) o.slowTimer = Math.max(o.slowTimer, e.slowOnHit);
         }
@@ -291,11 +319,12 @@ function tickPierce(state: BattleState, p: Projectile, dt: number): boolean {
   p.y += p.dirY * step;
   p.range -= step;
   for (const o of state.entities) {
-    if (o.side === p.side || o.hp <= 0 || p.hitIds.includes(o.id)) continue;
+    if (o.side === p.side || o.hp <= 0 || isBurrowed(o) || p.hitIds.includes(o.id)) continue;
     if (o.flying && !p.targetsAir) continue;
     if (segmentDistance(fromX, fromY, p.x, p.y, o.x, o.y) <= o.radius + PIERCE_HALF_WIDTH) {
-      o.hp -= p.damage;
-      creditDamage(state, p.side, p.cardId, p.damage);
+      const dealt = hitDamage(state, p.damage, p.towerDamageFactor, o);
+      o.hp -= dealt;
+      creditDamage(state, p.side, p.sourceCardId, dealt);
       p.hitIds.push(o.id);
     }
   }
@@ -314,18 +343,19 @@ function tickProjectiles(state: BattleState, dt: number): void {
     const step = p.speed * dt;
     if (d <= step + target.radius * 0.5) {
       // Impact: damage the target, splash around it.
-      target.hp -= p.damage;
-      creditDamage(state, p.side, p.cardId, p.damage);
+      const dealt = hitDamage(state, p.damage, p.towerDamageFactor, target);
+      target.hp -= dealt;
+      creditDamage(state, p.side, p.sourceCardId, dealt);
       if (p.stunOnHit > 0) target.stunTimer = Math.max(target.stunTimer, p.stunOnHit);
       if (p.slowOnHit > 0) target.slowTimer = Math.max(target.slowTimer, p.slowOnHit);
       if (p.splashRadius > 0) {
         for (const o of state.entities) {
-          if (o.side === p.side || o.hp <= 0 || o === target) continue;
+          if (o.side === p.side || o.hp <= 0 || o === target || isBurrowed(o)) continue;
           if (o.flying && !p.targetsAir) continue;
           if (distance(o, target) <= p.splashRadius + o.radius) {
-            const splashDmg = p.damage * p.splashDamageFactor;
+            const splashDmg = hitDamage(state, p.damage * p.splashDamageFactor, p.towerDamageFactor, o);
             o.hp -= splashDmg;
-            creditDamage(state, p.side, p.cardId, splashDmg);
+            creditDamage(state, p.side, p.sourceCardId, splashDmg);
             if (p.stunOnHit > 0) o.stunTimer = Math.max(o.stunTimer, p.stunOnHit);
             if (p.slowOnHit > 0) o.slowTimer = Math.max(o.slowTimer, p.slowOnHit);
           }
@@ -337,6 +367,23 @@ function tickProjectiles(state: BattleState, dt: number): void {
     p.y += (dy / d) * step;
     return true;
   });
+}
+
+/**
+ * Delayed spells (the Comet) count down and land in cast order: the blast
+ * goes through applySpell, so crown towers take the usual spell fraction.
+ * The epsilon lands a 1.8 s fall on its 54th 30 Hz tick, not the 55th.
+ */
+function tickPendingSpells(state: BattleState, dt: number): void {
+  if (state.pendingSpells.length === 0) return;
+  for (const p of state.pendingSpells) p.ttl -= dt;
+  const landing = state.pendingSpells.filter((p) => p.ttl <= 1e-9);
+  if (landing.length === 0) return;
+  state.pendingSpells = state.pendingSpells.filter((p) => p.ttl > 1e-9);
+  for (const p of landing) {
+    applySpell(state, p.side, p.cardId, p.x, p.y, p.damage, p.radius, 0, p.knockback);
+    state.events.push({ type: "spell-land", side: p.side, cardId: p.cardId, x: p.x, y: p.y });
+  }
 }
 
 /** Speed/attack-rate multiplier for troops inside a friendly rage zone. */
@@ -353,13 +400,16 @@ function rageBoost(state: BattleState, e: Entity): number {
   return isRaged(state, e) ? RAGE_BOOST : 1;
 }
 
-/** Spawner troops (e.g. the Witch) summon a wave every spawnInterval. */
+/**
+ * Spawner troops (e.g. the Witch) summon a wave every spawnInterval. The
+ * wave takes the spawner's level and credits its damage to the spawner.
+ */
 function tickSpawner(state: BattleState, e: Entity, dt: number): void {
   if (!e.spawnUnitId) return;
   e.spawnTimer -= dt;
   if (e.spawnTimer > 0) return;
   const toward = e.side === "player" ? -1 : 1;
-  spawnUnits(state, e.side, e.spawnUnitId, e.x, e.y + toward * (e.radius + 0.5));
+  spawnUnits(state, e.side, e.spawnUnitId, e.x, e.y + toward * (e.radius + 0.5), e.sourceCardId ?? undefined);
   e.spawnTimer += e.spawnInterval;
 }
 
@@ -379,6 +429,16 @@ function tickCollector(state: BattleState, e: Entity, dt: number): void {
 }
 
 function actEntity(state: BattleState, e: Entity, dt: number): void {
+  // Tunnelling (the Digger): nothing to do but dig. It surfaces with an
+  // 'emerge' event, then runs the normal deploy pop-up from the next tick.
+  if (isBurrowed(e)) {
+    e.burrowTimer -= dt;
+    if (e.burrowTimer <= 1e-9) {
+      e.burrowTimer = 0;
+      state.events.push({ type: "emerge", side: e.side, cardId: e.cardId!, x: e.x, y: e.y });
+    }
+    return;
+  }
   // Chilled units (Ice Wizard) crawl and swing at half speed until it wears off.
   if (e.slowTimer > 0) e.slowTimer -= dt;
   const slowFactor = e.slowTimer > 0 ? 0.5 : 1;
@@ -463,8 +523,9 @@ function explodeOnDeath(state: BattleState, e: Entity): void {
   if (e.deathDamage <= 0) return;
   for (const o of livingEnemiesOf(state, e)) {
     if (distance(o, e) <= e.deathRadius + o.radius) {
-      o.hp -= e.deathDamage;
-      creditDamage(state, e.side, e.cardId, e.deathDamage);
+      const dealt = isCrownTower(o) ? e.deathDamage * towerHitScale(state) : e.deathDamage;
+      o.hp -= dealt;
+      creditDamage(state, e.side, e.sourceCardId, dealt);
     }
   }
   state.effects.push({
@@ -486,7 +547,8 @@ const COLLISION_SLACK = 0.9;
  * dense crowds stable without a physics engine.
  */
 function resolveCollisions(state: BattleState): void {
-  const solids = state.entities.filter((e) => e.hp > 0);
+  // A burrowing troop is underground: nothing bumps into it.
+  const solids = state.entities.filter((e) => e.hp > 0 && !isBurrowed(e));
   for (let pass = 0; pass < 2; pass++) {
     for (let i = 0; i < solids.length; i++) {
       for (let j = i + 1; j < solids.length; j++) {
@@ -540,31 +602,56 @@ function clampToArena(state: BattleState): void {
   }
 }
 
+/**
+ * Settle every death this tick. A death blast can kill something that sits
+ * EARLIER in the entity list (crown towers are always first), so passes
+ * repeat until one finds no new casualty: every dead entity gets its blast,
+ * its death event and its crown exactly once before the dead are removed.
+ */
 function processDeaths(state: BattleState): void {
-  for (const e of state.entities) {
-    if (e.hp > 0) continue;
-    explodeOnDeath(state, e);
-    state.events.push({
-      type: "death",
-      kind: e.kind,
-      cardId: e.cardId,
-      side: e.side,
-      x: e.x,
-      y: e.y,
-    });
-    if (e.kind === "princess-tower") {
-      const winner = e.side === "player" ? "enemy" : "player";
-      sideState(state, winner).crowns += 1;
-      state.events.push({ type: "crown", winner });
-      wakeKing(state, e.side);
-    } else if (e.kind === "king-tower") {
-      const winner = e.side === "player" ? "enemy" : "player";
-      sideState(state, winner).crowns = 3;
-      state.events.push({ type: "crown", winner });
-      finish(state, winner);
+  const done = new Set<number>();
+  let fresh = true;
+  while (fresh) {
+    fresh = false;
+    // Index loop: entities appended mid-pass are visited in the same pass.
+    for (let i = 0; i < state.entities.length; i++) {
+      const e = state.entities[i];
+      if (e.hp > 0 || done.has(e.id)) continue;
+      done.add(e.id);
+      fresh = true;
+      settleDeath(state, e);
     }
   }
   state.entities = state.entities.filter((e) => e.hp > 0);
+}
+
+/**
+ * One entity's death: its blast, the death event, crowns and the king, and
+ * any units it bursts into (appended, so the same pass skips them alive).
+ */
+function settleDeath(state: BattleState, e: Entity): void {
+  explodeOnDeath(state, e);
+  state.events.push({
+    type: "death",
+    kind: e.kind,
+    cardId: e.cardId,
+    side: e.side,
+    x: e.x,
+    y: e.y,
+  });
+  if (e.kind === "princess-tower") {
+    const winner = e.side === "player" ? "enemy" : "player";
+    const me = sideState(state, winner);
+    me.crowns = Math.min(3, me.crowns + 1);
+    state.events.push({ type: "crown", winner });
+    wakeKing(state, e.side);
+  } else if (e.kind === "king-tower") {
+    const winner = e.side === "player" ? "enemy" : "player";
+    sideState(state, winner).crowns = 3;
+    state.events.push({ type: "crown", winner });
+    finish(state, winner);
+  }
+  spawnDeathUnits(state, e);
 }
 
 function wakeKing(state: BattleState, side: Entity["side"]): void {
@@ -607,6 +694,7 @@ export function tick(state: BattleState, dt: number): void {
 
   for (const zone of state.buffZones) zone.ttl -= dt;
   state.buffZones = state.buffZones.filter((z) => z.ttl > 0);
+  tickPendingSpells(state, dt);
 
   // Deployed buildings decay over their lifetime.
   for (const e of state.entities) {

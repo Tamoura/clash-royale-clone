@@ -45,14 +45,14 @@ export const ARENAS: ArenaDef[] = [
     name: "Bone Pit",
     ar: "وادي الرمال",
     trophies: 200,
-    unlocks: ["tombstone", "valkyrie", "bats"],
+    unlocks: ["tombstone", "valkyrie", "bats", "stone-golem"],
   },
   {
     id: "barbarian-bowl",
     name: "Barbarian Bowl",
     ar: "سوق التوابل",
     trophies: 400,
-    unlocks: ["hog-rider", "wizard", "gargoyles"],
+    unlocks: ["hog-rider", "wizard", "gargoyles", "digger"],
   },
   {
     id: "pekka-playhouse",
@@ -101,7 +101,7 @@ export const ARENAS: ArenaDef[] = [
     name: "Legendary Peak",
     ar: "مدينة الأهلّة",
     trophies: 3000,
-    unlocks: [],
+    unlocks: ["comet"],
   },
 ];
 

@@ -105,21 +105,21 @@ describe("match flow", () => {
   });
 });
 
-describe("CR overtime pacing", () => {
-  it("overtime lasts two minutes", () => {
-    expect(OVERTIME_DURATION).toBe(120);
+describe("overtime pacing (sim v3)", () => {
+  it("overtime lasts one minute", () => {
+    expect(OVERTIME_DURATION).toBe(60);
   });
 
-  it("elixir runs 1x, then 2x, then 3x in late overtime", () => {
+  it("elixir runs 1x, then 2x, then 3x for all of overtime", () => {
     const b = createBattle();
     b.time = 60;
     expect(elixirMultiplier(b)).toBe(1);
     b.time = 130; // last minute of regular time
     expect(elixirMultiplier(b)).toBe(2);
     b.overtime = true;
-    b.time = BATTLE_DURATION + 30; // first overtime minute
-    expect(elixirMultiplier(b)).toBe(2);
-    b.time = BATTLE_DURATION + 70; // final overtime minute
+    b.time = BATTLE_DURATION; // the first overtime tick
+    expect(elixirMultiplier(b)).toBe(3);
+    b.time = BATTLE_DURATION + 50; // its last seconds
     expect(elixirMultiplier(b)).toBe(3);
   });
 });

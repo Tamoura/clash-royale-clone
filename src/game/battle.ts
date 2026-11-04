@@ -4,6 +4,8 @@ import {
   RIVER_Y,
   canDeployTroopAt,
   inArena,
+  inRiver,
+  onBridge,
   towerSpots,
   type OpenLanes,
   type Side,
@@ -37,6 +39,11 @@ export interface Entity {
   kind: EntityKind;
   /** Which card spawned this entity (null for towers). */
   cardId: CardId | null;
+  /**
+   * The card this unit counts as for levels and damage credit: its own card,
+   * or the spawner that summoned it (a Witch's skeletons are the Witch's).
+   */
+  sourceCardId: CardId | null;
   x: number;
   y: number;
   hp: number;
@@ -91,6 +98,20 @@ export interface Entity {
   deathRadius: number;
   /** Card whose units this entity periodically summons (null = none). */
   spawnUnitId: CardId | null;
+  /** Card whose single units burst out where this entity dies (null = none). */
+  deathSpawnId: CardId | null;
+  /** How many units of deathSpawnId burst out (0 = none). */
+  deathSpawnCount: number;
+  /** Multiplier on this entity's hits against crown towers (1 = full). */
+  towerDamageFactor: number;
+  /**
+   * Seconds left tunnelling underground (a Digger on its way): while above
+   * 0 the unit only counts down and nothing can see, hit, heal, push or
+   * pull it. Then the normal deploy pop-up runs.
+   */
+  burrowTimer: number;
+  /** The whole tunnel's length in seconds (the renderer's progress bar). */
+  burrowTotal: number;
   /** Seconds between summons. */
   spawnInterval: number;
   /** Seconds until the next summon (unused when spawnUnitId is null). */
@@ -160,6 +181,8 @@ export interface Projectile {
   towerTroop?: TowerTroopId | null;
   /** Card of the shooter (null for towers). */
   cardId: CardId | null;
+  /** Card its damage is credited to (the shooter's sourceCardId). */
+  sourceCardId: CardId | null;
   /** Shooter kind, for projectile styling. */
   sourceKind: EntityKind;
   /** Launch point (for arc rendering). */
@@ -189,6 +212,22 @@ export interface Projectile {
   slowOnHit: number;
   /** Multiplier on splash damage to non-primary targets (1 = full). */
   splashDamageFactor: number;
+  /** The shooter's multiplier on damage to crown towers (1 = full). */
+  towerDamageFactor: number;
+}
+
+/** A cast spell still on its way down (the Comet); lands when ttl runs out. */
+export interface PendingSpell {
+  side: Side;
+  cardId: CardId;
+  x: number;
+  y: number;
+  /** Seconds until it lands. */
+  ttl: number;
+  /** Damage at landing, level-scaled when cast. */
+  damage: number;
+  radius: number;
+  knockback: number;
 }
 
 /** A lingering area that boosts one side's troops (Rage). */
@@ -235,6 +274,10 @@ export type BattleEvent =
   | { type: "crown"; winner: Side }
   | { type: "king-wake"; side: Side }
   | { type: "ability"; side: Side; ability: AbilityId; x: number; y: number }
+  /** A burrowing troop (the Digger) breaks the surface. Render-only. */
+  | { type: "emerge"; side: Side; cardId: CardId; x: number; y: number }
+  /** A delayed spell (the Comet) hits the ground. Render-only. */
+  | { type: "spell-land"; side: Side; cardId: CardId; x: number; y: number }
   | { type: "finish"; winner: Side | "draw" };
 
 export interface BattleState {
@@ -248,6 +291,8 @@ export interface BattleState {
   effects: SpellEffect[];
   projectiles: Projectile[];
   buffZones: BuffZone[];
+  /** Delayed spells in flight, in cast order. */
+  pendingSpells: PendingSpell[];
   events: BattleEvent[];
   nextEntityId: number;
   /** Flat elixir-rate multiplier for game modes (1 = normal, 3 = triple, 7 = mega). */
@@ -269,7 +314,9 @@ interface TowerStats {
  * 1400/2600 values melted in seconds against 3000+ HP win conditions.)
  */
 const TOWER_STATS: Record<TowerKind, TowerStats> = {
-  princess: { hp: 2534, damage: 120, hitSpeed: 0.8, range: 7.5, radius: 1.0 },
+  // Princess damage 120 to 100 (sim v3): level-1 matches ended in crowns
+  // too rarely; the tower troops in towers.ts scale by the same 100/120.
+  princess: { hp: 2534, damage: 100, hitSpeed: 0.8, range: 7.5, radius: 1.0 },
   king: { hp: 4008, damage: 130, hitSpeed: 1.0, range: 7.0, radius: 1.3 },
 };
 
@@ -293,6 +340,7 @@ function makeTower(
     side,
     kind: kind === "king" ? "king-tower" : "princess-tower",
     cardId: null,
+    sourceCardId: null,
     x,
     y,
     hp: s.hp,
@@ -324,6 +372,11 @@ function makeTower(
     deathDamage: 0,
     deathRadius: 0,
     spawnUnitId: null,
+    deathSpawnId: null,
+    deathSpawnCount: 0,
+    towerDamageFactor: 1,
+    burrowTimer: 0,
+    burrowTotal: 0,
     spawnInterval: 0,
     spawnTimer: 0,
     elixirInterval: 0,
@@ -390,6 +443,7 @@ export function createBattle(
     effects: [],
     projectiles: [],
     buffZones: [],
+    pendingSpells: [],
     events: [],
     nextEntityId: 1,
     elixirRate,
@@ -410,6 +464,47 @@ export function sideState(state: BattleState, side: Side): SideState {
 
 export function isBuilding(e: Entity): boolean {
   return e.kind !== "troop";
+}
+
+export function isCrownTower(e: Entity): boolean {
+  return e.kind === "princess-tower" || e.kind === "king-tower";
+}
+
+/** Still tunnelling: out of reach of every attack, spell, heal and shove. */
+export function isBurrowed(e: Entity): boolean {
+  return e.burrowTimer > 0;
+}
+
+/** Most seconds a tunnel takes, however far the spot (tiles / 8 per second). */
+export const MAX_BURROW_SECONDS = 3.3;
+/** Tiles a burrowing troop tunnels per second. */
+export const BURROW_TILES_PER_SEC = 8;
+
+/**
+ * Seconds a burrowing troop spends underground on its way from its own
+ * King to (x, y): straight-line distance at 8 tiles/s, capped at 3.3 s.
+ */
+export function burrowSeconds(state: BattleState, side: Side, x: number, y: number): number {
+  const king =
+    state.entities.find((e) => e.side === side && e.kind === "king-tower") ??
+    towerSpots(side).find((t) => t.kind === "king")!;
+  return Math.min(MAX_BURROW_SECONDS, distance(king, { x, y }) / BURROW_TILES_PER_SEC);
+}
+
+/** Clearance (tiles beyond a body's radius) a dig spot keeps from towers and buildings. */
+export const DIG_CLEARANCE = 0.6;
+
+/**
+ * Can a deploy-anywhere troop (the Digger) surface at (x, y)? Anywhere on
+ * the field except the river water (bridges are fine) and on top of a
+ * tower or building, either side's.
+ */
+export function canDigTo(state: BattleState, x: number, y: number): boolean {
+  if (!inArena(x, y)) return false;
+  if (inRiver(y) && !onBridge(x)) return false;
+  return !state.entities.some(
+    (e) => isBuilding(e) && e.hp > 0 && distance(e, { x, y }) < e.radius + DIG_CLEARANCE,
+  );
 }
 
 export function distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
@@ -491,7 +586,9 @@ function spawnOffsets(count: number): Array<[number, number]> {
 
 /**
  * Spawn the units of a troop card directly, bypassing hand/elixir/zone
- * checks. Used by deployCard and by tests.
+ * checks. Used by deployCard, spawners and tests. `sourceId` is the card
+ * that summoned them (a Witch, a Tombstone, the Skeleton Barrel): the units
+ * take that card's level and credit their damage to it.
  */
 export function spawnUnits(
   state: BattleState,
@@ -499,15 +596,23 @@ export function spawnUnits(
   cardId: CardId,
   x: number,
   y: number,
+  sourceId?: CardId,
 ): Entity[] {
   const card = getCard(cardId);
   if (card.kind !== "troop") throw new Error(`${cardId} is not a troop card`);
-  return spawnTroops(state, side, card, x, y);
+  return spawnTroops(state, side, card, x, y, sourceId);
 }
 
-function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number, y: number): Entity[] {
-  const mult = levelMultiplier(sideState(state, side).levels, card.id);
-  const offsets = spawnOffsets(card.count);
+function spawnTroops(
+  state: BattleState,
+  side: Side,
+  card: TroopCard,
+  x: number,
+  y: number,
+  sourceId: CardId = card.id,
+  offsets: Array<[number, number]> = spawnOffsets(card.count),
+): Entity[] {
+  const mult = levelMultiplier(sideState(state, side).levels, sourceId);
   const spawned: Entity[] = [];
   for (const [dx, dy] of offsets) {
     spawned.push({
@@ -515,6 +620,7 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       side,
       kind: "troop",
       cardId: card.id,
+      sourceCardId: sourceId,
       x: x + dx,
       y: y + dy,
       hp: card.unit.maxHp * mult,
@@ -547,6 +653,11 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       deathDamage: card.unit.deathDamage * mult,
       deathRadius: card.unit.deathRadius,
       spawnUnitId: card.unit.spawnUnitId,
+      deathSpawnId: card.unit.deathSpawnId,
+      deathSpawnCount: card.unit.deathSpawnCount,
+      towerDamageFactor: card.unit.towerDamageFactor,
+      burrowTimer: 0,
+      burrowTotal: 0,
       spawnInterval: card.unit.spawnInterval,
       spawnTimer: FIRST_SPAWN_DELAY,
       elixirInterval: 0,
@@ -560,6 +671,24 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
   return spawned;
 }
 
+/**
+ * The units a dying entity bursts into where it fell (a Stone Golem's two
+ * Pebble Golems, a Tombstone's last skeletons), one unit per spawn offset,
+ * at the parent's level and credited to the parent's card.
+ */
+export function spawnDeathUnits(state: BattleState, e: Entity): Entity[] {
+  if (!e.deathSpawnId || e.deathSpawnCount <= 0) return [];
+  const card = getCard(e.deathSpawnId);
+  if (card.kind !== "troop") return [];
+  const units = spawnTroops(state, e.side, card, e.x, e.y, e.sourceCardId ?? card.id, spawnOffsets(e.deathSpawnCount));
+  // A parent dying at the edge must not drop its spawn off the field.
+  for (const u of units) {
+    u.x = Math.min(ARENA_WIDTH - u.radius, Math.max(u.radius, u.x));
+    u.y = Math.min(ARENA_HEIGHT - u.radius, Math.max(u.radius, u.y));
+  }
+  return units;
+}
+
 function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: number, y: number): void {
   const mult = levelMultiplier(sideState(state, side).levels, card.id);
   const u = card.unit;
@@ -568,6 +697,7 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
     side,
     kind: "building",
     cardId: card.id,
+    sourceCardId: card.id,
     x,
     y,
     hp: u.maxHp * mult,
@@ -599,6 +729,11 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
     deathDamage: u.deathDamage,
     deathRadius: u.deathRadius,
     spawnUnitId: u.spawnUnitId,
+    deathSpawnId: u.deathSpawnId,
+    deathSpawnCount: u.deathSpawnCount,
+    towerDamageFactor: u.towerDamageFactor,
+    burrowTimer: 0,
+    burrowTotal: 0,
     spawnInterval: u.spawnInterval,
     spawnTimer: FIRST_SPAWN_DELAY,
     elixirInterval: u.elixirInterval,
@@ -635,11 +770,10 @@ export function applySpell(
   creditId: CardId | null | false = null,
 ): void {
   for (const e of state.entities) {
-    if (e.side === side || e.hp <= 0) continue;
+    if (e.side === side || e.hp <= 0 || isBurrowed(e)) continue;
     if (distance(e, { x, y }) > radius + e.radius) continue;
     // Only crown towers resist spells; deployed buildings take full damage.
-    const isCrownTower = e.kind === "princess-tower" || e.kind === "king-tower";
-    const dealt = damage * (isCrownTower ? TOWER_SPELL_DAMAGE_FACTOR : 1);
+    const dealt = damage * (isCrownTower(e) ? TOWER_SPELL_DAMAGE_FACTOR : 1);
     e.hp -= dealt;
     creditDamage(state, side, creditId === false ? null : (creditId ?? cardId), dealt);
     e.stunTimer = Math.max(e.stunTimer, stunSeconds);
@@ -663,7 +797,7 @@ function pullEnemies(
   pull: number,
 ): void {
   for (const e of state.entities) {
-    if (e.side === side || e.hp <= 0 || e.kind !== "troop") continue;
+    if (e.side === side || e.hp <= 0 || e.kind !== "troop" || isBurrowed(e)) continue;
     const d = distance(e, { x, y });
     if (d > radius + e.radius || d < 1e-6) continue;
     const step = Math.min(pull, d);
@@ -685,7 +819,7 @@ function healAllies(
   amount: number,
 ): void {
   for (const e of state.entities) {
-    if (e.side !== side || e.hp <= 0 || e.kind !== "troop") continue;
+    if (e.side !== side || e.hp <= 0 || e.kind !== "troop" || isBurrowed(e)) continue;
     if (distance(e, { x, y }) > radius + e.radius) continue;
     e.hp = Math.min(e.maxHp, e.hp + amount);
   }
@@ -767,14 +901,19 @@ export function checkDeploy(
   const eff = effectiveCard(state, side, cardId);
   if (!eff) return "bad-spot";
   const { card, cost } = eff;
+  // A Digger tunnels: any dry tile (or bridge) clear of tower and building
+  // bodies, with no lane or tower-buffer rule.
+  const digs = card.kind === "troop" && card.deployAnywhere === true;
   const validSpot =
     card.kind === "spell"
       ? inArena(x, y)
-      : canDeployTroopAt(side, x, y, openLanes(state, side));
+      : digs
+        ? canDigTo(state, x, y)
+        : canDeployTroopAt(side, x, y, openLanes(state, side));
   if (!validSpot) return "bad-spot";
   // Even once a lane opens, troops can't be dropped right on the enemy's
   // towers — push-ins need a buffer (especially around the king tower).
-  if (card.kind !== "spell" && nearEnemyTower(state, side, x, y)) return "bad-spot";
+  if (card.kind !== "spell" && !digs && nearEnemyTower(state, side, x, y)) return "bad-spot";
   if (!trySpend(me.elixir, cost)) return "no-elixir";
   return "ok";
 }
@@ -805,6 +944,19 @@ export function deployCard(
     if (card.rageSeconds > 0) {
       state.buffZones.push({ side, x, y, radius: card.radius, ttl: card.rageSeconds });
       state.effects.push({ cardId: card.id, x, y, radius: card.radius, ttl: card.rageSeconds });
+    } else if ((card.landDelay ?? 0) > 0) {
+      // A delayed spell (the Comet): the 'spell' event above lets the
+      // renderer telegraph it; the damage lands in sim.tick, landDelay later.
+      state.pendingSpells.push({
+        side,
+        cardId: card.id,
+        x,
+        y,
+        ttl: card.landDelay!,
+        damage: card.damage * levelMultiplier(me.levels, card.id),
+        radius: card.radius,
+        knockback: card.knockback,
+      });
     } else {
       // The Tornado drags enemies into the center BEFORE damage lands,
       // so a well-placed cast bunches a push onto its own blast.
@@ -825,14 +977,21 @@ export function deployCard(
       if (card.heal > 0) healAllies(state, side, card.id, x, y, card.radius, card.heal);
       // The Skeleton Barrel bursts open where it lands — a spell that
       // delivers troops anywhere on the field, enemy side included.
-      if (card.spawnUnit) spawnUnits(state, side, card.spawnUnit, x, y);
+      if (card.spawnUnit) spawnUnits(state, side, card.spawnUnit, x, y, card.id);
     }
   } else if (card.kind === "building") {
     state.events.push({ type: "deploy", side, cardId: card.id, x, y });
     spawnBuilding(state, side, card, x, y);
   } else {
     state.events.push({ type: "deploy", side, cardId: card.id, x, y });
-    spawnTroops(state, side, card, x, y);
+    const units = spawnTroops(state, side, card, x, y);
+    if (card.deployAnywhere) {
+      const secs = burrowSeconds(state, side, x, y);
+      for (const u of units) {
+        u.burrowTimer = secs;
+        u.burrowTotal = secs;
+      }
+    }
     // The Electro Wizard lands with a zap that stuns nearby enemies.
     if (card.id === "electro-wizard") {
       state.events.push({ type: "spell", side, cardId: "zap", x, y });

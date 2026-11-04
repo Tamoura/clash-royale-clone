@@ -24,6 +24,11 @@ function rarityLabel(rarity: string): string {
   return ARABIC ? RARITY_AR[rarity] ?? rarity : cap(rarity);
 }
 
+/** English plural of a card name ("Skeletons" stays, "Pebble Golem" gains an s). */
+function plural(name: string): string {
+  return name.endsWith("s") ? name : `${name}s`;
+}
+
 /** Short tooltip lines describing what a card is and does. */
 export function cardStatLines(id: CardId): string[] {
   const card = getCard(id);
@@ -54,11 +59,16 @@ export function cardStatLines(id: CardId): string[] {
     if (card.pull > 0) bits.push(tr("drags enemies to its center", "يسحب الأعداء إلى مركزها"));
     if (card.spawnUnit) {
       bits.push(
-        tr(`unloads ${cardDisplayName(card.spawnUnit)}s`, `يطلق ${cardDisplayName(card.spawnUnit)}`),
+        tr(`unloads ${plural(cardDisplayName(card.spawnUnit))}`, `يطلق ${cardDisplayName(card.spawnUnit)}`),
       );
     }
     bits.push(tr(`radius ${card.radius}`, `نصف قطر ${card.radius}`));
     lines.push(bits.join(" · "));
+    // Its own line, so the card sheet (which shows lines past the second)
+    // tells kids the Comet takes a moment to fall.
+    if ((card.landDelay ?? 0) > 0) {
+      lines.push(tr(`Lands after ${card.landDelay} s`, `يسقط بعد ${card.landDelay} ث`));
+    }
     return lines;
   }
   const u = card.unit;
@@ -85,17 +95,31 @@ export function cardStatLines(id: CardId): string[] {
   if (u.recoil > 0) traits.push(tr("recoil kick", "ارتداد"));
   if (u.chargeDistance > 0) traits.push(tr("charges (2x)", "شحنة (×2)"));
   if (u.jumpsRiver) traits.push(tr("jumps the river", "يقفز النهر"));
+  if (card.kind === "troop" && card.deployAnywhere) traits.push(tr("Digs to any spot", "يحفر إلى أي مكان"));
+  if (u.towerDamageFactor !== 1) {
+    const pct = Math.round(u.towerDamageFactor * 100);
+    traits.push(tr(`${pct}% damage to towers`, `${pct}٪ ضرر للأبراج`));
+  }
   if (traits.length) lines.push(traits.join(" · "));
   const powers: string[] = [];
   if (u.spawnUnitId) {
     powers.push(
       tr(
-        `summons ${cardDisplayName(u.spawnUnitId)}s`,
+        `summons ${plural(cardDisplayName(u.spawnUnitId))}`,
         `يستدعي ${cardDisplayName(u.spawnUnitId)}`,
       ),
     );
   }
   if (u.deathDamage > 0) powers.push(tr("death bomb", "قنبلة موت"));
+  if (u.deathSpawnId && u.deathSpawnCount > 0) {
+    const n = u.deathSpawnCount;
+    const name = cardDisplayName(u.deathSpawnId);
+    powers.push(
+      card.kind === "building"
+        ? tr(`Releases ${n} ${plural(name)} when it falls`, `يطلق ${n} من ${name} عند سقوطه`)
+        : tr(`Splits into ${n} ${plural(name)}`, `ينقسم إلى ${n} من ${name}`),
+    );
+  }
   if (u.elixirInterval > 0) {
     powers.push(
       tr(`+1 elixir / ${u.elixirInterval}s`, `+1 إكسير كل ${u.elixirInterval} ث`),

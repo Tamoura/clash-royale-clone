@@ -59,5 +59,8 @@ export default defineConfig({
     environment: "node",
     // server/ holds the relay's Node-only glue (static file serving).
     include: ["src/**/*.test.ts", "server/**/*.test.ts"],
+    // The rig bake/budget suites build every troop in both editions and
+    // run near vitest's 5 s default under load; each new troop adds more.
+    testTimeout: 20_000,
   },
 });

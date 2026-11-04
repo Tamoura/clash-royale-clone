@@ -14,6 +14,8 @@ import { createBot, tickBot } from "./bot";
 import { DEFAULT_DECK, type CardId } from "./cards";
 import { tick } from "./sim";
 import { stateChecksum } from "../net/checksum";
+import { PROTOCOL_VERSION } from "../net/protocol";
+import { SIM_VERSION } from "./version";
 
 const DT = 1 / 30;
 const TICKS = 5400;
@@ -75,19 +77,31 @@ function playGolden() {
 }
 
 const FIXTURE = {
+  // Sim v3 (src/game/version.ts). A re-capture must bump SIM_VERSION, and
+  // with it PROTOCOL_VERSION and the replay tape version.
+  simVersion: 3,
   checksums: [
-    320397708, 1785647869, 1180133387, 3610359718, 437718205, 3068141241, 23787248, 3079907122,
-    2165411312, 2657889669, 2010671658, 1952546159, 712712546, 976533762, 1931639174, 1643331491,
-    2360152620, 2360152620,
+    2620067684, 1787666345, 3815984180, 805091827, 239512399, 3720312089, 1563065559, 1540624968,
+    1224906761, 3407687827, 1319925697, 3789842323, 250994524, 404345784, 1649678491, 1649678491,
+    1649678491, 1649678491,
   ],
   result: { winner: "enemy", playerCrowns: 0, enemyCrowns: 3 },
-  entities: 27,
-  deployed: 17,
+  entities: 16,
+  deployed: 15,
 };
 
 describe("golden match", () => {
   it("replays bit-for-bit against the recorded fixture", () => {
-    expect(playGolden()).toEqual(FIXTURE);
+    const { simVersion, ...recorded } = FIXTURE;
+    expect(simVersion).toBe(SIM_VERSION);
+    expect(playGolden()).toEqual(recorded);
+  });
+
+  it("was recorded by the current sim version (re-capture means a version bump)", () => {
+    expect(FIXTURE.simVersion).toBe(SIM_VERSION);
+    expect(SIM_VERSION).toBe(3);
+    // A sim bump is a protocol bump: v2 pages must never meet v3 pages online.
+    expect(PROTOCOL_VERSION).toBe(3);
   });
 
   it("is reproducible run to run", () => {

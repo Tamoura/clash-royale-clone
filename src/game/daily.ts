@@ -1,4 +1,4 @@
-import { CARDS, type CardId } from "./cards";
+import { CARDS, isDeckable, type CardId } from "./cards";
 
 /** Local-time YYYY-MM-DD — the identity of "today's" challenge. */
 export function dateKey(now: Date): string {
@@ -55,7 +55,7 @@ export function isWinCondition(id: CardId): boolean {
 
 /** Does this 8-card deck follow the deck-of-the-day rules? */
 export function isFairDailyDeck(deck: readonly CardId[]): boolean {
-  if (deck.includes("champion")) return false;
+  if (!deck.every(isDeckable)) return false;
   if (!deck.some(isWinCondition)) return false;
   return deck.filter((id) => CARDS[id].kind === "spell").length <= DAILY_MAX_SPELLS;
 }
@@ -68,7 +68,7 @@ export function isFairDailyDeck(deck: readonly CardId[]): boolean {
  */
 export function dailyDeck(key: string): CardId[] {
   const rng = mulberry32(dailySeed(dailyDeckKey(key)));
-  const pool = (Object.keys(CARDS) as CardId[]).filter((id) => id !== "champion");
+  const pool = (Object.keys(CARDS) as CardId[]).filter(isDeckable);
   const deal = (): CardId[] => {
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
