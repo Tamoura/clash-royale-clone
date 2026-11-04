@@ -377,3 +377,27 @@
   text-transform: uppercase;
   letter-spacing: calc(0.06em * var(--tracking));
 }
+/*
+ * Short screens (a phone held sideways): the result panel already scrolls,
+ * and a tip above the buttons would push Play again / OK out of sight. The
+ * tip shrinks to a compact line (its header inline) and its group drops
+ * below the buttons, ahead of the folded Battle report.
+ */
+@media (max-height: 480px) {
+  .ui-coach-tip {
+    align-items: center;
+    padding: var(--sp-1) var(--sp-2);
+  }
+  .ui-coach-tip > .ui-icon {
+    width: 20px;
+    height: 20px;
+  }
+  .ui-coach-tip__text {
+    font-size: var(--fs-xs);
+    line-height: var(--lh-xs);
+  }
+  .ui-coach-tip__text br { display: none; }
+  .ui-coach-tip__text b { margin-inline-end: var(--sp-1); }
+  #overlay .res-panel > .res-extras:has(> .ui-coach-tip) { order: 1; }
+  #overlay .res-panel:has(> .res-extras > .ui-coach-tip) > .res-report { order: 2; }
+}

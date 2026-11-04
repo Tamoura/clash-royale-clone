@@ -5,8 +5,10 @@
  * 1. elixir leaked (4 or more wasted at a full bar): play cards sooner;
  * 2. a tower fell to a building-targeter (Giant, Hog Rider, Balloon…):
  *    a front troop with shooters behind it;
- * 3. no spell cast all match: the deck's group-clearing spell;
- * 4. otherwise one of a few basics, rotating from loss to loss.
+ * 3. no spell cast all match (but some card played): the deck's
+ *    group-clearing spell;
+ * 4. otherwise one of a few basics, rotating from loss to loss (also after
+ *    a forfeit before any card was played: there is nothing to judge).
  *
  * chooseCoachTip() is pure (unit-tested); installCoachTips() watches the
  * match through the hook bus and fills a registerResultExtra slot. It is
@@ -45,6 +47,8 @@ export interface DefeatFacts {
   towerLostToBuildingTargeter: boolean;
   /** Spells I cast this match. */
   spellsCast: number;
+  /** Elixir I spent on cards; 0 means I never played one (e.g. an early forfeit). */
+  elixirSpent: number;
   /** My 8 cards. */
   deck: readonly CardId[];
   /** Advances by one per tip shown, to rotate the basics. */
@@ -109,7 +113,7 @@ export function chooseCoachTip(f: DefeatFacts, nameOf: (id: CardId) => string = 
     };
   }
   const spell = GROUP_SPELLS.find((id) => f.deck.includes(id));
-  if (f.spellsCast === 0 && spell) {
+  if (f.spellsCast === 0 && f.elixirSpent > 0 && spell) {
     const s = nameOf(spell);
     return {
       id: "spell",
@@ -189,6 +193,7 @@ export function defeatFacts(battle: BattleState, mySide: Side, w: DefeatWatch | 
     elixirLeaked: me.stats.elixirLeaked,
     towerLostToBuildingTargeter: w?.lostToBuilding ?? false,
     spellsCast: w?.spells ?? 1,
+    elixirSpent: me.stats.elixirSpent,
     deck: [...me.hand.cards, ...me.hand.queue],
     rotation,
   };

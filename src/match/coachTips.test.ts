@@ -20,6 +20,7 @@ function facts(over: Partial<DefeatFacts> = {}): DefeatFacts {
     elixirLeaked: 0,
     towerLostToBuildingTargeter: false,
     spellsCast: 2,
+    elixirSpent: 30,
     deck: DEFAULT_DECK,
     rotation: 0,
     ...over,
@@ -60,6 +61,13 @@ describe("chooseCoachTip", () => {
     expect(tip({ spellsCast: 0, deck: ["knight", "zap", "giant"] }).en).toBe("Zap clears groups of little troops");
     // A deck with no group spell gets a basic instead of a nag it cannot follow.
     expect(tip({ spellsCast: 0, deck: ["knight", "giant", "rage"] }).id).toMatch(/^basic-/);
+  });
+
+  it("no card played at all (an early forfeit): a basic, not the spell nag", () => {
+    expect(tip({ spellsCast: 0, elixirSpent: 0 }).id).toMatch(/^basic-/);
+    expect(tip({ spellsCast: 0, elixirSpent: 0, rotation: 1 }).id).toBe("basic-1");
+    // Sitting at a full bar is still worth the leak tip.
+    expect(tip({ spellsCast: 0, elixirSpent: 0, elixirLeaked: LEAK_TIP_ELIXIR }).id).toBe("leak");
   });
 
   it("otherwise rotates through the basics", () => {
@@ -135,9 +143,11 @@ describe("watching a match", () => {
   it("builds the chooser's facts from the battle", () => {
     const b = battle();
     b.player.stats.elixirLeaked = 6.5;
+    b.player.stats.elixirSpent = 12;
     const w = createDefeatWatch(b, "player");
     const f = defeatFacts(b, "player", w, 3);
     expect(f.elixirLeaked).toBe(6.5);
+    expect(f.elixirSpent).toBe(12);
     expect(f.spellsCast).toBe(0);
     expect([...f.deck].sort()).toEqual([...DEFAULT_DECK].sort());
     expect(f.rotation).toBe(3);
