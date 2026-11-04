@@ -8,7 +8,7 @@
 // with a one-line reason (origin refused, update required, timeout, ...).
 import { WebSocket } from "ws";
 
-const PROTOCOL_VERSION = 2;
+const PROTOCOL_VERSION = 3; // src/net/protocol.ts PROTOCOL_VERSION (sim v3 is a hard break)
 const TIMEOUT_MS = 20_000;
 const FRAMES = 30;
 const DECK_A = ["knight", "archers", "giant", "fireball", "musketeer", "mini-pekka", "baby-dragon", "arrows"];
