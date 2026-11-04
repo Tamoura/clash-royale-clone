@@ -98,6 +98,7 @@ export type ServerMsg =
   | { t: "peer-paused"; paused: boolean }
   | { t: "resumed"; frames: InputFrame[]; start: StartMsg }
   | { t: "rematch-wait" }
+  | { t: "peer-rematch" }
   | { t: "error"; reason: ErrorReason };
 
 /** Both peers build the same canonical battle: host = player, guest = enemy. */

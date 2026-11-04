@@ -14,6 +14,13 @@ import {
 export interface NetSocket {
   send(data: string): void;
   close(): void;
+  /**
+   * The browser's WebSocket state (0 connecting, 1 open, 2 closing, 3
+   * closed). Sending on a closing socket logs "WebSocket is already in
+   * CLOSING or CLOSED state", so nothing is sent unless it reads 1. Fakes
+   * may leave it out; then the client trusts its own open/close events.
+   */
+  readonly readyState?: number;
   onopen: (() => void) | null;
   onmessage: ((ev: { data: string }) => void) | null;
   onclose: (() => void) | null;
@@ -44,6 +51,8 @@ export interface RoomClientOptions {
 }
 
 export const CONNECT_TIMEOUT_MS = 8000;
+/** WebSocket.OPEN, spelled out so this module also runs where WebSocket is undefined. */
+const WS_OPEN = 1;
 /** Pings sent right after connecting, to seed the relay's RTT estimate. */
 const BURST_PINGS = 5;
 const BURST_GAP_MS = 250;
@@ -88,6 +97,8 @@ export class RoomClient {
   onPeerPaused: ((paused: boolean) => void) | null = null;
   onResumed: ((frames: InputFrame[], start: StartPayload) => void) | null = null;
   onRematchWait: (() => void) | null = null;
+  /** The other player asked for a rematch (we have not, yet). */
+  onPeerRematch: (() => void) | null = null;
   onPong: ((rtt: number) => void) | null = null;
   onError: ((reason: string) => void) | null = null;
   /** Fired once: the socket closed, errored, or never opened in time. */
@@ -95,6 +106,8 @@ export class RoomClient {
 
   private open = false;
   private closed = false;
+  /** leave() was called: nothing more goes out, even before the close lands. */
+  private left = false;
   private readonly backlog: ClientMsg[] = [];
   private readonly rtts: number[] = [];
   private readonly now: () => number;
@@ -121,11 +134,11 @@ export class RoomClient {
     }, opts.connectTimeoutMs ?? CONNECT_TIMEOUT_MS);
 
     socket.onopen = () => {
-      if (this.closed) return;
+      if (this.closed || this.left) return;
       this.open = true;
       this.clearConnectTimer();
-      for (const msg of this.backlog) this.socket.send(JSON.stringify(msg));
-      this.backlog.length = 0;
+      const queued = this.backlog.splice(0);
+      for (const msg of queued) this.send(msg);
       this.startPinging();
     };
     socket.onmessage = (ev) => {
@@ -212,7 +225,7 @@ export class RoomClient {
 
   /** Send a ping now (also done automatically); the reply updates {@link rtt}. */
   ping(): void {
-    if (!this.open) return;
+    if (!this.writable()) return;
     const rtt = this.rtts.length > 0 ? Math.round(this.rtts[this.rtts.length - 1]) : undefined;
     this.send(rtt === undefined ? { t: "ping", at: this.now() } : { t: "ping", at: this.now(), rtt });
   }
@@ -230,16 +243,39 @@ export class RoomClient {
     this.send({ t: "pause", paused });
   }
 
-  /** Leave on purpose: the peer is told at once (no resume grace), then close. */
+  /**
+   * Leave on purpose: the peer is told at once (no resume grace), then close.
+   * Pings and the connect timer stop right away: a browser socket reports
+   * its close a moment later, and a ping sent into that gap would hit a
+   * closing socket. The close is still reported once, when it lands.
+   */
   leave(): void {
-    if (this.open && !this.closed) this.socket.send(JSON.stringify({ t: "leave" } satisfies ClientMsg));
-    this.socket.close();
+    if (this.left) return;
+    if (this.writable()) this.socket.send(JSON.stringify({ t: "leave" } satisfies ClientMsg));
+    this.left = true;
+    this.backlog.length = 0;
+    this.stopTimers();
+    try {
+      this.socket.close();
+    } catch {
+      // already closing
+    }
+  }
+
+  /** The socket is open and ours to write to (see {@link NetSocket.readyState}). */
+  private writable(): boolean {
+    if (!this.open || this.closed || this.left) return false;
+    const state = this.socket.readyState;
+    return state === undefined || state === WS_OPEN;
   }
 
   private send(msg: ClientMsg): void {
-    if (this.closed) return;
-    if (this.open) this.socket.send(JSON.stringify(msg));
-    else this.backlog.push(msg);
+    if (this.closed || this.left) return;
+    if (!this.open) {
+      this.backlog.push(msg);
+      return;
+    }
+    if (this.writable()) this.socket.send(JSON.stringify(msg));
   }
 
   private startPinging(): void {
@@ -254,16 +290,21 @@ export class RoomClient {
     this.connectTimer = null;
   }
 
-  /** Stop timers and report the close exactly once. */
-  private finish(): void {
-    if (this.closed) return;
-    this.closed = true;
-    this.open = false;
+  /** Stop the connect timer and every ping. */
+  private stopTimers(): void {
     this.clearConnectTimer();
     for (const t of this.pingTimers) clearTimeout(t);
     this.pingTimers = [];
     if (this.pingInterval !== null) clearInterval(this.pingInterval);
     this.pingInterval = null;
+  }
+
+  /** Stop timers and report the close exactly once. */
+  private finish(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.open = false;
+    this.stopTimers();
     this.onClose?.();
   }
 
@@ -308,6 +349,9 @@ export class RoomClient {
         break;
       case "rematch-wait":
         this.onRematchWait?.();
+        break;
+      case "peer-rematch":
+        this.onPeerRematch?.();
         break;
       case "error":
         this.onError?.(msg.reason);
