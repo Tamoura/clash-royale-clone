@@ -16,6 +16,7 @@ import "./styles/online.css";
 import { on } from "../app/hooks";
 import type { OnlineSession, OpponentExit, SessionView } from "../net/session";
 import { RESUME_BACKOFF_MS } from "../net/session";
+import { ARABIC } from "../render3d/theme";
 import { button } from "./components";
 import { fmtNum, fmtTime, tr } from "./i18n";
 import { icon, type IconName } from "./icons";
@@ -347,6 +348,7 @@ export class OnlineOverlay {
     if (!this.offerEl) {
       const el = document.createElement("div");
       el.className = "oo-offer";
+      if (ARABIC) el.dir = "rtl"; // icon first, at the right, like the lobby
       el.setAttribute("role", "status");
       el.setAttribute("aria-live", "polite");
       el.hidden = true;
