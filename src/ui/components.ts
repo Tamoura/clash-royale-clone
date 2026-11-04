@@ -302,6 +302,35 @@ export interface ConfirmOpts {
   cancelLabel: string;
   /** Style OK as destructive (forfeit, reset...). */
   danger?: boolean;
+  /**
+   * Which answer is the big yellow (CTA) button and takes the first focus.
+   * "cancel" nudges toward staying put (e.g. "Keep learning" over "Skip").
+   * Default: OK, or Cancel-focused with no CTA for a danger question.
+   */
+  emphasis?: "ok" | "cancel";
+}
+
+/** How the two confirm buttons look, and which one starts focused. */
+export interface ConfirmLook {
+  ok: ButtonVariant;
+  cancel: ButtonVariant;
+  /** OK carries the destructive red. */
+  okDanger: boolean;
+  focus: "ok" | "cancel";
+}
+
+/** The confirm dialog's button styling for these options (pure). */
+export function confirmLook(o: Pick<ConfirmOpts, "danger" | "emphasis">): ConfirmLook {
+  const okDanger = !!o.danger;
+  if (o.emphasis === "cancel") {
+    return { ok: okDanger ? "primary" : "secondary", cancel: "cta", okDanger, focus: "cancel" };
+  }
+  if (o.emphasis === "ok") {
+    return { ok: okDanger ? "primary" : "cta", cancel: "secondary", okDanger, focus: "ok" };
+  }
+  return okDanger
+    ? { ok: "primary", cancel: "secondary", okDanger, focus: "cancel" }
+    : { ok: "cta", cancel: "secondary", okDanger, focus: "ok" };
 }
 
 /** A modal yes/no question. Resolves true on OK; false on Cancel, Esc or a scrim tap. */
@@ -322,9 +351,13 @@ export function confirm(o: ConfirmOpts): Promise<boolean> {
       opener?.focus?.();
       resolve(ok);
     };
-    const cancel = button({ variant: "secondary", label: o.cancelLabel, onClick: () => finish(false) });
-    const ok = button({ variant: o.danger ? "primary" : "cta", label: o.okLabel, onClick: () => finish(true) });
-    if (o.danger) ok.classList.add("ui-btn--danger");
+    const look = confirmLook(o);
+    if (o.emphasis) box.dataset.emphasis = o.emphasis;
+    const cancel = button({ variant: look.cancel, label: o.cancelLabel, onClick: () => finish(false) });
+    cancel.classList.add("ui-modal__cancel");
+    const ok = button({ variant: look.ok, label: o.okLabel, onClick: () => finish(true) });
+    ok.classList.add("ui-modal__ok");
+    if (look.okDanger) ok.classList.add("ui-btn--danger");
     actions.append(cancel, ok);
     box.append(title, el("p", "ui-modal__body", o.body), actions);
     root.appendChild(box);
@@ -339,8 +372,8 @@ export function confirm(o: ConfirmOpts): Promise<boolean> {
     };
     document.addEventListener("keydown", onKey, true);
     document.body.appendChild(root);
-    // Destructive questions start on Cancel; others on OK.
-    (o.danger ? cancel : ok).focus();
+    // Destructive questions (and Cancel-emphasis ones) start on Cancel; others on OK.
+    (look.focus === "cancel" ? cancel : ok).focus();
   });
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { btnClass, clampProgress, segmentedNext, trapOrder } from "./components";
+import { btnClass, clampProgress, confirmLook, segmentedNext, trapOrder } from "./components";
 
 describe("btnClass", () => {
   it("combines the base, variant and size classes", () => {
@@ -53,5 +53,34 @@ describe("trapOrder", () => {
   });
   it("returns -1 with nothing focusable", () => {
     expect(trapOrder(0, -1, false)).toBe(-1);
+  });
+});
+
+describe("confirmLook", () => {
+  it("keeps the old looks with no emphasis", () => {
+    expect(confirmLook({})).toEqual({ ok: "cta", cancel: "secondary", okDanger: false, focus: "ok" });
+    expect(confirmLook({ danger: true })).toEqual({ ok: "primary", cancel: "secondary", okDanger: true, focus: "cancel" });
+  });
+  it("emphasis 'cancel' makes Cancel the yellow CTA and focuses it", () => {
+    expect(confirmLook({ emphasis: "cancel" })).toEqual({ ok: "secondary", cancel: "cta", okDanger: false, focus: "cancel" });
+    // A destructive OK keeps its red but loses the focus to Cancel.
+    expect(confirmLook({ emphasis: "cancel", danger: true })).toEqual({
+      ok: "primary",
+      cancel: "cta",
+      okDanger: true,
+      focus: "cancel",
+    });
+  });
+  it("emphasis 'ok' makes OK the CTA (red when destructive) and focuses it", () => {
+    expect(confirmLook({ emphasis: "ok" })).toEqual({ ok: "cta", cancel: "secondary", okDanger: false, focus: "ok" });
+    expect(confirmLook({ emphasis: "ok", danger: true })).toEqual({ ok: "primary", cancel: "secondary", okDanger: true, focus: "ok" });
+  });
+  it("never makes both buttons the CTA", () => {
+    for (const emphasis of [undefined, "ok", "cancel"] as const) {
+      for (const danger of [false, true]) {
+        const l = confirmLook({ emphasis, danger });
+        expect(l.ok === "cta" && l.cancel === "cta").toBe(false);
+      }
+    }
   });
 });

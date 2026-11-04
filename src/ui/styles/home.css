@@ -1431,6 +1431,24 @@
   font-size: var(--fs-xs);
   line-height: var(--lh-xs);
 }
+/* A friend's invite waits for the edition pick (editionGate.ts joiningChip). */
+.v2-gate-join {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 2px var(--sp-2);
+  max-width: 100%;
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface-2));
+  box-shadow: inset 0 0 0 2px var(--accent);
+  color: var(--on-surface);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+.v2-gate-join .ui-icon { width: 22px; height: 22px; flex: none; }
 .v2-gate-cards {
   display: grid;
   grid-template-columns: 1fr 1fr;
