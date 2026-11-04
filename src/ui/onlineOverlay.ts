@@ -9,8 +9,11 @@
  * It also keeps the result screen honest (match/online.ts places it there
  * through registerResultExtra): a bouncing "Your friend wants a rematch!"
  * banner with its own Rematch button when the other player asks first,
- * and "Your friend left the match" (or "Your opponent gave up") with a
- * Find-a-new-game button once they are gone.
+ * and "Your friend left the match" (or "Your opponent gave up", or "You
+ * gave up this match" for the forfeiter) with a Find-a-new-game button
+ * once a rematch can't happen. Then the result's own Rematch button steps
+ * aside (online.css, keyed on this line's data-rematch), since it could
+ * only open the lobby too.
  */
 import "./styles/online.css";
 import { on } from "../app/hooks";
@@ -31,10 +34,18 @@ export interface OverlayActions {
   onHome(): void;
   onLobby(): void;
   onLeave(): void;
-  /** The opponent left mid-match (the result screen shows our win). */
-  onOpponentLeft(exit: OpponentExit | null): void;
+  /** The opponent left mid-match (the result screen shows our win); quick = a quick match. */
+  onOpponentLeft(exit: OpponentExit | null, quick: boolean): void;
   /** Accept the other player's rematch offer (the result banner's button). */
   onRematch(): void;
+}
+
+/** The mid-match banner when the opponent quits: quick = a quick-match stranger. */
+export function opponentLeftBanner(exit: OpponentExit | null, quick: boolean): string {
+  if (exit === "gave-up") return tr("Your opponent gave up — you win!", "استسلم خصمك — لقد فزت!");
+  return quick
+    ? tr("Your opponent left — you win!", "غادر خصمك — لقد فزت!")
+    : tr("Your friend left — you win!", "غادر صديقك — لقد فزت!");
 }
 
 /** What the result screen says about the other player after the match. */
@@ -45,7 +56,9 @@ export type ResultOffer =
   /** They forfeited mid-match. */
   | "gave-up"
   /** They left: dropped past the grace or closed the page mid-match, or left after it. */
-  | "left";
+  | "left"
+  /** We forfeited (the forfeiter's own result): no rematch, a new game instead. */
+  | "forfeit";
 
 /** The session facts the result line depends on. */
 export interface OfferInput {
@@ -58,9 +71,21 @@ export interface OfferInput {
 export function resultOffer(i: OfferInput): ResultOffer {
   if (i.view.t !== "ended") return "none";
   if (i.view.reason === "opponent-left") return i.opponentExit === "gave-up" ? "gave-up" : "left";
+  if (i.view.reason === "forfeit") return "forfeit";
   if (i.view.reason !== "finished") return "none";
   if (i.peerWantsRematch) return "rematch";
   return i.opponentExit ? "left" : "none";
+}
+
+/**
+ * Whether the result screen's own Rematch button (render3d/result.ts) can
+ * still rematch. When it can't, restartOnline() would only open the lobby,
+ * so the button is hidden (online.css) and the result line carries "Find a
+ * new game" instead. While our rematch request waits it keeps its place
+ * (the waiting card covers it).
+ */
+export function resultRematchOpen(i: { view: SessionView; canRematch: boolean }): boolean {
+  return i.canRematch || i.view.t === "rematchWait";
 }
 
 /** Words, icon and button for a result line; quick = a quick-match stranger. */
@@ -90,6 +115,8 @@ export function offerContent(
         button: findGame,
         action: "lobby",
       };
+    case "forfeit":
+      return { text: tr("You gave up this match", "استسلمت في هذه المباراة"), icon: "flag", button: findGame, action: "lobby" };
     case "none":
       return null;
   }
@@ -115,8 +142,11 @@ export function rttBand(ms: number): "good" | "ok" | "bad" {
   return ms < 120 ? "good" : ms < 250 ? "ok" : "bad";
 }
 
-/** What the overlay card shows for a session view (null: no card). */
-export function overlayCard(v: SessionView, prev: SessionView["t"] | null): Card | null {
+/**
+ * What the overlay card shows for a session view (null: no card). quick: a
+ * quick-match stranger ("your opponent"); a friend game says "your friend".
+ */
+export function overlayCard(v: SessionView, prev: SessionView["t"] | null, quick = false): Card | null {
   switch (v.t) {
     case "stalled": {
       if (v.ms < STALL_SHOW_MS) return null;
@@ -168,7 +198,9 @@ export function overlayCard(v: SessionView, prev: SessionView["t"] | null): Card
         key: "rematch",
         icon: "spinner",
         title: tr("Waiting for rematch…", "بانتظار مباراة الإعادة…"),
-        body: tr("Your opponent needs to tap Rematch too.", "يجب أن يضغط خصمك «إعادة» أيضًا."),
+        body: quick
+          ? tr("Your opponent needs to tap Rematch too.", "يجب أن يضغط خصمك «مباراة ثأرية» أيضًا.")
+          : tr("Your friend needs to tap Rematch too.", "يجب أن يضغط صديقك «مباراة ثأرية» أيضًا."),
         actions: ["cancel"],
         blocking: true,
         tone: "wait",
@@ -237,7 +269,7 @@ export function overlayCard(v: SessionView, prev: SessionView["t"] | null): Card
           return {
             key: "left-rematch",
             icon: "handshake",
-            title: tr("Your opponent left", "غادر خصمك"),
+            title: quick ? tr("Your opponent left", "غادر خصمك") : tr("Your friend left", "غادر صديقك"),
             body: tr("No rematch this time.", "لا مباراة إعادة هذه المرة."),
             actions: ["home", "lobby"],
             blocking: true,
@@ -289,6 +321,8 @@ export class OnlineOverlay {
   /** The result screen's online line (see {@link resultLine}). */
   private offerEl: HTMLElement | null = null;
   private offerKey = "";
+  /** The line's data-rematch: "no" hides the result's own Rematch button. */
+  private rematchKey = "";
 
   constructor(private readonly actions: OverlayActions) {
     const root = document.createElement("div");
@@ -328,6 +362,7 @@ export class OnlineOverlay {
     this.unsub = null;
     this.session = null;
     this.showOffer("none", false);
+    this.showRematch(true);
     this.cardKey = "";
     this.pipKey = "";
     this.lastView = null;
@@ -355,6 +390,7 @@ export class OnlineOverlay {
       this.offerEl = el;
     }
     this.offerKey = "";
+    this.rematchKey = "";
     this.renderOffer();
     return this.offerEl;
   }
@@ -363,10 +399,22 @@ export class OnlineOverlay {
     const s = this.session;
     if (!s || !s.inMatch) {
       this.showOffer("none", false);
+      this.showRematch(true);
       return;
     }
-    const offer = resultOffer({ view: s.view(), peerWantsRematch: s.peerWantsRematch, opponentExit: s.opponentExit });
+    const view = s.view();
+    const offer = resultOffer({ view, peerWantsRematch: s.peerWantsRematch, opponentExit: s.opponentExit });
     this.showOffer(offer, s.quickMatch);
+    this.showRematch(resultRematchOpen({ view, canRematch: s.canRematch() }));
+  }
+
+  /** Tell the result panel whether its own Rematch button still rematches. */
+  private showRematch(open: boolean): void {
+    const el = this.offerEl;
+    const key = open ? "yes" : "no";
+    if (!el || key === this.rematchKey) return;
+    this.rematchKey = key;
+    el.dataset.rematch = key;
   }
 
   private showOffer(offer: ResultOffer, quick: boolean): void {
@@ -416,10 +464,10 @@ export class OnlineOverlay {
       this.prevView = this.lastView;
       this.lastView = v.t;
       if (v.t === "ended" && v.reason === "opponent-left" && this.prevView !== "rematchWait") {
-        this.actions.onOpponentLeft(s.opponentExit);
+        this.actions.onOpponentLeft(s.opponentExit, s.quickMatch);
       }
     }
-    this.showCard(overlayCard(v, this.prevView));
+    this.showCard(overlayCard(v, this.prevView, s.quickMatch));
     this.showPip(PIP_VIEWS.has(v.t) ? (v.t === "reconnecting" ? -1 : s.rtt) : null);
   }
 

@@ -6,18 +6,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CardId } from "../game/cards";
 import { setCardOverrides } from "../game/cards";
-import { offerContent, resultOffer } from "../ui/onlineOverlay";
+import { offerContent, opponentLeftBanner, overlayCard, resultOffer, resultRematchOpen } from "../ui/onlineOverlay";
 import { pair, runUntil, type Pair } from "./memRelay.testkit";
-import type { Loadout, MatchMode, ServerMsg } from "./protocol";
+import { PROTOCOL_VERSION, type Loadout, type MatchMode, type ServerMsg } from "./protocol";
 import { RoomClient, type NetSocket } from "./roomClient";
 import { RoomHub, type Outbound } from "./rooms";
 import { stateChecksum } from "./checksum";
+import indexHtml from "../../index.html?raw";
+import resultSource from "../render3d/result.ts?raw";
 
 const DECK_A = ["knight", "archers"] as CardId[];
 const DECK_B = ["giant", "zap"] as CardId[];
 const MODE: MatchMode = { elixirRate: 1, mirror: false };
 const LOADOUT: Loadout = { name: "Sara", crest: 2, tower: "princess", ability: null };
-const V2 = { loadout: LOADOUT, v: 2 };
+const OPTS = { loadout: LOADOUT, v: PROTOCOL_VERSION };
 
 function hubWithMatch(): { hub: RoomHub; clock: { t: number } } {
   const clock = { t: 0 };
@@ -28,8 +30,8 @@ function hubWithMatch(): { hub: RoomHub; clock: { t: number } } {
     token: () => (++n).toString(16).padStart(32, "0"),
     seed: () => 7 + n,
   });
-  hub.create("host1", DECK_A, MODE, V2);
-  hub.join("guest1", "LION42", DECK_B, V2);
+  hub.create("host1", DECK_A, MODE, OPTS);
+  hub.join("guest1", "LION42", DECK_B, OPTS);
   return { hub, clock };
 }
 
@@ -158,8 +160,8 @@ describe("result line", () => {
     expect(resultOffer({ view: ended("finished"), peerWantsRematch: false, opponentExit: "left" })).toBe("left");
     expect(resultOffer({ view: ended("opponent-left"), peerWantsRematch: false, opponentExit: "gave-up" })).toBe("gave-up");
     expect(resultOffer({ view: ended("opponent-left"), peerWantsRematch: false, opponentExit: "left" })).toBe("left");
-    // The forfeiter's own result, and no-contest endings, say nothing here.
-    expect(resultOffer({ view: ended("forfeit"), peerWantsRematch: false, opponentExit: null })).toBe("none");
+    // The forfeiter's own result offers a new game; no-contest endings say nothing here.
+    expect(resultOffer({ view: ended("forfeit"), peerWantsRematch: false, opponentExit: null })).toBe("forfeit");
     expect(resultOffer({ view: ended("desync"), peerWantsRematch: false, opponentExit: null })).toBe("none");
   });
 
@@ -174,6 +176,91 @@ describe("result line", () => {
     expect(offerContent("left", false)).toMatchObject({ text: "غادر صديقك المباراة", button: "ابحث عن مباراة جديدة", action: "lobby" });
     expect(offerContent("left", true)?.text).toBe("غادر خصمك المباراة");
     expect(offerContent("gave-up", false)).toMatchObject({ text: "استسلم خصمك", action: "lobby" });
+    expect(offerContent("forfeit", false)).toMatchObject({ text: "استسلمت في هذه المباراة", icon: "flag", action: "lobby" });
     expect(offerContent("none", false)).toBeNull();
+  });
+});
+
+describe("result: the result screen's own Rematch button", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    setCardOverrides(null);
+  });
+  const open = (s: Pair["host"]): boolean => resultRematchOpen({ view: s.view(), canRematch: s.canRematch() });
+
+  it("stays while a rematch can happen, and while ours waits", () => {
+    const p = pair();
+    finish(p);
+    expect(open(p.host)).toBe(true);
+    expect(open(p.guest)).toBe(true);
+    p.host.rematch();
+    p.relay.pump();
+    expect(p.host.view().t).toBe("rematchWait");
+    expect(open(p.host)).toBe(true);
+    expect(open(p.guest)).toBe(true);
+  });
+
+  it("steps aside once the other player has left after the match", () => {
+    const p = pair();
+    finish(p);
+    p.host.leave();
+    p.relay.pump();
+    expect(open(p.guest)).toBe(false);
+    // ...and the line above carries the way to a new game.
+    expect(offerContent(resultOffer({ view: p.guest.view(), peerWantsRematch: false, opponentExit: p.guest.opponentExit }), false)?.action).toBe("lobby");
+  });
+
+  it("steps aside on both screens after a forfeit, each with Find a new game", () => {
+    const p = pair();
+    runUntil(p, 20);
+    p.guest.forfeit();
+    p.relay.pump();
+    for (const s of [p.host, p.guest]) {
+      expect(open(s)).toBe(false);
+      const line = resultOffer({ view: s.view(), peerWantsRematch: s.peerWantsRematch, opponentExit: s.opponentExit });
+      expect(offerContent(line, s.quickMatch)).toMatchObject({ action: "lobby", button: "ابحث عن مباراة جديدة" });
+    }
+    expect(resultOffer({ view: p.host.view(), peerWantsRematch: false, opponentExit: p.host.opponentExit })).toBe("gave-up");
+    expect(resultOffer({ view: p.guest.view(), peerWantsRematch: false, opponentExit: null })).toBe("forfeit");
+  });
+
+  it("is hidden by online.css using result.ts's own class names", () => {
+    // online.css (#overlay .res-panel:has(.oo-offer[data-rematch="no"])
+    // .res-again / .res-pair) reaches into the result panel, which is
+    // render3d/result.ts, another package's file: fail loudly here if those
+    // names ever change. (CSS reads as "" under vitest, so the rule itself
+    // is checked in the browser.)
+    const [result, html] = [resultSource, indexHtml];
+    expect(result).toContain('el("div", "res-panel")');
+    expect(result).toContain('el("div", "res-pair")');
+    expect(result).toContain('again.classList.add("res-again")');
+    expect(result).toMatch(/pair\.append\(again, ok\)/);
+    expect(html).toContain('<div id="overlay">');
+  });
+});
+
+describe("friend or opponent: the overlay's words", () => {
+  it("names a friend in friend games and an opponent in quick match", () => {
+    const wait = { t: "rematchWait" } as const;
+    expect(overlayCard(wait, "ended", false)?.body).toBe("يجب أن يضغط صديقك «مباراة ثأرية» أيضًا.");
+    expect(overlayCard(wait, "ended", true)?.body).toBe("يجب أن يضغط خصمك «مباراة ثأرية» أيضًا.");
+    const left = { t: "ended", reason: "opponent-left" } as const;
+    expect(overlayCard(left, "rematchWait", false)?.title).toBe("غادر صديقك");
+    expect(overlayCard(left, "rematchWait", true)?.title).toBe("غادر خصمك");
+    expect(opponentLeftBanner("left", false)).toBe("غادر صديقك — لقد فزت!");
+    expect(opponentLeftBanner(null, false)).toBe("غادر صديقك — لقد فزت!");
+    expect(opponentLeftBanner("left", true)).toBe("غادر خصمك — لقد فزت!");
+    // Forfeit reads "opponent" in both (the spec's "Your opponent gave up", like the result line).
+    expect(opponentLeftBanner("gave-up", false)).toBe("استسلم خصمك — لقد فزت!");
+    expect(opponentLeftBanner("gave-up", true)).toBe("استسلم خصمك — لقد فزت!");
+  });
+
+  it("calls the Rematch button by its own name", () => {
+    // The waiting card tells the other player to tap the button the result shows.
+    const button = offerContent("rematch", false)!.button;
+    expect(overlayCard({ t: "rematchWait" }, "ended", false)?.body).toContain(`«${button}»`);
+    expect(overlayCard({ t: "rematchWait" }, "ended", true)?.body).toContain(`«${button}»`);
+    expect(offerContent("rematch", false)!.text).toContain(`«${button}»`);
   });
 });

@@ -11,7 +11,8 @@
  * A forfeit leaves the room at once but keeps the session (and its seat)
  * until one of those exits, so main.ts settles it as an online loss. The
  * result screen gets a live line from the overlay: the other player's
- * rematch offer, or that they gave up or left.
+ * rematch offer, or that they gave up or left (or that we gave up), with
+ * Find a new game; then the result's own Rematch button steps aside.
  */
 import type { Side } from "../game/arena";
 import type { CardId } from "../game/cards";
@@ -27,7 +28,7 @@ import type { OpponentLabel } from "../render3d/hud";
 import { showBanner, showVersus, startCountdown } from "../ui/banner";
 import { getPrefs, sanitizePlayerName } from "../ui/prefs";
 import { tr } from "../ui/i18n";
-import { OnlineOverlay } from "../ui/onlineOverlay";
+import { OnlineOverlay, opponentLeftBanner } from "../ui/onlineOverlay";
 import { GAME_MODES, type GameMode } from "./modes";
 
 /** Key of the friendly-win counter (online wins, never trophies). */
@@ -323,12 +324,7 @@ function ensureOverlay(ctx: AppCtx): OnlineOverlay {
       leaveOnline();
       ctx.openHome();
     },
-    onOpponentLeft: (exit) =>
-      showBanner(
-        exit === "gave-up"
-          ? tr("Your opponent gave up — you win!", "استسلم خصمك — لقد فزت!")
-          : tr("Your opponent left — you win!", "غادر خصمك — لقد فزت!"),
-      ),
+    onOpponentLeft: (exit, quick) => showBanner(opponentLeftBanner(exit, quick)),
     onRematch: () => restartOnline(ctx),
   });
   return overlay;

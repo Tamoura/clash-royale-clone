@@ -609,12 +609,27 @@
     ooOfferBounce 1.6s var(--ease-out) var(--dur-slow) infinite;
 }
 .oo-offer[data-kind="left"],
-.oo-offer[data-kind="gave-up"] {
+.oo-offer[data-kind="gave-up"],
+.oo-offer[data-kind="forfeit"] {
   box-shadow: inset 0 0 0 2px var(--accent);
   animation: lobbyPop var(--dur-slow) var(--ease-pop) both;
 }
 .oo-offer.is-still {
   animation: none;
+}
+/* The result's own Rematch button (render3d/result.ts: .res-panel,
+   .res-pair, .res-again) can only rematch while the session can. Once the
+   other player is gone, or after our own forfeit, it would just open the
+   lobby, so it steps aside (the overlay sets data-rematch="no" on the line
+   above, which carries Find a new game) and OK takes the whole row. Live:
+   it follows the session while the result is up. Browsers without :has()
+   keep the old button, which still opens the lobby. rematch.test.ts pins
+   these class names against result.ts. */
+#overlay .res-panel:has(.oo-offer[data-rematch="no"]) .res-again {
+  display: none;
+}
+#overlay .res-panel:has(.oo-offer[data-rematch="no"]) .res-pair {
+  grid-template-columns: 1fr;
 }
 @keyframes ooOfferBounce {
   0%, 60%, 100% { transform: none; }
