@@ -89,6 +89,8 @@ interface Session {
   pointerIsDown: boolean;
   /** A step advanced while the pointer was down: guard 350 ms past its release too. */
   swallowAfterUp: boolean;
+  /** A step advanced under a finger and its new layout is not drawn yet. */
+  guardArmed: boolean;
   viewKey: string;
   textKey: string;
   anims: Animation[];
@@ -690,10 +692,16 @@ function feed(s: Session, input: Parameters<Tutorial["feed"]>[0], b: BattleState
   // the glass or just lifted: the click it fires next must not land on
   // whatever the new step put under it.
   if (s.pointerIsDown || now - s.pointerDownAt < 600) {
-    s.swallowUntil = now + 350;
+    s.swallowUntil = now + SWALLOW_MS;
     s.swallowAfterUp = s.pointerIsDown;
+    // On a slow frame the new step can take a while to appear: the guard
+    // runs again from the moment it is drawn (see the frame listener).
+    s.guardArmed = true;
   }
 }
+
+/** How long the overlay ignores taps and clicks after a step changes under a finger. */
+const SWALLOW_MS = 350;
 
 /**
  * Start (or resume at the saved step) the guided battle. Already done:
@@ -735,6 +743,7 @@ function runTutorial(ctx: AppCtx): void {
     pointerDownAt: -Infinity,
     pointerIsDown: false,
     swallowAfterUp: false,
+    guardArmed: false,
     viewKey: "",
     textKey: "",
     anims: [],
@@ -770,7 +779,7 @@ function runTutorial(ctx: AppCtx): void {
     s.pointerIsDown = false;
     if (s.swallowAfterUp) {
       s.swallowAfterUp = false;
-      s.swallowUntil = Math.max(s.swallowUntil, performance.now() + 350);
+      s.swallowUntil = Math.max(s.swallowUntil, performance.now() + SWALLOW_MS);
     }
   };
   window.addEventListener("pointerdown", onDown, true);
@@ -822,6 +831,10 @@ function runTutorial(ctx: AppCtx): void {
       if (!battle || battle !== s.battle) return;
       if (!s.ended) feed(s, { type: "frame" }, battle);
       render(s, battle);
+      if (s.guardArmed) {
+        s.guardArmed = false;
+        s.swallowUntil = Math.max(s.swallowUntil, performance.now() + SWALLOW_MS);
+      }
     }),
     () => window.removeEventListener("resize", onResize),
     () => {
