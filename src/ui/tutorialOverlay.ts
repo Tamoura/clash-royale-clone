@@ -308,6 +308,8 @@ let inviteAnswered = false;
  */
 function offerInvite(ctx: AppCtx, code: string): void {
   inviteAnswered = true;
+  // Home behind the sheet: the arena holds still while the kid decides.
+  ctx.openHome();
   const content = document.createElement("div");
   content.className = "tut-invite";
   const art = document.createElement("div");
