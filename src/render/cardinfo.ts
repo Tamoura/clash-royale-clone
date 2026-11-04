@@ -24,6 +24,11 @@ function rarityLabel(rarity: string): string {
   return ARABIC ? RARITY_AR[rarity] ?? rarity : cap(rarity);
 }
 
+/** English plural of a card name ("Skeletons" stays, "Pebble Golem" gains an s). */
+function plural(name: string): string {
+  return name.endsWith("s") ? name : `${name}s`;
+}
+
 /** Short tooltip lines describing what a card is and does. */
 export function cardStatLines(id: CardId): string[] {
   const card = getCard(id);
@@ -54,7 +59,7 @@ export function cardStatLines(id: CardId): string[] {
     if (card.pull > 0) bits.push(tr("drags enemies to its center", "يسحب الأعداء إلى مركزها"));
     if (card.spawnUnit) {
       bits.push(
-        tr(`unloads ${cardDisplayName(card.spawnUnit)}s`, `يطلق ${cardDisplayName(card.spawnUnit)}`),
+        tr(`unloads ${plural(cardDisplayName(card.spawnUnit))}`, `يطلق ${cardDisplayName(card.spawnUnit)}`),
       );
     }
     bits.push(tr(`radius ${card.radius}`, `نصف قطر ${card.radius}`));
@@ -90,12 +95,21 @@ export function cardStatLines(id: CardId): string[] {
   if (u.spawnUnitId) {
     powers.push(
       tr(
-        `summons ${cardDisplayName(u.spawnUnitId)}s`,
+        `summons ${plural(cardDisplayName(u.spawnUnitId))}`,
         `يستدعي ${cardDisplayName(u.spawnUnitId)}`,
       ),
     );
   }
   if (u.deathDamage > 0) powers.push(tr("death bomb", "قنبلة موت"));
+  if (u.deathSpawnId && u.deathSpawnCount > 0) {
+    const n = u.deathSpawnCount;
+    const name = cardDisplayName(u.deathSpawnId);
+    powers.push(
+      card.kind === "building"
+        ? tr(`Releases ${n} ${plural(name)} when it falls`, `يطلق ${n} من ${name} عند سقوطه`)
+        : tr(`Splits into ${n} ${plural(name)}`, `ينقسم إلى ${n} من ${name}`),
+    );
+  }
   if (u.elixirInterval > 0) {
     powers.push(
       tr(`+1 elixir / ${u.elixirInterval}s`, `+1 إكسير كل ${u.elixirInterval} ث`),

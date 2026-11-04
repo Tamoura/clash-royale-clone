@@ -96,6 +96,10 @@ export interface Entity {
   deathRadius: number;
   /** Card whose units this entity periodically summons (null = none). */
   spawnUnitId: CardId | null;
+  /** Card whose single units burst out where this entity dies (null = none). */
+  deathSpawnId: CardId | null;
+  /** How many units of deathSpawnId burst out (0 = none). */
+  deathSpawnCount: number;
   /** Seconds between summons. */
   spawnInterval: number;
   /** Seconds until the next summon (unused when spawnUnitId is null). */
@@ -332,6 +336,8 @@ function makeTower(
     deathDamage: 0,
     deathRadius: 0,
     spawnUnitId: null,
+    deathSpawnId: null,
+    deathSpawnCount: 0,
     spawnInterval: 0,
     spawnTimer: 0,
     elixirInterval: 0,
@@ -566,6 +572,8 @@ function spawnTroops(
       deathDamage: card.unit.deathDamage * mult,
       deathRadius: card.unit.deathRadius,
       spawnUnitId: card.unit.spawnUnitId,
+      deathSpawnId: card.unit.deathSpawnId,
+      deathSpawnCount: card.unit.deathSpawnCount,
       spawnInterval: card.unit.spawnInterval,
       spawnTimer: FIRST_SPAWN_DELAY,
       elixirInterval: 0,
@@ -577,6 +585,24 @@ function spawnTroops(
   }
   state.entities.push(...spawned);
   return spawned;
+}
+
+/**
+ * The units a dying entity bursts into where it fell (a Stone Golem's two
+ * Pebble Golems, a Tombstone's last skeletons), one unit per spawn offset,
+ * at the parent's level and credited to the parent's card.
+ */
+export function spawnDeathUnits(state: BattleState, e: Entity): Entity[] {
+  if (!e.deathSpawnId || e.deathSpawnCount <= 0) return [];
+  const card = getCard(e.deathSpawnId);
+  if (card.kind !== "troop") return [];
+  const units = spawnTroops(state, e.side, card, e.x, e.y, e.sourceCardId ?? card.id, spawnOffsets(e.deathSpawnCount));
+  // A parent dying at the edge must not drop its spawn off the field.
+  for (const u of units) {
+    u.x = Math.min(ARENA_WIDTH - u.radius, Math.max(u.radius, u.x));
+    u.y = Math.min(ARENA_HEIGHT - u.radius, Math.max(u.radius, u.y));
+  }
+  return units;
 }
 
 function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: number, y: number): void {
@@ -619,6 +645,8 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
     deathDamage: u.deathDamage,
     deathRadius: u.deathRadius,
     spawnUnitId: u.spawnUnitId,
+    deathSpawnId: u.deathSpawnId,
+    deathSpawnCount: u.deathSpawnCount,
     spawnInterval: u.spawnInterval,
     spawnTimer: FIRST_SPAWN_DELAY,
     elixirInterval: u.elixirInterval,

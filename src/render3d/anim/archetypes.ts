@@ -73,6 +73,9 @@ export const ARCHETYPES: Readonly<Record<CardId, Archetype>> = {
   tornado: A("cast", "light"),
   "skeleton-barrel": A("chop", "light"),
   mirror: A("cast", "light"),
+  // Card wave 3: a boulder that slams buildings, and the pebbles it bursts into.
+  "stone-golem": A("slam", "heavy"),
+  "pebble-golem": A("slam", "medium"),
 };
 
 /**

@@ -13,12 +13,15 @@ const TICK = 1 / 30;
 const MAX_T = BATTLE_DURATION + OVERTIME_DURATION + 2;
 // Seed-pairs per candidate; each plays both orientations. `npm run balance -- 64`
 const GAMES = Number(process.argv[2]) > 0 ? Number(process.argv[2]) : 16;
-// Full roster sweep: every troop and building measured as THE win-con of an
-// otherwise stock deck. (The Studio champion is player-defined, so skipped.)
-import { CARDS } from "../src/game/cards";
+// Full roster sweep: every deckable troop and building measured as THE
+// win-con of an otherwise stock deck. (The Studio champion is player-defined
+// and tokens never sit in a deck, so both are skipped; a card the base deck
+// already holds would make an illegal duplicate deck, so it is skipped too.)
+// For random decks, spells and tower troops use `npm run lab`.
+import { CARDS, isDeckable } from "../src/game/cards";
 const CANDIDATES: CardId[] = (Object.keys(CARDS) as CardId[]).filter((id) => {
   const c = CARDS[id];
-  return (c.kind === "troop" || c.kind === "building") && id !== "champion";
+  return (c.kind === "troop" || c.kind === "building") && isDeckable(id) && !DEFAULT_DECK.includes(id);
 });
 
 function swapIn(deck: CardId[], slot: number, card: CardId): CardId[] {

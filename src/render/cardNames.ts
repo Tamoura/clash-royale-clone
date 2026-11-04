@@ -51,6 +51,8 @@ const ISLAMIC_NAME: Record<CardId, string> = {
   "skeleton-barrel": "برميل الميليشيا",
   mirror: "مرآة",
   champion: "بطل",
+  "stone-golem": "حارس الحجر",
+  "pebble-golem": "حصاة",
 };
 
 /** The card's name for the active mode (Islamic name in Arabic theme). */

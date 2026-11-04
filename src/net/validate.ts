@@ -1,4 +1,4 @@
-import { CARDS, type CardId } from "../game/cards";
+import { CARDS, isDeckable, type CardId } from "../game/cards";
 import { ARENA_HEIGHT, ARENA_WIDTH, type Side } from "../game/arena";
 import { TOWER_TROOP_IDS, type TowerTroopId } from "../game/towers";
 import { ABILITY_IDS, type AbilityId } from "../game/abilities";
@@ -30,9 +30,12 @@ const MAX_NAME_INPUT = 64;
 
 export type ParseError = { error: "bad-message" | "update-required" };
 
-/** Cards a player may bring online: every card except the per-device champion. */
+/**
+ * Cards a player may bring online: every deckable card, so neither the
+ * per-device champion nor a token (a Pebble Golem only a Stone Golem fields).
+ */
 export function playableCardIds(): ReadonlySet<string> {
-  return new Set(Object.keys(CARDS).filter((id) => id !== "champion"));
+  return new Set((Object.keys(CARDS) as CardId[]).filter(isDeckable));
 }
 
 /**

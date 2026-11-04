@@ -45,7 +45,7 @@ export const ARENAS: ArenaDef[] = [
     name: "Bone Pit",
     ar: "وادي الرمال",
     trophies: 200,
-    unlocks: ["tombstone", "valkyrie", "bats"],
+    unlocks: ["tombstone", "valkyrie", "bats", "stone-golem"],
   },
   {
     id: "barbarian-bowl",

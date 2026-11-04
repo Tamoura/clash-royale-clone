@@ -1,4 +1,4 @@
-import { CARDS, type CardId } from "./cards";
+import { CARDS, isDeckable, type CardId } from "./cards";
 
 export const DRAFT_ROUNDS = 8;
 const OFFER_SIZE = 3;
@@ -49,8 +49,9 @@ function drawOffers(
 
 export function createDraft(
   seed: number,
-  // The Studio champion is personal — it never appears in draft offers.
-  pool: CardId[] = (Object.keys(CARDS) as CardId[]).filter((id) => id !== "champion"),
+  // The Studio champion is personal and tokens are never dealt: only
+  // deckable cards appear in draft offers.
+  pool: CardId[] = (Object.keys(CARDS) as CardId[]).filter(isDeckable),
 ): DraftState {
   const first = drawOffers(pool, seed | 0 || 1);
   return {

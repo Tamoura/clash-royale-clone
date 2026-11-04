@@ -37,7 +37,9 @@ export type CardId =
   | "tornado"
   | "skeleton-barrel"
   | "mirror"
-  | "champion";
+  | "champion"
+  | "stone-golem"
+  | "pebble-golem";
 
 export type Speed = "slow" | "medium" | "fast";
 
@@ -95,6 +97,12 @@ export interface UnitStats {
   deathRadius: number;
   /** Card whose units this troop periodically summons (null = none). */
   spawnUnitId: CardId | null;
+  /** Card whose units burst out where this unit dies (null = none). */
+  deathSpawnId: CardId | null;
+  /** How many single units of deathSpawnId burst out (0 = none). */
+  deathSpawnCount: number;
+  /** Multiplier on this unit's hits against crown towers (1 = full). */
+  towerDamageFactor: number;
   /** Seconds between summons (0 = not a spawner). */
   spawnInterval: number;
   /** Seconds per 1 elixir generated for the owner (0 = none). */
@@ -112,6 +120,11 @@ export interface TroopCard {
   /** Number of units spawned per deploy. */
   count: number;
   unit: UnitStats;
+  /**
+   * A token is a unit only something else can field (the Pebble Golems a
+   * Stone Golem bursts into): never in a deck, a chest, a draft or online.
+   */
+  token?: boolean;
 }
 
 export interface BuildingCard {
@@ -178,6 +191,9 @@ function unit(stats: UnitOverrides): UnitStats {
     deathDamage: 0,
     deathRadius: 0,
     spawnUnitId: null,
+    deathSpawnId: null,
+    deathSpawnCount: 0,
+    towerDamageFactor: 1,
     spawnInterval: 0,
     elixirInterval: 0,
     radius: 0.5,
@@ -868,6 +884,53 @@ export const CARDS: Record<CardId, Card> = {
     pull: 0,
     spawnUnit: null,
   },
+  // ---- Card wave 3 (sim v3). New cards go last: Crazy mode scrambles in
+  // key order, so earlier cards keep their rolls.
+  /** A slow boulder that marches on buildings and bursts into two Pebble Golems. */
+  "stone-golem": {
+    id: "stone-golem",
+    name: "Stone Golem",
+    rarity: "epic",
+    kind: "troop",
+    cost: 8,
+    count: 1,
+    unit: unit({
+      maxHp: 5000,
+      damage: 260,
+      hitSpeed: 2.5,
+      attackRange: MELEE,
+      sightRange: 7.5,
+      speed: "slow",
+      targetsBuildingsOnly: true,
+      radius: 0.95,
+      deathDamage: 260,
+      deathRadius: 2.0,
+      deathSpawnId: "pebble-golem",
+      deathSpawnCount: 2,
+    }),
+  },
+  /** Token: what a Stone Golem bursts into. Never in a deck. */
+  "pebble-golem": {
+    id: "pebble-golem",
+    name: "Pebble Golem",
+    rarity: "epic",
+    kind: "troop",
+    cost: 0,
+    count: 1,
+    token: true,
+    unit: unit({
+      maxHp: 950,
+      damage: 55,
+      hitSpeed: 2.5,
+      attackRange: MELEE,
+      sightRange: 7.5,
+      speed: "slow",
+      targetsBuildingsOnly: true,
+      radius: 0.6,
+      deathDamage: 55,
+      deathRadius: 1.5,
+    }),
+  },
 };
 
 /** Deck order doubles as the starting draw: the first 4 are the opening hand. */
@@ -902,6 +965,7 @@ export const DECK: CardId[] = [
   "princess",
   "mega-knight",
   "royal-giant",
+  "stone-golem",
   "arrows",
   "zap",
   "rage",
@@ -912,6 +976,22 @@ export const DECK: CardId[] = [
   "mirror",
   "champion",
 ];
+
+/** Units only another card can field (never in DECK, decks, chests or drafts). */
+export const TOKEN_IDS: readonly CardId[] = (Object.keys(CARDS) as CardId[]).filter((id) => {
+  const c = CARDS[id];
+  return c.kind === "troop" && c.token === true;
+});
+
+/**
+ * May this card go in a deck, a draft, the daily deck or an online match?
+ * Not a token, and not the per-device Studio champion.
+ */
+export function isDeckable(id: CardId): boolean {
+  const c = CARDS[id];
+  if (!c || id === "champion") return false;
+  return !(c.kind === "troop" && c.token === true);
+}
 
 /**
  * Per-match card overrides (e.g. the Crazy game mode). When set, getCard
@@ -947,7 +1027,8 @@ export function crazyCards(rng: () => number = Math.random): Record<CardId, Card
 
   // The player-designed champion differs per player, so it rolls last:
   // its draws can never shift the stock cards' scramble between peers.
-  const ids: CardId[] = (Object.keys(out) as CardId[]).filter((id) => id !== "champion");
+  // Tokens are never scrambled: a cost-0 unit has no count to roll.
+  const ids: CardId[] = (Object.keys(out) as CardId[]).filter(isDeckable);
   if (out.champion) ids.push("champion");
   for (const id of ids) {
     const card = out[id];

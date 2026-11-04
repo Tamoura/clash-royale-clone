@@ -13,6 +13,7 @@ import {
   distance,
   isBuilding,
   sideState,
+  spawnDeathUnits,
   spawnUnits,
   type BattleResult,
   type BattleState,
@@ -567,7 +568,10 @@ function processDeaths(state: BattleState): void {
   state.entities = state.entities.filter((e) => e.hp > 0);
 }
 
-/** One entity's death: its blast, the death event, crowns and the king. */
+/**
+ * One entity's death: its blast, the death event, crowns and the king, and
+ * any units it bursts into (appended, so the same pass skips them alive).
+ */
 function settleDeath(state: BattleState, e: Entity): void {
   explodeOnDeath(state, e);
   state.events.push({
@@ -590,6 +594,7 @@ function settleDeath(state: BattleState, e: Entity): void {
     state.events.push({ type: "crown", winner });
     finish(state, winner);
   }
+  spawnDeathUnits(state, e);
 }
 
 function wakeKing(state: BattleState, side: Entity["side"]): void {
