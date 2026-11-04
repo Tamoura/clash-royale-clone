@@ -1009,3 +1009,405 @@
   right: auto;
   inset-inline-start: max(var(--hug), env(safe-area-inset-left));
 }
+
+/* ══ Battle clarity: the battle explains itself (src/render3d/hud.ts) ══ */
+
+/* ── Clock: a challenge counts its survive goal down; overtime says how a tie breaks ── */
+#topbar.v2 .clock.survive {
+  white-space: nowrap;
+  font-size: var(--fs-md);
+  padding-inline: var(--sp-2);
+  color: #b8ffd2;
+  border-color: #3ee07a;
+}
+#topbar.v2 .clock-hint {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 8px 2px;
+  border-radius: var(--r-pill);
+  background: rgba(8, 12, 28, 0.86);
+  box-shadow: 0 0 0 1.5px rgba(255, 110, 110, 0.8);
+  color: #ffe1e1;
+  font-size: 11px;
+  line-height: 1.35;
+  letter-spacing: 0;
+  white-space: nowrap;
+  text-shadow: var(--cr-outline);
+  pointer-events: none;
+}
+#topbar.v2 .clock-hint[hidden] {
+  display: none;
+}
+/* Wide: the clock sits in the left panel above the scoreboards, so the hint
+   is part of it (an absolute hint would cover the opponent's pill). */
+:root[data-layout="wide"] #topbar.v2 .clock-hint {
+  position: static;
+  display: block;
+  transform: none;
+  margin-top: 3px;
+  white-space: normal;
+}
+
+/* ── Keyboard badges: 1-4 on the hand, Q on KING; mouse devices only ── */
+#hud.v2 .key-chip {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  #hud.v2 .key-chip {
+    display: block;
+    position: absolute;
+    top: -8px;
+    left: -6px;
+    right: auto;
+    z-index: 4;
+    width: 20px;
+    height: 20px;
+    box-sizing: border-box;
+    line-height: 16px;
+    border: 2px solid #9fb3d9;
+    border-radius: 6px;
+    background: #141d3a;
+    color: #fff;
+    font-size: 12px;
+    text-align: center;
+    text-shadow: none;
+    pointer-events: none;
+  }
+  #hud.v2 .hud-ability .hud-key {
+    top: -4px;
+    left: -4px;
+  }
+}
+
+/* ── KING not ready: shake the ring (never the elixir bar) and say how long ── */
+#hud.v2 .hud-ability.error-shake {
+  animation: errShake 0.35s ease;
+}
+#hud.v2 .hud-ability-bubble {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: -4px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  background: #141d3a;
+  box-shadow: 0 0 0 2px var(--accent), var(--elev-2);
+  color: #fff;
+  font-size: var(--fs-sm);
+  line-height: 1.2;
+  white-space: nowrap;
+  text-shadow: var(--cr-outline);
+  pointer-events: none;
+}
+#hud.v2 .hud-ability-bubble::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  right: 20px;
+  border: 6px solid transparent;
+  border-top-color: var(--accent);
+}
+#hud.v2 .hud-ability-bubble[hidden] {
+  display: none;
+}
+#hud.v2 .hud-ability-bubble .ui-icon {
+  width: 16px;
+  height: 16px;
+}
+#hud.v2 .hud-ability-bubble.pop {
+  animation: hudBubblePop 0.3s var(--ease-pop);
+}
+@keyframes hudBubblePop {
+  from { opacity: 0; transform: translateY(6px) scale(0.7); }
+  to   { opacity: 1; transform: none; }
+}
+/* Wide: KING sits at the left edge, so the bubble opens to the right. */
+:root[data-layout="wide"] #hud.v2 .hud-ability-bubble {
+  right: auto;
+  left: -4px;
+}
+:root[data-layout="wide"] #hud.v2 .hud-ability-bubble::after {
+  right: auto;
+  left: 20px;
+}
+
+/* ── Long-press card info: a big bubble above the hand ── */
+#hud.v2 button.card {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+#hud.v2 .card-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 64px);
+  z-index: 8;
+  width: min(calc(100vw - 32px), 360px);
+  box-sizing: border-box;
+  padding: var(--sp-3);
+  border-radius: var(--r-lg);
+  border: 2px solid var(--cr-gold-border);
+  background: rgba(13, 19, 34, 0.97);
+  box-shadow: var(--elev-3);
+  color: var(--on-surface);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+#hud.v2 .card-bubble[hidden] {
+  display: none;
+}
+#hud.v2 .card-bubble.show {
+  animation: cardBubbleIn 0.22s var(--ease-pop);
+}
+@keyframes cardBubbleIn {
+  from { opacity: 0; transform: translate(-50%, 10px) scale(0.92); }
+  to   { opacity: 1; transform: translateX(-50%); }
+}
+#hud.v2 .cb-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+#hud.v2 .card-bubble canvas.cb-art {
+  flex: none;
+  width: 64px;
+  height: auto;
+  aspect-ratio: 3 / 4;
+  border: 2px solid #e0a83c;
+  border-radius: var(--r-sm);
+}
+#hud.v2 .cb-text {
+  min-width: 0;
+}
+#hud.v2 .cb-name {
+  display: block;
+  font-weight: 400;
+  font-size: var(--fs-lg);
+  line-height: 1.1;
+  color: var(--cr-text-gold);
+  text-shadow: var(--cr-outline);
+}
+#hud.v2 .cb-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--fs-sm);
+  color: #ff9ad4;
+}
+#hud.v2 .cb-cost .ui-icon {
+  width: 16px;
+  height: 16px;
+}
+#hud.v2 .cb-blurb {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-md);
+  line-height: 1.3;
+  color: #fff;
+}
+#hud.v2 .cb-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--sp-2);
+}
+#hud.v2 .cb-label {
+  min-width: 5.6em;
+  font-size: var(--fs-xs);
+  letter-spacing: calc(0.06em * var(--tracking));
+  text-transform: uppercase;
+  color: #9ff0b8;
+}
+#hud.v2 .cb-row.watch .cb-label {
+  color: #ffa3a3;
+}
+#hud.v2 .cb-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 8px 2px 2px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.08);
+}
+#hud.v2 .cb-mini canvas {
+  width: 24px;
+  height: auto;
+  border-radius: 4px;
+}
+#hud.v2 .cb-mini small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-xs);
+}
+/* Wide: beside the hand panel, toward the board (like the hover tip). */
+:root[data-layout="wide"] #hud.v2 .card-bubble {
+  left: auto;
+  right: calc(100% + 12px);
+  bottom: auto;
+  top: 0;
+  width: min(340px, calc(100vw - var(--side) - 24px));
+  transform: none;
+}
+:root[data-layout="wide"] #hud.v2 .card-bubble.show {
+  animation: none;
+}
+/* The hover tip carries the same one-liner, wrapped. */
+.card-tip .card-tip-blurb {
+  max-width: 240px;
+  margin: 2px 0 4px;
+  white-space: normal;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+/* ── Refused drop: the reason, at the finger ── */
+.drop-hint {
+  position: fixed;
+  z-index: calc(var(--z-hud) + 1);
+  max-width: calc(2 * var(--half, 150px));
+  box-sizing: border-box;
+  padding: 6px 14px;
+  border-radius: var(--r-pill);
+  background: #c81e2a;
+  box-shadow: 0 0 0 2px #ffd0d0, var(--elev-2);
+  color: #fff;
+  font-family: var(--cr-font);
+  font-size: var(--fs-md);
+  line-height: 1.2;
+  white-space: nowrap;
+  text-shadow: var(--cr-outline);
+  transform: translateX(-50%);
+  pointer-events: none;
+  animation: dropHintLife 1.2s ease-out forwards;
+}
+@keyframes dropHintLife {
+  0%   { opacity: 0; transform: translate(-50%, 8px) scale(0.7); }
+  12%  { opacity: 1; transform: translate(-50%, 0) scale(1.08); }
+  22%  { transform: translate(-50%, 0) scale(1); }
+  80%  { opacity: 1; transform: translate(-50%, -4px); }
+  100% { opacity: 0; transform: translate(-50%, -10px); }
+}
+
+/* ── Challenge goal card ── */
+.hud-goal {
+  position: absolute;
+  top: 21%;
+  left: 50%;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: max-content;
+  max-width: calc(100% - 32px);
+  box-sizing: border-box;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: rgba(8, 12, 28, 0.9);
+  box-shadow: 0 0 0 2px #3ee07a, var(--elev-2);
+  color: #fff;
+  font-size: var(--fs-md);
+  line-height: 1.25;
+  text-shadow: var(--cr-outline);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.hud-goal[hidden] {
+  display: none;
+}
+.hud-goal .ui-icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+}
+.hud-goal.pop {
+  animation: hudGoalIn 0.45s var(--ease-pop);
+}
+@keyframes hudGoalIn {
+  from { opacity: 0; transform: translate(-50%, -12px) scale(0.8); }
+  to   { opacity: 1; transform: translateX(-50%); }
+}
+
+/* ── Replay speed: one big pill under the clock (placed by hud.ts) ── */
+.replay-pill {
+  position: fixed;
+  z-index: calc(var(--z-hud) + 1);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--r-pill);
+  background: rgba(8, 12, 28, 0.9);
+  box-shadow: 0 0 0 2px var(--cr-gold-border), var(--elev-2);
+  font-family: var(--cr-font);
+}
+.replay-pill[hidden] {
+  display: none;
+}
+.replay-pill-icon {
+  display: grid;
+  place-items: center;
+  padding: 0 4px 0 6px;
+}
+.replay-pill-icon .ui-icon {
+  width: 20px;
+  height: 20px;
+}
+.replay-pill .replay-speed {
+  min-width: 46px;
+  min-height: 40px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: #cfd8ff;
+  font: inherit;
+  font-size: var(--fs-md);
+  cursor: pointer;
+}
+.replay-pill .replay-speed.on {
+  background: linear-gradient(180deg, #ffe07a, #f2a31b);
+  color: #3b2403;
+}
+
+/* Battle-only chrome stays hidden behind the menus. */
+:root:not([data-layout]) .hud-goal,
+:root:not([data-layout]) .replay-pill,
+:root:not([data-layout]) .drop-hint {
+  visibility: hidden;
+}
+
+/* ── Result: the reason under the verdict ── */
+#overlay.v2 .res-reason {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  box-shadow: inset 0 0 0 2px var(--surface-3);
+  font-size: var(--fs-md);
+  line-height: 1.3;
+  text-align: center;
+}
+#overlay.v2 .res-reason .ui-icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .drop-hint,
+  .hud-goal.pop,
+  #hud.v2 .card-bubble.show,
+  #hud.v2 .hud-ability-bubble.pop {
+    animation: none;
+  }
+}

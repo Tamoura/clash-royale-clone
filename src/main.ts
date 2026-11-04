@@ -54,10 +54,9 @@ import { loadMode as loadVariant, type GameMode as GameVariant } from "./launche
 import { hasSavedChampion, initChampion } from "./game/customcard";
 import { loadProfile, saveProfile } from "./meta/progress";
 import { ARENAS, arenaIndexAt, cardsAvailableAt } from "./meta/arenas";
-import { TOWER_TROOP_IDS, loadTowerTroop, type TowerTroopId } from "./game/towers";
+import { loadTowerTroop, type TowerTroopId } from "./game/towers";
 import {
   ABILITIES,
-  ABILITY_IDS,
   loadAbility,
   useAbility,
   type AbilityId,
@@ -128,6 +127,15 @@ import { buildHome } from "./ui/screens/home";
 import { openFriendLobby } from "./ui/screens/lobby";
 import { openStudio } from "./ui/screens/studio";
 import { startTutorial, tutorialDone } from "./ui/tutorialOverlay";
+import { MATCH_CLOCK, badSpotReason, badSpotText, challengeClock } from "./render3d/hudModel";
+import { pickBotLoadout, type BotLoadout } from "./match/botLoadout";
+import { clearMatchMarker, markMatchStart, marksLeftMatch, takeLeftMatch } from "./match/leftMatch";
+import { applyMatchResult } from "./match/rewards";
+import { defaultKV } from "./meta/kv";
+import { reachedArenaIndex } from "./meta/unlocks";
+import { registerHomeSlot } from "./app/slots";
+import { battleMenuOpen } from "./ui/battleMenu";
+import { signed } from "./render3d/result";
 
 // ---- Feature registration: side-effect modules that subscribe to src/app/hooks.
 import "./audio/wire";
@@ -180,6 +188,8 @@ interface ReplayData {
   botSeed: number;
   botProfile: BotProfile;
   opponent: string;
+  /** The bot archetype (optional: older tapes carry only the localized name). */
+  opponentId?: ArchetypeId;
   towers: { player: TowerTroopId; enemy: TowerTroopId };
   abilities: { player: AbilityId | null; enemy: AbilityId | null };
   abilityUses: number[];
@@ -207,14 +217,12 @@ function storedReplay(): ReplayData | null {
 // Purge a stale tape at boot, so any plain `getItem(REPLAY_KEY)` presence
 // check (e.g. the home screen's Last Battle entry) stays truthful.
 storedReplay();
-// ---- Tower Troops: the player's chosen tower defender ---------------------
-function botTowerTroop(): TowerTroopId {
-  return TOWER_TROOP_IDS[Math.floor(Math.random() * TOWER_TROOP_IDS.length)];
-}
-
-// ---- King's Ability: the player's chosen power ----------------------------
-function botAbility(): AbilityId {
-  return ABILITY_IDS[Math.floor(Math.random() * ABILITY_IDS.length)];
+// ---- Bot loadout: tower troop + King's Ability --------------------------
+// Fair play: the bot only uses what the player could pick at their arena
+// (match/botLoadout.ts), so a new kid meets Princess towers and Royal Rally.
+function botLoadout(): BotLoadout {
+  const best = Math.max(meta.achievements.counters.bestTrophies, meta.season.best);
+  return pickBotLoadout(reachedArenaIndex(meta.profile.trophies, best));
 }
 
 /** Fire the local King's Ability (button / "Q"); replays are watch-only. */
@@ -223,7 +231,8 @@ function triggerAbility(): void {
   // Online, the ability rides the next lockstep frame so both peers fire it on the same tick.
   const online = onlineSession();
   if (online ? !online.queueAbility() : !useAbility(battle, localSide())) {
-    hud.flashError("elixir");
+    // Not charged yet: shake KING and say how long (never the elixir bar).
+    hud.flashError("ability");
     audio.error();
     return;
   }
@@ -241,24 +250,12 @@ let playbackCursor = 0;
 let replayAbilityUses: number[] = [];
 let abilityCursor = 0;
 
-const replaySpeedBtn = document.createElement("button");
-replaySpeedBtn.className = "sandbox-reset";
-replaySpeedBtn.textContent = "⏩ x1";
-replaySpeedBtn.setAttribute("aria-label", "Toggle replay speed");
-replaySpeedBtn.style.display = "none";
-replaySpeedBtn.addEventListener("click", () => {
-  replaySpeed = replaySpeed === 1 ? 2 : 1;
-  replaySpeedBtn.textContent = `⏩ x${replaySpeed}`;
-  replaySpeedBtn.blur();
-});
-
 const sandboxResetBtn = document.createElement("button");
 sandboxResetBtn.className = "sandbox-reset";
 sandboxResetBtn.textContent = tr("↺ Reset", "↺ إعادة");
 sandboxResetBtn.setAttribute("aria-label", "Reset the sandbox battle");
 sandboxResetBtn.style.display = "none";
 stage.appendChild(sandboxResetBtn);
-stage.appendChild(replaySpeedBtn);
 
 // ---- Meta progression (gold/gems/owned/chests) --------------------------
 // One shared object: screens read and update it through ctx.meta.
@@ -462,7 +459,11 @@ function selectCard(id: CardId | null): void {
   selectedCard = id;
   if (id !== null) emit("input", { kind: "select", cardId: id });
   hud.setSelected(id);
-  scene.setZoneVisible(id !== null && getCard(id).kind === "troop");
+  // Troops and buildings show where they may go (the Mirror as what it copies).
+  const kind = id === null ? null : (effectiveCard(battle, localSide(), id)?.card ?? getCard(id)).kind;
+  scene.setZoneVisible(kind === "troop" || kind === "building");
+  // Nothing selected, nothing previewed: a ghost never outlives its card.
+  if (id === null) clearPreview();
 }
 
 /** Restart whatever we were just playing (ladder, draft, challenge, daily). */
@@ -507,8 +508,9 @@ function startLadder(): void {
   // The bot's cards sit at your deck's level (shifted by tier), so a
   // freshly unlocked card never meets a bot that outgrew it.
   const foeLevels = botLevels(avgDeckLevel(myDeck, meta.cardLevels), tier, championBotMatch ? 1 : 0);
-  const towers = { player: meta.towerTroop, enemy: botTowerTroop() };
-  const abilities = { player: meta.abilityChoice, enemy: botAbility() };
+  const foeLoadout = botLoadout();
+  const towers = { player: meta.towerTroop, enemy: foeLoadout.towerTroop };
+  const abilities = { player: meta.abilityChoice, enemy: foeLoadout.ability };
   battle = createBattle(
     myDeck,
     foeDeck,
@@ -568,7 +570,6 @@ function startLadder(): void {
   audio.setIntensity(0);
   audio.restartMusic();
   sandboxResetBtn.style.display = isSandbox() ? "" : "none";
-  replaySpeedBtn.style.display = "none";
   // Crazy mode scrambles card stats each match, so it can't replay.
   recording =
     isSandbox() || meta.gameMode.id === "crazy"
@@ -583,6 +584,7 @@ function startLadder(): void {
           botSeed,
           botProfile: banded,
           opponent: baseName,
+          opponentId: archetype,
           towers,
           abilities,
           abilityUses: [],
@@ -625,12 +627,15 @@ function startReplay(): void {
   playbackCursor = 0;
   replayDeploys = rep.deploys;
   replaySpeed = 1;
-  replaySpeedBtn.textContent = "⏩ x1";
-  replaySpeedBtn.style.display = "";
   sandboxResetBtn.style.display = "none";
   selectCard(null);
   hud.setReward(null);
-  hud.setOpponentName(`📺 ${rep.opponent}`);
+  // The bot's name in today's edition (tapes from before opponentId keep theirs).
+  const archetypeName = rep.opponentId ? ARCHETYPE_NAMES[rep.opponentId] : undefined;
+  hud.setOpponentName(archetypeName ? tr(archetypeName[0], archetypeName[1]) : rep.opponent);
+  hud.setReplayControl((speed) => {
+    replaySpeed = speed;
+  }, battle);
   scene.setArenaLook(battleArenaId());
   scene.setViewpoint("player");
   scene.reset();
@@ -638,7 +643,7 @@ function startReplay(): void {
   audio.restartMusic();
   startCountdown();
   window.setTimeout(
-    () => showBanner(tr("REPLAY — ⏩ to speed up", "إعادة — ⏩ للتسريع")),
+    () => showBanner(tr("REPLAY: tap 2x or 4x to speed up", "إعادة: اضغط 2x أو 4x للتسريع")),
     2600,
   );
   announceMatchStart();
@@ -655,10 +660,17 @@ function startSpecialBattle(
   clearOnline();
   setCardOverrides(null);
   // Level playing field: no card levels in special modes.
-  battle = createBattle(mine, theirs, {}, 1, { player: meta.towerTroop, enemy: botTowerTroop() }, { player: meta.abilityChoice, enemy: botAbility() });
+  const foeLoadout = botLoadout();
+  battle = createBattle(
+    mine,
+    theirs,
+    {},
+    1,
+    { player: meta.towerTroop, enemy: foeLoadout.towerTroop },
+    { player: meta.abilityChoice, enemy: foeLoadout.ability },
+  );
   recording = null;
   replaying = false;
-  replaySpeedBtn.style.display = "none";
   bot = createBot(Date.now() & 0xffff, tierProfile(currentTier()));
   selectCard(null);
   hud.setReward(null);
@@ -678,6 +690,9 @@ function startChallenge(ch: Challenge): void {
   activeChallenge = ch;
   waveCursor = { next: 0 };
   startSpecialBattle("challenge", ch.deck, ch.deck, tr(ch.name, ch.nameAr));
+  // The goal is the clock: "SURVIVE 0:45" and a goal card (the tutorial's
+  // endless surviveFor keeps the normal clock).
+  hud.setClockGoal(battle, challengeClock(ch.surviveFor));
 }
 
 function startDaily(): void {
@@ -699,6 +714,21 @@ sandboxResetBtn.addEventListener("click", () => {
 
 /** Tell the hooks a solo match (ladder, special or replay) just started. */
 function announceMatchStart(): void {
+  if (!replaying) hud.setReplayControl(null, battle);
+  if (battleKind !== "challenge") hud.setClockGoal(battle, MATCH_CLOCK);
+  leftNotice = null;
+  // A trophy match leaves a marker until it ends: a reload mid-battle is a loss.
+  if (
+    marksLeftMatch({
+      kind: battleKind,
+      online: onlineSession() !== null,
+      replay: replaying,
+      sandbox: isSandbox(),
+      tutorial: activeChallenge?.id === "tutorial",
+    })
+  ) {
+    markMatchStart(defaultKV(), Date.now(), meta.profile.trophies);
+  }
   emit("matchStart", { kind: battleKind, battle, mySide: localSide(), online: false, replay: replaying });
 }
 
@@ -836,8 +866,55 @@ registerLifecycle(scene); // idle rendering behind opaque screens, hidden-tab si
 
 // The battle menu (Resume, Sound, Forfeit) is the HUD's own top-bar button.
 
-const clockEl = topbar.querySelector<HTMLElement>(".clock");
-if (clockEl) clockEl.dataset.label = tr("Time left", "الوقت المتبقي");
+// Trophy + currency live on the home screen now; the chip is kept (not
+// mounted) so refreshMetaChips() stays a cheap no-op in battle.
+// Declared before the boot below: settling a left match persists the profile.
+const trophyChip = document.createElement("div");
+trophyChip.className = "crowns player meta-chip";
+
+function refreshMetaChips(): void {
+  trophyChip.innerHTML =
+    `🏆 <span>${meta.profile.trophies}</span>` +
+    ` · 🪙 <span>${meta.profile.gold}</span>` +
+    ` · 💎 <span>${meta.profile.gems}</span>`;
+}
+refreshMetaChips();
+
+// ---- Leaving early (match/leftMatch.ts) ------------------------------------
+// A ladder match left by a reload or a closed tab settles as a loss on the
+// next boot, through the same rules as any ladder loss (applyMatchResult).
+let leftNotice: { delta: number } | null = null;
+
+function settleLeftMatch(): void {
+  const left = takeLeftMatch(defaultKV(), Date.now());
+  if (!left) return;
+  const delta = applyMatchResult(ctx, "enemy");
+  hud.setReward(null); // the summary belongs to no result screen
+  leftNotice = { delta };
+}
+
+registerHomeSlot("battle-top", (host) => {
+  if (!leftNotice) return;
+  const note = document.createElement("div");
+  note.className = "left-match-note";
+  note.setAttribute("role", "status");
+  note.innerHTML = icon("flag");
+  const text = document.createElement("span");
+  text.dir = "auto";
+  text.textContent = tr(
+    "You left your last battle, so it counted as a loss",
+    "غادرت معركتك الأخيرة، لذلك حُسبت خسارة",
+  );
+  note.appendChild(text);
+  if (leftNotice.delta !== 0) {
+    const d = document.createElement("b");
+    d.className = "left-match-delta";
+    d.innerHTML = icon("trophy");
+    d.appendChild(document.createTextNode(signed(leftNotice.delta)));
+    note.appendChild(d);
+  }
+  host.appendChild(note);
+});
 
 function legacyPlayed(): boolean {
   try {
@@ -855,22 +932,10 @@ installAutoDifficulty(() => meta.profile.trophies);
 if (EDITION_CHOSEN && !tutorialDone()) {
   startTutorial(ctx); // the guided battle comes first, even for a ?join= link
 } else {
+  settleLeftMatch(); // before Home renders, so its notice and trophies are current
   openHome();
   handleJoinLink(ctx); // ?join=CODE invite links open the lobby and join
 }
-
-// Trophy + currency live on the home screen now; the chip is kept (not
-// mounted) so refreshMetaChips() stays a cheap no-op in battle.
-const trophyChip = document.createElement("div");
-trophyChip.className = "crowns player meta-chip";
-
-function refreshMetaChips(): void {
-  trophyChip.innerHTML =
-    `🏆 <span>${meta.profile.trophies}</span>` +
-    ` · 🪙 <span>${meta.profile.gold}</span>` +
-    ` · 💎 <span>${meta.profile.gems}</span>`;
-}
-refreshMetaChips();
 
 // ---- Emotes ------------------------------------------------------------
 
@@ -1058,6 +1123,13 @@ function tryDeployAt(clientX: number, clientY: number): void {
   } else if (verdict === "bad-spot") {
     hud.flashError("spot");
     audio.error();
+    // Say why at the finger, and drop the ghost there and then.
+    const why = badSpotReason(battle, side, selectedCard, pos.x, pos.y);
+    if (why) {
+      scene.badSpotPulse(pos.x, pos.y);
+      hud.dropHint(badSpotText(why), clientX, clientY);
+    }
+    clearPreview();
   }
 }
 
@@ -1094,18 +1166,29 @@ window.addEventListener("keydown", (ev) => {
   ) {
     return;
   }
-  const n = Number(ev.key);
-  if (n >= 1 && n <= 4) selectCard(mySideState().hand.cards[n - 1]);
-  if (ev.key === "Escape") selectCard(null);
-  if (ev.key === "q" || ev.key === "Q") triggerAbility();
-  // "T" switches the arena theme (Arabic ⇄ normal); reloads to rebuild.
-  // No-op until an edition has been chosen.
-  if (ev.key === "t" || ev.key === "T") {
+  // A dialog or sheet already took this key (Esc closes it): leave it be.
+  if (ev.defaultPrevented) return;
+  // Dev only: "T" switches the edition (Arabic ⇄ normal) and reloads. Never
+  // in a real build: it threw away the match a kid was playing.
+  if (import.meta.env.DEV && (ev.key === "t" || ev.key === "T")) {
     if (!EDITION_CHOSEN) return;
     const cur = localStorage.getItem(ARENA_THEME_KEY) === "normal" ? "normal" : "arabic";
     localStorage.setItem(ARENA_THEME_KEY, cur === "arabic" ? "normal" : "arabic");
     location.reload();
+    return;
   }
+  // Battle keys only work with the battle on screen (not behind a menu).
+  if (pickerRoot.classList.contains("show")) return;
+  if (ev.key === "Escape") {
+    // Esc drops the card in hand first; with nothing in hand it opens the menu.
+    if (selectedCard) selectCard(null);
+    else if (!battle.result) hud.toggleMenu();
+    return;
+  }
+  if (battleMenuOpen()) return;
+  const n = Number(ev.key);
+  if (n >= 1 && n <= 4) selectCard(mySideState().hand.cards[n - 1]);
+  if (ev.key === "q" || ev.key === "Q") triggerAbility();
 });
 
 const SIM_DT = 1 / 30;
@@ -1123,6 +1206,7 @@ function flashImpact(): void {
 
 /** Settle a finished match (rewards, quests, streaks), then tell the hooks. */
 function finishMatch(winner: Side | "draw"): void {
+  clearMatchMarker(defaultKV()); // it ended on screen: nothing left to settle
   const online = onlineSession() !== null;
   const mySide = localSide();
   const settled = settleMatch(ctx, {
