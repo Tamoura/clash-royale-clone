@@ -19,7 +19,9 @@ export type IconName =
   // Home and meta screens (home-meta-ux)
   | "target" | "burst" | "arrow" | "wave" | "tower" | "pencil" | "trash" | "gauge"
   | "users" | "sliders" | "clock" | "globe" | "vibrate" | "sparkle" | "palette"
-  | "text" | "motion";
+  | "text" | "motion"
+  // Battle clarity (replay speed, KING charging)
+  | "fast" | "hourglass";
 
 export type CrestIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
 
@@ -140,6 +142,9 @@ const PATHS: Record<IconName, string> = {
   palette: `<path ${O} fill="#f6e7c8" d="M12 3a9 9 0 0 0 0 18c1.6 0 2.1-1.1 1.5-2.3-.6-1.3.3-2.4 1.6-2.4H17a4 4 0 0 0 4-4C21 6.9 17 3 12 3z"/><circle fill="#e8413b" cx="7.4" cy="11.4" r="1.7"/><circle fill="#4f8cff" cx="9.6" cy="7.2" r="1.7"/><circle fill="#3ee07a" cx="14.4" cy="6.8" r="1.7"/><circle fill="#ffd23f" cx="17.4" cy="10.6" r="1.7"/>`,
   text: `<path ${O} fill="#dfe7f2" d="M2.5 19.5 7.6 4.5h3l5.1 15h-3.2l-1.1-3.4H6.8l-1.1 3.4zm5.2-6.2h3.3L9.1 7.6z"/><path ${O} fill="#ffd23f" d="M17.5 10.5h2v3h3v2h-3v3h-2v-3h-3v-2h3z"/>`,
   motion: `${line("M2.5 8h5.5M1.8 12h6.5M2.5 16h5.5", "#8fd8ff")}<circle ${O} fill="#ffd23f" cx="15.5" cy="12" r="6.2"/><path fill="#fff6c9" d="M12.6 10a3.4 3.4 0 0 1 2.6-1.9l.3 1.4a2 2 0 0 0-1.5 1.1z"/>`,
+  // ---- Battle clarity ----
+  fast: `<path ${O} fill="#ffd23f" d="M2.5 5.5 11.5 12l-9 6.5z"/><path ${O} fill="#ffd23f" d="M12 5.5 21 12l-9 6.5z"/>`,
+  hourglass: `<path ${O} fill="#f6e7c8" d="M6 3h12v2.2c0 3-2.4 4.9-4.6 6.8 2.2 1.9 4.6 3.8 4.6 6.8V21H6v-2.2c0-3 2.4-4.9 4.6-6.8C8.4 10.1 6 8.2 6 5.2z"/><path fill="#ffd23f" d="M8.4 19.4c.4-1.8 2-3 3.6-4.2 1.6 1.2 3.2 2.4 3.6 4.2zM9.2 6.4h5.6c-.6 1.2-1.6 2.1-2.8 3-1.2-.9-2.2-1.8-2.8-3z"/><path fill="none" stroke="#1a1030" stroke-width="1.6" stroke-linecap="round" d="M4.5 3h15M4.5 21h15"/>`,
 };
 
 /** An inline SVG icon, 1em square, for innerHTML use. */

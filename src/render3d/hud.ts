@@ -7,19 +7,28 @@ import type { Side } from "../game/arena";
 import { getCard, type CardId } from "../game/cards";
 import { cardStatLines } from "../render/cardinfo";
 import { cardDisplayName } from "../render/cardNames";
+import { blurbText, cardBlurb } from "../render/cardBlurbs";
 import { CARD_COLOR } from "../render/cardcolors";
 import { drawCardArt } from "../render/characters";
 import { cardPortrait } from "./cardportraits";
 import { on, pendingSpend, setPresentTimeScale, type MatchEndPayload } from "../app/hooks";
 import { resultExtras } from "../app/slots";
-import { battleMenuPausing, closeBattleMenu, openBattleMenu } from "../ui/battleMenu";
+import { battleMenuOpen, battleMenuPausing, closeBattleMenu, openBattleMenu } from "../ui/battleMenu";
 import { getPrefs, onPrefs, reducedMotion } from "../ui/prefs";
 import {
+  DROP_HINT_GUTTER,
+  MATCH_CLOCK,
   TowerDamageTracker,
+  abilitySecondsLeft,
   buildResultStats,
+  chargingText,
+  dropHintCenterX,
+  goalText,
   hudModel,
   lossTip,
   mergeTimeline,
+  resultReason,
+  type ClockMode,
   type HudModel,
   type TimelineEntry,
 } from "./hudModel";
@@ -73,6 +82,17 @@ export interface HudCallbacks {
 
 /** Presentation speed between the last blow and the result screen. */
 const SLOW_MO = 0.35;
+/** A press on a hand card held this long (and this still) opens its info bubble. */
+export const LONG_PRESS_MS = 450;
+export const LONG_PRESS_SLOP_PX = 8;
+/** How long the refused-drop label and the KING "Charging" bubble stay up. */
+const DROP_HINT_MS = 1200;
+const CHARGING_MS = 1500;
+/** How long the challenge goal card stays up after the match starts. */
+const GOAL_CARD_MS = 5200;
+/** Replay speeds offered by the pill under the clock. */
+export const REPLAY_SPEEDS = [1, 2, 4] as const;
+export type ReplaySpeed = (typeof REPLAY_SPEEDS)[number];
 const REVEAL_MS = 1600;
 const REVEAL_MS_CALM = 400;
 
@@ -164,7 +184,22 @@ export class Hud {
   private readonly nextArt: HTMLElement;
   private readonly abilityBtn: HTMLButtonElement;
   private readonly abilityIcon: HTMLElement;
+  private readonly abilityBubble: HTMLElement;
   private readonly result: ResultScreen;
+  private readonly clockTime: HTMLElement;
+  private readonly clockHint: HTMLElement;
+  private readonly cardBubble: HTMLElement;
+  private readonly goalCard: HTMLElement;
+  private readonly replayPill: HTMLElement;
+  /** The clock mode for one battle (a challenge's survive goal); any other battle reads the match clock. */
+  private clockGoal: { battle: BattleState; mode: ClockMode } | null = null;
+  private onReplaySpeed: ((speed: ReplaySpeed) => void) | null = null;
+  /** The replay battle the speed pill belongs to; any other battle hides it. */
+  private replayBattle: BattleState | null = null;
+  private pillPlacedAt = 0;
+  private chargingTimer = 0;
+  private goalTimer = 0;
+  private reason: string | null = null;
 
   private prev: HudModel | null = null;
   private selected: CardId | null = null;
@@ -228,6 +263,11 @@ export class Hud {
     this.clock = el("div", "clock", topbar);
     this.clock.setAttribute("role", "timer");
     this.clock.setAttribute("aria-label", tr("Time remaining", "الوقت المتبقي"));
+    this.clock.dataset.label = tr("Time left", "الوقت المتبقي");
+    this.clockTime = el("span", "clock-time", this.clock);
+    // Overtime: how a tie is broken, in a small line under the clock.
+    this.clockHint = el("span", "clock-hint", this.clock);
+    this.clockHint.hidden = true;
 
     const menuWrap = el("div", "battle-menu", topbar);
     this.menuToggle = el("button", "menu-toggle", menuWrap);
@@ -256,6 +296,14 @@ export class Hud {
       '<circle class="hud-ring-fill" cx="28" cy="28" r="25" pathLength="100"/></svg>';
     this.abilityIcon = el("span", "hud-ability-icon", this.abilityBtn);
     el("span", "hud-ability-label", this.abilityBtn).textContent = tr("KING", "الملك");
+    // Keyboard hint (shown only with a mouse; see hud.css).
+    const qKey = el("span", "key-chip hud-key", this.abilityBtn);
+    qKey.textContent = "Q";
+    qKey.setAttribute("aria-hidden", "true");
+    // "Charging… 20s" when KING is tapped before it is ready.
+    this.abilityBubble = el("span", "hud-ability-bubble", this.abilityBtn);
+    this.abilityBubble.setAttribute("role", "status");
+    this.abilityBubble.hidden = true;
     this.abilityBtn.addEventListener("pointerdown", (ev) => {
       ev.preventDefault();
       this.cb.onAbility?.();
@@ -269,11 +317,18 @@ export class Hud {
     const tip = el("div", "card-tip", bottom);
     const showTip = (btn: HTMLButtonElement): void => {
       const id = btn.dataset.card as CardId | undefined;
-      if (!id) return;
+      if (!id || this.cardBubble.classList.contains("show")) return;
       tip.innerHTML = "";
       const title = document.createElement("b");
       title.textContent = `${cardDisplayName(id)} · ${tr(`${getCard(id).cost} elixir`, `${fmtNum(getCard(id).cost)} إكسير`)}`;
       tip.appendChild(title);
+      const blurb = blurbText(id);
+      if (blurb) {
+        const line = document.createElement("p");
+        line.className = "card-tip-blurb";
+        line.textContent = blurb;
+        tip.appendChild(line);
+      }
       for (const line of cardStatLines(id)) {
         const div = document.createElement("div");
         div.textContent = line;
@@ -287,6 +342,11 @@ export class Hud {
     const canHover =
       typeof window !== "undefined" && !!window.matchMedia?.("(hover: hover)").matches;
 
+    // Long-press a hand card: a big info bubble above the hand (touch has no hover).
+    this.cardBubble = el("div", "card-bubble", bottom);
+    this.cardBubble.setAttribute("role", "tooltip");
+    this.cardBubble.hidden = true;
+
     for (let i = 0; i < 4; i++) {
       const btn = el("button", "card", this.handRow);
       btn.type = "button";
@@ -299,26 +359,74 @@ export class Hud {
       // onto the field. Keep the (implicit) pointer capture on the card so
       // every pointermove/up of the gesture is delivered — they bubble to the
       // window handlers that move the ghost and deploy on release.
+      // Held still for LONG_PRESS_MS instead, the press shows the card's
+      // info bubble; that press then never selects or deploys anything.
       let downX = 0;
       let downY = 0;
+      let pressId = -1;
+      let pressTimer = 0;
+      let longPressed = false;
+      const cancelPress = (): void => {
+        window.clearTimeout(pressTimer);
+        pressTimer = 0;
+      };
       btn.addEventListener("pointerdown", (ev) => {
         const id = btn.dataset.card as CardId | undefined;
         if (!id) return;
         ev.preventDefault();
         downX = ev.clientX;
         downY = ev.clientY;
+        pressId = ev.pointerId;
+        longPressed = false;
+        cancelPress();
+        if (ev.button === 0) {
+          pressTimer = window.setTimeout(() => {
+            pressTimer = 0;
+            longPressed = true;
+            btn.classList.remove("dragging");
+            tip.classList.remove("show");
+            this.cb.onSelectCard(null); // info, not a pick: nothing stays armed
+            this.showCardBubble(id);
+          }, LONG_PRESS_MS);
+        }
         const selecting = this.selected !== id;
         this.cb.onSelectCard(selecting ? id : null);
         if (selecting) btn.classList.add("dragging");
       });
+      // Movement cancels the long-press (window-level: a mouse press is not captured).
+      window.addEventListener("pointermove", (ev) => {
+        if (!pressTimer || ev.pointerId !== pressId) return;
+        const dx = ev.clientX - downX;
+        const dy = ev.clientY - downY;
+        if (dx * dx + dy * dy >= LONG_PRESS_SLOP_PX * LONG_PRESS_SLOP_PX) cancelPress();
+      });
       const endDrag = (ev: PointerEvent): void => {
+        cancelPress();
         btn.classList.remove("dragging");
+        if (longPressed) {
+          longPressed = false;
+          this.hideCardBubble();
+          return;
+        }
         const dx = ev.clientX - downX;
         const dy = ev.clientY - downY;
         if (Math.sqrt(dx * dx + dy * dy) > 16) this.cb.onDeployAt(ev.clientX, ev.clientY);
       };
       btn.addEventListener("pointerup", endDrag);
-      btn.addEventListener("pointercancel", () => btn.classList.remove("dragging"));
+      btn.addEventListener("pointercancel", () => {
+        cancelPress();
+        longPressed = false;
+        this.hideCardBubble();
+        btn.classList.remove("dragging");
+      });
+      // A mouse released off the card still ends its info press.
+      window.addEventListener("pointerup", (ev) => {
+        if (!longPressed || ev.pointerId !== pressId) return;
+        longPressed = false;
+        this.hideCardBubble();
+      });
+      // A long touch must not open the browser's own menu or text callout.
+      btn.addEventListener("contextmenu", (ev) => ev.preventDefault());
       const cost = document.createElement("div");
       cost.className = "card-cost";
       // Charge veil: a static gradient driven by --charge (0..100).
@@ -347,6 +455,36 @@ export class Hud {
     this.multTag.setAttribute("aria-hidden", "true");
 
     this.result = new ResultScreen(overlay);
+
+    // Challenge goal: a card under the top bar for the first seconds.
+    this.goalCard = el("div", "hud-goal", bottom.parentElement ?? bottom);
+    this.goalCard.setAttribute("role", "status");
+    this.goalCard.hidden = true;
+
+    // Replay speed: one big 1x / 2x / 4x pill, placed under the clock.
+    this.replayPill = document.createElement("div");
+    this.replayPill.className = "replay-pill";
+    this.replayPill.setAttribute("role", "group");
+    this.replayPill.setAttribute("aria-label", tr("Replay speed", "سرعة الإعادة"));
+    this.replayPill.hidden = true;
+    const pillIcon = el("span", "replay-pill-icon", this.replayPill);
+    pillIcon.innerHTML = icon("fast");
+    pillIcon.setAttribute("aria-hidden", "true");
+    for (const speed of REPLAY_SPEEDS) {
+      const b = el("button", "replay-speed", this.replayPill);
+      b.type = "button";
+      b.dataset.speed = String(speed);
+      b.textContent = tr(`${speed}x`, `${fmtNum(speed)}x`);
+      b.setAttribute("aria-label", tr(`Speed ${speed}x`, `السرعة ${fmtNum(speed)}x`));
+      b.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        this.setReplaySpeed(speed);
+        this.onReplaySpeed?.(speed);
+        b.blur();
+      });
+    }
+    document.body.appendChild(this.replayPill);
+    window.addEventListener("resize", () => this.placeReplayPill(true));
 
     // ---- Hooks: match lifecycle, tower damage, slow-mo and pause.
     on("matchStart", (p) => this.beginBattle(p.battle, p.mySide, true));
@@ -402,12 +540,209 @@ export class Hud {
     this.rewardChest = rarity;
   }
 
-  /** Shake the elixir row (can't afford) or the hand (bad spot). */
-  flashError(kind: "elixir" | "spot"): void {
-    const target = kind === "elixir" ? this.elixirRow : this.handRow;
+  /**
+   * Shake the elixir row (can't afford), the hand (bad spot) or the KING
+   * ring (not charged yet; it also pops a "Charging… Ns" bubble). The KING
+   * never shakes the elixir bar: its charge is not elixir.
+   */
+  flashError(kind: "elixir" | "spot" | "ability"): void {
+    const target = kind === "elixir" ? this.elixirRow : kind === "spot" ? this.handRow : this.abilityBtn;
+    if (kind === "ability" && this.abilityBtn.hidden) return;
     target.classList.remove("error-shake");
     void target.offsetWidth; // restart the animation
     target.classList.add("error-shake");
+    if (kind === "ability") this.showCharging();
+  }
+
+  /** The "Charging… Ns" bubble over KING, with N from the local side's meter. */
+  private showCharging(): void {
+    const b = this.battle;
+    const secs = b ? abilitySecondsLeft(b, this.mySide) : null;
+    if (secs === null || secs <= 0) return;
+    this.abilityBubble.innerHTML = icon("hourglass");
+    this.abilityBubble.appendChild(document.createTextNode(chargingText(secs)));
+    this.abilityBubble.hidden = false;
+    this.restartAnim(this.abilityBubble, "pop");
+    window.clearTimeout(this.chargingTimer);
+    this.chargingTimer = window.setTimeout(() => {
+      this.abilityBubble.hidden = true;
+    }, CHARGING_MS);
+  }
+
+  /**
+   * A refused drop, said at the finger: a floating label at page point
+   * (x, y) for 1.2 s ("Your side only!").
+   */
+  dropHint(text: string, clientX: number, clientY: number): void {
+    document.querySelectorAll(".drop-hint").forEach((n) => n.remove());
+    const label = document.createElement("div");
+    label.className = "drop-hint";
+    label.dir = "auto";
+    label.setAttribute("role", "status");
+    label.textContent = text;
+    const vw = window.innerWidth;
+    // At most 300px wide (and never wider than the screen less its gutters).
+    label.style.setProperty("--half", `${Math.min(150, vw / 2 - DROP_HINT_GUTTER)}px`);
+    label.style.left = "0px";
+    label.style.top = `${Math.max(56, clientY - 56)}px`;
+    document.body.appendChild(label);
+    // Centred on the finger whenever its real width fits there.
+    label.style.left = `${dropHintCenterX(clientX, label.offsetWidth, vw)}px`;
+    window.setTimeout(() => label.remove(), DROP_HINT_MS);
+  }
+
+  /** Long-press info: art, name, cost, the kid one-liner, good-vs and watch-out portraits. */
+  private showCardBubble(id: CardId): void {
+    const box = this.cardBubble;
+    box.replaceChildren();
+    const card = getCard(id);
+    const head = document.createElement("div");
+    head.className = "cb-head";
+    const art = handCardCanvas(id, 64);
+    art.classList.add("cb-art");
+    const text = document.createElement("div");
+    text.className = "cb-text";
+    const name = document.createElement("b");
+    name.className = "cb-name";
+    name.textContent = cardDisplayName(id);
+    const cost = document.createElement("span");
+    cost.className = "cb-cost";
+    cost.innerHTML = icon("elixir");
+    cost.appendChild(document.createTextNode(tr(`${card.cost} elixir`, `${fmtNum(card.cost)} إكسير`)));
+    text.append(name, cost);
+    const blurb = blurbText(id);
+    if (blurb) {
+      const p = document.createElement("p");
+      p.className = "cb-blurb";
+      p.dir = "auto";
+      p.textContent = blurb;
+      text.appendChild(p);
+    }
+    head.append(art, text);
+    box.appendChild(head);
+    const info = cardBlurb(id);
+    const row = (label: string, ids: CardId[], cls: string): void => {
+      if (!ids.length) return;
+      const r = document.createElement("div");
+      r.className = `cb-row ${cls}`;
+      const l = document.createElement("span");
+      l.className = "cb-label";
+      l.textContent = label;
+      r.appendChild(l);
+      for (const ref of ids) {
+        const cell = document.createElement("span");
+        cell.className = "cb-mini";
+        cell.title = cardDisplayName(ref);
+        cell.setAttribute("aria-label", cardDisplayName(ref));
+        cell.appendChild(handCardCanvas(ref, 30));
+        const n = document.createElement("small");
+        n.textContent = cardDisplayName(ref);
+        cell.appendChild(n);
+        r.appendChild(cell);
+      }
+      box.appendChild(r);
+    };
+    if (info) {
+      row(tr("Good vs", "قوية ضد"), info.good, "good");
+      row(tr("Watch out", "احذر من"), info.watch, "watch");
+    }
+    box.dataset.card = id;
+    box.hidden = false;
+    box.classList.remove("show");
+    void box.offsetWidth;
+    box.classList.add("show");
+  }
+
+  private hideCardBubble(): void {
+    this.cardBubble.classList.remove("show");
+    this.cardBubble.hidden = true;
+  }
+
+  /**
+   * The clock mode for `battle`: a challenge's survive goal counts down and
+   * gets a goal card at the start. Any other battle shows the match clock.
+   */
+  setClockGoal(battle: BattleState, mode: ClockMode): void {
+    this.clockGoal = mode.kind === "match" ? null : { battle, mode };
+    this.prev = null; // redraw the clock
+    window.clearTimeout(this.goalTimer);
+    this.goalCard.hidden = true;
+    if (mode.kind === "survive") {
+      this.goalCard.innerHTML = icon("shield");
+      const t = document.createElement("span");
+      t.dir = "auto";
+      t.textContent = goalText(mode.seconds);
+      this.goalCard.appendChild(t);
+      this.goalCard.hidden = false;
+      this.restartAnim(this.goalCard, "pop");
+      this.goalTimer = window.setTimeout(() => {
+        this.goalCard.hidden = true;
+      }, GOAL_CARD_MS);
+    }
+  }
+
+  private clockMode(state: BattleState): ClockMode {
+    return this.clockGoal && this.clockGoal.battle === state ? this.clockGoal.mode : MATCH_CLOCK;
+  }
+
+  /** Esc: open the battle menu, or close it when it is open. */
+  toggleMenu(): void {
+    if (battleMenuOpen()) closeBattleMenu();
+    else this.openMenu();
+  }
+
+  /**
+   * The replay's speed pill under the clock, for `battle`: on with a
+   * callback for the chosen speed, off (null) for any other match.
+   */
+  setReplayControl(onSpeed: ((speed: ReplaySpeed) => void) | null, battle: BattleState | null = null): void {
+    this.onReplaySpeed = onSpeed;
+    this.replayBattle = onSpeed ? battle : null;
+    this.replayPill.hidden = onSpeed === null;
+    this.setReplaySpeed(1);
+    this.placeReplayPill(true);
+  }
+
+  private setReplaySpeed(speed: ReplaySpeed): void {
+    this.replayPill.querySelectorAll<HTMLButtonElement>(".replay-speed").forEach((b) => {
+      const on = Number(b.dataset.speed) === speed;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", String(on));
+    });
+  }
+
+  /** Centre the replay pill under the clock (the layout moves the clock between modes). */
+  private placeReplayPill(force = false): void {
+    if (this.replayPill.hidden) return;
+    const now = performance.now();
+    if (!force && now - this.pillPlacedAt < 400) return;
+    this.pillPlacedAt = now;
+    const c = this.clock.getBoundingClientRect();
+    if (c.width === 0) return;
+    const w = this.replayPill.offsetWidth || 150;
+    const h = this.replayPill.offsetHeight || 48;
+    const left = Math.max(8, Math.min(window.innerWidth - 8 - w, c.left + c.width / 2 - w / 2));
+    // Under the clock, then below anything of the top bar it would cover
+    // (the menu button, the overtime tie hint; in the wide side panel, the
+    // two scoreboards).
+    let top = c.bottom + 8;
+    const parts: HTMLElement[] = [];
+    this.clock.parentElement
+      ?.querySelectorAll<HTMLElement>(".crowns, .menu-toggle, .clock-hint")
+      .forEach((n) => parts.push(n));
+    for (let moved = true, guard = 0; moved && guard < 4; guard++) {
+      moved = false;
+      for (const part of parts) {
+        const r = part.getBoundingClientRect();
+        if (r.width === 0) continue;
+        if (left < r.right && left + w > r.left && top < r.bottom && top + h > r.top) {
+          top = r.bottom + 8;
+          moved = true;
+        }
+      }
+    }
+    this.replayPill.style.left = `${Math.round(left)}px`;
+    this.replayPill.style.top = `${Math.round(top)}px`;
   }
 
   /** Relabel the opponent banner (e.g. "Friend" for an online match). */
@@ -495,10 +830,18 @@ export class Hud {
     this.timeline = [];
     this.lastEnd = null;
     this.resultEntered = false;
+    this.reason = null;
     this.revealAt = 0;
     window.clearTimeout(this.revealTimer);
     this.result.hide();
     closeBattleMenu();
+    this.hideCardBubble();
+    this.abilityBubble.hidden = true;
+    if (this.clockGoal && this.clockGoal.battle !== state) {
+      this.clockGoal = null;
+      this.goalCard.hidden = true;
+    }
+    if (this.replayBattle !== state) this.setReplayControl(null);
     this.walletAtStart = this.cb.wallet?.() ?? null;
     this.refreshLabels();
   }
@@ -506,13 +849,22 @@ export class Hud {
   update(state: BattleState, mySide: Side = "player"): void {
     if (state !== this.battle || mySide !== this.mySide) this.beginBattle(state, mySide, false);
     this.tracker.observe(state);
-    const m = hudModel(state, mySide, pendingSpend());
+    const m = hudModel(state, mySide, pendingSpend(), this.clockMode(state));
     const p = this.prev;
     this.prev = m;
 
     // Clock.
-    if (m.clockText !== p?.clockText) this.clock.textContent = m.clockText;
+    if (m.clockText !== p?.clockText) this.clockTime.textContent = m.clockText;
     if (m.overtime !== p?.overtime) this.clock.classList.toggle("overtime", m.overtime);
+    if (m.survive !== p?.survive) {
+      this.clock.classList.toggle("survive", m.survive);
+      this.clock.dataset.label = m.survive ? tr("Challenge", "التحدي") : tr("Time left", "الوقت المتبقي");
+    }
+    if (m.hint !== p?.hint) {
+      this.clockHint.textContent = m.hint ?? "";
+      this.clockHint.hidden = m.hint === null;
+    }
+    this.placeReplayPill();
 
     // Crown counters — pop when a tower falls.
     if (m.crowns.me !== p?.crowns.me) {
@@ -593,6 +945,10 @@ export class Hud {
     // Match end: slow-mo, then the result screen.
     if (m.result && !this.resultEntered) {
       this.resultEntered = true;
+      // Read the why at the finish itself (tower HP for a tiebreak).
+      this.reason = resultReason(state, mySide, this.clockMode(state));
+      this.goalCard.hidden = true;
+      this.replayPill.hidden = true;
       const delay = reducedMotion() ? REVEAL_MS_CALM : REVEAL_MS;
       this.revealAt = performance.now() + delay;
       const stats = buildResultStats(state, mySide, this.tracker.bySide);
@@ -630,6 +986,7 @@ export class Hud {
         goldDelta: goldDelta && goldDelta > 0 ? goldDelta : null,
         chest,
         note: ladder ? null : rewardWords(this.reward),
+        reason: this.reason,
         extras: end ? resultExtras(end) : [],
         stats,
         timeline,

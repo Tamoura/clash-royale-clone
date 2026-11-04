@@ -27,6 +27,8 @@ export interface ResultData {
   chest: "free" | "rare" | null;
   /** One short line about a special reward ("First clear!"). */
   note: string | null;
+  /** Why the match ended this way (a challenge goal, a tower-HP tiebreak), or null. */
+  reason?: string | null;
   /** Extra rows from other features (registerResultExtra). */
   extras: HTMLElement[];
   stats: ResultStats;
@@ -108,6 +110,16 @@ export class ResultScreen {
     ribbon.setAttribute("role", "heading");
     ribbon.setAttribute("aria-level", "2");
     panel.appendChild(ribbon);
+
+    // The why, right under the verdict: kids should never wonder why they lost.
+    if (d.reason) {
+      const why = el("div", "res-reason");
+      why.insertAdjacentHTML("beforeend", icon(d.outcome === "win" ? "star" : "info"));
+      const text = el("span", "", d.reason);
+      text.dir = "auto";
+      why.appendChild(text);
+      panel.appendChild(why);
+    }
 
     // Crowns: your row, then theirs, each crown filling in turn.
     const crowns = el("div", "res-crowns");

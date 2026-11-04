@@ -2748,3 +2748,72 @@ button.card.locked {
   background: linear-gradient(180deg, #0f4f58 0%, #0a3440 100%);
   border-color: #06232c;
 }
+
+/* ══ Battle clarity: card info blurb and the "you left" notice ══ */
+/* Card info sheet (ui/screens/cardInfo.ts): the kid one-liner above the stats. */
+.v2-ci-blurb {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.12);
+}
+.v2-ci-blurb p {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.3;
+  color: var(--on-surface);
+}
+.v2-ci-blurb .v2-ci-refs {
+  font-size: var(--fs-sm);
+  color: var(--on-surface-dim);
+}
+.v2-ci-blurb .v2-ci-refs b {
+  font-weight: 400;
+  color: #9ff0b8;
+}
+.v2-ci-blurb .v2-ci-refs.is-watch b {
+  color: #ffa3a3;
+}
+
+/* Home (battle-top slot): a ladder match left by a reload counted as a loss. */
+.left-match-note {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  box-sizing: border-box;
+  margin: var(--sp-2) 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: rgba(120, 20, 30, 0.88);
+  box-shadow: inset 0 0 0 2px #ff8a8a, var(--elev-1);
+  color: #fff;
+  font-size: var(--fs-sm);
+  line-height: 1.3;
+  text-shadow: var(--cr-outline);
+}
+.left-match-note > .ui-icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+}
+.left-match-note > span {
+  flex: 1;
+  min-width: 0;
+}
+.left-match-delta {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  font-weight: 400;
+  color: #ffd0d0;
+}
+.left-match-delta .ui-icon {
+  width: 16px;
+  height: 16px;
+}

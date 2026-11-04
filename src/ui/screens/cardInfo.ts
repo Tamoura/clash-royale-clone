@@ -13,6 +13,7 @@ import { SHARD_GOLD_PRICE, spendGold, upgradeCost } from "../../meta/economy";
 import { ownedSet, tryUpgradeCard } from "../../meta/progress";
 import { cardStatLines, cardStatsAtLevel, type CardLevelStats } from "../../render/cardinfo";
 import { cardDisplayName } from "../../render/cardNames";
+import { cardBlurb } from "../../render/cardBlurbs";
 import { badge, button, progressBar, toast } from "../components";
 import { fmtNum } from "../i18n";
 import { icon } from "../icons";
@@ -240,6 +241,30 @@ export function openCardInfo(ctx: AppCtx, id: CardId, opts: CardInfoOpts = {}): 
     }
     head.appendChild(meta);
     content.appendChild(head);
+
+    // ---- What the card does, in kid words, before any numbers
+    const blurb = cardBlurb(id);
+    if (blurb) {
+      const what = document.createElement("div");
+      what.className = "v2-ci-blurb";
+      const line = document.createElement("p");
+      line.dir = "auto";
+      line.textContent = tr(blurb.en, blurb.ar);
+      what.appendChild(line);
+      const refs = (label: string, ids: CardId[], cls: string): void => {
+        if (!ids.length) return;
+        const row = document.createElement("p");
+        row.className = `v2-ci-refs ${cls}`;
+        row.dir = "auto";
+        const b = document.createElement("b");
+        b.textContent = label;
+        row.append(b, document.createTextNode(` ${ids.map(cardDisplayName).join(tr(", ", "، "))}`));
+        what.appendChild(row);
+      };
+      refs(tr("Good vs:", "قوية ضد:"), blurb.good, "is-good");
+      refs(tr("Watch out:", "احذر من:"), blurb.watch, "is-watch");
+      content.appendChild(what);
+    }
 
     // ---- Stats now vs next level
     const now = cardStatsAtLevel(id, p.level);

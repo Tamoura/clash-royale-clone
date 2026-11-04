@@ -23,6 +23,10 @@ describe("icons", () => {
     for (const name of wanted) expect(ICON_NAMES).toContain(name);
   });
 
+  it("has the battle-clarity glyphs (replay speed, KING charging)", () => {
+    for (const name of ["fast", "hourglass", "tv", "clock", "flag"] as IconName[]) expect(ICON_NAMES).toContain(name);
+  });
+
   it("passes the extra class through", () => {
     expect(icon("back", "icon-back")).toContain('class="ui-icon icon-back"');
   });
