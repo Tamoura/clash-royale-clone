@@ -325,9 +325,10 @@ describe("side-aware bot", () => {
     const setup = () => {
       const b = createBattle();
       giveBotHand(b, ["arrows", "giant", "hog-rider", "balloon"]);
-      // Three archers-worth of value: enough for arrows (3), not for 2x.
+      // Archers plus Skeletons, 4 elixir of value: enough for arrows (3),
+      // not for 2x (an exactly even 2x trade would be taken).
       spawnUnits(b, "player", "archers", 9, RIVER_Y - 3);
-      spawnUnits(b, "player", "archers", 9.4, RIVER_Y - 3.2);
+      spawnUnits(b, "player", "skeletons", 9.4, RIVER_Y - 3.2);
       return b;
     };
     const plain = setup();

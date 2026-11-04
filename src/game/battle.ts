@@ -37,6 +37,11 @@ export interface Entity {
   kind: EntityKind;
   /** Which card spawned this entity (null for towers). */
   cardId: CardId | null;
+  /**
+   * The card this unit counts as for levels and damage credit: its own card,
+   * or the spawner that summoned it (a Witch's skeletons are the Witch's).
+   */
+  sourceCardId: CardId | null;
   x: number;
   y: number;
   hp: number;
@@ -160,6 +165,8 @@ export interface Projectile {
   towerTroop?: TowerTroopId | null;
   /** Card of the shooter (null for towers). */
   cardId: CardId | null;
+  /** Card its damage is credited to (the shooter's sourceCardId). */
+  sourceCardId: CardId | null;
   /** Shooter kind, for projectile styling. */
   sourceKind: EntityKind;
   /** Launch point (for arc rendering). */
@@ -293,6 +300,7 @@ function makeTower(
     side,
     kind: kind === "king" ? "king-tower" : "princess-tower",
     cardId: null,
+    sourceCardId: null,
     x,
     y,
     hp: s.hp,
@@ -491,7 +499,9 @@ function spawnOffsets(count: number): Array<[number, number]> {
 
 /**
  * Spawn the units of a troop card directly, bypassing hand/elixir/zone
- * checks. Used by deployCard and by tests.
+ * checks. Used by deployCard, spawners and tests. `sourceId` is the card
+ * that summoned them (a Witch, a Tombstone, the Skeleton Barrel): the units
+ * take that card's level and credit their damage to it.
  */
 export function spawnUnits(
   state: BattleState,
@@ -499,15 +509,23 @@ export function spawnUnits(
   cardId: CardId,
   x: number,
   y: number,
+  sourceId?: CardId,
 ): Entity[] {
   const card = getCard(cardId);
   if (card.kind !== "troop") throw new Error(`${cardId} is not a troop card`);
-  return spawnTroops(state, side, card, x, y);
+  return spawnTroops(state, side, card, x, y, sourceId);
 }
 
-function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number, y: number): Entity[] {
-  const mult = levelMultiplier(sideState(state, side).levels, card.id);
-  const offsets = spawnOffsets(card.count);
+function spawnTroops(
+  state: BattleState,
+  side: Side,
+  card: TroopCard,
+  x: number,
+  y: number,
+  sourceId: CardId = card.id,
+  offsets: Array<[number, number]> = spawnOffsets(card.count),
+): Entity[] {
+  const mult = levelMultiplier(sideState(state, side).levels, sourceId);
   const spawned: Entity[] = [];
   for (const [dx, dy] of offsets) {
     spawned.push({
@@ -515,6 +533,7 @@ function spawnTroops(state: BattleState, side: Side, card: TroopCard, x: number,
       side,
       kind: "troop",
       cardId: card.id,
+      sourceCardId: sourceId,
       x: x + dx,
       y: y + dy,
       hp: card.unit.maxHp * mult,
@@ -568,6 +587,7 @@ function spawnBuilding(state: BattleState, side: Side, card: BuildingCard, x: nu
     side,
     kind: "building",
     cardId: card.id,
+    sourceCardId: card.id,
     x,
     y,
     hp: u.maxHp * mult,
@@ -825,7 +845,7 @@ export function deployCard(
       if (card.heal > 0) healAllies(state, side, card.id, x, y, card.radius, card.heal);
       // The Skeleton Barrel bursts open where it lands — a spell that
       // delivers troops anywhere on the field, enemy side included.
-      if (card.spawnUnit) spawnUnits(state, side, card.spawnUnit, x, y);
+      if (card.spawnUnit) spawnUnits(state, side, card.spawnUnit, x, y, card.id);
     }
   } else if (card.kind === "building") {
     state.events.push({ type: "deploy", side, cardId: card.id, x, y });

@@ -195,6 +195,7 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
         id: state.nextEntityId++,
         side: e.side,
         cardId: e.cardId,
+        sourceCardId: e.sourceCardId,
         sourceKind: e.kind,
         towerTroop: e.towerTroop ?? null,
         sx: e.x,
@@ -221,7 +222,7 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
   } else {
     for (const t of targets) {
       t.hp -= damage;
-      creditDamage(state, e.side, e.cardId, damage);
+      creditDamage(state, e.side, e.sourceCardId, damage);
       if (e.stunOnHit > 0) t.stunTimer = Math.max(t.stunTimer, e.stunOnHit);
       if (e.slowOnHit > 0) t.slowTimer = Math.max(t.slowTimer, e.slowOnHit);
     }
@@ -231,7 +232,7 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
         if (distance(o, target) <= e.splashRadius + o.radius) {
           const splashDmg = damage * e.splashDamageFactor;
           o.hp -= splashDmg;
-          creditDamage(state, e.side, e.cardId, splashDmg);
+          creditDamage(state, e.side, e.sourceCardId, splashDmg);
           if (e.stunOnHit > 0) o.stunTimer = Math.max(o.stunTimer, e.stunOnHit);
           if (e.slowOnHit > 0) o.slowTimer = Math.max(o.slowTimer, e.slowOnHit);
         }
@@ -295,7 +296,7 @@ function tickPierce(state: BattleState, p: Projectile, dt: number): boolean {
     if (o.flying && !p.targetsAir) continue;
     if (segmentDistance(fromX, fromY, p.x, p.y, o.x, o.y) <= o.radius + PIERCE_HALF_WIDTH) {
       o.hp -= p.damage;
-      creditDamage(state, p.side, p.cardId, p.damage);
+      creditDamage(state, p.side, p.sourceCardId, p.damage);
       p.hitIds.push(o.id);
     }
   }
@@ -315,7 +316,7 @@ function tickProjectiles(state: BattleState, dt: number): void {
     if (d <= step + target.radius * 0.5) {
       // Impact: damage the target, splash around it.
       target.hp -= p.damage;
-      creditDamage(state, p.side, p.cardId, p.damage);
+      creditDamage(state, p.side, p.sourceCardId, p.damage);
       if (p.stunOnHit > 0) target.stunTimer = Math.max(target.stunTimer, p.stunOnHit);
       if (p.slowOnHit > 0) target.slowTimer = Math.max(target.slowTimer, p.slowOnHit);
       if (p.splashRadius > 0) {
@@ -325,7 +326,7 @@ function tickProjectiles(state: BattleState, dt: number): void {
           if (distance(o, target) <= p.splashRadius + o.radius) {
             const splashDmg = p.damage * p.splashDamageFactor;
             o.hp -= splashDmg;
-            creditDamage(state, p.side, p.cardId, splashDmg);
+            creditDamage(state, p.side, p.sourceCardId, splashDmg);
             if (p.stunOnHit > 0) o.stunTimer = Math.max(o.stunTimer, p.stunOnHit);
             if (p.slowOnHit > 0) o.slowTimer = Math.max(o.slowTimer, p.slowOnHit);
           }
@@ -353,13 +354,16 @@ function rageBoost(state: BattleState, e: Entity): number {
   return isRaged(state, e) ? RAGE_BOOST : 1;
 }
 
-/** Spawner troops (e.g. the Witch) summon a wave every spawnInterval. */
+/**
+ * Spawner troops (e.g. the Witch) summon a wave every spawnInterval. The
+ * wave takes the spawner's level and credits its damage to the spawner.
+ */
 function tickSpawner(state: BattleState, e: Entity, dt: number): void {
   if (!e.spawnUnitId) return;
   e.spawnTimer -= dt;
   if (e.spawnTimer > 0) return;
   const toward = e.side === "player" ? -1 : 1;
-  spawnUnits(state, e.side, e.spawnUnitId, e.x, e.y + toward * (e.radius + 0.5));
+  spawnUnits(state, e.side, e.spawnUnitId, e.x, e.y + toward * (e.radius + 0.5), e.sourceCardId ?? undefined);
   e.spawnTimer += e.spawnInterval;
 }
 
@@ -464,7 +468,7 @@ function explodeOnDeath(state: BattleState, e: Entity): void {
   for (const o of livingEnemiesOf(state, e)) {
     if (distance(o, e) <= e.deathRadius + o.radius) {
       o.hp -= e.deathDamage;
-      creditDamage(state, e.side, e.cardId, e.deathDamage);
+      creditDamage(state, e.side, e.sourceCardId, e.deathDamage);
     }
   }
   state.effects.push({
@@ -540,31 +544,52 @@ function clampToArena(state: BattleState): void {
   }
 }
 
+/**
+ * Settle every death this tick. A death blast can kill something that sits
+ * EARLIER in the entity list (crown towers are always first), so passes
+ * repeat until one finds no new casualty: every dead entity gets its blast,
+ * its death event and its crown exactly once before the dead are removed.
+ */
 function processDeaths(state: BattleState): void {
-  for (const e of state.entities) {
-    if (e.hp > 0) continue;
-    explodeOnDeath(state, e);
-    state.events.push({
-      type: "death",
-      kind: e.kind,
-      cardId: e.cardId,
-      side: e.side,
-      x: e.x,
-      y: e.y,
-    });
-    if (e.kind === "princess-tower") {
-      const winner = e.side === "player" ? "enemy" : "player";
-      sideState(state, winner).crowns += 1;
-      state.events.push({ type: "crown", winner });
-      wakeKing(state, e.side);
-    } else if (e.kind === "king-tower") {
-      const winner = e.side === "player" ? "enemy" : "player";
-      sideState(state, winner).crowns = 3;
-      state.events.push({ type: "crown", winner });
-      finish(state, winner);
+  const done = new Set<number>();
+  let fresh = true;
+  while (fresh) {
+    fresh = false;
+    // Index loop: entities appended mid-pass are visited in the same pass.
+    for (let i = 0; i < state.entities.length; i++) {
+      const e = state.entities[i];
+      if (e.hp > 0 || done.has(e.id)) continue;
+      done.add(e.id);
+      fresh = true;
+      settleDeath(state, e);
     }
   }
   state.entities = state.entities.filter((e) => e.hp > 0);
+}
+
+/** One entity's death: its blast, the death event, crowns and the king. */
+function settleDeath(state: BattleState, e: Entity): void {
+  explodeOnDeath(state, e);
+  state.events.push({
+    type: "death",
+    kind: e.kind,
+    cardId: e.cardId,
+    side: e.side,
+    x: e.x,
+    y: e.y,
+  });
+  if (e.kind === "princess-tower") {
+    const winner = e.side === "player" ? "enemy" : "player";
+    const me = sideState(state, winner);
+    me.crowns = Math.min(3, me.crowns + 1);
+    state.events.push({ type: "crown", winner });
+    wakeKing(state, e.side);
+  } else if (e.kind === "king-tower") {
+    const winner = e.side === "player" ? "enemy" : "player";
+    sideState(state, winner).crowns = 3;
+    state.events.push({ type: "crown", winner });
+    finish(state, winner);
+  }
 }
 
 function wakeKing(state: BattleState, side: Entity["side"]): void {

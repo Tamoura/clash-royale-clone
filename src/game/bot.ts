@@ -252,8 +252,10 @@ function place(c: Ctx, id: CardId, x: number, y: number): boolean {
 
 /**
  * Find a point where a spell of this radius would hit `minCount`
- * opposing troops worth more elixir than the spell costs, or null.
- * A human never arrows a 1-elixir skeleton pack.
+ * opposing troops worth at least `minValue` elixir, or null. A human never
+ * arrows a 1-elixir skeleton pack, but an even trade that clears a swarm
+ * (Zap on 5 Bats) is a good play. The epsilon absorbs float sums: 5 Bats
+ * add up to exactly 2, 15 skeletons to 3.0000000000000004.
  */
 function findCluster(
   c: Ctx,
@@ -265,7 +267,7 @@ function findCluster(
   for (const center of troops) {
     const hit = troops.filter((t) => distance(center, t) <= radius);
     const value = hit.reduce((s, t) => s + unitValue(t), 0);
-    if (hit.length >= minCount && value > minValue) {
+    if (hit.length >= minCount && value >= minValue - 1e-9) {
       return {
         x: hit.reduce((s, t) => s + t.x, 0) / hit.length,
         y: hit.reduce((s, t) => s + t.y, 0) / hit.length,
