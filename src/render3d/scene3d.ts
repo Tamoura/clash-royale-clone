@@ -95,6 +95,18 @@ const SPELL_TINT: Partial<Record<CardId, number>> = {
 // Matches KING_DEPLOY_BUFFER in battle.ts: troops can't be deployed this close
 // to the enemy king even after a lane opens.
 const KING_NO_DEPLOY_RADIUS = 4.5;
+/**
+ * How much darker the enemy half looks while a troop or building is
+ * selected (0.45 = 45% darker on screen). Blending happens in linear light
+ * before the sRGB output, so the material needs a higher alpha to look
+ * this dark: 0.45 as a plain alpha read as barely 25% darker.
+ */
+export const ENEMY_ZONE_OPACITY = 0.45;
+const ENEMY_ZONE_ALPHA = 1 - Math.pow(1 - ENEMY_ZONE_OPACITY, 2.2);
+/** Depth (tiles) of the red edge line along the near bank of the river. */
+const ENEMY_EDGE_DEPTH = 0.32;
+/** How long the refused-drop ring pulses (seconds). */
+export const BAD_SPOT_SECONDS = 1.2;
 
 /*
  * Fields marked @internal are shared with the ./scene/ modules, which take
@@ -186,6 +198,9 @@ export class Battle3D {
   private readonly enemyDarkR: THREE.Mesh;
   private readonly laneBlueL: THREE.Mesh;
   private readonly laneBlueR: THREE.Mesh;
+  // Red "do not cross" edge where each shut enemy lane meets your half.
+  private readonly enemyEdgeL: THREE.Mesh;
+  private readonly enemyEdgeR: THREE.Mesh;
   // Red "keep clear" disc around the enemy king (matches the deploy buffer).
   private readonly kingNoDeploy: THREE.Mesh;
   private zoneShown = false;
@@ -271,10 +286,16 @@ export class Battle3D {
       this.scene.add(m);
       return m;
     };
-    this.enemyDarkL = zoneStrip(0x1a0b10, 0.24, ARENA_HEIGHT / 2 + 1);
-    this.enemyDarkR = zoneStrip(0x1a0b10, 0.24, ARENA_HEIGHT / 2 + 1);
+    // A clear "not here" tint while a troop or building is in hand: kids
+    // read 0.45 dark plus a red edge at a glance (0.24 alone was invisible).
+    this.enemyDarkL = zoneStrip(0x14060a, ENEMY_ZONE_ALPHA, ARENA_HEIGHT / 2 + 1);
+    this.enemyDarkR = zoneStrip(0x14060a, ENEMY_ZONE_ALPHA, ARENA_HEIGHT / 2 + 1);
     this.laneBlueL = zoneStrip(0x3b82f6, 0.12, ARENA_HEIGHT / 2 - 1);
     this.laneBlueR = zoneStrip(0x3b82f6, 0.12, ARENA_HEIGHT / 2 - 1);
+    this.enemyEdgeL = zoneStrip(0xff3b3b, 0.95, ENEMY_EDGE_DEPTH);
+    this.enemyEdgeR = zoneStrip(0xff3b3b, 0.95, ENEMY_EDGE_DEPTH);
+    // Drawn over the river surface and its bank lip.
+    for (const edge of [this.enemyEdgeL, this.enemyEdgeR]) edge.renderOrder = 3;
 
     // "Keep clear" disc around the enemy king (radius = the deploy buffer).
     this.kingNoDeploy = new THREE.Mesh(
@@ -411,6 +432,11 @@ export class Battle3D {
     this.enemyDarkR.position.set(lx, 0.026, ez);
     this.laneBlueL.position.set(-lx, 0.027, bz);
     this.laneBlueR.position.set(lx, 0.027, bz);
+    // The dark strip's edge on your side of the river, just inside it (above
+    // the water and the bank lip): the line a troop may not cross.
+    const edgeZ = ez + m * ((ARENA_HEIGHT / 2 + 1) / 2 - ENEMY_EDGE_DEPTH / 2);
+    this.enemyEdgeL.position.set(-lx, 0.09, edgeZ);
+    this.enemyEdgeR.position.set(lx, 0.09, edgeZ);
     // Enemy king sits at arena y=2.5 (or mirrored for the guest viewpoint).
     const kingW = toWorld(ARENA_WIDTH / 2, side === "player" ? 2.5 : ARENA_HEIGHT - 2.5);
     this.kingNoDeploy.position.set(kingW.x, 0.028, kingW.z);
@@ -527,6 +553,46 @@ export class Battle3D {
     this.kingNoDeploy.visible = v && (open.left || open.right);
     this.enemyDarkL.visible = v && !open.left;
     this.enemyDarkR.visible = v && !open.right;
+    this.enemyEdgeL.visible = v && !open.left;
+    this.enemyEdgeR.visible = v && !open.right;
+  }
+
+  /** Whether the deploy-zone overlay is up (a troop or building is selected). */
+  get zoneVisible(): boolean {
+    return this.zoneShown;
+  }
+
+  /**
+   * A refused drop: a red ring pulses twice at the spot for 1.2 s, so the
+   * "no" lands where the finger is, not only on the hand.
+   */
+  badSpotPulse(ax: number, ay: number): void {
+    const w = toWorld(ax, ay);
+    const group = new THREE.Group();
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xff3b3b,
+      transparent: true,
+      opacity: 0.95,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      fog: false,
+    });
+    ringMat.toneMapped = false;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.72, 40), ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    const discMat = new THREE.MeshBasicMaterial({ color: 0xff3b3b, transparent: true, opacity: 0.3, depthWrite: false, fog: false });
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.5, 32), discMat);
+    disc.rotation.x = -Math.PI / 2;
+    group.add(disc, ring);
+    group.position.set(w.x, 0.08, w.z);
+    group.renderOrder = 5;
+    this.addEffect(group, BAD_SPOT_SECONDS, (frac) => {
+      // Two beats over the effect's life: grow and fade, then again.
+      const beat = ((1 - frac) * 2) % 1;
+      ring.scale.setScalar(0.8 + beat * 1.1);
+      ringMat.opacity = 0.95 * (1 - beat) * Math.min(1, frac * 4);
+      discMat.opacity = 0.3 * frac;
+    });
   }
 
   /** @internal Add a timed effect; `update` gets the remaining life fraction (1 -> 0). */
