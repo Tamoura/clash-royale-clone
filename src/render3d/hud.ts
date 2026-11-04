@@ -417,6 +417,12 @@ export class Hud {
         this.hideCardBubble();
         btn.classList.remove("dragging");
       });
+      // A mouse released off the card still ends its info press.
+      window.addEventListener("pointerup", (ev) => {
+        if (!longPressed || ev.pointerId !== pressId) return;
+        longPressed = false;
+        this.hideCardBubble();
+      });
       // A long touch must not open the browser's own menu or text callout.
       btn.addEventListener("contextmenu", (ev) => ev.preventDefault());
       const cost = document.createElement("div");

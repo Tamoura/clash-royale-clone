@@ -70,6 +70,7 @@ import type { AppCtx, MetaState } from "./app/ctx";
 import { registerLifecycle } from "./app/lifecycle";
 import {
   emit,
+  on,
   presentTimeScale,
   shouldRender,
   simHeld,
@@ -716,7 +717,6 @@ sandboxResetBtn.addEventListener("click", () => {
 function announceMatchStart(): void {
   if (!replaying) hud.setReplayControl(null, battle);
   if (battleKind !== "challenge") hud.setClockGoal(battle, MATCH_CLOCK);
-  leftNotice = null;
   // A trophy match leaves a marker until it ends: a reload mid-battle is a loss.
   if (
     marksLeftMatch({
@@ -884,6 +884,9 @@ refreshMetaChips();
 // A ladder match left by a reload or a closed tab settles as a loss on the
 // next boot, through the same rules as any ladder loss (applyMatchResult).
 let leftNotice: { delta: number } | null = null;
+on("matchStart", () => {
+  leftNotice = null; // shown on Home until the next match, solo or online
+});
 
 function settleLeftMatch(): void {
   const left = takeLeftMatch(defaultKV(), Date.now());
