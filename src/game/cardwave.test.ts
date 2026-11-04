@@ -19,7 +19,8 @@ import { createHand } from "./hand";
 import { CARDS, DECK, TOKEN_IDS, getCard, isDeckable, type CardId } from "./cards";
 import { createDraft } from "./draft";
 import { dailyDeck, isFairDailyDeck } from "./daily";
-import { tick } from "./sim";
+import { createBot, botThink, tickBot } from "./bot";
+import { BATTLE_DURATION, OVERTIME_DURATION, tick } from "./sim";
 import { parseClientMsg, playableCardIds } from "../net/validate";
 
 const DT = 1 / 30;
@@ -336,3 +337,110 @@ describe("comet", () => {
   });
 });
 
+describe("the bot and the new cards", () => {
+  function playerPrincess(b: BattleState, left = true): Entity {
+    return b.entities.find((e) => e.side === "player" && e.kind === "princess-tower" && e.x < 9 === left)!;
+  }
+
+  it("leads a push with the Stone Golem, a win condition", () => {
+    const b = createBattle();
+    giveHand(b, "enemy", ["stone-golem", "knight", "archers", "musketeer"]);
+    botThink(b, createBot(3));
+    const golem = b.entities.find((e) => e.cardId === "stone-golem");
+    expect(golem?.side).toBe("enemy");
+    expect(golem!.y).toBeLessThan(RIVER_Y);
+  });
+
+  it("treats a Stone Golem on the field as a tank and feeds its lane", () => {
+    const b = createBattle();
+    const [golem] = spawnUnits(b, "enemy", "stone-golem", 14.5, 10);
+    giveHand(b, "enemy", ["knight", "archers", "musketeer", "minions"]);
+    botThink(b, createBot(3));
+    const support = b.entities.filter((e) => e.side === "enemy" && e.kind === "troop" && e !== golem);
+    expect(support.length).toBeGreaterThan(0);
+    for (const u of support) expect(Math.abs(u.x - 14.5)).toBeLessThan(2);
+  });
+
+  it("tunnels the Digger behind the weakest princess tower, or the other one", () => {
+    const b = createBattle();
+    const right = playerPrincess(b, false);
+    right.hp = 900;
+    giveHand(b, "enemy", ["digger", "knight", "archers", "musketeer"]);
+    botThink(b, createBot(3));
+    const dig = b.entities.find((e) => e.cardId === "digger")!;
+    expect(dig.side).toBe("enemy");
+    expect(dig.x).toBe(right.x);
+    expect(dig.y).toBeCloseTo(right.y + right.radius + 1.2, 9); // the far side, away from the river
+    expect(dig.burrowTimer).toBeGreaterThan(0);
+
+    // The weakest tower's far side is blocked by a building: the other tower.
+    const b2 = createBattle();
+    const r2 = playerPrincess(b2, false);
+    r2.hp = 900;
+    giveHand(b2, "player", ["cannon"]);
+    b2.player.elixir = { amount: 10 };
+    expect(deployCard(b2, "player", "cannon", r2.x, r2.y + 2.2)).toBe(true);
+    giveHand(b2, "enemy", ["digger", "knight", "archers", "musketeer"]);
+    botThink(b2, createBot(3));
+    const d2 = b2.entities.find((e) => e.cardId === "digger")!;
+    expect(d2.x).toBe(playerPrincess(b2, true).x);
+  });
+
+  it("drops the Comet on two valuable troops", () => {
+    const b = createBattle();
+    giveHand(b, "enemy", ["comet", "knight", "archers", "giant"]);
+    spawnUnits(b, "player", "wizard", 9, RIVER_Y - 3);
+    spawnUnits(b, "player", "musketeer", 9.6, RIVER_Y - 3.2);
+    botThink(b, createBot(3));
+    expect(b.pendingSpells).toHaveLength(1);
+    expect(b.pendingSpells[0].side).toBe("enemy");
+    expect(b.pendingSpells[0].x).toBeCloseTo(9.3, 6);
+  });
+
+  it("finishes a 400 HP tower with the Comet, then leaves it to the falling rock", () => {
+    const b = createBattle();
+    const tower = playerPrincess(b);
+    tower.hp = 200;
+    giveHand(b, "enemy", ["comet", "fireball", "knight", "archers"]);
+    const bot = createBot(3);
+    botThink(b, bot);
+    expect(b.pendingSpells.map((p) => p.cardId)).toEqual(["comet"]);
+    const left = b.enemy.elixir.amount;
+    b.enemy.elixir = { amount: 10 };
+    botThink(b, bot); // a Fireball would also kill it, but the Comet is already falling
+    expect(b.enemy.lastPlayed).not.toBe("fireball");
+    expect(b.effects.some((f) => f.cardId === "fireball")).toBe(false);
+    expect(left).toBeCloseTo(4, 9);
+    for (let i = 0; i < 60; i++) tick(b, DT);
+    expect(b.entities.includes(tower)).toBe(false);
+    expect(b.enemy.crowns).toBe(1);
+  });
+
+  it("stays inert without the new cards in hand", () => {
+    const b = createBattle();
+    giveHand(b, "enemy", ["knight", "archers", "musketeer", "fireball"]);
+    b.enemy.elixir = { amount: 5 };
+    botThink(b, createBot(3));
+    expect(b.entities.filter((e) => e.side === "enemy" && e.kind === "troop")).toHaveLength(0);
+    expect(b.pendingSpells).toHaveLength(0);
+  });
+
+  it("a seeded bot-vs-bot match plays every new card on both sides", () => {
+    const deck: CardId[] = ["stone-golem", "digger", "comet", "knight", "archers", "musketeer", "fireball", "zap"];
+    const b = createBattle(deck, deck);
+    const bp = createBot(4, { side: "player" });
+    const be = createBot(4 ^ 0x9e3779b9);
+    const played = { player: new Set<CardId>(), enemy: new Set<CardId>() };
+    while (!b.result && b.time < BATTLE_DURATION + OVERTIME_DURATION + 1) {
+      tick(b, DT);
+      tickBot(b, be, DT);
+      tickBot(b, bp, DT);
+      for (const ev of b.events) if (ev.type === "deploy" || ev.type === "spell") played[ev.side].add(ev.cardId);
+      b.events.length = 0;
+    }
+    for (const side of ["player", "enemy"] as const) {
+      for (const id of ["stone-golem", "digger", "comet"] as const) expect(played[side].has(id), `${side} ${id}`).toBe(true);
+    }
+    expect(b.result).not.toBeNull();
+  });
+});
