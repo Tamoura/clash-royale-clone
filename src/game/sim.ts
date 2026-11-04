@@ -32,6 +32,13 @@ export const DOUBLE_ELIXIR_AT = 120;
  * (sim v3): the old two minutes mostly ended 0-0 on tower HP.
  */
 export const OVERTIME_DURATION = 60;
+/**
+ * Overtime is decisive (sim v3): troop and building attacks, and death
+ * blasts, hit crown towers this many times harder, so a push that lands
+ * takes a crown instead of the match ending 0-0 on tower HP. Spells keep
+ * their own tower factor (TOWER_SPELL_DAMAGE_FACTOR) and are not scaled.
+ */
+export const OVERTIME_TOWER_DAMAGE = 3;
 
 /**
  * Sandbox/practice flat rate: high enough to refill an empty bar in a
@@ -67,9 +74,17 @@ function livingEnemiesOf(state: BattleState, e: Entity): Entity[] {
   return state.entities.filter((o) => o.side !== e.side && o.hp > 0 && !isBurrowed(o));
 }
 
-/** Damage a hit deals to `target`: chip units (the Digger) hit crown towers softly. */
-function hitDamage(damage: number, towerDamageFactor: number, target: Entity): number {
-  return isCrownTower(target) ? damage * towerDamageFactor : damage;
+/** Overtime's multiplier on troop and building damage to crown towers. */
+function towerHitScale(state: BattleState): number {
+  return state.overtime ? OVERTIME_TOWER_DAMAGE : 1;
+}
+
+/**
+ * Damage a hit deals to `target`: chip units (the Digger) hit crown towers
+ * softly, and every hit on a crown tower lands 3x in overtime.
+ */
+function hitDamage(state: BattleState, damage: number, towerDamageFactor: number, target: Entity): number {
+  return isCrownTower(target) ? damage * towerDamageFactor * towerHitScale(state) : damage;
 }
 
 /** Distance between hull edges, used for both range and sight checks. */
@@ -232,7 +247,7 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
     }
   } else {
     for (const t of targets) {
-      const dealt = hitDamage(damage, e.towerDamageFactor, t);
+      const dealt = hitDamage(state, damage, e.towerDamageFactor, t);
       t.hp -= dealt;
       creditDamage(state, e.side, e.sourceCardId, dealt);
       if (e.stunOnHit > 0) t.stunTimer = Math.max(t.stunTimer, e.stunOnHit);
@@ -242,7 +257,7 @@ function dealDamage(state: BattleState, e: Entity, target: Entity): void {
       for (const o of livingEnemiesOf(state, e)) {
         if (targets.includes(o) || !canHit(e, o)) continue;
         if (distance(o, target) <= e.splashRadius + o.radius) {
-          const splashDmg = hitDamage(damage * e.splashDamageFactor, e.towerDamageFactor, o);
+          const splashDmg = hitDamage(state, damage * e.splashDamageFactor, e.towerDamageFactor, o);
           o.hp -= splashDmg;
           creditDamage(state, e.side, e.sourceCardId, splashDmg);
           if (e.stunOnHit > 0) o.stunTimer = Math.max(o.stunTimer, e.stunOnHit);
@@ -307,7 +322,7 @@ function tickPierce(state: BattleState, p: Projectile, dt: number): boolean {
     if (o.side === p.side || o.hp <= 0 || isBurrowed(o) || p.hitIds.includes(o.id)) continue;
     if (o.flying && !p.targetsAir) continue;
     if (segmentDistance(fromX, fromY, p.x, p.y, o.x, o.y) <= o.radius + PIERCE_HALF_WIDTH) {
-      const dealt = hitDamage(p.damage, p.towerDamageFactor, o);
+      const dealt = hitDamage(state, p.damage, p.towerDamageFactor, o);
       o.hp -= dealt;
       creditDamage(state, p.side, p.sourceCardId, dealt);
       p.hitIds.push(o.id);
@@ -328,7 +343,7 @@ function tickProjectiles(state: BattleState, dt: number): void {
     const step = p.speed * dt;
     if (d <= step + target.radius * 0.5) {
       // Impact: damage the target, splash around it.
-      const dealt = hitDamage(p.damage, p.towerDamageFactor, target);
+      const dealt = hitDamage(state, p.damage, p.towerDamageFactor, target);
       target.hp -= dealt;
       creditDamage(state, p.side, p.sourceCardId, dealt);
       if (p.stunOnHit > 0) target.stunTimer = Math.max(target.stunTimer, p.stunOnHit);
@@ -338,7 +353,7 @@ function tickProjectiles(state: BattleState, dt: number): void {
           if (o.side === p.side || o.hp <= 0 || o === target || isBurrowed(o)) continue;
           if (o.flying && !p.targetsAir) continue;
           if (distance(o, target) <= p.splashRadius + o.radius) {
-            const splashDmg = hitDamage(p.damage * p.splashDamageFactor, p.towerDamageFactor, o);
+            const splashDmg = hitDamage(state, p.damage * p.splashDamageFactor, p.towerDamageFactor, o);
             o.hp -= splashDmg;
             creditDamage(state, p.side, p.sourceCardId, splashDmg);
             if (p.stunOnHit > 0) o.stunTimer = Math.max(o.stunTimer, p.stunOnHit);
@@ -508,8 +523,9 @@ function explodeOnDeath(state: BattleState, e: Entity): void {
   if (e.deathDamage <= 0) return;
   for (const o of livingEnemiesOf(state, e)) {
     if (distance(o, e) <= e.deathRadius + o.radius) {
-      o.hp -= e.deathDamage;
-      creditDamage(state, e.side, e.sourceCardId, e.deathDamage);
+      const dealt = isCrownTower(o) ? e.deathDamage * towerHitScale(state) : e.deathDamage;
+      o.hp -= dealt;
+      creditDamage(state, e.side, e.sourceCardId, dealt);
     }
   }
   state.effects.push({

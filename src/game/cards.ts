@@ -293,6 +293,9 @@ export const CARDS: Record<CardId, Card> = {
     cost: 5,
     count: 1,
     unit: unit({
+      // Stays 3600 in sim v3 although the bot-vs-bot lab has it near the
+      // bottom (39%): a tankier starter-deck Giant made the rookie and
+      // practice bots beat a beginner more often (notes/features/card-wave-3.md).
       maxHp: 3600,
       damage: 240,
       hitSpeed: 1.5,
@@ -437,7 +440,8 @@ export const CARDS: Record<CardId, Card> = {
     cost: 4,
     count: 1,
     unit: unit({
-      maxHp: 1050,
+      // 1050 to 980 (sim v3): the top of the random-deck lab (62-63%).
+      maxHp: 980,
       damage: 130,
       hitSpeed: 1.5,
       attackRange: 3.5,
@@ -774,7 +778,8 @@ export const CARDS: Record<CardId, Card> = {
     rarity: "epic",
     kind: "spell",
     cost: 3,
-    damage: 60,
+    // 60 to 150 (sim v3): the barrel's own burst; it sat at 39% in the lab.
+    damage: 150,
     radius: 1.5,
     stunSeconds: 0,
     rageSeconds: 0,
