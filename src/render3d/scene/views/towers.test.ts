@@ -73,3 +73,23 @@ describe("tower team colours follow the viewer (online guest)", () => {
     expect(towersSource).toMatch(/bakeRig\(defender, `[^`]*\$\{colors\.team\}/);
   });
 });
+
+describe("tower HP numbers face the viewer's camera", () => {
+  /** The HP number sprite's z relative to its bar (positive = nearer the bottom of the field). */
+  function textInFront(side: Side): number {
+    const v = buildTowerMesh(tower(side));
+    const text = v.root.children.find((o) => (o as THREE.Sprite).isSprite && o.scale.x === 1.75)!;
+    return text.position.z - v.hpGroup.position.z;
+  }
+
+  it("sits on the camera side of the bar for the host (camera at +z)…", () => {
+    expect(textInFront("player")).toBeGreaterThan(0);
+    expect(textInFront("enemy")).toBeGreaterThan(0);
+  });
+
+  it("…and for the guest, whose camera looks from -z (the bar hid it before)", () => {
+    setViewSide("enemy");
+    expect(textInFront("player")).toBeLessThan(0);
+    expect(textInFront("enemy")).toBeLessThan(0);
+  });
+});

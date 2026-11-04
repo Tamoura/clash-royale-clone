@@ -490,7 +490,9 @@ export function buildTowerMesh(e: Entity): EntityView {
   bar.group.add(badge);
   const hpText = makeHpText(barY + 0.02);
   hpText.sprite.scale.set(1.75, 0.64, 1);
-  hpText.sprite.position.z = barZ + 0.2;
+  // The number sits just in front of the bar as the camera sees it (the
+  // guest's flipped camera looks from -z), or the bar hides it.
+  hpText.sprite.position.z = barZ + 0.2 * camSide;
   root.add(hpText.sprite);
   view.hpText = hpText.text;
   plate.push(bar.group, hpText.sprite);
