@@ -80,10 +80,10 @@ function toPayload(msg: StartMsg): StartPayload {
  * socket is open, fans incoming server messages out to typed handlers, and
  * keeps the relay's RTT estimate fresh with periodic pings.
  *
- * Messages carry the protocol version `v` only when the caller passes v2 data
- * (a loadout, or a quick match); calls without one stay v1-shaped, so the
- * relay keeps treating that client as an old LAN client (word-only codes,
- * immediate peer-left on a drop).
+ * Handshakes carry the protocol version `v` when the caller passes a loadout
+ * (create, join) and always for a quick match. The relay answers a create or
+ * join without `v` with `update-required`, so every current caller passes a
+ * loadout; the v-less shape only survives for old tests and tools.
  */
 export class RoomClient {
   onCreated: ((code: string, token: string) => void) | null = null;

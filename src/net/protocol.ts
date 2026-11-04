@@ -5,13 +5,12 @@ import type { AbilityId } from "../game/abilities";
 import type { InputFrame } from "./lockstep";
 
 /**
- * Wire protocol version. v2 is additive over v1: every v1 message is still
- * valid, and a message without `v` is treated as current so older LAN
- * clients keep working. A client that sends an explicit, different `v` is
- * told `update-required`. Ship relay changes before client changes.
- * v3 is a hard break: sim v3 (src/game/version.ts) changed what a match
- * computes, so a v2 page would desync against a v3 one. Any SIM_VERSION
- * change must bump this too.
+ * Wire protocol version. Handshakes (create, join, quick) must carry the
+ * current `v`: a missing or different `v` gets `update-required` (see
+ * validate.ts parseClientMsg); in-match messages carry none. Ship relay
+ * changes before client changes. v3 is a hard break: sim v3
+ * (src/game/version.ts) changed what a match computes, so a v2 page would
+ * desync against a v3 one. Any SIM_VERSION change must bump this too.
  */
 export const PROTOCOL_VERSION = 3;
 
