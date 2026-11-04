@@ -14,6 +14,11 @@ export interface ChallengeWave {
 export interface Challenge {
   id: string;
   name: string;
+  /**
+   * Arabic is shown only in the Golden Age edition, so nameAr and blurbAr
+   * use that edition's card names (src/render/cardNames.ts): War Elephant,
+   * militia, drummers, camel riders. No witches, skeletons or giants.
+   */
   nameAr: string;
   /** One line that ends with the goal, e.g. "Keep all 3 towers standing for 0:45!". */
   blurb: string;
@@ -46,7 +51,7 @@ export const CHALLENGES: Challenge[] = [
     name: "First Defense",
     nameAr: "الدفاع الأول",
     blurb: "A Knight, then a Giant. Keep all 3 towers standing for 0:30!",
-    blurbAr: "فارس ثم عملاق. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٣٠!",
+    blurbAr: "فارس ثم فيل حرب. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٣٠!",
     deck: ["knight", "archers", "musketeer", "mini-pekka", "cannon", "fireball", "arrows", "skeletons"],
     surviveFor: 30,
     waves: [
@@ -61,7 +66,7 @@ export const CHALLENGES: Challenge[] = [
     name: "Little Ones",
     nameAr: "الصغار",
     blurb: "Skeletons, Minions and Bats! Arrows and Zap sweep them up. Keep all 3 towers standing for 0:30!",
-    blurbAr: "هياكل وتوابع وخفافيش! السهام والصاعقة تكنسها. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٣٠!",
+    blurbAr: "ميليشيا وسرب صقور وخفافيش! وابل السهام ومسحوق الوميض يكنسانها. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٣٠!",
     deck: ["arrows", "zap", "knight", "archers", "musketeer", "valkyrie", "baby-dragon", "fireball"],
     surviveFor: 30,
     waves: [
@@ -75,9 +80,9 @@ export const CHALLENGES: Challenge[] = [
   {
     id: "tank-stop",
     name: "Tank Stop",
-    nameAr: "أوقف الدبابة",
+    nameAr: "أوقف فيل الحرب",
     blurb: "A Giant with Archers behind him. Keep all 3 towers standing for 0:35!",
-    blurbAr: "عملاق ورماة خلفه. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٣٥!",
+    blurbAr: "فيل حرب والرماة خلفه. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٣٥!",
     deck: ["mini-pekka", "knight", "musketeer", "archers", "cannon", "fireball", "arrows", "skeletons"],
     surviveFor: 35,
     waves: [
@@ -90,9 +95,9 @@ export const CHALLENGES: Challenge[] = [
   {
     id: "giant-trouble",
     name: "Giant Trouble",
-    nameAr: "ورطة العمالقة",
+    nameAr: "ورطة الفيلة",
     blurb: "Two giants, two lanes. Keep all 3 towers standing for 0:45!",
-    blurbAr: "عملاقان في مسارين. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٥!",
+    blurbAr: "فيلا حرب في مسارين. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٥!",
     deck: ["knight", "archers", "mini-pekka", "musketeer", "cannon", "fireball", "skeletons", "arrows"],
     surviveFor: 45,
     waves: [
@@ -110,7 +115,7 @@ export const CHALLENGES: Challenge[] = [
     name: "Air Raid",
     nameAr: "غارة جوية",
     blurb: "Balloons and dragons fill the sky. Keep all 3 towers standing for 0:45!",
-    blurbAr: "المناطيد والتنانين تملأ السماء. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٥!",
+    blurbAr: "الطائرات النارية وفراخ الرخ تملأ السماء. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٥!",
     deck: ["musketeer", "archers", "wizard", "gargoyles", "knight", "arrows", "fireball", "cannon"],
     surviveFor: 45,
     waves: [
@@ -145,9 +150,9 @@ export const CHALLENGES: Challenge[] = [
   {
     id: "hog-rush",
     name: "Hog Rush",
-    nameAr: "اندفاع الخيّالة",
+    nameAr: "اندفاع الجمّالة",
     blurb: "Hog Riders charge a new lane every 6 seconds. Keep all 3 towers standing for 0:40!",
-    blurbAr: "خيّالة يندفعون في مسار جديد كل ٦ ثوانٍ. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٠!",
+    blurbAr: "راكبو الجمال يندفعون في مسار جديد كل ٦ ثوانٍ. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٠!",
     deck: ["cannon", "tombstone", "mini-pekka", "knight", "skeletons", "musketeer", "zap", "valkyrie"],
     surviveFor: 40,
     waves: [
@@ -165,7 +170,7 @@ export const CHALLENGES: Challenge[] = [
     name: "Sky Pirates",
     nameAr: "قراصنة السماء",
     blurb: "A Balloon with Bats and Minions for a crew. Keep all 3 towers standing for 0:45!",
-    blurbAr: "منطاد يرافقه طاقم من الخفافيش والتوابع. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٥!",
+    blurbAr: "طائرة نارية يرافقها طاقم من الخفافيش وسرب الصقور. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٥!",
     deck: ["musketeer", "archers", "wizard", "baby-dragon", "arrows", "zap", "gargoyles", "knight"],
     surviveFor: 45,
     waves: [
@@ -183,7 +188,7 @@ export const CHALLENGES: Challenge[] = [
     name: "Mega Drop",
     nameAr: "الهبوط الكبير",
     blurb: "A Mega Knight lands at 0:02! Keep all 3 towers standing for 0:40!",
-    blurbAr: "فارس عملاق يهبط عند ٠:٠٢! حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٠!",
+    blurbAr: "أمير المماليك يهبط عند ٠:٠٢! حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٠!",
     deck: ["pekka", "mini-pekka", "skeleton-army", "knight", "cannon", "musketeer", "fireball", "zap"],
     surviveFor: 40,
     waves: [
@@ -199,7 +204,7 @@ export const CHALLENGES: Challenge[] = [
     name: "Bridge Spam",
     nameAr: "زحمة الجسور",
     blurb: "Prince, Hog Rider and Mini P.E.K.K.A rush both bridges. Keep all 3 towers standing for 0:45!",
-    blurbAr: "أمير وخيّال وبيكا صغير يندفعون على الجسرين. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٥!",
+    blurbAr: "رمّاح وراكب جمل ومبارز يندفعون على الجسرين. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٥!",
     deck: ["knight", "skeletons", "cannon", "tombstone", "valkyrie", "musketeer", "zap", "fireball"],
     surviveFor: 45,
     waves: [
@@ -216,9 +221,9 @@ export const CHALLENGES: Challenge[] = [
   {
     id: "witch-party",
     name: "Witch Party",
-    nameAr: "حفلة الساحرات",
+    nameAr: "حفلة الطبول",
     blurb: "Two Witches and all their Skeletons. Keep all 3 towers standing for 0:45!",
-    blurbAr: "ساحرتان ومعهما هياكلهما. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٥!",
+    blurbAr: "قارعتا طبول تستنفران الميليشيا. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٥!",
     deck: ["valkyrie", "fireball", "arrows", "knight", "musketeer", "mini-pekka", "baby-dragon", "zap"],
     surviveFor: 45,
     waves: [
@@ -233,9 +238,9 @@ export const CHALLENGES: Challenge[] = [
   {
     id: "skeleton-storm",
     name: "Skeleton Storm",
-    nameAr: "عاصفة الهياكل",
+    nameAr: "عاصفة الميليشيا",
     blurb: "Three Skeleton Armies, one after another. Keep all 3 towers standing for 0:40!",
-    blurbAr: "ثلاثة جيوش من الهياكل، واحد تلو الآخر. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٠!",
+    blurbAr: "ثلاثة حشود من الميليشيا، واحد تلو الآخر. حافظ على أبراجك الثلاثة صامدة لمدة ٠:٤٠!",
     deck: ["valkyrie", "wizard", "arrows", "zap", "knight", "musketeer", "baby-dragon", "fireball"],
     surviveFor: 40,
     waves: [

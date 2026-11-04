@@ -40,6 +40,24 @@ describe("challenge definitions", () => {
     }
   });
 
+  // Arabic shows only in the Golden Age edition, which renames the cards
+  // (src/render/cardNames.ts) and has no sorcery, undead or tanks.
+  it("Arabic text uses Golden Age names: no witches, skeletons, giants or tanks", () => {
+    const CLASSIC_WORDS =
+      /ساحر|سحر|هيكل|هياكل|عملاق|عمالقة|دبابة|منطاد|مناطيد|تنين|تنانين|خيّال|خيال|توابع|بيكا|صاعقة/;
+    for (const ch of [...CHALLENGES, TUTORIAL_CHALLENGE]) {
+      expect(ch.nameAr, ch.id).not.toMatch(CLASSIC_WORDS);
+      expect(ch.blurbAr, ch.id).not.toMatch(CLASSIC_WORDS);
+    }
+    const byId = (id: string) => CHALLENGES.find((c) => c.id === id)!;
+    expect(byId("witch-party").nameAr).toContain("الطبول"); // witch: قارعة الطبول
+    expect(byId("skeleton-storm").nameAr).toContain("الميليشيا"); // skeletons: ميليشيا
+    expect(byId("tank-stop").nameAr).toContain("فيل الحرب"); // giant: فيل الحرب
+    expect(byId("mega-drop").blurbAr).toContain("أمير المماليك"); // mega-knight
+    expect(byId("little-ones").blurbAr).toContain("وابل السهام"); // arrows
+    expect(byId("little-ones").blurbAr).toContain("مسحوق الوميض"); // zap
+  });
+
   it("sorts easiest first, keeping the list order within a star", () => {
     const sorted = sortedByStars(CHALLENGES);
     expect(sorted).toHaveLength(CHALLENGES.length);
