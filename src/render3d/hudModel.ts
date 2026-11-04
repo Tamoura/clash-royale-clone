@@ -289,6 +289,19 @@ export function badSpotText(reason: BadSpotReason): string {
     : tr("Too close to a tower!", "قريب جدًا من البرج!");
 }
 
+/** The refused-drop label never runs closer than this to a screen edge (px). */
+export const DROP_HINT_GUTTER = 16;
+
+/**
+ * Where the refused-drop label's centre goes: right over the finger
+ * (clientX) whenever the label fits there, else slid in just far enough to
+ * keep a gutter to the screen edge. labelWidth is the label's real width.
+ */
+export function dropHintCenterX(clientX: number, labelWidth: number, viewportWidth: number): number {
+  const half = Math.max(0, Math.min(labelWidth / 2, viewportWidth / 2 - DROP_HINT_GUTTER));
+  return Math.max(DROP_HINT_GUTTER + half, Math.min(viewportWidth - DROP_HINT_GUTTER - half, clientX));
+}
+
 // ---- Tower damage attribution ----------------------------------------------
 // The sim credits damage per card but not per target, so the loss tip works
 // out who hurt the towers from the presentation side: every attack or spell

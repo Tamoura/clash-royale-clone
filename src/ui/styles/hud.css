@@ -1043,6 +1043,14 @@
 #topbar.v2 .clock-hint[hidden] {
   display: none;
 }
+/* One-row scoreboard band: the pills (34px) stand taller than the clock
+   beside them, so the hint drops below the pills' bottom edge (the row's
+   centre + 21px), not just below the shorter clock. */
+@media (min-width: 600px), (min-aspect-ratio: 47/100) {
+  :root[data-layout="tall"] #topbar.v2 .clock-hint {
+    top: max(calc(100% + 4px), calc(50% + 21px));
+  }
+}
 /* Wide: the clock sits in the left panel above the scoreboards, so the hint
    is part of it (an absolute hint would cover the opponent's pill). */
 :root[data-layout="wide"] #topbar.v2 .clock-hint {

@@ -16,11 +16,13 @@ import { resultExtras } from "../app/slots";
 import { battleMenuOpen, battleMenuPausing, closeBattleMenu, openBattleMenu } from "../ui/battleMenu";
 import { getPrefs, onPrefs, reducedMotion } from "../ui/prefs";
 import {
+  DROP_HINT_GUTTER,
   MATCH_CLOCK,
   TowerDamageTracker,
   abilitySecondsLeft,
   buildResultStats,
   chargingText,
+  dropHintCenterX,
   goalText,
   hudModel,
   lossTip,
@@ -578,12 +580,14 @@ export class Hud {
     label.dir = "auto";
     label.setAttribute("role", "status");
     label.textContent = text;
-    // Keep it on screen: clamp the centre inside a 16px gutter.
-    const half = Math.min(150, window.innerWidth / 2 - 16);
-    label.style.left = `${Math.max(16 + half, Math.min(window.innerWidth - 16 - half, clientX))}px`;
+    const vw = window.innerWidth;
+    // At most 300px wide (and never wider than the screen less its gutters).
+    label.style.setProperty("--half", `${Math.min(150, vw / 2 - DROP_HINT_GUTTER)}px`);
+    label.style.left = "0px";
     label.style.top = `${Math.max(56, clientY - 56)}px`;
-    label.style.setProperty("--half", `${half}px`);
     document.body.appendChild(label);
+    // Centred on the finger whenever its real width fits there.
+    label.style.left = `${dropHintCenterX(clientX, label.offsetWidth, vw)}px`;
     window.setTimeout(() => label.remove(), DROP_HINT_MS);
   }
 
@@ -719,10 +723,13 @@ export class Hud {
     const h = this.replayPill.offsetHeight || 48;
     const left = Math.max(8, Math.min(window.innerWidth - 8 - w, c.left + c.width / 2 - w / 2));
     // Under the clock, then below anything of the top bar it would cover
-    // (the menu button; in the wide side panel, the two scoreboards).
+    // (the menu button, the overtime tie hint; in the wide side panel, the
+    // two scoreboards).
     let top = c.bottom + 8;
     const parts: HTMLElement[] = [];
-    this.clock.parentElement?.querySelectorAll<HTMLElement>(".crowns, .menu-toggle").forEach((n) => parts.push(n));
+    this.clock.parentElement
+      ?.querySelectorAll<HTMLElement>(".crowns, .menu-toggle, .clock-hint")
+      .forEach((n) => parts.push(n));
     for (let moved = true, guard = 0; moved && guard < 4; guard++) {
       moved = false;
       for (const part of parts) {

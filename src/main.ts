@@ -130,7 +130,13 @@ import { openStudio } from "./ui/screens/studio";
 import { startTutorial, tutorialDone } from "./ui/tutorialOverlay";
 import { MATCH_CLOCK, badSpotReason, badSpotText, challengeClock } from "./render3d/hudModel";
 import { pickBotLoadout, type BotLoadout } from "./match/botLoadout";
-import { clearMatchMarker, markMatchStart, marksLeftMatch, takeLeftMatch } from "./match/leftMatch";
+import {
+  browserLiveMatchGuard,
+  clearMatchMarker,
+  markMatchStart,
+  marksLeftMatch,
+  takeLeftMatchUnlessLive,
+} from "./match/leftMatch";
 import { applyMatchResult } from "./match/rewards";
 import { defaultKV } from "./meta/kv";
 import { reachedArenaIndex } from "./meta/unlocks";
@@ -242,6 +248,8 @@ function triggerAbility(): void {
   emit("input", { kind: "ability" });
 }
 
+/** Held while this tab plays a ladder match, so another tab never settles it as left. */
+const liveMatch = browserLiveMatchGuard();
 let replaying = false;
 let replaySpeed = 1;
 let soloTick = 0;
@@ -643,10 +651,9 @@ function startReplay(): void {
   audio.setIntensity(0);
   audio.restartMusic();
   startCountdown();
-  window.setTimeout(
-    () => showBanner(tr("REPLAY: tap 2x or 4x to speed up", "إعادة: اضغط 2x أو 4x للتسريع")),
-    2600,
-  );
+  // Short enough to sit on the board between the landscape side panels; the
+  // speeds are written as the pill writes them (Arabic-Indic in Golden Age).
+  window.setTimeout(() => showBanner(tr("REPLAY: tap 2x or 4x", `إعادة: اضغط ${fmtNum(2)}x أو ${fmtNum(4)}x`)), 2600);
   announceMatchStart();
 }
 
@@ -728,6 +735,7 @@ function announceMatchStart(): void {
     })
   ) {
     markMatchStart(defaultKV(), Date.now(), meta.profile.trophies);
+    liveMatch.hold(); // other tabs see it running (a reload or a closed tab lets go)
   }
   emit("matchStart", { kind: battleKind, battle, mySide: localSide(), online: false, replay: replaying });
 }
@@ -883,17 +891,24 @@ refreshMetaChips();
 // ---- Leaving early (match/leftMatch.ts) ------------------------------------
 // A ladder match left by a reload or a closed tab settles as a loss on the
 // next boot, through the same rules as any ladder loss (applyMatchResult).
+// A marker whose match is still being played in another tab of the same
+// profile is left alone (match/leftMatch.ts liveMatchGuard).
 let leftNotice: { delta: number } | null = null;
 on("matchStart", () => {
   leftNotice = null; // shown on Home until the next match, solo or online
 });
+let screenNow = "";
+on("screen", (s) => {
+  screenNow = s.id;
+});
 
-function settleLeftMatch(): void {
-  const left = takeLeftMatch(defaultKV(), Date.now());
+async function settleLeftMatch(): Promise<void> {
+  const left = await takeLeftMatchUnlessLive(defaultKV(), Date.now(), liveMatch.live);
   if (!left) return;
   const delta = applyMatchResult(ctx, "enemy");
   hud.setReward(null); // the summary belongs to no result screen
   leftNotice = { delta };
+  if (screenNow === "home") openHome(); // show the notice and the new trophy count
 }
 
 registerHomeSlot("battle-top", (host) => {
@@ -935,8 +950,9 @@ installAutoDifficulty(() => meta.profile.trophies);
 if (EDITION_CHOSEN && !tutorialDone()) {
   startTutorial(ctx); // the guided battle comes first, even for a ?join= link
 } else {
-  settleLeftMatch(); // before Home renders, so its notice and trophies are current
   openHome();
+  // Asks the other tabs first (a few ms with Web Locks), then Home redraws.
+  void settleLeftMatch();
   handleJoinLink(ctx); // ?join=CODE invite links open the lobby and join
 }
 
@@ -1210,6 +1226,7 @@ function flashImpact(): void {
 /** Settle a finished match (rewards, quests, streaks), then tell the hooks. */
 function finishMatch(winner: Side | "draw"): void {
   clearMatchMarker(defaultKV()); // it ended on screen: nothing left to settle
+  liveMatch.release();
   const online = onlineSession() !== null;
   const mySide = localSide();
   const settled = settleMatch(ctx, {

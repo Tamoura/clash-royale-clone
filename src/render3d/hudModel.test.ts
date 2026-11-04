@@ -18,9 +18,11 @@ import { tr } from "../ui/i18n";
 import {
   MATCH_CLOCK,
   abilitySecondsLeft,
+  DROP_HINT_GUTTER,
   badSpotReason,
   badSpotText,
   challengeClock,
+  dropHintCenterX,
   chargingText,
   goalText,
   overtimeHint,
@@ -326,6 +328,19 @@ describe("refused drops", () => {
     expect(badSpotReason(b, "player", "knight", 3.5, 5)).toBeNull(); // clear of the king
     expect(badSpotReason(b, "player", "knight", 8, 4)).toBe("tower"); // inside the king's buffer
     expect(badSpotText("tower")).toBe(tr("Too close to a tower!", "قريب جدًا من البرج!"));
+  });
+
+  it("centres the label on the finger whenever it fits", () => {
+    // A 90px label on a 390px phone: over the finger, even near the left lane.
+    expect(dropHintCenterX(89.6, 90, 390)).toBe(89.6);
+    expect(dropHintCenterX(86.5, 84, 360)).toBe(86.5);
+    expect(dropHintCenterX(300, 90, 390)).toBe(300);
+    // At an edge it slides in just enough to keep the gutter.
+    expect(dropHintCenterX(10, 90, 390)).toBe(DROP_HINT_GUTTER + 45);
+    expect(dropHintCenterX(385, 90, 390)).toBe(390 - DROP_HINT_GUTTER - 45);
+    // A label wider than the screen less its gutters sits in the middle.
+    expect(dropHintCenterX(20, 500, 360)).toBe(180);
+    expect(dropHintCenterX(4, 0, 360)).toBe(DROP_HINT_GUTTER); // unmeasured: just the gutter
   });
 
   it("has nothing to say for good spots, spells and cards not in hand", () => {

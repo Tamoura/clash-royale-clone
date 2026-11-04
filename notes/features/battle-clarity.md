@@ -17,6 +17,9 @@ lost, what a card does, and why a drop was refused.
     `checkDeploy` still refuses it: that can only be the sim's private
     `nearEnemyTower` clearance (not exported; the sim package owns it).
   The ghost hides at once; the card stays selected so the next tap can land.
+  The label is measured after it is added and centred on the finger
+  whenever it fits (`dropHintCenterX`, 16 px screen gutter); only near an
+  edge does it slide in.
 - While a troop **or building** is selected (the Mirror counts as the card
   it copies), the enemy half is 45% darker on screen with a red line along
   your bank of the river. Tuning: `ENEMY_ZONE_OPACITY` in `scene3d.ts`.
@@ -66,7 +69,9 @@ lost, what a card does, and why a drop was refused.
 
 ### 6. Tiebreak
 - In overtime a small "Tie? Weakest tower loses" line sits under the clock
-  (inside the clock in the wide side panel).
+  (inside the clock in the wide side panel). In the one-row scoreboard band
+  (360x740-class phones, tablets) it drops below the scoreboard pills, which
+  stand taller than the clock: `top: max(100% + 4px, 50% + 21px)`.
 - A finish decided on tower HP (crowns tied when overtime runs out) adds
   "Crowns tied: your weakest tower had N HP, theirs had M" under the
   ribbon; a draw reads the same. `weakestTowerHp` uses the sim's own
@@ -84,6 +89,16 @@ lost, what a card does, and why a drop was refused.
   removed (never charged twice), and Home shows "You left your last
   battle, so it counted as a loss" with the trophy change (battle-top
   home slot, until the next match starts).
+- A match still being played in another tab of the same profile is never
+  settled: each tab holds a shared Web Lock (`cr-ladder-match`) from a
+  ladder match's start to its finish, and a reload or a closed tab drops
+  it. Boot renders Home, asks `navigator.locks.query()` (asking twice, a
+  beat apart, when it looks held, so a page's own just-reloaded lock is
+  not mistaken for a live match), and settles only if nobody holds it; the
+  marker must still be the one read before asking (`takeLeftMatchUnlessLive`).
+  Home then redraws with the notice. Pages without Web Locks (plain-http
+  LAN addresses) ping over a BroadcastChannel and wait 300 ms for a tab
+  mid-match to answer.
 
 ### 8. Bot loadout fairness
 - New `src/match/botLoadout.ts`: the bot's tower troop and King's ability
@@ -96,7 +111,12 @@ lost, what a card does, and why a drop was refused.
   JS from the clock's rect, then pushed below the menu button or the wide
   panel's scoreboards if it would cover them).
 - Tapes store an optional `opponentId` (the bot archetype) next to
-  `opponent`; playback names the bot in today's edition. The tape version
+  `opponent`; playback names the bot in today's edition.
+- The replay banner reads "REPLAY: tap 2x or 4x" and writes the speeds as
+  the pill does (Arabic-Indic digits in Golden Age: "اضغط ٢x أو ٤x"). It is
+  short enough to stay on the board between the landscape side panels (the
+  longer "... to speed up" ran under the hand panel at 844x390).
+- The pill steps below the overtime tie hint when both show. The tape version
   lines are untouched (sim-card-wave owns them).
 
 ## Files
@@ -109,7 +129,11 @@ the `leaveCost` lines), `render3d/hud.ts`, `hudModel.ts` (+ tests),
 
 One new file outside the declared list: `src/match/botLoadout.ts` (+ test).
 It keeps the loadout rule pure and tested instead of burying it in main.ts;
-no other package touches it.
+no other package touches it. **For the integrator:** record
+`src/match/botLoadout.ts` and `src/match/botLoadout.test.ts` as owned by
+battle-clarity, so a wave-2 bot change (decks-qol, rewards-legendary) knows
+the bot tower-troop / ability rule lives there (main.ts only calls
+`pickBotLoadout`).
 
 ## How to verify
 - `npx tsc --noEmit`, `npx vitest run --testTimeout=30000`, `npm run build`.
@@ -151,7 +175,21 @@ page or console errors in any of these flows.
 - Tiebreak forced through `__cr.battle()`: "Crowns tied: your weakest
   tower had 404 HP, theirs had 1,200".
 - Reload mid-ladder at 150 trophies: Home notice, 150 → 130; a second boot
-  charges nothing; a finished match leaves no marker.
+  charges nothing; a finished match leaves no marker (both editions).
+- Two tabs, one profile: tab A mid-ladder at 150, tab B opens: no notice,
+  150 kept, marker kept, A still playing. Tab A closed mid-match, a new tab
+  opens: notice, 150 → 130. Tab C plays while tab D opens: D charges
+  nothing; C wins (130 → 160); D reloaded: no notice, 160.
+  `navigator.locks.query()` shows `cr-ladder-match` (shared) only while a
+  ladder match runs.
+- Refused-drop label centre vs release point: x 89.6 / 89.6 (390x844
+  Classic), 86.5 / 86.5 (360x740 Golden Age).
+- Overtime hint vs top bar (rect overlap, Classic + Golden Age): none at
+  360x740, 390x844, 375x667, 320x568, 412x823, 768x1024, 844x390,
+  1280x800 (360x740 Golden Age: hint y 51-69, pill bottom 48).
+- Replay banner: "إعادة: اضغط ٢x أو ٤x" next to pill "١x ٢x ٤x"; banner
+  text x 300-544 at 844x390 (hand panel from 580); in a replay's overtime
+  the pill sits under the hint and `elementFromPoint` still hits it.
 - Bot loadout: four 0-trophy matches all Princess + Royal Rally; six
   2000-trophy matches mixed all three of each.
 - Replay pill: `elementFromPoint` at its centre hits the pill at 360x740,
@@ -169,4 +207,5 @@ page or console errors in any of these flows.
 | Long-press | 450 ms, 8 px slop | `LONG_PRESS_MS`, `LONG_PRESS_SLOP_PX` |
 | Goal card | 5.2 s | `GOAL_CARD_MS` |
 | Left-match marker expiry | 24 h | `LEFT_MATCH_MAX_AGE_MS` |
+| Other-tab check (lock query timeout, ping wait) | 300 ms | `LIVE_PROBE_MS`, leftMatch.ts |
 | Replay speeds | 1x, 2x, 4x | `REPLAY_SPEEDS` |
