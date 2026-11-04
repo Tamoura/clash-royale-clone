@@ -43,6 +43,14 @@ describe("lobby code sanitizer", () => {
     expect(cleanCode(null)).toBeNull();
     expect(cleanCode("x".repeat(13))).toBeNull();
   });
+
+  it("refuses markup in a link instead of stripping it into a code", () => {
+    expect(cleanCode("<script>")).toBeNull();
+    expect(cleanCode("LION42\"onload=x")).toBeNull();
+    expect(cleanCode("a/b/c")).toBeNull();
+    expect(cleanCode(" Lion 42 ")).toBe("LION42");
+    expect(cleanCode("w.a.s.p_94")).toBe("WASP94");
+  });
 });
 
 describe("opponent names", () => {

@@ -272,9 +272,12 @@ function showOnlineEmote(ctx: AppCtx, side: Side, e: number): void {
 
 /**
  * A room code as typed or linked, made canonical (normalizeCode: dashes,
- * spaces and case don't matter), or null if it can't be one.
+ * spaces and case don't matter), or null if it can't be one. Markup or
+ * script characters (a ?join=<script> link) mean it never was a code, so
+ * they are refused rather than stripped into one ("SCRIPT").
  */
 export function cleanCode(raw: string | null | undefined): string | null {
+  if (/[<>"'`&\\/=;(){}]/.test(raw ?? "")) return null;
   const c = normalizeCode(raw ?? "");
   return /^[A-Z0-9]{3,12}$/.test(c) ? c : null;
 }
