@@ -118,7 +118,7 @@ import { fmtNum, tr } from "./ui/i18n";
 import { installLayout } from "./ui/layoutWire";
 import { getPrefs } from "./ui/prefs";
 import { isChestReady } from "./meta/chests";
-import { MATCH_TROPHIES } from "./meta/economy";
+import { trophyLossAt } from "./meta/economy";
 import { openChallenges } from "./ui/screens/challenges";
 import { openChests } from "./ui/screens/chests";
 import { openCollection } from "./ui/screens/collection";
@@ -757,7 +757,7 @@ const hud = new Hud(topbar, hudRoot, overlay, {
     replaying || (isSandbox() && !onlineSession())
       ? null
       : ladderMatch()
-        ? Math.min(-MATCH_TROPHIES.loss, meta.profile.trophies)
+        ? trophyLossAt(meta.profile.trophies)
         : 0,
 });
 audio.setMuted(getPrefs().muted);

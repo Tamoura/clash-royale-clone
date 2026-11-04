@@ -10,7 +10,9 @@
 import type { AppCtx } from "../../app/ctx";
 import { on } from "../../app/hooks";
 import { saveMode, type GameMode as GameVariant } from "../../launcher/mode";
+import { cleanCode } from "../../match/online";
 import { button } from "../components";
+import { icon } from "../icons";
 import { applyMotion } from "./frame";
 
 const SPLASH_HOLD_KEY = "cr-clone-splash-hold";
@@ -177,6 +179,27 @@ function preferredEdition(): GameVariant {
   }
 }
 
+/** The friend's room code a ?join= invite carries (null: none, or malformed). */
+export function joinCodeIn(search: string): string | null {
+  const raw = new URLSearchParams(search).get("join");
+  return raw === null ? null : cleanCode(raw);
+}
+
+/**
+ * "Joining CODE…" in both languages (the edition, and so the language, is
+ * not picked yet): the invite is not lost, it waits for this choice.
+ */
+export function joiningChip(code: string): HTMLElement {
+  const chip = document.createElement("p");
+  chip.className = "v2-gate-join";
+  chip.setAttribute("role", "status");
+  chip.innerHTML = `${icon("users")}<span lang="en"></span><span class="v2-ar" lang="ar" dir="rtl"></span>`;
+  const [en, ar] = Array.from(chip.querySelectorAll("span"));
+  en.textContent = `Joining ${code}…`;
+  ar.textContent = `جارٍ الانضمام إلى ${code}…`;
+  return chip;
+}
+
 /** First-visit gate: nothing else is reachable until an edition is picked. */
 export function buildEditionGate(ctx: AppCtx): void {
   const { pickerRoot } = ctx;
@@ -193,6 +216,14 @@ export function buildEditionGate(ctx: AppCtx): void {
     `<span class="v2-ar" lang="ar" dir="rtl">اختر نسختك</span></h1>` +
     `<p class="v2-gate-sub"><span lang="en">You can switch any time in Settings</span>` +
     `<span class="v2-ar" lang="ar" dir="rtl">يمكنك التبديل في أي وقت من الإعدادات</span></p>`;
+  // A friend's invite link: the picker reloads the page with ?join= intact.
+  let code: string | null = null;
+  try {
+    code = joinCodeIn(location.search);
+  } catch {
+    code = null;
+  }
+  if (code) head.appendChild(joiningChip(code));
   gate.appendChild(head);
 
   let choice: GameVariant = preferredEdition();

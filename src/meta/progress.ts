@@ -34,6 +34,7 @@ import {
   earnGold,
   spendGems,
   spendGold,
+  trophyLossAt,
   upgradeCost,
 } from "./economy";
 import { getCard } from "../game/cards";
@@ -236,8 +237,13 @@ export function saveDeck(storage: MetaStorage, deck: CardId[]): void {
   storage.setItem(STORAGE_KEYS.deck, JSON.stringify(deck));
 }
 
+/** Trophies a ladder loss costs right now (see economy.ts trophyLossAt). */
+export { trophyLossAt };
+
 /**
- * Apply solo match outcome. Online matches must not call this.
+ * Apply solo match outcome. Online matches must not call this. A loss
+ * costs trophyLossAt(trophies): nothing in Training Camp, and never enough
+ * to fall out of the arena the kid stands in.
  */
 export function applyMatchResult(
   profile: PlayerProfile,
@@ -253,7 +259,8 @@ export function applyMatchResult(
     trophiesDelta = MATCH_TROPHIES.win;
     goldDelta = MATCH_GOLD.win;
   } else if (winner === "enemy") {
-    trophiesDelta = MATCH_TROPHIES.loss;
+    const loss = trophyLossAt(profile.trophies);
+    trophiesDelta = loss > 0 ? -loss : 0; // never -0 (it would print as a loss)
     goldDelta = MATCH_GOLD.loss;
   } else {
     trophiesDelta = MATCH_TROPHIES.draw;

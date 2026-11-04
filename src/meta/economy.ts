@@ -3,6 +3,7 @@
  * Kid-safe: gems are earned only (no IAP).
  */
 import type { Rarity } from "../game/cards";
+import { arenaForTrophies } from "./arenas";
 
 export const START_GOLD = 100;
 export const START_GEMS = 0;
@@ -21,6 +22,24 @@ export const MATCH_TROPHIES = {
   loss: -20,
   draw: 0,
 } as const;
+
+/**
+ * Below this many trophies (Training Camp) a loss costs nothing: new kids
+ * learn without watching their first trophies drain away.
+ */
+export const FREE_LOSS_BELOW = 100;
+
+/**
+ * Trophies a ladder loss costs at `trophies` (0 or more). Training Camp is
+ * free, and a loss never drops a kid out of an arena they reached: at most
+ * MATCH_TROPHIES.loss, and never below the current arena's floor.
+ */
+export function trophyLossAt(trophies: number): number {
+  const t = Number.isFinite(trophies) ? Math.max(0, Math.floor(trophies)) : 0;
+  if (t < FREE_LOSS_BELOW) return 0;
+  const floor = arenaForTrophies(t).trophies;
+  return Math.max(0, Math.min(-MATCH_TROPHIES.loss, t - floor));
+}
 
 /** Gems to skip a chest timer. */
 export const CHEST_SKIP_GEMS = 10;

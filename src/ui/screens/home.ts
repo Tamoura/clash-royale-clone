@@ -31,7 +31,8 @@ import { button, toast } from "../components";
 import { fmtNum } from "../i18n";
 import { icon, type IconName } from "../icons";
 import { reducedMotion } from "../prefs";
-import { enforceUnlocks, setupChipRow } from "./battleSetup";
+import { HAND_SVG } from "../tutorialOverlay";
+import { arenaLockBadge, enforceUnlocks, setupChipRow } from "./battleSetup";
 import { CONFIRM_GOLD, cardProgress, openCardInfo } from "./cardInfo";
 import { buildCollectionGroups, cardTile } from "./collection";
 import { cardTileCanvas } from "./common";
@@ -47,7 +48,6 @@ import {
   goalRow,
   isFeatureNew,
   isUnlocked,
-  lockBadge,
   markFeaturesSeen,
   newBadge,
   refreshTopBars,
@@ -236,13 +236,56 @@ function battleTab(ctx: AppCtx, panel: HTMLElement, redraw: () => void): void {
   panel.appendChild(setupChipRow(ctx, redraw));
 
   fillSlot("battle-top", panel);
-  panel.appendChild(chestRow(ctx));
+  const guide = chestGuideSlot(readStore("session", CHEST_PULSE_KEY), readStore("local", CHEST_TAPPED_KEY), ctx.meta.profile.chests);
+  // While the hand points at the first chest, the other chest calls to
+  // action (the free chest's glow) go quiet.
+  panel.classList.toggle("is-chest-guide", guide >= 0);
+  panel.appendChild(chestRow(ctx, guide));
   panel.appendChild(questBoard(ctx, redraw));
   fillSlot("battle-bottom", panel);
 }
 
+// ---- First-chest pointer ------------------------------------------------------------
+
+/** Set (this session) by the tutorial win and by a result screen that granted a chest. */
+export const CHEST_PULSE_KEY = "cr-clone-pulse-chest";
+/** Set once the kid has tapped a chest slot: the pointer never shows again. */
+export const CHEST_TAPPED_KEY = "cr-clone-chest-tapped";
+
+/**
+ * The chest slot the pointer hand bounces over: the first slot holding a
+ * chest, while a chest was just earned (the session flag) and the kid has
+ * never tapped a chest slot. -1 = no pointer.
+ */
+export function chestGuideSlot(
+  pulse: string | null,
+  tapped: string | null,
+  chests: readonly (object | null | undefined)[],
+): number {
+  if (pulse !== "1" || tapped === "1") return -1;
+  return chests.slice(0, 4).findIndex((c) => c !== null && c !== undefined);
+}
+
+function readStore(kind: "session" | "local", key: string): string | null {
+  try {
+    return (kind === "session" ? sessionStorage : localStorage).getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/** The first tap on a chest ends the guidance for good. */
+function noteChestTapped(): void {
+  try {
+    localStorage.setItem(CHEST_TAPPED_KEY, "1");
+    sessionStorage.removeItem(CHEST_PULSE_KEY);
+  } catch {
+    // storage blocked: the pointer just shows again next time
+  }
+}
+
 /** Chest slots under the Battle button (tap to open the chest room). */
-function chestRow(ctx: AppCtx): HTMLElement {
+function chestRow(ctx: AppCtx, guide = -1): HTMLElement {
   const { tr } = ctx;
   const row = document.createElement("div");
   row.className = "home-chests v2-chests";
@@ -267,8 +310,19 @@ function chestRow(ctx: AppCtx): HTMLElement {
       cell.setAttribute("aria-label", left <= 0 ? tr("Chest ready to open", "صندوق جاهز للفتح") : tr(`Chest: ${label}`, `صندوق: ${label}`));
       if (left <= 0) cell.classList.add("ready");
     }
+    if (i === guide) {
+      // A bouncing glove (the tutorial's own) points down at the new chest.
+      cell.classList.add("is-guided");
+      const hand = document.createElement("span");
+      hand.className = "home-chest-hand";
+      hand.setAttribute("aria-hidden", "true");
+      hand.innerHTML = HAND_SVG;
+      cell.appendChild(hand);
+      cell.setAttribute("aria-description", tr("Your new chest: tap it!", "صندوقك الجديد: اضغطه!"));
+    }
     cell.addEventListener("click", () => {
       sfx(ctx, "uiTap");
+      if (slot) noteChestTapped();
       ctx.openChests();
     });
     row.appendChild(cell);
@@ -524,7 +578,7 @@ function eventTile(ctx: AppCtx, o: TileOpts): HTMLButtonElement {
   if (locked) {
     b.classList.add("is-locked");
     b.disabled = true;
-    b.appendChild(lockBadge(ctx, locked));
+    b.appendChild(arenaLockBadge(ctx, locked));
   } else if (o.disabled) {
     b.disabled = true;
     b.classList.add("is-disabled");

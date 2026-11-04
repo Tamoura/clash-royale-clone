@@ -21,9 +21,10 @@ import {
   type TutorialStep,
   type TutorialTarget,
 } from "../game/tutorial";
+import { cleanCode, handleJoinLink } from "../match/online";
 import { applyMatchResult } from "../match/rewards";
 import { getPhase } from "./banner";
-import { button, confirm } from "./components";
+import { button, confirm, sheet } from "./components";
 import { tr } from "./i18n";
 import { icon } from "./icons";
 import { reducedMotion } from "./prefs";
@@ -34,7 +35,7 @@ export { tutorialDone } from "../game/tutorial";
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 /** An original cartoon glove; the fingertip sits at HAND_TIP in its viewBox. */
-const HAND_SVG =
+export const HAND_SVG =
   `<svg viewBox="0 0 64 72" aria-hidden="true" focusable="false">` +
   `<g stroke="#1a1030" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">` +
   `<path fill="#ffffff" d="M20 36V10a6 6 0 0 1 12 0v26z"/>` +
@@ -78,7 +79,18 @@ interface Session {
   coachText: HTMLElement;
   coachHint: HTMLElement;
   dots: HTMLElement;
+  /** The bubble's top row: the step dots and the Skip link. */
+  skipSlot: HTMLElement;
   actions: HTMLElement;
+  /** Clicks on the overlay are ignored until this time (performance.now ms). */
+  swallowUntil: number;
+  /** The last pointerdown anywhere, and whether that pointer is still down. */
+  pointerDownAt: number;
+  pointerIsDown: boolean;
+  /** A step advanced while the pointer was down: guard 350 ms past its release too. */
+  swallowAfterUp: boolean;
+  /** A step advanced under a finger and its new layout is not drawn yet. */
+  guardArmed: boolean;
   viewKey: string;
   textKey: string;
   anims: Animation[];
@@ -118,7 +130,9 @@ function anchorElement(anchor: TutorialStep["anchor"]): HTMLElement | null {
       : ['#hud [data-tut="ability"]', "#hud .hud-ability"];
   for (const s of sel) {
     const el = document.querySelector<HTMLElement>(s);
-    if (el && el.offsetParent !== null) return el;
+    // Rendered with a size (offsetParent is null for the wide layout's
+    // position: fixed controls, which are on screen all the same).
+    if (el && !el.hidden && el.getClientRects().length > 0 && el.getBoundingClientRect().width > 0) return el;
   }
   return null;
 }
@@ -165,7 +179,20 @@ function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, cls: string, parent
 
 function buildOverlay(): Pick<
   Session,
-  "root" | "mask" | "maskPath" | "ringPath" | "trail" | "tileGlow" | "hand" | "ghost" | "coach" | "coachText" | "coachHint" | "dots" | "actions"
+  | "root"
+  | "mask"
+  | "maskPath"
+  | "ringPath"
+  | "trail"
+  | "tileGlow"
+  | "hand"
+  | "ghost"
+  | "coach"
+  | "coachText"
+  | "coachHint"
+  | "dots"
+  | "skipSlot"
+  | "actions"
 > {
   const root = el("div", "tut");
   root.hidden = true;
@@ -188,14 +215,18 @@ function buildOverlay(): Pick<
   const avatar = el("div", "tut-coach-avatar", coach);
   avatar.innerHTML = icon("crown");
   const body = el("div", "tut-coach-body", coach);
-  const dots = el("div", "tut-dots", body);
+  // Top row: progress dots, and 'Skip tutorial' on the bubble's top edge,
+  // as far from the HUD's KING / Next / emote row as the bubble allows.
+  const head = el("div", "tut-coach-head", body);
+  const dots = el("div", "tut-dots", head);
   dots.setAttribute("aria-hidden", "true");
   for (let i = 0; i < TUTORIAL_STEP_COUNT; i++) el("i", "", dots);
+  const skipSlot = el("div", "tut-skip-slot", head);
   const coachText = el("p", "tut-coach-text", body);
   const coachHint = el("div", "tut-coach-hint", body);
   const actions = el("div", "tut-actions", body);
   document.body.appendChild(root);
-  return { root, mask, maskPath, ringPath, trail, tileGlow, hand, ghost, coach, coachText, coachHint, dots, actions };
+  return { root, mask, maskPath, ringPath, trail, tileGlow, hand, ghost, coach, coachText, coachHint, dots, skipSlot, actions };
 }
 
 function skipLink(s: Session): HTMLButtonElement {
@@ -212,12 +243,19 @@ function skipLink(s: Session): HTMLButtonElement {
 async function askSkip(s: Session): Promise<void> {
   if (s.modal) return;
   s.modal = true;
-  const ok = await confirm({
+  // 'Keep learning' is the big yellow button and Esc / a backdrop tap mean
+  // keep learning too: skipping takes a deliberate tap on the plain one.
+  const answer = confirm({
     title: tr("Skip the tutorial?", "تخطّي الشرح؟"),
     body: tr("You can replay it any time from Settings.", "يمكنك إعادته في أي وقت من الإعدادات."),
     okLabel: tr("Skip", "تخطَّ"),
     cancelLabel: tr("Keep learning", "أكمل التعلّم"),
+    emphasis: "cancel",
   });
+  // The dialog mounts on <body>: mirror it for Arabic.
+  const modals = document.querySelectorAll<HTMLElement>("body > .ui-modal");
+  if (ARABIC && modals.length) modals[modals.length - 1].dir = "rtl";
+  const ok = await answer;
   s.modal = false;
   if (ok && session === s) finish(s);
 }
@@ -246,6 +284,78 @@ function finish(s: Session): void {
     }
   }
   ctx.openHome();
+  // A friend's ?join= invite waited for the lesson: join now.
+  if (inviteCode()) handleJoinLink(ctx);
+}
+
+// ---- Invite links -----------------------------------------------------------------
+
+/** The friend's room code in this page's ?join=, if any (and well-formed). */
+function inviteCode(): string | null {
+  try {
+    const raw = new URLSearchParams(location.search).get("join");
+    return raw === null ? null : cleanCode(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** The invite sheet was answered on this page (Learn first keeps ?join for later). */
+let inviteAnswered = false;
+
+/**
+ * A first-time player opened a friend's invite: offer to join right away
+ * (the lesson waits for the next visit) or learn first and join after.
+ * Dismissing the sheet means Learn first.
+ */
+function offerInvite(ctx: AppCtx, code: string): void {
+  inviteAnswered = true;
+  // Home behind the sheet: the arena holds still while the kid decides.
+  ctx.openHome();
+  const content = document.createElement("div");
+  content.className = "tut-invite";
+  const art = document.createElement("div");
+  art.className = "tut-invite-art";
+  art.innerHTML = icon("users");
+  const text = document.createElement("p");
+  text.className = "tut-invite-text";
+  text.textContent = tr(
+    `Your friend made game ${code} and is waiting for you. Join now, or learn the basics first and join right after.`,
+    `صديقك أنشأ اللعبة ${code} وينتظرك. انضم الآن، أو تعلّم الأساسيات أولًا ثم انضم مباشرة.`,
+  );
+  const actions = document.createElement("div");
+  actions.className = "tut-invite-actions";
+  let picked: "join" | "learn" | null = null;
+  const pick = (choice: "join" | "learn"): void => {
+    if (picked) return;
+    picked = choice;
+    sheetRef.close();
+  };
+  const join = button({ variant: "cta", size: "lg", icon: "play", label: tr("Join now", "انضم الآن"), onClick: () => pick("join") });
+  join.classList.add("tut-invite-join");
+  const learn = button({ variant: "secondary", size: "lg", icon: "book", label: tr("Learn first", "تعلّم أولًا"), onClick: () => pick("learn") });
+  learn.classList.add("tut-invite-learn");
+  actions.append(join, learn);
+  content.append(art, text, actions);
+  // A plain kit sheet styled like the menus' sheets (frame.ts openSheet,
+  // which this module cannot import without a cycle through frame.ts).
+  const sheetRef = sheet({
+    title: tr("Your friend is waiting!", "صديقك بانتظارك!"),
+    content,
+    onClose: () => {
+      if (picked === "join") {
+        // The lesson is not marked done: it runs on the next visit.
+        stopTutorial();
+        ctx.openHome();
+        handleJoinLink(ctx);
+      } else {
+        runTutorial(ctx);
+      }
+    },
+  });
+  sheetRef.el.classList.add("v2-sheet", "tut-invite-sheet");
+  sheetRef.el.classList.toggle("v2-calm", reducedMotion());
+  if (ARABIC) sheetRef.el.dir = "rtl";
 }
 
 // ---- Per-frame drawing ---------------------------------------------------------
@@ -440,7 +550,8 @@ function drawCoach(s: Session, b: BattleState, step: TutorialStep, holding: bool
   s.dots.querySelectorAll("i").forEach((d, i) => {
     d.className = i < index ? "done" : i === index ? "now" : "";
   });
-  s.actions.replaceChildren(skipLink(s));
+  s.skipSlot.replaceChildren(skipLink(s));
+  s.actions.replaceChildren();
   s.coach.classList.remove("pop");
   void s.coach.offsetWidth;
   s.coach.classList.add("pop");
@@ -448,18 +559,49 @@ function drawCoach(s: Session, b: BattleState, step: TutorialStep, holding: bool
 }
 
 /**
- * Keep the bubble clear of the top bar and the HUD tray. In the wide
- * layout both sit in side panels, so the bubble docks at the screen's own
- * top or bottom, over the board (the board is centred, like the bubble).
+ * The HUD controls a docked bubble must stay above: the tray (#hud), the
+ * KING button, the emote bubble and the Next preview, which float above
+ * the tray on phones.
+ */
+const HUD_CONTROLS = ["#hud", "#hud .hud-ability", "#hud .hud-next", "#emotes .emote-toggle", "#emotes"];
+
+/**
+ * The lowest y the bubble may reach: the top of the highest HUD control
+ * that shares columns with the bubble. Controls off to the side (the wide
+ * layout's side panels) do not count; with none in the way it is the
+ * screen's bottom edge.
+ */
+export function controlsTop(
+  controls: readonly { top: number; left: number; right: number; width: number; height: number }[],
+  span: { left: number; right: number },
+  viewportHeight: number,
+): number {
+  let top = viewportHeight;
+  for (const r of controls) {
+    if (r.width <= 0 || r.height <= 0) continue; // hidden
+    if (r.right <= span.left || r.left >= span.right) continue; // beside the bubble
+    top = Math.min(top, r.top);
+  }
+  return Math.max(0, top);
+}
+
+/**
+ * Keep the bubble clear of the top bar and the HUD's action row (KING,
+ * Next, emote and the hand). In the wide layout both sit in side panels,
+ * so the bubble docks at the screen's own top or bottom, over the board.
  */
 function placeCoach(s: Session): void {
   const wide = document.documentElement.dataset.layout === "wide";
   const top = wide ? 0 : (document.getElementById("topbar")?.getBoundingClientRect().bottom ?? 0);
-  const hud = wide
-    ? window.innerHeight
-    : (document.getElementById("hud")?.getBoundingClientRect().top ?? window.innerHeight);
+  const span = s.coach.getBoundingClientRect();
+  const rects: DOMRect[] = [];
+  for (const sel of HUD_CONTROLS) {
+    const n = document.querySelector<HTMLElement>(sel);
+    if (n && !n.hidden) rects.push(n.getBoundingClientRect());
+  }
+  const floor = controlsTop(rects, span, window.innerHeight);
   s.root.style.setProperty("--tut-top", `${Math.max(0, top)}px`);
-  s.root.style.setProperty("--tut-bottom", `${Math.max(0, window.innerHeight - hud)}px`);
+  s.root.style.setProperty("--tut-bottom", `${Math.max(0, window.innerHeight - floor)}px`);
 }
 
 function render(s: Session, b: BattleState): void {
@@ -511,6 +653,7 @@ function showEnding(s: Session, won: boolean): void {
       )
     : tr("So close! Let's try that once more.", "اقتربت كثيرًا! لنحاول مرة أخرى.");
   s.coachHint.hidden = true;
+  s.skipSlot.replaceChildren();
   const actions: HTMLElement[] = [];
   if (won) {
     actions.push(button({ variant: "cta", size: "lg", label: tr("Continue", "متابعة"), onClick: () => finish(s) }));
@@ -540,11 +683,47 @@ export function stopTutorial(): void {
   s.root.remove();
 }
 
+/** Advance the machine with one input; note an advance made under a finger. */
+function feed(s: Session, input: Parameters<Tutorial["feed"]>[0], b: BattleState): void {
+  if (!s.machine.feed(input, b)) return;
+  s.viewKey = "";
+  const now = performance.now();
+  // The finger that caused this (a tap on KING, a callout tap) is still on
+  // the glass or just lifted: the click it fires next must not land on
+  // whatever the new step put under it.
+  if (s.pointerIsDown || now - s.pointerDownAt < 600) {
+    s.swallowUntil = now + SWALLOW_MS;
+    s.swallowAfterUp = s.pointerIsDown;
+    // On a slow frame the new step can take a while to appear: the guard
+    // runs again from the moment it is drawn (see the frame listener).
+    s.guardArmed = true;
+  }
+}
+
+/** How long the overlay ignores taps and clicks after a step changes under a finger. */
+const SWALLOW_MS = 350;
+
 /**
  * Start (or resume at the saved step) the guided battle. Already done:
- * straight Home.
+ * straight Home. A friend's ?join= invite asks first (Join now or Learn
+ * first); learning first still joins the friend when the lesson ends.
  */
 export function startTutorial(ctx: AppCtx): void {
+  stopTutorial();
+  if (new Tutorial().done) {
+    ctx.openHome();
+    if (inviteCode()) handleJoinLink(ctx);
+    return;
+  }
+  const code = inviteCode();
+  if (code && !inviteAnswered && ctx.variant) {
+    offerInvite(ctx, code);
+    return;
+  }
+  runTutorial(ctx);
+}
+
+function runTutorial(ctx: AppCtx): void {
   stopTutorial();
   const machine = new Tutorial();
   if (machine.done) {
@@ -560,6 +739,11 @@ export function startTutorial(ctx: AppCtx): void {
     modal: false,
     ended: null,
     ...buildOverlay(),
+    swallowUntil: 0,
+    pointerDownAt: -Infinity,
+    pointerIsDown: false,
+    swallowAfterUp: false,
+    guardArmed: false,
     viewKey: "",
     textKey: "",
     anims: [],
@@ -567,13 +751,40 @@ export function startTutorial(ctx: AppCtx): void {
   };
   session = s;
 
+  // Right after a step changed under a finger, the overlay ignores taps
+  // and clicks for a moment (so a tap on KING never lands on 'Skip').
+  const swallow = (ev: Event): void => {
+    if (performance.now() < s.swallowUntil) {
+      ev.stopPropagation();
+      ev.preventDefault();
+    }
+  };
+  s.root.addEventListener("click", swallow, true);
+
   // Taps on the dimmed area: continue a callout; anything else is ignored.
   s.root.addEventListener("pointerdown", (ev) => {
     if (s.ended || s.root.dataset.tap !== "1" || !s.battle) return;
     if ((ev.target as Element).closest(".tut-skip")) return;
     ev.preventDefault();
-    if (s.machine.feed({ type: "tap" }, s.battle)) s.viewKey = "";
+    if (performance.now() < s.swallowUntil) return; // a double tap is one tap
+    feed(s, { type: "tap" }, s.battle);
   });
+
+  // Where the finger is, for feed()'s guard (capture: before the HUD acts).
+  const onDown = (): void => {
+    s.pointerIsDown = true;
+    s.pointerDownAt = performance.now();
+  };
+  const onUp = (): void => {
+    s.pointerIsDown = false;
+    if (s.swallowAfterUp) {
+      s.swallowAfterUp = false;
+      s.swallowUntil = Math.max(s.swallowUntil, performance.now() + SWALLOW_MS);
+    }
+  };
+  window.addEventListener("pointerdown", onDown, true);
+  window.addEventListener("pointerup", onUp, true);
+  window.addEventListener("pointercancel", onUp, true);
 
   s.offs.push(
     registerSimHold(
@@ -598,7 +809,7 @@ export function startTutorial(ctx: AppCtx): void {
     }),
     on("battleEvent", ({ ev }) => {
       if (!s.battle || s.ended) return;
-      if (s.machine.feed(ev, s.battle)) s.viewKey = "";
+      feed(s, ev, s.battle);
     }),
     on("matchEnd", (m) => {
       if (m.battle !== s.battle || s.ended) return;
@@ -618,10 +829,19 @@ export function startTutorial(ctx: AppCtx): void {
     }),
     on("frame", ({ battle }) => {
       if (!battle || battle !== s.battle) return;
-      if (!s.ended && s.machine.feed({ type: "frame" }, battle)) s.viewKey = "";
+      if (!s.ended) feed(s, { type: "frame" }, battle);
       render(s, battle);
+      if (s.guardArmed) {
+        s.guardArmed = false;
+        s.swallowUntil = Math.max(s.swallowUntil, performance.now() + SWALLOW_MS);
+      }
     }),
     () => window.removeEventListener("resize", onResize),
+    () => {
+      window.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onUp, true);
+    },
   );
   const onResize = (): void => {
     s.viewKey = "";
