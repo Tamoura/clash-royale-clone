@@ -209,3 +209,13 @@ page or console errors in any of these flows.
 | Left-match marker expiry | 24 h | `LEFT_MATCH_MAX_AGE_MS` |
 | Other-tab check (lock query timeout, ping wait) | 300 ms | `LIVE_PROBE_MS`, leftMatch.ts |
 | Replay speeds | 1x, 2x, 4x | `REPLAY_SPEEDS` |
+
+## Round-1 integration changes
+
+- Re-drag after a refused drop: a press on the card that is already armed
+  no longer puts it down at pointerdown. A tap (released within 16 px)
+  still deselects; a drag from it keeps it armed and deploys on release,
+  so the retry after "Your side only!" works on the second drag.
+- `startLadder` takes the bot's personality through first-hour's
+  `ladderProfile(tier, archetype)`, so practice (like rookie) keeps its
+  own pace; the tweaks themselves are unchanged.

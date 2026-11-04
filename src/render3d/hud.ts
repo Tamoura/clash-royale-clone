@@ -366,6 +366,10 @@ export class Hud {
       let pressId = -1;
       let pressTimer = 0;
       let longPressed = false;
+      // A press on the card that is already armed: only a tap (released
+      // within 16 px) puts it down. A drag from it keeps it armed and
+      // deploys on release, so a retry after "Your side only!" works.
+      let tapDeselect = false;
       const cancelPress = (): void => {
         window.clearTimeout(pressTimer);
         pressTimer = 0;
@@ -383,6 +387,7 @@ export class Hud {
           pressTimer = window.setTimeout(() => {
             pressTimer = 0;
             longPressed = true;
+            tapDeselect = false;
             btn.classList.remove("dragging");
             tip.classList.remove("show");
             this.cb.onSelectCard(null); // info, not a pick: nothing stays armed
@@ -390,8 +395,9 @@ export class Hud {
           }, LONG_PRESS_MS);
         }
         const selecting = this.selected !== id;
-        this.cb.onSelectCard(selecting ? id : null);
-        if (selecting) btn.classList.add("dragging");
+        tapDeselect = !selecting;
+        if (selecting) this.cb.onSelectCard(id);
+        btn.classList.add("dragging");
       });
       // Movement cancels the long-press (window-level: a mouse press is not captured).
       window.addEventListener("pointermove", (ev) => {
@@ -410,12 +416,16 @@ export class Hud {
         }
         const dx = ev.clientX - downX;
         const dy = ev.clientY - downY;
+        const deselect = tapDeselect;
+        tapDeselect = false;
         if (Math.sqrt(dx * dx + dy * dy) > 16) this.cb.onDeployAt(ev.clientX, ev.clientY);
+        else if (deselect) this.cb.onSelectCard(null);
       };
       btn.addEventListener("pointerup", endDrag);
       btn.addEventListener("pointercancel", () => {
         cancelPress();
         longPressed = false;
+        tapDeselect = false;
         this.hideCardBubble();
         btn.classList.remove("dragging");
       });
