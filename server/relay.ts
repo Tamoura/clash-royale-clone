@@ -62,7 +62,12 @@ const PAIR_LIMIT = 5; // create/join/quick per IP...
 const PAIR_WINDOW_MS = 10_000; // ...per 10 seconds
 const MAX_INVALID = 5;
 const HEARTBEAT_MS = 15_000;
-const SWEEP_MS = 30_000;
+/**
+ * Expiry sweep. Short, because it also ends a dropped seat's resume grace:
+ * the friend left behind should hear "your friend left" within a few
+ * seconds of the grace countdown reaching zero, not half a minute later.
+ */
+const SWEEP_MS = 5_000;
 const MAX_BUFFERED = 1 << 20; // a client this far behind is cut off
 const WS_PATHS = new Set(["/", "/ws"]);
 
@@ -223,7 +228,10 @@ function handle(conn: Conn, data: RawData, isBinary: boolean): void {
       deliver(hub.ping(id, msg.at, msg.rtt));
       break;
     case "rematch":
-      deliver(hub.rematch(id));
+      log("info", "rematch", { conn: id });
+      // The other seat hears about it too (peer-rematch), so its result
+      // screen can offer the rematch.
+      deliver(hub.requestRematch(id));
       break;
     case "leave":
       log("info", "leave", { conn: id });

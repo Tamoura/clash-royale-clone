@@ -15,7 +15,10 @@
  *   fast-forwards headless;
  * - drift checks: a checksum every second, a mismatch ends the match as
  *   "no contest" for both players;
- * - rematch, pause relaying and RTT.
+ * - rematch (including the peer's offer), pause relaying and RTT;
+ * - honest endings: a forfeit closes the room at once but keeps the match
+ *   on screen (so the app settles it as an online loss), and an opponent
+ *   who quits is told apart from one who dropped or closed the page.
  */
 import { useAbility } from "../game/abilities";
 import type { Side } from "../game/arena";
@@ -72,6 +75,15 @@ export type EndReason =
   | "forfeit" // we gave up: a loss
   | "server-restart"
   | "expired";
+
+/**
+ * How the opponent quit, for the winner's result screen:
+ * - "gave-up": they left mid-match while connected and on screen (Forfeit,
+ *   the only way out of a running match);
+ * - "left": they were paused, dropped or stalled first (closed the page,
+ *   lost the link), or they left after the match ended.
+ */
+export type OpponentExit = "gave-up" | "left";
 
 /** Lobby-stage failures: relay errors plus "unreachable" (socket never worked). */
 export type FailReason = ErrorReason | "unreachable";
@@ -207,6 +219,12 @@ export class OnlineSession {
   private peerPaused = false;
   /** The peer is gone for good (left, or never coming back). */
   private peerGone = false;
+  /** How the peer quit (null while they are here, or when we left first). */
+  private peerExit: OpponentExit | null = null;
+  /** The peer asked for a rematch after the last match. */
+  private peerRematch = false;
+  /** This session came from the quick-match queue (a stranger, not a friend). */
+  private quickPairing = false;
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private desyncTimer: ReturnType<typeof setTimeout> | null = null;
@@ -225,17 +243,20 @@ export class OnlineSession {
 
   /** Host a friend room; the code arrives as view {t:'waiting'}. */
   create(deck: CardId[], mode: MatchMode): void {
+    this.quickPairing = false;
     this.dial().create(deck, mode, this.loadout);
   }
 
   /** Join a friend's room by code. */
   join(code: string, deck: CardId[]): void {
+    this.quickPairing = false;
     this.code = code.trim().toUpperCase();
     this.dial().join(this.code, deck, this.loadout);
   }
 
   /** Enter the quick-match queue. */
   quick(deck: CardId[], mode: MatchMode): void {
+    this.quickPairing = true;
     this.dial().quick(deck, this.loadout, mode);
   }
 
@@ -255,14 +276,27 @@ export class OnlineSession {
     this.changed();
   }
 
-  /** Give up the running match: the peer wins, we take the loss. */
+  /**
+   * Give up the running match: the peer wins, we take the loss. The room is
+   * left at once (the peer is told, every timer stops, nothing more is
+   * sent), but the match stays on screen: {@link inMatch} and {@link side}
+   * hold until {@link leave}, so the app settles the finish as an online
+   * loss for the right seat. Outside a running match this is just leave().
+   */
   forfeit(): void {
-    if (this.phase === "match" && this.battle && !this.battle.result) {
-      this.declareWinner(this.side === "player" ? "enemy" : "player");
+    if (this.leaving) return;
+    if (this.phase !== "match" || !this.battle) {
+      this.leave();
+      return;
     }
+    if (!this.battle.result) this.declareWinner(this.side === "player" ? "enemy" : "player");
+    this.clearTimers();
     this.phase = "ended";
     this.endReason = "forfeit";
-    this.leave();
+    this.reservations = [];
+    this.peerRematch = false;
+    this.leaveQuietly();
+    this.changed();
   }
 
   /** Ask for a rematch after a finished match. False if that can't happen. */
@@ -272,6 +306,21 @@ export class OnlineSession {
     this.client!.rematch();
     this.changed();
     return true;
+  }
+
+  /** The other player asked for a rematch after the match (and is still here). */
+  get peerWantsRematch(): boolean {
+    return this.peerRematch && this.canRematch();
+  }
+
+  /** How the opponent quit, or null while they are here (see {@link OpponentExit}). */
+  get opponentExit(): OpponentExit | null {
+    return this.peerExit;
+  }
+
+  /** Paired by the quick-match queue (a stranger), not by a friend's code. */
+  get quickMatch(): boolean {
+    return this.quickPairing;
   }
 
   /** A rematch is still possible: the match finished and both are here. */
@@ -408,6 +457,12 @@ export class OnlineSession {
     const ls = this.ls;
     const battle = this.battle;
     if (!ls || !battle || this.phase !== "match") return 1;
+    // A decided battle never ticks again (and sends nothing more); one
+    // decided outside the lockstep is settled as finished here.
+    if (battle.result) {
+      this.finish();
+      return 1;
+    }
     const wall = this.now();
     if (this.lastStepAt !== null && wall - this.lastStepAt > FROZEN_MS) this.client?.markHeard();
     this.lastStepAt = wall;
@@ -434,7 +489,7 @@ export class OnlineSession {
     } else {
       this.stallMs += dt * 1000;
       if (this.stallMs >= STALL_LIMIT_MS + (this.side === "enemy" ? GUEST_STALL_EXTRA_MS : 0)) {
-        this.opponentLeft();
+        this.opponentLeft("left");
         return 1;
       }
     }
@@ -539,6 +594,12 @@ export class OnlineSession {
       });
     c.onPeerLeft = () => mine(() => this.peerLeft());
     c.onRematchWait = () => mine(() => this.changed());
+    c.onPeerRematch = () =>
+      mine(() => {
+        if (this.phase !== "ended" && this.phase !== "rematchWait") return;
+        this.peerRematch = true;
+        this.changed();
+      });
     c.onResumed = (frames, start) => mine(() => this.resumed(frames, start));
     c.onPong = () => mine(() => this.changed());
     c.onError = (reason) => mine(() => this.error(reason as ErrorReason));
@@ -572,6 +633,8 @@ export class OnlineSession {
     this.agreedSyncs = 0;
     this.peerDroppedAt = null;
     this.peerPaused = false;
+    this.peerExit = null;
+    this.peerRematch = false;
     this.phase = "match";
     this.client?.pingFast();
     // Opening frames unblock the first ticks before any deploy can land.
@@ -666,13 +729,20 @@ export class OnlineSession {
 
   private peerLeft(): void {
     this.peerGone = true;
+    this.peerRematch = false;
     if (this.phase === "match") {
+      // Connected and on screen when they left: they pressed Forfeit. A page
+      // that closes says "paused" first (the visibility change, and the
+      // pagehide handler in match/online.ts), and a lost link drops first.
+      const exit: OpponentExit = this.peerDroppedAt !== null || this.peerPaused ? "left" : "gave-up";
       if (this.stalledSide()) this.noContest();
-      else this.opponentLeft();
+      else this.opponentLeft(exit);
     } else if (this.phase === "rematchWait") {
+      this.peerExit = "left";
       this.end("opponent-left");
       this.leaveQuietly();
     } else {
+      if (this.phase === "ended" && this.endReason === "finished") this.peerExit = "left";
       this.changed();
     }
   }
@@ -700,8 +770,9 @@ export class OnlineSession {
   }
 
   /** The peer is gone mid-match: we win, and the room is closed. */
-  private opponentLeft(): void {
+  private opponentLeft(exit: OpponentExit): void {
     if (this.battle && !this.battle.result) this.declareWinner(this.side);
+    this.peerExit = exit;
     this.end("opponent-left");
     this.peerGone = true;
     this.leaveQuietly();

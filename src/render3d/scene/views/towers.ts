@@ -6,6 +6,11 @@
  * collapse when one falls: chunks tumble off (towerCollapse.ts), dust rises,
  * rubble and a crater stay behind, and a king's fall stops time and pulls
  * the camera in.
+ *
+ * Team colours (roof caps, banner, flag, platform, HP bar, level shield)
+ * follow the team the viewer sees, teamSide() from troops.ts, so an online
+ * guest's own towers wear the player colours like their troops do. Where
+ * things sit and which way they face stays on the sim side.
  */
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -22,6 +27,8 @@ import {
   toon,
 } from "../../characters3d";
 import { batchStatic } from "../../staticBatch";
+import { teamPalette } from "../../teamColors";
+import type { TeamPalette } from "../../../ui/prefs";
 import { bakeRig } from "../../rigBake";
 import {
   CHUNK_ORDER,
@@ -36,8 +43,8 @@ import {
 } from "../../towerCollapse";
 import { ARABIC, THEME } from "../../theme";
 import type { Battle3D } from "../../scene3d";
+import type { Side } from "../../../game/arena";
 import {
-  HP_COLOR,
   LOOK,
   SIDE_COLOR,
   SPAWN_POP_TIME,
@@ -61,8 +68,29 @@ import {
   makeHpText,
   makeLevelBadge,
   makeZzzSprite,
+  teamSide,
+  unitHpColor,
   updateHpText,
 } from "./troops";
+
+/** The colours a crown tower wears, by the team the viewer sees it on. */
+export interface TowerTeamColors {
+  /** Viewer-relative team: "player" is always yours. */
+  team: Side;
+  /** Roof caps, banner, banner tip and flag cloth. */
+  cloth: number;
+  /** HP bar fill (green/red, or the colour-blind pair). */
+  hp: number;
+}
+
+/**
+ * Team colours for a tower of sim side `side` under the current viewpoint;
+ * the HP bar follows the team palette pref (colour-blind pair included).
+ */
+export function towerTeamColors(side: Side, palette: TeamPalette = teamPalette()): TowerTeamColors {
+  const team = teamSide(side);
+  return { team, cloth: SIDE_COLOR[team], hp: unitHpColor(team, palette) };
+}
 
 /**
  * Cosmetic tower flair tier, set from the player's trophy road: 0 = plain,
@@ -136,7 +164,9 @@ export function buildTowerMesh(e: Entity): EntityView {
   // Two-step stone platform under the keep, gold-trimmed like CR.
   // Neon arena: the whole tower is team-colored (enemy magenta, player
   // blue) like the reference screenshot; the Arabic edition stays sand.
-  const enemySide = e.side === "enemy";
+  // Colours go by the team the viewer sees; positions by the sim side.
+  const colors = towerTeamColors(e.side);
+  const enemySide = colors.team === "enemy";
   const platform = new THREE.Mesh(
     new THREE.BoxGeometry(radius * 2.9, 0.18, radius * 2.9),
     toon(enemySide ? LOOK.tower.platformEnemy : LOOK.tower.platformPlayer),
@@ -285,7 +315,7 @@ export function buildTowerMesh(e: Entity): EntityView {
   } else {
     // Classic edition: chunky team-color roof caps and a raised royal crown
     // platform make princess and king towers identifiable at a glance.
-    const roofColor = SIDE_COLOR[e.side];
+    const roofColor = colors.cloth;
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
         const cap = new THREE.Mesh(
@@ -363,11 +393,11 @@ export function buildTowerMesh(e: Entity): EntityView {
   }
   const banner = new THREE.Mesh(
     new THREE.BoxGeometry(0.44, 0.7, 0.06),
-    toon(SIDE_COLOR[e.side]),
+    toon(colors.cloth),
   );
   banner.position.set(0, height - 0.62, facing * radius * 1.03);
   wall.add(banner);
-  const bannerTip = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.24, 4), toon(SIDE_COLOR[e.side]));
+  const bannerTip = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.24, 4), toon(colors.cloth));
   bannerTip.rotation.x = Math.PI;
   bannerTip.rotation.y = Math.PI / 4;
   bannerTip.position.set(0, height - 1.05, facing * radius * 1.03);
@@ -396,7 +426,7 @@ export function buildTowerMesh(e: Entity): EntityView {
   flagGroup.add(pole);
   const cloth = new THREE.Mesh(
     new THREE.PlaneGeometry(0.55, 0.32),
-    new THREE.MeshToonMaterial({ color: SIDE_COLOR[e.side], side: THREE.DoubleSide }),
+    new THREE.MeshToonMaterial({ color: colors.cloth, side: THREE.DoubleSide }),
   );
   cloth.position.set(0.3, 0.62, 0);
   flagGroup.add(cloth);
@@ -417,7 +447,7 @@ export function buildTowerMesh(e: Entity): EntityView {
   defender.group.scale.setScalar(king ? 0.85 : 0.8);
   if (defender.arm) defender.arm.rotation.x = defender.armRest;
   // Bake the crew like a field troop: one mesh and one ink hull per limb.
-  bakeRig(defender, `tower-${king ? "king" : (e.towerTroop ?? "princess")}:${e.side}:${ARABIC ? "arabic" : "normal"}:default`);
+  bakeRig(defender, `tower-${king ? "king" : (e.towerTroop ?? "princess")}:${colors.team}:${ARABIC ? "arabic" : "normal"}:default`);
   const mount = chunkGroup(root, "defenderMount", true);
   mount.position.y = height + 0.18;
   mount.add(defender.group);
@@ -445,7 +475,7 @@ export function buildTowerMesh(e: Entity): EntityView {
   const outward = e.side === "player" ? 1 : -1;
   const farSide = e.side !== viewSide;
   const barZ = king && farSide ? -outward * 1.9 : outward * (king ? 1.7 : 1.4);
-  const bar = makeHpBar(barWidth, HP_COLOR[e.side], barY, 0.36);
+  const bar = makeHpBar(barWidth, colors.hp, barY, 0.36);
   bar.group.position.z = barZ;
   bar.group.userData.noBatch = true;
   root.add(bar.group);
@@ -453,14 +483,16 @@ export function buildTowerMesh(e: Entity): EntityView {
   view.hpFill = bar.fill;
 
   // CR plate: a chunky pill with the HP number inside and a level shield
-  // riding its left end.
+  // riding its left end (makeLevelBadge takes the sim side and wears the team).
   const badge = makeLevelBadge(e.side);
   badge.scale.set(0.7, 0.7, 1);
   badge.position.set(-barWidth / 2 - 0.12, 0, 0.06);
   bar.group.add(badge);
   const hpText = makeHpText(barY + 0.02);
   hpText.sprite.scale.set(1.75, 0.64, 1);
-  hpText.sprite.position.z = barZ + 0.2;
+  // The number sits just in front of the bar as the camera sees it (the
+  // guest's flipped camera looks from -z), or the bar hides it.
+  hpText.sprite.position.z = barZ + 0.2 * camSide;
   root.add(hpText.sprite);
   view.hpText = hpText.text;
   plate.push(bar.group, hpText.sprite);

@@ -48,3 +48,26 @@ export function base32Code(rand: () => number, len: number): string {
   for (let i = 0; i < len; i++) out += BASE32[Math.floor(rand() * BASE32.length)];
   return out;
 }
+
+/** The number part of a word code (the 42 in LION42): plain digits only. */
+export const CODE_DIGITS = "0123456789";
+
+/** Letters kids type for the digits they look like. */
+const LOOKALIKE_DIGITS: Readonly<Record<string, string>> = { O: "0", I: "1" };
+
+/**
+ * A room code as a kid might type or paste it ("lion-42 ", "Carp 86",
+ * "LION4O"), made canonical: every character that is not a letter or digit
+ * goes, the rest is upper-cased, and in the number after a code word an O
+ * reads as 0 and an I as 1. The word itself is left alone (LION has both),
+ * and so is any code without a word (base32 codes have no O or I at all).
+ */
+export function normalizeCode(raw: string): string {
+  const up = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const word = CODE_WORDS.find((w) => up.startsWith(w));
+  if (!word) return up;
+  const digits = up
+    .slice(word.length)
+    .replace(/[A-Z]/g, (c) => (!CODE_DIGITS.includes(c) && LOOKALIKE_DIGITS[c]) || c);
+  return word + digits;
+}

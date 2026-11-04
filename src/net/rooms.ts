@@ -267,7 +267,9 @@ export class RoomHub {
 
   /**
    * Ask for a rematch. Once both players have asked, the log is reset, a new
-   * seed and fresh tokens are issued and both get a new `start`.
+   * seed and fresh tokens are issued and both get a new `start`. Only the
+   * asker hears back (`rematch-wait`); the relay uses {@link requestRematch},
+   * which also tells the other seat.
    */
   rematch(conn: string): Outbound[] {
     const at = this.locate(conn);
@@ -282,6 +284,23 @@ export class RoomHub {
     room.host.token = this.deps.token();
     guest.token = this.deps.token();
     return this.start(room);
+  }
+
+  /**
+   * A rematch request as the relay handles it: {@link rematch}, plus a
+   * `peer-rematch` to the other seat while it has not asked yet, so its
+   * result screen can offer the rematch instead of the request going
+   * unseen. Once both have asked, both just get the new `start`.
+   */
+  requestRematch(conn: string): Outbound[] {
+    const out = this.rematch(conn);
+    if (out.some((o) => o.msg.t === "start")) return out;
+    const at = this.locate(conn);
+    const peer = at?.peer?.conn;
+    if (!at || !peer || !at.room.rematch.has(at.role)) return out;
+    const peerRole: Role = at.role === "host" ? "guest" : "host";
+    if (!at.room.rematch.has(peerRole)) out.push({ to: peer, msg: { t: "peer-rematch" } });
+    return out;
   }
 
   /**
