@@ -11,7 +11,7 @@ import { ACHIEVEMENTS, achievementProgress, claimAchievement, isEarned, saveAchi
 import { button, rewardBurst } from "../components";
 import { ARABIC } from "../../render3d/theme";
 import { fmtNum } from "../i18n";
-import { passFraction } from "../passText";
+import { countFraction } from "../passText";
 import { icon, type CrestIndex, type IconName } from "../icons";
 import { CREST_COUNT, PLAYER_NAME_MAX, getPrefs, sanitizePlayerName, setPrefs } from "../prefs";
 import { claimButton, crestIcon, goalRow, refreshTopBars, section, type ClaimState } from "./frame";
@@ -107,7 +107,7 @@ function playerCard(ctx: AppCtx): HTMLElement {
     stat("star", fmtNum(best), tr("Best season", "أفضل موسم")),
     stat("crown-filled", fmtNum(meta.achievements.counters.wins), tr("Wins", "انتصارات")),
     stat("skull", fmtNum(loadLosses()), tr("Losses", "هزائم")),
-    stat("cards", passFraction(meta.profile.owned.length, DECK.length, ARABIC), tr("Cards found", "بطاقات مكتشفة")),
+    stat("cards", countFraction(meta.profile.owned.length, DECK.length, ARABIC), tr("Cards found", "بطاقات مكتشفة")),
     stat("chest", fmtNum(meta.achievements.counters.chests), tr("Chests opened", "صناديق مفتوحة")),
   );
   card.appendChild(stats);

@@ -11,6 +11,22 @@ export function passFraction(n: number, of: number, arabic: boolean): string {
   return arabic ? `${formatNum(n, true)} من ${formatNum(of, true)}` : `${formatNum(n, false)}/${formatNum(of, false)}`;
 }
 
+/** Left-to-right isolate: keeps a number run in reading order inside Arabic text. */
+const LRI = "\u2066";
+const PDI = "\u2069";
+
+/**
+ * A compact count for a tight cell (the Profile's "Cards found"): "22/42"
+ * in both editions, so it fits on one line on a phone. In Golden Age the
+ * slash between two numbers keeps them one left-to-right number run
+ * (isolated from the RTL text around it); there is no dot-like separator
+ * for the dot-like zero to blur into, which was the Crown Pass problem.
+ */
+export function countFraction(n: number, of: number, arabic: boolean): string {
+  const s = `${formatNum(n, arabic)}/${formatNum(of, arabic)}`;
+  return arabic ? `${LRI}${s}${PDI}` : s;
+}
+
 /** The Battle-tab pill: "Tier 1 · 2/10" / "المستوى ١، ٢ من ١٠". */
 export function passPillLine(tier: number, into: number, need: number, arabic: boolean): string {
   return arabic

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { passBarLine, passFraction, passPillLine } from "./passText";
+import { countFraction, passBarLine, passFraction, passPillLine } from "./passText";
 
 const ARABIC_ZERO = "٠";
 
@@ -14,6 +14,20 @@ describe("Crown Pass text", () => {
     expect(passFraction(2, 10, true)).toBe("٢ من ١٠");
     expect(passPillLine(0, 2, 10, true)).toBe("المستوى ٠، ٢ من ١٠");
     expect(passBarLine(2, 10, 1, true)).toBe("٢ من ١٠، المستوى التالي ١");
+  });
+
+  it("the compact count stays short: one isolated left-to-right number run", () => {
+    expect(countFraction(22, 42, false)).toBe("22/42");
+    expect(countFraction(22, 42, true)).toBe("\u2066٢٢/٤٢\u2069");
+    for (let n = 0; n <= 42; n++) {
+      const s = countFraction(n, 42, true);
+      // Only Arabic-Indic digits and one slash inside the isolate: no space
+      // to wrap at, no dot-like separator next to the dot-like zero.
+      expect(s).toMatch(/^\u2066[\u0660-\u0669]+\/[\u0660-\u0669]+\u2069$/);
+      expect(s).not.toMatch(/[·.\u066B\u066C\s]/);
+      // Never longer than the passFraction form it replaces in tight cells.
+      expect(s.length).toBeLessThan(passFraction(n, 42, true).length + 2);
+    }
   });
 
   it("never puts a dot-like separator or a slash next to the dot-like Arabic zero", () => {
