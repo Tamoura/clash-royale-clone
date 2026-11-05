@@ -12,6 +12,8 @@ import { TOWER_FLASH_PEAK, TOWER_FLASH_TIME, hitFlashTint } from "../views/anima
 import { burrowProgress, burrowStart, burrowsInFlight, resetBurrows, syncBurrows } from "./burrow";
 import { COMET_SKY_HEIGHT, cometPosition, cometProgress, cometsInFlight, landDelayOf, resetComets, syncComets } from "./comet";
 import { VfxPool } from "./pool";
+import { emitPreset, type PoolKind } from "./presets";
+import type { ParticleSpec } from "../../particles";
 
 vi.mock("../../quality", () => ({ particleScale: () => 1 }));
 
@@ -192,6 +194,21 @@ describe("digger tunnel", () => {
     expect(burrowsInFlight(view)).toBe(0);
     expect(view.scene.getObjectByName("burrow-mound")).toBeUndefined();
     resetBurrows(view);
+  });
+
+  it("the emerge burst throws big clods and dust that survive the lowest quality", () => {
+    const burst = (name: string, q: number, count?: number): ParticleSpec[] => {
+      const got: ParticleSpec[] = [];
+      const sp = { spawn: (_k: PoolKind, s: ParticleSpec) => void got.push({ ...s }), rand: () => 0.5, scale: () => q };
+      expect(emitPreset(sp, name, 0, 0, 0, { radius: 1.2, color: 0x8a6a44, count })).toBe(true);
+      return got;
+    };
+    const low = burst("dirt-burst", 0.35);
+    expect(low.length).toBeGreaterThanOrEqual(10); // not a handful of specks on a phone
+    for (const c of low) expect(c.size0).toBeGreaterThanOrEqual(0.8);
+    expect(burst("dirt-burst", 1).length).toBeGreaterThan(low.length);
+    expect(burst("dirt-burst", 0.35, 10).length).toBeGreaterThanOrEqual(6); // the darker second wave
+    expect(burst("dirt-dust", 0.35).length).toBeGreaterThanOrEqual(5);
   });
 
   it("the Digger climbs out of its hole; tunnellers skip the sky-drop", () => {

@@ -9,7 +9,8 @@
  * "battle-top"); registerNewCards(ctx) wires it with the app context
  * (starting a challenge needs AppCtx.startChallenge). Closing it, by
  * "Got it", the close button, Escape or a "Try it", sets the seen flag in
- * storage, so it shows once per profile.
+ * storage, so it shows once per profile. It waits while Home's pointer hand
+ * guides a brand-new player to their first chest (first-hour onboarding).
  */
 import type { AppCtx } from "../app/ctx";
 import { registerHomeSlot } from "../app/slots";
@@ -20,9 +21,10 @@ import { arenaArForUnlock, arenaNameForUnlock, unlockTrophiesFor } from "../meta
 import { blurbText } from "../render/cardBlurbs";
 import { cardDisplayName } from "../render/cardNames";
 import { makeCardCanvas } from "./cardFrame";
-import { button } from "./components";
-import { fmtNum } from "./i18n";
+import { button, trapOrder } from "./components";
+import { formatNum } from "./i18n";
 import { icon } from "./icons";
+import { CHEST_PULSE_KEY, CHEST_TAPPED_KEY, chestGuideSlot } from "./screens/home";
 import { reducedMotion } from "./prefs";
 import { ARABIC } from "../render3d/theme";
 import "./styles/newcards.css";
@@ -67,9 +69,11 @@ export function markNewCardsSeen(store: SeenStore | null = defaultStore()): void
 /**
  * Show the sheet on this Home? Only once, and only after the guided first
  * battle (a brand-new player meets the basics first, then the new cards).
+ * `guiding`: Home's pointer hand is showing the kid their first chest right
+ * now; the sheet waits for a later Home instead of covering it.
  */
-export function shouldShowNewCards(store: SeenStore | null, tutored: boolean): boolean {
-  return tutored && !newCardsSeen(store);
+export function shouldShowNewCards(store: SeenStore | null, tutored: boolean, guiding = false): boolean {
+  return tutored && !guiding && !newCardsSeen(store);
 }
 
 /** The guided first battle is done (tutorialOverlay sets this flag). */
@@ -81,14 +85,44 @@ function tutored(store: SeenStore | null): boolean {
   }
 }
 
-/** "Unlocks at 400 trophies" for a card the player does not own yet, else null. */
-export function lockText(id: CardId, owned: ReadonlySet<CardId>, tr: (en: string, ar: string) => string): string | null {
+/** Where a card the player does not own yet comes from. */
+export interface LockInfo {
+  text: string;
+  /** Its arena is reached: it can drop from chests now (else it is still locked). */
+  findable: boolean;
+}
+
+/**
+ * For a card the player does not own yet: "Unlocks in Bone Pit (200
+ * trophies)" while its arena is ahead, "Find it in chests" once the player
+ * stands in it (the collection's "In chests"). null for an owned card.
+ */
+export function lockInfo(
+  id: CardId,
+  owned: ReadonlySet<CardId>,
+  trophies: number,
+  tr: (en: string, ar: string) => string,
+): LockInfo | null {
   if (owned.has(id)) return null;
   const n = unlockTrophiesFor(id);
-  return tr(
-    `Unlocks in ${arenaNameForUnlock(id)} (${n} trophies)`,
-    `تُفتح في ${arenaArForUnlock(id)} (${fmtNum(n)} كأس)`,
-  );
+  if (trophies >= n) return { text: tr("Find it in chests", "ابحث عنها في الصناديق"), findable: true };
+  return {
+    text: tr(
+      `Unlocks in ${arenaNameForUnlock(id)} (${formatNum(n, false)} trophies)`,
+      `تُفتح في ${arenaArForUnlock(id)} (${formatNum(n, true)} كأس)`,
+    ),
+    findable: false,
+  };
+}
+
+/** lockInfo's line alone. */
+export function lockText(
+  id: CardId,
+  owned: ReadonlySet<CardId>,
+  trophies: number,
+  tr: (en: string, ar: string) => string,
+): string | null {
+  return lockInfo(id, owned, trophies, tr)?.text ?? null;
 }
 
 /** One row of the sheet: what it shows and which trial its "Try it" starts. */
@@ -96,18 +130,18 @@ export interface NewCardRow {
   id: CardId;
   name: string;
   blurb: string;
-  /** "Unlocks in ..." while the card is locked, else null. */
-  lock: string | null;
+  /** Where it comes from while the player does not own it, else null. */
+  lock: LockInfo | null;
   trial: Challenge | null;
 }
 
 /** The sheet's rows, in NEW_CARD_IDS order. */
-export function newCardRows(owned: ReadonlySet<CardId>, tr: (en: string, ar: string) => string): NewCardRow[] {
+export function newCardRows(owned: ReadonlySet<CardId>, trophies: number, tr: (en: string, ar: string) => string): NewCardRow[] {
   return NEW_CARD_IDS.map((id) => ({
     id,
     name: cardDisplayName(id),
     blurb: blurbText(id) ?? "",
-    lock: lockText(id, owned, tr),
+    lock: lockInfo(id, owned, trophies, tr),
     trial: trialFor(id),
   }));
 }
@@ -119,21 +153,33 @@ export interface NewCardsDeps {
   startTrial: (ch: Challenge) => void;
   /** Cards the player owns: the others get an "Unlocks in ..." line. */
   owned: () => ReadonlySet<CardId>;
+  /** The player's trophies (a reached arena's card reads "Find it in chests"). */
+  trophies: () => number;
+  /** True while something on Home needs the kid first (the first-chest pointer). */
+  guiding?: () => boolean;
   /** Defaults to localStorage. */
   store?: SeenStore | null;
   /** Card art (defaults to the card frame canvas; tests pass a stub). */
   portrait?: (id: CardId) => HTMLElement;
 }
 
+/** A built sheet: its element, and how to take it down without marking it seen. */
+export interface NewCardsSheet {
+  root: HTMLElement;
+  /** Remove it and its key listener; it is not marked seen and comes back next time. */
+  dispose(): void;
+}
+
 /**
  * The sheet itself: a dialog with a title, three card rows (portrait, name,
  * blurb, lock line, "Try it") and "Got it". `close` runs once, whichever
- * way it closes; it marks the sheet seen.
+ * way it closes; it marks the sheet seen. Tab and Shift+Tab stay inside it.
  */
-export function buildNewCardsSheet(deps: NewCardsDeps, onClosed: () => void = () => {}): HTMLElement {
+export function buildNewCardsSheet(deps: NewCardsDeps, onClosed: () => void = () => {}): NewCardsSheet {
   const { tr } = deps;
   const store = deps.store === undefined ? defaultStore() : deps.store;
   const owned = deps.owned();
+  const trophies = deps.trophies();
   const root = document.createElement("div");
   root.className = "nc-backdrop";
   // It mounts on <body>: mirror it for Arabic, and keep it still under reduced motion.
@@ -147,21 +193,33 @@ export function buildNewCardsSheet(deps: NewCardsDeps, onClosed: () => void = ()
   root.appendChild(sheet);
 
   let closed = false;
-  const close = (): void => {
-    if (closed) return;
+  // One signal drops the document key listener however the sheet goes away.
+  const keys = new AbortController();
+  const takeDown = (): boolean => {
+    if (closed) return false;
     closed = true;
-    markNewCardsSeen(store);
-    document.removeEventListener("keydown", onKey, true);
+    keys.abort();
     root.remove();
+    return true;
+  };
+  const close = (): void => {
+    if (!takeDown()) return;
+    markNewCardsSeen(store);
     onClosed();
   };
   const onKey = (ev: KeyboardEvent): void => {
     if (ev.key === "Escape") {
       ev.stopPropagation();
       close();
+    } else if (ev.key === "Tab") {
+      // A modal: focus cycles through the sheet's own buttons.
+      const items = Array.from(sheet.querySelectorAll<HTMLElement>("button:not([disabled])"));
+      const next = trapOrder(items.length, items.indexOf(document.activeElement as HTMLElement), ev.shiftKey);
+      ev.preventDefault();
+      if (next >= 0) items[next].focus();
     }
   };
-  document.addEventListener("keydown", onKey, true);
+  document.addEventListener("keydown", onKey, { capture: true, signal: keys.signal });
   root.addEventListener("click", (ev) => {
     if (ev.target === root) close(); // a tap outside the sheet
   });
@@ -192,7 +250,7 @@ export function buildNewCardsSheet(deps: NewCardsDeps, onClosed: () => void = ()
 
   const list = document.createElement("ul");
   list.className = "nc-list";
-  for (const r of newCardRows(owned, tr)) {
+  for (const r of newCardRows(owned, trophies, tr)) {
     const row = document.createElement("li");
     row.className = "nc-card";
     row.dataset.card = r.id;
@@ -209,9 +267,9 @@ export function buildNewCardsSheet(deps: NewCardsDeps, onClosed: () => void = ()
     text.append(name, blurb);
     if (r.lock) {
       const l = document.createElement("small");
-      l.className = "nc-lock";
-      l.innerHTML = icon("lock");
-      l.appendChild(document.createTextNode(r.lock));
+      l.className = "nc-lock" + (r.lock.findable ? " is-findable" : "");
+      l.innerHTML = icon(r.lock.findable ? "chest" : "lock");
+      l.appendChild(document.createTextNode(r.lock.text));
       text.appendChild(l);
     }
     row.append(art, text);
@@ -238,7 +296,7 @@ export function buildNewCardsSheet(deps: NewCardsDeps, onClosed: () => void = ()
   sheet.appendChild(done);
   // Focus lands inside the dialog (the first "Try it"), for keyboards and screen readers.
   queueMicrotask(() => sheet.querySelector<HTMLButtonElement>(".nc-try, .nc-done")?.focus({ preventScroll: true }));
-  return root;
+  return { root, dispose: () => void takeDown() };
 }
 
 /**
@@ -246,20 +304,51 @@ export function buildNewCardsSheet(deps: NewCardsDeps, onClosed: () => void = ()
  * Returns the unregister function.
  */
 export function installNewCards(deps: NewCardsDeps): () => void {
-  let open: HTMLElement | null = null;
+  let open: NewCardsSheet | null = null;
+  // Set while a slot cleanup waits to take the open sheet down.
+  let leaving = false;
   return registerHomeSlot("battle-top", () => {
     const store = deps.store === undefined ? defaultStore() : deps.store;
-    if (open || !shouldShowNewCards(store, tutored(store))) return;
-    // Over the whole Home (the slot host scrolls with the tab panel).
-    open = buildNewCardsSheet(deps, () => (open = null));
-    document.body.appendChild(open);
-    // Home is redrawn (another tab, another screen): take the sheet down
-    // without marking it seen, so it comes back on the next Home.
+    if (open && leaving) {
+      // Home was rebuilt in the same turn (a redraw): keep the sheet as it is.
+      leaving = false;
+    } else {
+      if (open || !shouldShowNewCards(store, tutored(store), deps.guiding?.() ?? false)) return;
+      // Over the whole Home (the slot host scrolls with the tab panel).
+      const sheet: NewCardsSheet = buildNewCardsSheet(deps, () => {
+        if (open === sheet) open = null;
+      });
+      open = sheet;
+      document.body.appendChild(sheet.root);
+    }
+    // Home is left (another tab, another screen): take the sheet down
+    // without marking it seen, so it comes back on the next Home. A redraw
+    // renders the slot again right away and keeps it instead.
+    const mine = open;
     return () => {
-      open?.remove();
-      open = null;
+      if (!mine || open !== mine) return;
+      leaving = true;
+      queueMicrotask(() => {
+        if (!leaving || open !== mine) return;
+        leaving = false;
+        open = null;
+        mine.dispose();
+      });
     };
   });
+}
+
+/** Is Home's pointer hand bouncing over the first chest now? (home.ts chestGuideSlot) */
+function chestGuideShowing(chests: readonly (object | null | undefined)[]): boolean {
+  let pulse: string | null = null;
+  let tapped: string | null = null;
+  try {
+    pulse = sessionStorage.getItem(CHEST_PULSE_KEY);
+    tapped = localStorage.getItem(CHEST_TAPPED_KEY);
+  } catch {
+    return false;
+  }
+  return chestGuideSlot(pulse, tapped, chests) >= 0;
 }
 
 /** Wire the sheet to the app: "Try it" leaves Home and starts the trial. */
@@ -267,6 +356,8 @@ export function registerNewCards(ctx: AppCtx): () => void {
   return installNewCards({
     tr: ctx.tr,
     owned: () => new Set(ctx.meta.profile.owned),
+    trophies: () => ctx.meta.profile.trophies,
+    guiding: () => chestGuideShowing(ctx.meta.profile.chests),
     startTrial: (ch) => {
       ctx.closeDeckPicker();
       ctx.startChallenge(ch);

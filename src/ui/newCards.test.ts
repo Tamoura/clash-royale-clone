@@ -4,6 +4,7 @@ import { TRIAL_CHALLENGES } from "../game/challenges";
 import {
   NEW_CARDS_SEEN_KEY,
   NEW_CARD_IDS,
+  lockInfo,
   lockText,
   markNewCardsSeen,
   newCardRows,
@@ -23,7 +24,7 @@ const ar = (_e: string, a: string): string => a;
 describe("New cards! sheet", () => {
   it("introduces the wave's three cards, each with a trial", () => {
     expect(NEW_CARD_IDS).toEqual(["stone-golem", "digger", "comet"]);
-    const rows = newCardRows(new Set(), en);
+    const rows = newCardRows(new Set(), 0, en);
     expect(rows.map((r) => r.id)).toEqual(NEW_CARD_IDS);
     for (const r of rows) {
       expect(r.blurb.length, r.id).toBeGreaterThan(10);
@@ -37,6 +38,9 @@ describe("New cards! sheet", () => {
     const s = store();
     expect(shouldShowNewCards(s, false)).toBe(false); // not before the tutorial
     expect(shouldShowNewCards(s, true)).toBe(true);
+    // While Home's hand points a brand-new player at their first chest, it waits.
+    expect(shouldShowNewCards(s, true, true)).toBe(false);
+    expect(shouldShowNewCards(s, true, false)).toBe(true);
     markNewCardsSeen(s);
     expect(s.data.get(NEW_CARDS_SEEN_KEY)).toBe("1");
     expect(newCardsSeen(s)).toBe(true);
@@ -59,13 +63,25 @@ describe("New cards! sheet", () => {
 
   it("flags locked cards with where they unlock, in both editions", () => {
     const owned = new Set<CardId>(["digger"]);
-    expect(lockText("digger", owned, en)).toBeNull();
-    expect(lockText("stone-golem", owned, en)).toMatch(/Unlocks in .+ \(200 trophies\)/);
-    expect(lockText("comet", owned, en)).toMatch(/3000 trophies/);
-    expect(lockText("comet", owned, ar)).toMatch(/[؀-ۿ]/);
-    expect(lockText("comet", owned, ar)).toContain("٣٬٠٠٠"); // Arabic-Indic digits
-    const rows = newCardRows(owned, en);
+    expect(lockText("digger", owned, 0, en)).toBeNull();
+    expect(lockText("stone-golem", owned, 0, en)).toMatch(/Unlocks in .+ \(200 trophies\)/);
+    expect(lockText("comet", owned, 0, en)).toMatch(/\(3,000 trophies\)/); // grouped, like the Arabic line
+    expect(lockText("comet", owned, 0, ar)).toMatch(/[؀-ۿ]/);
+    expect(lockText("comet", owned, 0, ar)).toContain("٣٬٠٠٠"); // Arabic-Indic digits
+    const rows = newCardRows(owned, 0, en);
     expect(rows.find((r) => r.id === "digger")!.lock).toBeNull();
-    expect(rows.find((r) => r.id === "comet")!.lock).not.toBeNull();
+    expect(rows.find((r) => r.id === "comet")!.lock).toEqual({ text: expect.stringMatching(/^Unlocks in/), findable: false });
+  });
+
+  it("a card whose arena is reached reads as findable in chests, not as locked", () => {
+    const owned = new Set<CardId>();
+    expect(lockInfo("stone-golem", owned, 199, en)!.findable).toBe(false);
+    expect(lockInfo("stone-golem", owned, 200, en)).toEqual({ text: "Find it in chests", findable: true });
+    expect(lockInfo("stone-golem", owned, 250, ar)!.text).toMatch(/[؀-ۿ]/);
+    expect(lockText("stone-golem", owned, 250, en)).not.toMatch(/Unlocks/);
+    // Further cards still name their arena.
+    expect(lockText("digger", owned, 250, en)).toMatch(/Unlocks in .+ \(400 trophies\)/);
+    const rows = newCardRows(owned, 3000, en);
+    expect(rows.every((r) => r.lock?.findable)).toBe(true);
   });
 });

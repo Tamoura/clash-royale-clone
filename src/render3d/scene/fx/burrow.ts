@@ -22,6 +22,13 @@ import type { VfxPool } from "./pool";
 /** Turned earth: loam on grass arenas, sand in the Golden Age bazaar. */
 export const DIRT = arabic ? 0xc8a874 : 0x8a6a44;
 const DIRT_DARK = arabic ? 0x9a7f52 : 0x5a4330;
+/**
+ * The emerge burst's clods and dust, a shade darker than the furrow so they
+ * stand out from the floor (the pale Golden Age tiles above all).
+ */
+const BURST_CLOD = arabic ? 0x9a7f52 : 0x8a6a44;
+const BURST_CLOD_DARK = arabic ? 0x6e5534 : 0x5a4330;
+const BURST_DUST = arabic ? 0x8f7450 : 0x9a8264;
 /** Seconds between furrow marks (render time). */
 export const FURROW_EVERY = 0.05;
 
@@ -230,10 +237,12 @@ export function resetBurrows(b: Battle3D): void {
  */
 export function diggerEmerge(v: VfxPool, x: number, y: number): void {
   const w = toWorld(x, y);
-  // The fountain twice over: loam clods, then darker ones a beat later.
-  v.emitWorld("dirt-burst", w.x, 0, w.z, { radius: 1.1, color: DIRT });
-  v.emitWorld("dirt-burst", w.x, 0, w.z, { radius: 0.9, color: DIRT_DARK, delay: 0.06, count: 10 });
-  v.emitWorld("deployPuff", w.x, 0, w.z, { radius: 1.6, color: arabic ? 0xe2cfa4 : 0xb59a78 });
+  // The fountain twice over: big clods, then darker ones a beat later, and
+  // a dust cloud rolling out (both keep a floor at low quality).
+  v.emitWorld("dirt-burst", w.x, 0, w.z, { radius: 1.2, color: BURST_CLOD });
+  v.emitWorld("dirt-burst", w.x, 0, w.z, { radius: 1, color: BURST_CLOD_DARK, delay: 0.06, count: 10 });
+  v.emitWorld("dirt-dust", w.x, 0, w.z, { radius: 1.2, color: BURST_DUST });
+  v.emitWorld("deployPuff", w.x, 0, w.z, { radius: 1.6, color: arabic ? 0xa88c5e : 0xb59a78 });
   v.emitWorld("ring", w.x, 0, w.z, { radius: 1.2, color: 0xfff1c4 });
   // The hole it climbed out of: a dark ground patch that lingers, plus a crater.
   const s = clearSpec(S);

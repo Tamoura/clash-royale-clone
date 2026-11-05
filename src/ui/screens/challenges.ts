@@ -12,7 +12,7 @@ import { makeCardCanvas } from "../cardFrame";
 import { button } from "../components";
 import { fmtNum, fmtTime } from "../i18n";
 import { icon } from "../icons";
-import { lockText } from "../newCards";
+import { lockInfo } from "../newCards";
 import { mountSubscreen } from "./frame";
 import "../styles/newcards.css";
 
@@ -33,7 +33,7 @@ function starsRow(ctx: AppCtx, n: 1 | 2 | 3): HTMLElement {
   return row;
 }
 
-function chip(cls: string, ic: "shield" | "check" | "lock", text: string): HTMLElement {
+function chip(cls: string, ic: "shield" | "check" | "lock" | "chest", text: string): HTMLElement {
   const c = document.createElement("span");
   c.className = `v2-challenge-chip ${cls}`;
   c.innerHTML = icon(ic);
@@ -75,8 +75,8 @@ function challengeRow(ctx: AppCtx, ch: Challenge, cleared: boolean): HTMLElement
   chips.appendChild(chip("is-goal", "shield", tr(goalEn, goalAr)));
   if (cleared) chips.appendChild(chip("is-cleared", "check", tr("Cleared", "أُنجز")));
   if (ch.trial) {
-    const lock = lockText(ch.trial, new Set(ctx.meta.profile.owned), tr);
-    if (lock) chips.appendChild(chip("is-locked", "lock", lock));
+    const lock = lockInfo(ch.trial, new Set(ctx.meta.profile.owned), ctx.meta.profile.trophies, tr);
+    if (lock) chips.appendChild(chip(lock.findable ? "is-findable" : "is-locked", lock.findable ? "chest" : "lock", lock.text));
   }
   const blurb = document.createElement("div");
   blurb.className = "challenge-blurb";

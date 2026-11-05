@@ -106,6 +106,7 @@
   color: var(--on-surface-dim, #c9d3e6);
 }
 .nc-lock .ui-icon { flex: none; width: 14px; height: 14px; }
+.nc-lock.is-findable { color: var(--accent, #ffd23f); }
 .nc-try {
   grid-area: try;
   justify-self: start;
@@ -152,3 +153,5 @@
   box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
 }
 .v2-challenge-chip.is-locked { color: var(--on-surface-dim, #c9d3e6); white-space: normal; }
+/* Its arena is reached: the card can drop from chests now (the collection's "In chests"). */
+.v2-challenge-chip.is-findable { color: var(--accent, #ffd23f); white-space: normal; }
