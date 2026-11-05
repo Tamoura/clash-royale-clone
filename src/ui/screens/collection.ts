@@ -28,8 +28,8 @@ export function openCollection(ctx: AppCtx): void {
   draw();
 }
 
-/** A dark silhouette of the card's character (spells: its dimmed art). */
-function silhouette(id: CardId): HTMLCanvasElement {
+/** A dark silhouette of the card's character (spells: its dimmed art). Style it inside a `.is-locked` tile. */
+export function cardSilhouette(id: CardId): HTMLCanvasElement {
   const portrait = cardPortrait(id);
   if (!portrait) {
     const c = cardTileCanvas(id);
@@ -63,7 +63,7 @@ export function cardTile(ctx: AppCtx, id: CardId, onTap: () => void): HTMLButton
   b.dataset.card = id;
   const art = document.createElement("div");
   art.className = "v2-tile-art";
-  art.appendChild(p.owned ? cardTileCanvas(id) : silhouette(id));
+  art.appendChild(p.owned ? cardTileCanvas(id) : cardSilhouette(id));
   b.appendChild(art);
   const cost = document.createElement("span");
   cost.className = "v2-cost";

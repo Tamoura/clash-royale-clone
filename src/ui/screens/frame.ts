@@ -9,7 +9,11 @@
  * mirrors on its own.
  */
 import type { AppCtx } from "../../app/ctx";
+import { dateKey } from "../../game/daily";
 import { arenaIndexAt } from "../../meta/arenas";
+import { loadPass, type PassState } from "../../meta/pass";
+import { badgeCounts, tabBadges } from "../../meta/progress";
+import { loadRoad } from "../../meta/road";
 import {
   FEATURE_LABEL,
   featureArena,
@@ -31,6 +35,7 @@ import { getPrefs, reducedMotion } from "../prefs";
 import { openSettings } from "./settings";
 import { startTutorial } from "../tutorialOverlay";
 import "../styles/home.css";
+import "../styles/decks.css";
 
 export type HomeTab = "shop" | "cards" | "battle" | "events" | "profile";
 
@@ -237,9 +242,10 @@ function fillTopBar(ctx: AppCtx, bar: HTMLElement): void {
   }
 }
 
-/** Re-read gold, gems, trophies, name and crest into every mounted top bar. */
+/** Re-read gold, gems, trophies, name and crest into every mounted top bar (and the tab badges). */
 export function refreshTopBars(ctx: AppCtx): void {
   document.querySelectorAll<HTMLElement>(".v2-topbar").forEach((bar) => fillTopBar(ctx, bar));
+  refreshTabBadges(ctx);
 }
 
 // ---- Tab bar ------------------------------------------------------------------------
@@ -257,9 +263,75 @@ export function buildTabBar(ctx: AppCtx, active: HomeTab | null, pick: (t: HomeT
     b.innerHTML = `${icon(ic)}<span>${ctx.tr(en, ar)}</span>`;
     b.setAttribute("aria-current", id === active ? "page" : "false");
     b.addEventListener("click", () => pick(id));
+    const dot = document.createElement("span");
+    dot.className = "dq-tab-badge";
+    dot.setAttribute("aria-hidden", "true");
+    dot.hidden = true;
+    b.appendChild(dot);
     nav.appendChild(b);
   }
+  paintTabBadges(ctx, nav, tabBadgeCounts(ctx));
   return nav;
+}
+
+// ---- Tab badges -----------------------------------------------------------------
+
+/**
+ * What waits on each tab right now: claimable Trophy Road, Crown Pass and
+ * daily quest rewards (Battle), upgrades the player can pay for (Cards)
+ * and earned achievements (Profile). Pure counting lives in meta/progress.
+ */
+export function tabBadgeCounts(ctx: AppCtx): Record<HomeTab, number> {
+  const { meta } = ctx;
+  const { profile, achievements, season } = meta;
+  let road: { reached: number; claimed: readonly number[] } | undefined;
+  let pass: PassState | null = null;
+  try {
+    road = { reached: Math.max(profile.trophies, achievements.counters.bestTrophies, season.best), claimed: loadRoad().claimed };
+    pass = loadPass(season.key);
+  } catch {
+    // storage blocked: no road/pass badge
+  }
+  const quests = meta.quests.date === dateKey(new Date()) ? meta.quests : null;
+  return tabBadges(badgeCounts({ profile, levels: meta.cardLevels, road, pass, achievements, quests }));
+}
+
+function paintTabBadges(ctx: AppCtx, nav: HTMLElement, counts: Record<HomeTab, number>): void {
+  const { tr } = ctx;
+  for (const [id, , en, ar] of TABS) {
+    const b = nav.querySelector<HTMLElement>(`.home-tab[data-tab="${id}"]`);
+    const dot = b?.querySelector<HTMLElement>(".dq-tab-badge");
+    if (!b || !dot) continue;
+    const n = counts[id] ?? 0;
+    const label = tr(en, ar);
+    const was = dot.hidden ? 0 : Number(dot.dataset.count ?? 0);
+    dot.hidden = n <= 0;
+    dot.dataset.count = String(n);
+    dot.textContent = n > 9 ? `${fmtNum(9)}+` : fmtNum(n);
+    if (n > 0 && was !== n && was > 0) {
+      // Restart the pop when the number changes in place.
+      dot.style.animation = "none";
+      void dot.offsetWidth;
+      dot.style.animation = "";
+    }
+    b.classList.toggle("has-badge", n > 0);
+    if (n <= 0) b.removeAttribute("aria-label");
+    else
+      b.setAttribute(
+        "aria-label",
+        id === "cards"
+          ? tr(`${label}: ${n} upgrade${n === 1 ? "" : "s"} ready`, `${label}: ${fmtNum(n)} ترقية جاهزة`)
+          : tr(`${label}: ${n} reward${n === 1 ? "" : "s"} to claim`, `${label}: ${fmtNum(n)} مكافأة للاستلام`),
+      );
+  }
+}
+
+/** Recount every mounted tab bar's badges (after a claim, an upgrade, a purchase…). */
+export function refreshTabBadges(ctx: AppCtx): void {
+  const navs = document.querySelectorAll<HTMLElement>(".v2-tabs");
+  if (navs.length === 0) return;
+  const counts = tabBadgeCounts(ctx);
+  navs.forEach((nav) => paintTabBadges(ctx, nav, counts));
 }
 
 // ---- Sub-screen frame ----------------------------------------------------------

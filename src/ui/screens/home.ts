@@ -36,6 +36,7 @@ import { arenaLockBadge, enforceUnlocks, setupChipRow } from "./battleSetup";
 import { CONFIRM_GOLD, cardProgress, openCardInfo } from "./cardInfo";
 import { buildCollectionGroups, cardTile } from "./collection";
 import { cardTileCanvas } from "./common";
+import { activateSlot, readSlots, slotName, slotSwitcher } from "./deckPicker";
 import { buildEditionGate } from "./editionGate";
 import {
   applyDir,
@@ -50,6 +51,7 @@ import {
   isUnlocked,
   markFeaturesSeen,
   newBadge,
+  refreshTabBadges,
   refreshTopBars,
   section,
   setHomeTab,
@@ -148,6 +150,8 @@ export function buildHomeShell(ctx: AppCtx): void {
     else if (tab === "events") eventsTab(ctx, panel);
     else buildProfileTab(ctx, panel, (host) => fillSlot("profile", host), redraw);
     panel.scrollTop = keep;
+    // Every redraw follows a change (a claim, an upgrade, a purchase): recount.
+    refreshTabBadges(ctx);
     const to = tabIndex(tab);
     if (from !== null && from !== to && !reducedMotion()) {
       // Slide in from the side of the tab we came from (mirrored in RTL).
@@ -383,6 +387,19 @@ function cardsTab(ctx: AppCtx, panel: HTMLElement, redraw: () => void): void {
   );
   const d = section(tr("Battle deck", "المجموعة القتالية"), tools);
   d.el.classList.add("v2-deck");
+  // Deck slots: the lit one is the deck the next battle uses.
+  const slots = readSlots(ctx);
+  d.el.appendChild(
+    slotSwitcher(ctx, slots, (i) => {
+      if (i === slots.active) return;
+      const next = activateSlot(ctx, slots, i);
+      sfx(ctx, "uiTap");
+      toast(tr(`${slotName(ctx, next, i)} is ready for battle`, `${slotName(ctx, next, i)} جاهزة للمعركة`), "success");
+      redraw();
+      // Keep the keyboard focus on the slot that was picked.
+      panel.querySelector<HTMLButtonElement>(`.v2-deck .dq-slot[data-slot="${i}"]`)?.focus({ preventScroll: true });
+    }),
+  );
   const grid = document.createElement("div");
   grid.className = "v2-grid v2-grid--deck";
   for (let i = 0; i < 8; i++) {
