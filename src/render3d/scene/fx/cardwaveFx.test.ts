@@ -126,6 +126,22 @@ describe("comet fall", () => {
     expect(view.scene.getObjectByName("comet-fall")).toBeUndefined();
     resetComets(view);
   });
+
+  it("a comet still falling when the match ends leaves with it (the sim stops ticking)", () => {
+    const b = createBattle();
+    const tower = enemyPrincess(b);
+    giveHand(b, ["comet"]);
+    deployCard(b, "player", "comet", tower.x, tower.y);
+    const view = fakeBattle();
+    syncComets(view, b, 1 / 60, 0);
+    expect(cometsInFlight(view)).toBe(1);
+    b.result = { winner: "player", playerCrowns: 3, enemyCrowns: 0 };
+    expect(b.pendingSpells.length).toBe(1); // still pending in the frozen state
+    syncComets(view, b, 1 / 60, 0);
+    expect(cometsInFlight(view)).toBe(0);
+    expect(view.scene.getObjectByName("comet-fall")).toBeUndefined();
+    resetComets(view);
+  });
 });
 
 describe("digger tunnel", () => {
@@ -161,6 +177,20 @@ describe("digger tunnel", () => {
     expect(burrowsInFlight(view)).toBe(0);
     // It travelled from the King (world z +13.5) toward the far side.
     expect(start.z).toBeGreaterThan(10);
+    resetBurrows(view);
+  });
+
+  it("a mound still ploughing when the match ends is taken down", () => {
+    const b = createBattle();
+    giveHand(b, ["digger"]);
+    deployCard(b, "player", "digger", 3.5, 4);
+    const view = fakeBattle();
+    syncBurrows(view, b, 1 / 60, 0);
+    expect(burrowsInFlight(view)).toBe(1);
+    b.result = { winner: "enemy", playerCrowns: 0, enemyCrowns: 1 };
+    syncBurrows(view, b, 1 / 60, 0);
+    expect(burrowsInFlight(view)).toBe(0);
+    expect(view.scene.getObjectByName("burrow-mound")).toBeUndefined();
     resetBurrows(view);
   });
 

@@ -153,7 +153,8 @@ function moundColor(side: Side): number {
 
 /**
  * Mirror every burrowed troop as a travelling mound. Call once per frame
- * after the state was ticked.
+ * after the state was ticked. A finished match (state.result) stops the
+ * sim, so a mound still on its way would freeze mid-field: it draws none.
  */
 export function syncBurrows(b: Battle3D, state: BattleState, dt: number, alpha: number): void {
   const st = burrowState(b);
@@ -161,7 +162,7 @@ export function syncBurrows(b: Battle3D, state: BattleState, dt: number, alpha: 
   st.seen.clear();
   const v = b.fx as VfxPool;
   for (const e of state.entities) {
-    if (e.kind !== "troop" || e.burrowTimer <= 0) continue;
+    if (state.result || e.kind !== "troop" || e.burrowTimer <= 0) continue;
     st.seen.add(e.id);
     let m = st.live.get(e.id);
     if (!m) {

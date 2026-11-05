@@ -74,7 +74,6 @@ export function panFor(x: number, localSide: Side): number {
   return Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, v)) || 0;
 }
 
-/** A crown taken by the local side is a triumph; one taken from it is a loss. */
 /** The card-wave-3 cues a battle event plays (null: none of these). */
 export type WaveCue = "dig" | "pop" | "whoosh" | "boom" | "crumble" | "crumble-small" | "grind";
 
@@ -107,6 +106,7 @@ export function waveCue(ev: BattleEvent): WaveCue | null {
   }
 }
 
+/** A crown taken by the local side is a triumph; one taken from it is a loss. */
 export function crownCue(winner: Side, localSide: Side): "cheer" | "groan" {
   return winner === localSide ? "cheer" : "groan";
 }

@@ -183,6 +183,7 @@ function buildView(): CometView {
   return { root, sky, rock, tail, ring, closing, fill, shadow, ringMat, closingMat, fillMat, shadowMat, emberAt: -Infinity, spin: 0 };
 }
 
+const NO_SPELLS: readonly PendingSpell[] = Object.freeze([]);
 const POS = new THREE.Vector3();
 const NEXT = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
@@ -283,14 +284,16 @@ function poseView(view: CometView, p: PendingSpell, f: number, r: number, dt: nu
 
 /**
  * Mirror the state's pending delayed spells: create, pose and retire the
- * fall views. Call once per frame after the state was ticked.
+ * fall views. Call once per frame after the state was ticked. Once the
+ * match has a result the sim stops ticking, so a rock still in the air
+ * would hang there through the KO moment: a finished match draws none.
  */
 export function syncComets(b: Battle3D, state: BattleState, dt: number, alpha: number): void {
   const st = cometState(b);
   st.clock += dt;
   const v = b.fx as VfxPool;
   st.seen.clear();
-  for (const p of state.pendingSpells) {
+  for (const p of state.result ? NO_SPELLS : state.pendingSpells) {
     const total = landDelayOf(p.cardId);
     if (total <= 0) continue;
     st.seen.add(p);
