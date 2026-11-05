@@ -15,6 +15,7 @@ import type { AppCtx } from "../app/ctx";
 import { registerHomeSlot } from "../app/slots";
 import type { CardId } from "../game/cards";
 import { trialFor, type Challenge } from "../game/challenges";
+import { TUTORED_KEY } from "../game/tutorial";
 import { arenaArForUnlock, arenaNameForUnlock, unlockTrophiesFor } from "../meta/arenas";
 import { blurbText } from "../render/cardBlurbs";
 import { cardDisplayName } from "../render/cardNames";
@@ -74,7 +75,7 @@ export function shouldShowNewCards(store: SeenStore | null, tutored: boolean): b
 /** The guided first battle is done (tutorialOverlay sets this flag). */
 function tutored(store: SeenStore | null): boolean {
   try {
-    return store?.getItem("cr-clone-tutored") === "1";
+    return store?.getItem(TUTORED_KEY) === "1";
   } catch {
     return false;
   }
