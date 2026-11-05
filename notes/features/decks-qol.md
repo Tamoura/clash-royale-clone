@@ -76,8 +76,17 @@ misses a reward or an upgrade.
   to swap" with the card's picture and Cancel (a screen-reader live line
   names both cards). The next tap on a deck card swaps the two in place
   (hand order kept) with a small pop; tapping a deck card in the collection
-  grid swaps too. Tap the picked card again, Cancel or Esc to drop it. The
-  bar scrolls into view only when the deck is off screen (phone landscape).
+  grid swaps too. Tap the picked card again, Cancel or Esc to drop it.
+  `swapScroll` (pure, tested) brings the bar and the deck into view,
+  scrolling no further than the whole deck needs and never past the bar;
+  if the screen is too short for both, the first deck row wins. The Esc
+  listener on `document` is removed on every way out (Back, tabs, Save,
+  Battle, Collection, the next editor) through an AbortController.
+- **Phone landscape** (`max-height: 520px`): the switcher sits inline in
+  the deck head with a pencil-only Name button ("Your deck" stays for
+  screen readers), and the deck is one row of eight small tiles (smaller
+  elixir drops). At 844x390 the whole deck shows on open, and the swap bar
+  and the deck row fit together.
   The hint under "Your cards" says "Your deck is full: tap a card to swap
   it in."
 - **Share deck**: a sheet with the 8 cards, the code big in Lilita One
@@ -94,8 +103,12 @@ misses a reward or an upgrade.
   characters long or Enter is pressed (then the input shakes).
   **Use in Deck N** loads it into the current slot: a fully owned deck is
   saved at once ("New deck in Deck 1!"); otherwise the owned cards fill the
-  deck and the locked ones stay as greyed, locked "ghosts" in the empty
-  spots until the kid picks other cards.
+  deck and the locked ones stay as greyed, locked "ghosts" named under
+  their silhouette, each in the spot it held in the code (`loadCode`,
+  `deckSpots`, pure and tested), so the code's hand order survives: new
+  cards fill the ghost spots first, in order. The toast names them too
+  ("Deck loaded! Digger, Comet are still locked: pick other cards for
+  their spots.").
 - Leaving (Back, a tab, Collection, another slot) with an unfinished deck
   used to drop the edit silently; now a toast says "Deck 1 was not
   changed: a deck needs 8 cards."
@@ -124,13 +137,14 @@ misses a reward or an upgrade.
   pass claims return through `openHome`, which builds a fresh tab bar.
 
 ## Verification
-- `npx tsc --noEmit`, `npx vitest run` (123 files, 1427 tests), `npm run
+- `npx tsc --noEmit`, `npx vitest run` (123 files, 1436 tests), `npm run
   build` pass. New tests: `decks.test.ts` (migration, mirror, reconcile,
   edits, sanitizing, blocked storage), `deckCode.test.ts` (index table,
   pinned codes, 300 random round trips, forgiving input, every error,
   every single typo and neighbour swap), `progress.test.ts` (saveProfile
   mirror, first-boot migration, badge counts), `deckPicker.test.ts`
-  (`editDeck` swap rules, every error message in both editions).
+  (`editDeck` swap rules, ghosts keeping their spots, `swapScroll`, every
+  error message in both editions).
 - `tools/perf-budget.mjs`: empty 154 / fight 380 draw calls (budgets 220 /
   450); nothing here touches rendering.
 - Puppeteer, fresh profiles (scripts in `/tmp/claude-0/enh/decks-qol/`):
@@ -141,11 +155,16 @@ misses a reward or an upgrade.
     online "create" message carries the active slot's deck;
   - profile A copies its code (clipboard), profile B (another browser
     context, without Digger and Comet) pastes it: Digger and Comet are
-    flagged, the other six load, two locked ghosts wait; after filling,
+    flagged, the other six load, two locked ghosts wait in their own spots
+    with their names; after filling (the fillers take the ghosts' spots),
     B's code loads into A as "A real deck!"; short / typo / "U" codes and
     Arabic-Indic digits give the messages above;
   - full deck + collection tap enters swap mode, a deck tap swaps in place,
-    Esc cancels;
+    Esc cancels; at 844x390 the deck is in view on open (grid 182-226 in a
+    120-240 body) and with the swap bar (bar 128-184, deck 192-236);
+  - opening and leaving the editor six times by Back, Save, a tab and
+    Collection (and the battle editor by Battle) leaves no keydown
+    listener on `document` (CDP `getEventListeners`);
   - badges: Cards 1 (affordable Knight upgrade), Battle 2 (two road nodes),
     Profile 1 (first win); each clears after the claim / upgrade; a
     completed quest and a Crown Pass tier also count and clear;
