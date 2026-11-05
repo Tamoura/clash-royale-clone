@@ -272,8 +272,10 @@ export function emitPreset(sp: Spawner, name: string, wx: number, wy: number, wz
   for (const L of layers) {
     // Quality and the caller's count scale everything, but a layer that
     // exists keeps at least one particle (a lone flash or ring), or its own
-    // floor (L.min) when it must read at any quality.
-    const n = Math.max(1, Math.round((L.min ?? 1) * countK), Math.round(L.count * countK * q));
+    // floor (L.min, scaled by the caller's count) when it must read at any
+    // quality. A layer without a floor keeps the plain minimum of one.
+    const floor = L.min !== undefined ? Math.round(L.min * countK) : 1;
+    const n = Math.max(1, floor, Math.round(L.count * countK * q));
     const k = L.scales === false ? 1 : R;
     const tinted = opts?.color !== undefined && L.tint !== false;
     for (let i = 0; i < n; i++) {

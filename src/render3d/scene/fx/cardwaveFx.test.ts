@@ -211,6 +211,23 @@ describe("digger tunnel", () => {
     expect(burst("dirt-dust", 0.35).length).toBeGreaterThanOrEqual(5);
   });
 
+  it("only a layer that declares a floor keeps it; others still drop to one particle", () => {
+    const emitted = (name: string, q: number, count?: number): number => {
+      let n = 0;
+      const sp = { spawn: () => void n++, rand: () => 0.5, scale: () => q };
+      expect(emitPreset(sp, name, 0, 0, 0, { count })).toBe(true);
+      return n;
+    };
+    // The 2-particle dust puff asked for 4 (countK 2): at the lowest quality
+    // it thins to round(2 * 2 * 0.2) = 1, as before the floor existed.
+    expect(emitted("dust", 0.2, 4)).toBe(1);
+    expect(emitted("dust", 0.2)).toBe(1);
+    expect(emitted("dust", 1, 4)).toBe(4);
+    // A declared floor scales with the caller's count.
+    expect(emitted("dirt-burst", 0.2)).toBe(10);
+    expect(emitted("dirt-burst", 0.2, 32)).toBe(20);
+  });
+
   it("the Digger climbs out of its hole; tunnellers skip the sky-drop", () => {
     expect(spawnRecipe("digger").kind).toBe("rise");
     const digger = getCard("digger");

@@ -257,6 +257,9 @@ at 0.22 (it was 1.0 before).
   `?quality=low` (`Layer.min`: at least 10 + 6 clods and 5 dust puffs), and a
   separate `dirt-dust` layer a shade darker than the floor; the Golden Age
   clods and puff are darker too, so the burst reads on the pale tiles.
+  Only a layer that declares `min` gets that (count-scaled) floor; every
+  other preset layer still thins to one particle at low quality, as before
+  (the golem footfall's 4-puff dust is 1 puff at `?quality=low`).
 - `crownCue`'s doc comment is back above it.
 
 ## Known gaps / follow-ups
