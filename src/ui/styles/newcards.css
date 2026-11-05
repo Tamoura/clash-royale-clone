@@ -1,0 +1,154 @@
+/* "New cards!" welcome sheet (src/ui/newCards.ts) and the card-trial rows
+   of the Challenges screen (src/ui/screens/challenges.ts). */
+
+.nc-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(var(--sp-4), env(safe-area-inset-top, 0px)) var(--sp-4) max(var(--sp-4), env(safe-area-inset-bottom, 0px));
+  background: var(--scrim, rgba(4, 8, 18, 0.66));
+  animation: nc-fade var(--dur-med, 200ms) var(--ease-out, ease-out) both;
+}
+
+.nc-sheet {
+  position: relative;
+  box-sizing: border-box;
+  width: min(440px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-4);
+  border: 3px solid var(--cr-gold-border, #e8b84b);
+  border-radius: var(--r-lg, 18px);
+  background:
+    radial-gradient(120% 60% at 50% 0%, color-mix(in srgb, var(--accent, #ffd23f) 22%, transparent), transparent 70%),
+    var(--surface-1, #14203a);
+  color: var(--on-surface, #fff);
+  box-shadow: var(--elev-3, 0 12px 32px rgba(0, 0, 0, 0.5));
+  animation: nc-pop var(--dur-slow, 320ms) var(--ease-pop, cubic-bezier(0.34, 1.56, 0.64, 1)) both;
+}
+
+.nc-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.nc-spark .ui-icon { width: 34px; height: 34px; }
+.nc-title {
+  margin: 0;
+  font-family: var(--cr-font, inherit);
+  font-size: var(--fs-xl, 28px);
+  line-height: var(--lh-xl, 1.15);
+  color: var(--cr-text-gold, #ffd23f);
+  text-shadow: var(--cr-outline, 0 2px 0 #1a1030);
+}
+.nc-x {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--on-surface, #fff);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+.nc-lead {
+  margin: var(--sp-2) 0 var(--sp-3);
+  font-size: var(--fs-sm, 14px);
+  line-height: var(--lh-sm, 1.35);
+  color: var(--on-surface-dim, #c9d3e6);
+}
+
+.nc-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+  list-style: none;
+}
+.nc-card {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  grid-template-areas: "art text" "art try";
+  gap: var(--sp-1) var(--sp-3);
+  align-items: center;
+  padding: var(--sp-2);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--r-md, 12px);
+  background: color-mix(in srgb, var(--surface-2, #1d2a47) 92%, transparent);
+}
+.nc-art {
+  grid-area: art;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--r-md, 12px);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+}
+.nc-text { grid-area: text; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nc-name { font-size: var(--fs-md, 17px); overflow-wrap: anywhere; }
+.nc-blurb {
+  margin: 0;
+  font-size: var(--fs-sm, 14px);
+  line-height: var(--lh-sm, 1.35);
+  color: var(--on-surface-dim, #c9d3e6);
+}
+.nc-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-xs, 12px);
+  color: var(--on-surface-dim, #c9d3e6);
+}
+.nc-lock .ui-icon { flex: none; width: 14px; height: 14px; }
+.nc-try {
+  grid-area: try;
+  justify-self: start;
+  min-height: 44px;
+  margin: 0;
+}
+.nc-done { width: 100%; margin: 0; }
+
+/* Phones held sideways: the rows go side by side, the sheet stays inside the screen. */
+@media (max-height: 480px) and (min-width: 640px) {
+  .nc-sheet { width: min(820px, 100%); }
+  .nc-list { flex-direction: row; }
+  .nc-card { flex: 1 1 0; grid-template-columns: 56px 1fr; }
+  .nc-art { width: 56px; height: 56px; }
+  .nc-lead { margin-block: var(--sp-1) var(--sp-2); }
+}
+
+@keyframes nc-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes nc-pop {
+  from { opacity: 0; transform: translateY(24px) scale(0.92); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nc-backdrop, .nc-sheet { animation: none; }
+}
+.nc-calm, .nc-calm .nc-sheet { animation: none; }
+
+/* ── Challenges screen: the card-trial rows ── */
+.v2-challenge-section {
+  margin: var(--sp-3) 0 var(--sp-2);
+  font-size: var(--fs-md, 17px);
+  color: var(--cr-text-gold, #ffd23f);
+}
+.v2-challenge.is-trial {
+  border-color: color-mix(in srgb, var(--accent, #ffd23f) 55%, transparent);
+}
+.v2-challenge-card {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-md, 12px);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+}
+.v2-challenge-chip.is-locked { color: var(--on-surface-dim, #c9d3e6); white-space: normal; }

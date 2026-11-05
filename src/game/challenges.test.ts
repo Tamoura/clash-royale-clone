@@ -5,13 +5,16 @@ import { createBot, tickBot } from "./bot";
 import { CARDS } from "./cards";
 import {
   CHALLENGES,
+  TRIAL_CHALLENGES,
   TUTORIAL_CHALLENGE,
   applyWaves,
   challengeStars,
   challengeStatus,
   sortedByStars,
+  trialFor,
   type Challenge,
 } from "./challenges";
+import { isDeckable, type CardId } from "./cards";
 import { formatTime } from "../ui/i18n";
 import { DIFFICULTIES } from "../match/difficulty";
 import { tick } from "./sim";
@@ -27,7 +30,7 @@ describe("challenge definitions", () => {
   });
 
   it("every challenge has names, a goal blurb, stars and 30-80 gold", () => {
-    for (const ch of CHALLENGES) {
+    for (const ch of [...CHALLENGES, ...TRIAL_CHALLENGES]) {
       expect(ch.name.length).toBeGreaterThan(0);
       expect(ch.nameAr).toMatch(/[\u0600-\u06FF]/);
       // The blurb states the goal in the edition's own digits.
@@ -45,7 +48,7 @@ describe("challenge definitions", () => {
   it("Arabic text uses Golden Age names: no witches, skeletons, giants or tanks", () => {
     const CLASSIC_WORDS =
       /ساحر|سحر|هيكل|هياكل|عملاق|عمالقة|دبابة|منطاد|مناطيد|تنين|تنانين|خيّال|خيال|توابع|بيكا|صاعقة/;
-    for (const ch of [...CHALLENGES, TUTORIAL_CHALLENGE]) {
+    for (const ch of [...CHALLENGES, ...TRIAL_CHALLENGES, TUTORIAL_CHALLENGE]) {
       expect(ch.nameAr, ch.id).not.toMatch(CLASSIC_WORDS);
       expect(ch.blurbAr, ch.id).not.toMatch(CLASSIC_WORDS);
     }
@@ -75,9 +78,10 @@ describe("challenge definitions", () => {
 
   it("every challenge is well-formed", () => {
     expect(CHALLENGES.length).toBeGreaterThanOrEqual(3);
-    const ids = new Set(CHALLENGES.map((c) => c.id));
-    expect(ids.size).toBe(CHALLENGES.length);
-    for (const ch of CHALLENGES) {
+    const all = [...CHALLENGES, ...TRIAL_CHALLENGES];
+    const ids = new Set(all.map((c) => c.id));
+    expect(ids.size).toBe(all.length);
+    for (const ch of all) {
       expect(isValidDeck(ch.deck)).toBe(true);
       expect(ch.surviveFor).toBeGreaterThan(0);
       expect(ch.goldReward).toBeGreaterThan(0);
@@ -95,6 +99,33 @@ describe("challenge definitions", () => {
         expect(w.y).toBeLessThanOrEqual(ARENA_HEIGHT);
       }
     }
+  });
+});
+
+describe("card trials", () => {
+  const NEW_CARDS: CardId[] = ["stone-golem", "digger", "comet"];
+
+  it("one gentle trial per new card, its deck built around that card", () => {
+    expect(TRIAL_CHALLENGES.map((c) => c.trial)).toEqual(NEW_CARDS);
+    for (const id of NEW_CARDS) {
+      const ch = trialFor(id)!;
+      expect(ch, id).not.toBeNull();
+      expect(ch.deck).toContain(id);
+      expect(isValidDeck(ch.deck)).toBe(true);
+      expect(ch.deck.every(isDeckable)).toBe(true);
+      expect(challengeStars(ch)).toBe(1);
+      expect(ch.name).toMatch(/^Try the .+!$/);
+      // The trials sit apart from the puzzles (their own list and section).
+      expect(CHALLENGES).not.toContain(ch);
+    }
+    expect(trialFor("knight")).toBeNull();
+  });
+
+  it("names the card in each edition: Golden Age names in Arabic", () => {
+    expect(trialFor("stone-golem")!.nameAr).toContain("حارس الحجر");
+    expect(trialFor("digger")!.nameAr).toContain("حفّار الرمال");
+    expect(trialFor("comet")!.nameAr).toContain("الشهاب");
+    expect(trialFor("digger")!.blurb).toMatch(/next to an enemy tower/);
   });
 });
 
@@ -181,20 +212,41 @@ function botClears(ch: Challenge, seed: number): boolean {
   return false;
 }
 
-describe("challenge solvability", () => {
+describe("challenge solvability and difficulty", () => {
   const SEEDS = 10;
+  const cache = new Map<string, number>();
   const clears = (ch: Challenge): number => {
-    let n = 0;
-    for (let s = 1; s <= SEEDS; s++) if (botClears(ch, s)) n++;
+    let n = cache.get(ch.id);
+    if (n === undefined) {
+      n = 0;
+      for (let s = 1; s <= SEEDS; s++) if (botClears(ch, s)) n++;
+      cache.set(ch.id, n);
+    }
     return n;
   };
+  const ALL = [...TRIAL_CHALLENGES, ...CHALLENGES];
 
-  it("a normal bot clears every one-star starter in at least 8 of 10 seeds, and every challenge in 2 of 10", () => {
+  it("a normal bot clears every one-star starter and trial in at least 8 of 10 seeds, and every challenge in 2 of 10", () => {
     const report: string[] = [];
-    for (const ch of CHALLENGES) {
+    for (const ch of ALL) {
       const n = clears(ch);
       report.push(`${ch.id}: ${n}/${SEEDS}`);
       expect(n, `${ch.id} cleared ${n}/${SEEDS} (${report.join(", ")})`).toBeGreaterThanOrEqual(challengeStars(ch) === 1 ? 8 : 2);
     }
-  }, 60_000);
+  }, 90_000);
+
+  // Sim v3 made the normal bot clear every challenge 10/10, stars or not.
+  // The waves were retuned so the stars mean something again.
+  it("three-star challenges are really harder: each at most 7 of 10, and the star means go down", () => {
+    const mean = (stars: number): number => {
+      const list = ALL.filter((ch) => challengeStars(ch) === stars);
+      return list.reduce((sum, ch) => sum + clears(ch), 0) / list.length;
+    };
+    for (const ch of ALL) {
+      if (challengeStars(ch) === 3) expect(clears(ch), ch.id).toBeLessThanOrEqual(7);
+    }
+    expect(mean(3)).toBeLessThan(mean(2));
+    expect(mean(2)).toBeLessThan(mean(1));
+    expect(mean(3)).toBeLessThanOrEqual(6);
+  }, 90_000);
 });
