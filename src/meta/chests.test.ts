@@ -6,9 +6,11 @@ import { ownedSet, starterOwned } from "./collection";
 import {
   CHEST_TIMER_MS,
   FREE_CHEST_INTERVAL_MS,
+  LEGENDARY_NEW_CARD_MAX,
   LEGENDARY_NEW_CARD_WEIGHT,
   LEGENDARY_PITY_CHESTS,
   LEGENDARY_PITY_KEY,
+  LEGENDARY_SHARD_CHANCE,
   chestsEarned,
   claimFreeChest,
   earlyTimerMs,
@@ -297,6 +299,73 @@ describe("legendary odds", () => {
     }
     expect(legendaryShards).toBeGreaterThan(0);
     expect(legendaryShards).toBeLessThan(epicShards);
+  });
+
+  it("an established collection: the shard chance stays flat however many legendaries are owned", () => {
+    // Every card at the arena owned, so nothing new can drop: the only
+    // legendaries are shards for owned ones.
+    const legendaryRate = (chest: ChestRarity, trophies: number, owned: Set<CardId>): number => {
+      let n = 0;
+      const N = 6000;
+      for (let seed = 1; seed <= N; seed++) {
+        const r = rollChest({ rarity: chest, readyAt: 0 }, trophies, owned, mulberry32(seed * 104729), 0);
+        const legendaryDrops = (Object.keys(r.shards) as CardId[]).filter((id) => isLegendary(id) && id !== r.newCard);
+        // One shard drop for an owned legendary per chest at most.
+        expect(legendaryDrops.length).toBeLessThanOrEqual(1);
+        if (hasLegendary(r)) n++;
+      }
+      return n / N;
+    };
+    for (const trophies of [450, 2000, 2600, 3500]) {
+      const all = new Set<CardId>(cardsAvailableAt(trophies));
+      const free = legendaryRate("free", trophies, all);
+      const rare = legendaryRate("rare", trophies, all);
+      expect(free).toBeGreaterThan(0);
+      expect(free).toBeLessThan(LEGENDARY_SHARD_CHANCE.free + 0.01);
+      expect(rare).toBeGreaterThan(LEGENDARY_SHARD_CHANCE.rare - 0.015);
+      expect(rare).toBeLessThan(LEGENDARY_SHARD_CHANCE.rare + 0.015);
+    }
+  });
+
+  it("stays a rare pull at every stage of a collection, even with only legendaries left to find", () => {
+    const rateOf = (chest: ChestRarity, owned: Set<CardId>): { legendary: number; newLegendary: number } => {
+      let legendary = 0;
+      let newLegendary = 0;
+      const N = 6000;
+      for (let seed = 1; seed <= N; seed++) {
+        const r = rollChest({ rarity: chest, readyAt: 0 }, 3500, owned, mulberry32(seed * 7907), 0);
+        if (hasLegendary(r)) legendary++;
+        if (r.newCard && isLegendary(r.newCard)) newLegendary++;
+      }
+      return { legendary: legendary / N, newLegendary: newLegendary / N };
+    };
+    const all = cardsAvailableAt(3500);
+    const ordinary = all.filter((id) => !isLegendary(id));
+    const legendaries = all.filter(isLegendary);
+    // Every ordinary card owned, plus 0..5 of the six legendaries.
+    for (let k = 0; k < legendaries.length; k++) {
+      const owned = new Set<CardId>([...ordinary, ...legendaries.slice(0, k)]);
+      const rare = rateOf("rare", owned);
+      const free = rateOf("free", owned);
+      // A new legendary: at most the capped share of the chests that roll a new card.
+      expect(rare.newLegendary).toBeLessThan(0.75 * LEGENDARY_NEW_CARD_MAX.rare + 0.01);
+      expect(free.newLegendary).toBeLessThan(0.45 * LEGENDARY_NEW_CARD_MAX.free + 0.006);
+      // Everything legendary together (new card or shards) stays a rare pull.
+      expect(rare.legendary).toBeLessThan(0.12);
+      expect(free.legendary).toBeLessThan(0.04);
+    }
+    // Owning one legendary or all six: the same odds.
+    const oneLegendary = new Set<CardId>([...ordinary, "digger"]);
+    const allOwned = new Set<CardId>(all);
+    const shardsOnly = (owned: Set<CardId>): number => {
+      let n = 0;
+      for (let seed = 1; seed <= 6000; seed++) {
+        const r = rollChest({ rarity: "rare", readyAt: 0 }, 3500, owned, mulberry32(seed * 7907), 0);
+        if ((Object.keys(r.shards) as CardId[]).some((id) => isLegendary(id) && id !== r.newCard)) n++;
+      }
+      return n / 6000;
+    };
+    expect(Math.abs(shardsOnly(oneLegendary) - shardsOnly(allOwned))).toBeLessThan(0.012);
   });
 
   it("is deterministic for a seed and pity count", () => {

@@ -183,7 +183,9 @@ export function grantMatchChest(
 //
 // Legendaries are the rare "wow" pulls. When a chest rolls its new card, a
 // legendary weighs much less than any other unowned card (less still in a
-// Wooden chest), and a legendary shard drop only sticks some of the time.
+// Wooden chest). Shards for an owned legendary come from one fixed roll per
+// chest, so the chance stays the same however many legendaries a player
+// owns (at most one legendary shard drop per chest).
 // The guarantee (pity) lives only in the big chest: after
 // LEGENDARY_PITY_CHESTS chests in a row without a legendary, the next Rare
 // chest is sure to hold one (a new legendary if one is findable, else
@@ -192,8 +194,18 @@ export function grantMatchChest(
 /** A legendary's weight against 1 for any other card when a chest picks its new card. */
 export const LEGENDARY_NEW_CARD_WEIGHT: Readonly<Record<ChestRarity, number>> = { free: 0.1, rare: 0.3 };
 
-/** Chance a shard drop that lands on an owned legendary stays legendary (else it rerolls). */
-export const LEGENDARY_SHARD_KEEP: Readonly<Record<ChestRarity, number>> = { free: 0.2, rare: 0.45 };
+/**
+ * The most a chest's new card can lean legendary. The weights alone would
+ * make legendaries common once only a few ordinary cards are left to find
+ * (with none left, every new card would be a legendary).
+ */
+export const LEGENDARY_NEW_CARD_MAX: Readonly<Record<ChestRarity, number>> = { free: 0.03, rare: 0.08 };
+
+/**
+ * Chance a chest carries shards for an owned legendary: one roll per chest,
+ * one drop at most, whatever the size of the collection.
+ */
+export const LEGENDARY_SHARD_CHANCE: Readonly<Record<ChestRarity, number>> = { free: 0.015, rare: 0.05 };
 
 /** Chests in a row without a legendary before the next Rare chest guarantees one. */
 export const LEGENDARY_PITY_CHESTS = 8;
@@ -242,6 +254,24 @@ function pickWeighted<T>(rng: Rng, list: readonly T[], weight: (t: T) => number)
   return list[list.length - 1];
 }
 
+/**
+ * A chest's new card from the unowned cards: each legendary weighs
+ * LEGENDARY_NEW_CARD_WEIGHT against 1 for any other card, and the legendary
+ * share never passes LEGENDARY_NEW_CARD_MAX. Null when only legendaries are
+ * left to find and the capped roll misses (the chest just brings shards).
+ */
+function pickNewCard(rng: Rng, unowned: readonly CardId[], chest: ChestRarity): CardId | null {
+  const w = LEGENDARY_NEW_CARD_WEIGHT[chest];
+  const cap = LEGENDARY_NEW_CARD_MAX[chest];
+  const legendary = unowned.filter(isLegendary);
+  const other = unowned.filter((id) => !isLegendary(id));
+  const share = (legendary.length * w) / (other.length + legendary.length * w);
+  // The usual case: plenty of ordinary cards left, the weights decide.
+  if (share <= cap) return pickWeighted(rng, unowned, (id) => (isLegendary(id) ? w : 1));
+  if (rng() < cap) return pick(rng, legendary);
+  return other.length > 0 ? pick(rng, other) : null;
+}
+
 function shardAmount(rarity: Rarity, chest: ChestRarity, rng: Rng): number {
   const base = rarity === "common" ? 4 : rarity === "rare" ? 2 : 1;
   const mult = chest === "rare" ? 2 : 1;
@@ -268,7 +298,6 @@ export function rollChest(
   const shards: ShardMap = {};
   let newCard: CardId | null = null;
   const guaranteed = legendaryGuaranteed(chest.rarity, pity);
-  const legWeight = LEGENDARY_NEW_CARD_WEIGHT[chest.rarity];
 
   const unowned = findableUnowned(trophies, owned);
   const unownedLegendary = unowned.filter(isLegendary);
@@ -277,19 +306,21 @@ export function rollChest(
   if (guaranteed && unownedLegendary.length > 0) {
     newCard = pick(rng, unownedLegendary);
   } else if (unowned.length > 0 && rollNew) {
-    newCard = pickWeighted(rng, unowned, (id) => (isLegendary(id) ? legWeight : 1));
+    newCard = pickNewCard(rng, unowned, chest.rarity);
   }
 
   const pool = cardsAvailableAt(trophies).filter(
     (id) => owned.has(id) || id === newCard,
   );
-  const plain = pool.filter((id) => !isLegendary(id));
-  const keep = LEGENDARY_SHARD_KEEP[chest.rarity];
+  // Ordinary drops land on any non-legendary card (or the new card itself);
+  // owned legendaries only get the one fixed-chance drop below.
+  const ownedLegendary = pool.filter((id) => isLegendary(id) && id !== newCard);
+  const regular = pool.filter((id) => !isLegendary(id) || id === newCard);
+  const list = regular.length > 0 ? regular : pool;
   const drops = chest.rarity === "rare" ? 3 : 2;
+  const legendaryDrop = ownedLegendary.length > 0 && rng() < LEGENDARY_SHARD_CHANCE[chest.rarity];
   for (let n = 0; n < drops && pool.length > 0; n++) {
-    let id = pick(rng, pool);
-    // A legendary shard drop only sticks some of the time.
-    if (isLegendary(id) && id !== newCard && rng() >= keep && plain.length > 0) id = pick(rng, plain);
+    const id = legendaryDrop && n === drops - 1 ? pick(rng, ownedLegendary) : pick(rng, list);
     const card = getCard(id);
     shards[id] = (shards[id] ?? 0) + shardAmount(card.rarity, chest.rarity, rng);
   }
@@ -297,7 +328,6 @@ export function rollChest(
   // The guarantee with nothing new to find: shards for an owned legendary.
   const rewards: ChestRewards = { gold, gems, newCard, shards };
   if (guaranteed && !hasLegendary(rewards)) {
-    const ownedLegendary = pool.filter(isLegendary);
     if (ownedLegendary.length > 0) {
       const id = pick(rng, ownedLegendary);
       shards[id] = (shards[id] ?? 0) + shardAmount("legendary", chest.rarity, rng);
