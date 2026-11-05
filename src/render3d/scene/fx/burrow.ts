@@ -75,7 +75,7 @@ let RING_GEO: THREE.RingGeometry | null = null;
 
 /** A dirt hump with a few clods on a team-coloured ring (whose Digger is coming). */
 function buildMound(): Mound {
-  HUMP_GEO ??= new THREE.SphereGeometry(0.55, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+  HUMP_GEO ??= new THREE.SphereGeometry(0.62, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
   CLOD_GEO ??= new THREE.SphereGeometry(0.14, 8, 6);
   RING_GEO ??= new THREE.RingGeometry(0.62, 0.78, 32);
   for (const g of [HUMP_GEO, CLOD_GEO, RING_GEO]) g.userData.shared = true;
@@ -123,12 +123,12 @@ function furrow(v: VfxPool, wx: number, wz: number, hx: number, hz: number): voi
   s.y = 0.035;
   s.z = wz;
   s.mode = MODE_GROUND;
-  s.life = 1.8;
-  s.size0 = 0.95;
-  s.size1 = 1.1;
+  s.life = 2.2;
+  s.size0 = 0.85;
+  s.size1 = 1.05;
   s.rot = v.rand() * 6;
   s.cell = SMOKE_CELLS[Math.floor(v.rand() * SMOKE_CELLS.length)];
-  tint(s, DIRT_DARK, 0.6, 0);
+  tint(s, DIRT_DARK, 0.8, 0);
   v.spawn("alpha", s);
   const c = clearSpec(S);
   c.x = wx + (v.rand() - 0.5) * 0.5;
@@ -229,10 +229,23 @@ export function resetBurrows(b: Battle3D): void {
  */
 export function diggerEmerge(v: VfxPool, x: number, y: number): void {
   const w = toWorld(x, y);
-  v.emitWorld("debris", w.x, 0, w.z, { radius: 0.9, color: DIRT, count: 14 });
-  v.emitWorld("chips", w.x, 0, w.z, { radius: 0.7, color: DIRT_DARK, count: 8 });
-  v.emitWorld("deployPuff", w.x, 0, w.z, { radius: 1.5, color: arabic ? 0xe2cfa4 : 0xb59a78 });
-  v.emitWorld("ring", w.x, 0, w.z, { radius: 1.1, color: 0xfff1c4 });
-  v.decal("crater", x, y, 0.75, { life: 4 });
+  // The fountain twice over: loam clods, then darker ones a beat later.
+  v.emitWorld("dirt-burst", w.x, 0, w.z, { radius: 1.1, color: DIRT });
+  v.emitWorld("dirt-burst", w.x, 0, w.z, { radius: 0.9, color: DIRT_DARK, delay: 0.06, count: 10 });
+  v.emitWorld("deployPuff", w.x, 0, w.z, { radius: 1.6, color: arabic ? 0xe2cfa4 : 0xb59a78 });
+  v.emitWorld("ring", w.x, 0, w.z, { radius: 1.2, color: 0xfff1c4 });
+  // The hole it climbed out of: a dark ground patch that lingers, plus a crater.
+  const s = clearSpec(S);
+  s.x = w.x;
+  s.y = 0.04;
+  s.z = w.z;
+  s.mode = MODE_GROUND;
+  s.life = 3.5;
+  s.size0 = 1.1;
+  s.size1 = 1.5;
+  s.cell = CELL.SOFT;
+  tint(s, DIRT_DARK, 0.85, 0);
+  v.spawn("alpha", s);
+  v.decal("crater", x, y, 0.8, { life: 4 });
   v.shake(0.22);
 }

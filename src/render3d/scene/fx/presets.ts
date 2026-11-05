@@ -226,6 +226,12 @@ export const PRESETS: Record<string, readonly Layer[]> = {
     { pool: "alpha", cell: CELL.PETAL, count: 7, life: [0.8, 1.1], dir: "out", speed: [1, 2], vy: [0.5, 1.5], height: 1.5, area: 0.3, drag: 1.5, gravity: 3, size0: [0.32, 0.42], size1: [0.24, 0.3], spin: [-9, 9], color0: 0xc62828, color1: 0x8e1c1c, alpha0: 1, alpha1: 0.3 },
     { pool: "alpha", cell: SMOKE, count: 4, life: [0.7, 0.9], dir: "up", spread: 0.8, speed: [0.5, 1], height: 1.4, area: 0.3, drag: 1.5, size0: 0.5, size1: 1.2, color0: 0xd8cbb5, alpha0: 0.7, alpha1: 0, push: 0.5, tint: false },
   ],
+  // A Digger breaking the surface: a fountain of chunky clods and a rolling
+  // cloud of dust (re-tinted per arena: loam or sand).
+  "dirt-burst": [
+    { pool: "alpha", cell: CELL.CHIP, count: 14, life: [0.8, 1.1], dir: "up", spread: 0.8, speed: [4.5, 7.5], area: 0.35, height: 0.3, gravity: 14, size0: [0.55, 0.8], size1: [0.45, 0.65], spin: [-12, 12], color0: 0x8a6a44, color1: 0x6f5236, alpha0: 1, alpha1: 0.7 },
+    { pool: "alpha", cell: SMOKE, count: 8, life: [0.9, 1.3], dir: "out", speed: [1.8, 3], vy: [0.5, 1.3], area: 0.4, height: 0.25, drag: 2.4, size0: [0.8, 1.0], size1: [1.8, 2.4], spin: [-0.8, 0.8], color0: 0xb59a78, color1: 0x9a8264, alpha0: 0.9, alpha1: 0, push: 0.45 },
+  ],
   // Angry steam venting from a waking king.
   steam: [
     { pool: "alpha", cell: SMOKE, count: 6, life: [0.6, 0.8], delay: [0, 0.3], dir: "up", spread: 0.5, speed: [1.4, 2.2], area: 0.7, edge: true, height: 2.6, drag: 1.2, size0: [0.35, 0.45], size1: [0.9, 1.2], spin: [-1, 1], color0: 0xffb0a8, color1: 0xff8a80, alpha0: 0.85, alpha1: 0, push: 0.5 },

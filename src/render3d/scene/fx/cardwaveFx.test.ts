@@ -57,14 +57,16 @@ describe("comet fall", () => {
     expect(landDelayOf("fireball")).toBe(0);
   });
 
-  it("starts high in the sky behind its caster and ends exactly on the target", () => {
+  it("starts high in the sky beyond the target (as the camera sees it) and ends exactly on it", () => {
     const out = new THREE.Vector3();
     cometPosition(3, -4, "player", 0, out);
     expect(out.y).toBeCloseTo(COMET_SKY_HEIGHT);
-    expect(out.z).toBeGreaterThan(-4); // from the player's (+z) half
-    cometPosition(3, -4, "enemy", 0, out);
-    expect(out.z).toBeLessThan(-4);
-    cometPosition(3, -4, "enemy", 1, out);
+    expect(out.z).toBeLessThan(-4); // the host's camera sits at +z: the rock falls away from it
+    expect(out.x).toBeGreaterThan(3); // off the caster's right
+    cometPosition(3, -4, "enemy", 0, out, -1); // an online guest's flipped camera
+    expect(out.z).toBeGreaterThan(-4);
+    expect(out.x).toBeLessThan(3);
+    cometPosition(3, -4, "enemy", 1, out, -1);
     expect(out.toArray()).toEqual([3, 0, -4]);
     // It accelerates: the second half of the time covers more height.
     const mid = cometPosition(0, 0, "player", 0.5, new THREE.Vector3()).y;
@@ -164,7 +166,8 @@ describe("digger tunnel", () => {
 
   it("the Digger climbs out of its hole; tunnellers skip the sky-drop", () => {
     expect(spawnRecipe("digger").kind).toBe("rise");
-    expect(getCard("digger").kind === "troop" && getCard("digger").deployAnywhere).toBe(true);
+    const digger = getCard("digger");
+    expect(digger.kind === "troop" && digger.deployAnywhere).toBe(true);
   });
 });
 

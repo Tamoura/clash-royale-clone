@@ -19,15 +19,19 @@ import { buildCometRock } from "../../characters3d";
 import { MODE_GROUND, clearSpec, type ParticleSpec } from "../../particles";
 import { teamColor } from "../../teamColors";
 import type { Battle3D } from "../../scene3d";
-import { disposeDeep, toWorld, viewSide } from "../common";
+import { cameraZForView, disposeDeep, toWorld, viewSide } from "../common";
 import { CELL, SMOKE_CELLS } from "./atlas";
 import type { VfxPool } from "./pool";
 
 /** World height the rock starts its fall from. */
-export const COMET_SKY_HEIGHT = 15;
-/** How far back toward the caster's side (world z) and sideways it starts. */
-export const COMET_BACK = 6.5;
-export const COMET_SIDE = 2.2;
+export const COMET_SKY_HEIGHT = 10;
+/**
+ * How far beyond the target it starts, away from the camera (world z), and
+ * sideways (world x, toward the caster's right). Falling away from the
+ * camera keeps the flame tail across the screen instead of pointing at it.
+ */
+export const COMET_BACK = 3;
+export const COMET_SIDE = 3.5;
 /** Fall curve exponent: the rock accelerates into the ground. */
 export const COMET_EASE = 1.6;
 
@@ -49,15 +53,24 @@ export function cometProgress(ttl: number, total: number, alpha: number): number
 }
 
 /**
- * The rock's world position at fall progress `f`: from high in the sky
- * behind the caster's side down onto the target (world tx, tz), easing in.
+ * The rock's world position at fall progress `f`: from high in the sky,
+ * beyond the target as the camera sees it (`camSign` is the sign of the
+ * camera's world z: +1 for the host's view, -1 for an online guest's) and
+ * off to its caster's right, down onto the target (world tx, tz), easing in.
  * At f = 1 it sits exactly on the target, at ground level. Writes `out`.
  */
-export function cometPosition(tx: number, tz: number, side: Side, f: number, out: THREE.Vector3): THREE.Vector3 {
-  // World +z is the sim player's half: a comet arrives from behind its caster.
-  const back = side === "player" ? 1 : -1;
+export function cometPosition(
+  tx: number,
+  tz: number,
+  side: Side,
+  f: number,
+  out: THREE.Vector3,
+  camSign = 1,
+): THREE.Vector3 {
+  // World +z is the sim player's half; each side's right hand is its own +x / -x.
+  const right = side === "player" ? 1 : -1;
   const k = 1 - Math.pow(Math.min(1, Math.max(0, f)), COMET_EASE);
-  out.set(tx + COMET_SIDE * k, COMET_SKY_HEIGHT * k, tz + back * COMET_BACK * k);
+  out.set(tx + right * COMET_SIDE * k, COMET_SKY_HEIGHT * k, tz - camSign * COMET_BACK * k);
   return out;
 }
 
@@ -150,7 +163,7 @@ function buildView(): CometView {
   root.add(shadow, fill, ring, closing);
 
   const sky = new THREE.Group();
-  const rock = buildCometRock(0.6);
+  const rock = buildCometRock(0.75);
   sky.add(rock);
   // The flame tail points back up the fall line (the group's +y).
   const tail = new THREE.Group();
@@ -162,9 +175,9 @@ function buildView(): CometView {
     cone.renderOrder = 6;
     tail.add(cone);
   };
-  flame(0xff4a12, 0.85, 3.4, 0.55);
-  flame(0xff9a2a, 0.62, 2.4, 0.7);
-  flame(0xffe7a0, 0.4, 1.4, 0.85);
+  flame(0xff4a12, 1.05, 4.2, 0.55);
+  flame(0xff9a2a, 0.8, 3, 0.7);
+  flame(0xffe7a0, 0.52, 1.7, 0.85);
   sky.add(tail);
   root.add(sky);
   return { root, sky, rock, tail, ring, closing, fill, shadow, ringMat, closingMat, fillMat, shadowMat, emberAt: -Infinity, spin: 0 };
@@ -250,16 +263,17 @@ function poseView(view: CometView, p: PendingSpell, f: number, r: number, dt: nu
   view.shadowMat.opacity = 0.12 + 0.4 * f;
 
   // The rock, in root-local space (the root sits on the target).
-  cometPosition(0, 0, p.side, f, POS);
-  cometPosition(0, 0, p.side, Math.min(1, f + 0.02), NEXT);
+  const cam = cameraZForView() >= 0 ? 1 : -1;
+  cometPosition(0, 0, p.side, f, POS, cam);
+  cometPosition(0, 0, p.side, Math.min(1, f + 0.02), NEXT, cam);
   view.sky.position.copy(POS);
   DIR.subVectors(POS, NEXT);
-  if (DIR.lengthSq() < 1e-8) DIR.set(COMET_SIDE, COMET_SKY_HEIGHT, (p.side === "player" ? 1 : -1) * COMET_BACK);
+  if (DIR.lengthSq() < 1e-8) cometPosition(0, 0, p.side, 0, DIR, cam);
   DIR.normalize();
   view.tail.quaternion.setFromUnitVectors(UP, DIR);
   view.rock.rotation.x += dt * 5;
   view.rock.rotation.z += dt * 3;
-  view.sky.scale.setScalar(0.7 + 0.3 * f);
+  view.sky.scale.setScalar(0.75 + 0.25 * f);
   if (now - view.emberAt >= 0.04) {
     view.emberAt = now;
     POS.add(view.root.position);
@@ -327,14 +341,16 @@ export function cometCast(v: VfxPool, x: number, y: number, r: number): void {
  */
 export function cometImpact(v: VfxPool, x: number, y: number, r: number): void {
   const w = toWorld(x, y);
-  v.emitWorld("flash", w.x, 0, w.z, { radius: 1.5, color: 0xffe2a8 });
-  v.emitWorld("shockwave", w.x, 0, w.z, { radius: r * 1.15 });
-  v.emitWorld("shockwave", w.x, 0, w.z, { radius: r * 1.7, color: 0xff7a2a, delay: 0.08 });
-  v.emitWorld("fire-core", w.x, 0, w.z, { radius: 1.3 });
-  v.emitWorld("fire-billow", w.x, 0, w.z, { radius: 1.25 });
-  v.emitWorld("debris", w.x, 0, w.z, { radius: 1.3, color: 0x4a3b34, count: 16 });
-  v.emitWorld("embers", w.x, 0, w.z, { radius: 1.4 });
-  v.emitWorld("embers", w.x, 0, w.z, { radius: 1, delay: 0.12 });
+  // Some of the blast sits up off the ground, so it still reads when the
+  // target is a tower (whose body hides anything at its foot).
+  v.emitWorld("flash", w.x, 0.8, w.z, { radius: 1, color: 0xffa860 });
+  v.emitWorld("shockwave", w.x, 0, w.z, { radius: r * 1.35 });
+  v.emitWorld("shockwave", w.x, 0, w.z, { radius: r * 2, color: 0xff7a2a, delay: 0.08 });
+  v.emitWorld("fire-core", w.x, 0.9, w.z, { radius: 1.4 });
+  v.emitWorld("fire-billow", w.x, 0.6, w.z, { radius: 1.3 });
+  v.emitWorld("debris", w.x, 1.2, w.z, { radius: 1.4, color: 0x4a3b34, count: 16 });
+  v.emitWorld("embers", w.x, 1.4, w.z, { radius: 1.5 });
+  v.emitWorld("embers", w.x, 0.5, w.z, { radius: 1.1, delay: 0.12 });
   // A glowing ember bed in the crater for a moment.
   const s = clearSpec(S);
   s.x = w.x;
@@ -358,5 +374,5 @@ export function cometImpact(v: VfxPool, x: number, y: number, r: number): void {
   v.decal("crater", x, y, r * 0.65, { life: 8 });
   v.decal("scorch", x, y, r * 1.05, { life: 8 });
   v.shake(0.8);
-  v.flash(0.35, 2);
+  v.flash(0.2, 2);
 }
