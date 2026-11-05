@@ -19,6 +19,7 @@ import { button, confirm } from "../components";
 import { fmtNum } from "../i18n";
 import { icon } from "../icons";
 import { getPrefs, reducedMotion } from "../prefs";
+import { mountSparkles } from "../sparkles";
 
 // ---- Feedback contracts -------------------------------------------------------
 
@@ -157,6 +158,14 @@ export interface RevealOpts {
 
 const LONG_PRESS_MS = 550;
 const AUTO_FLIP_MS = 700;
+/** A legendary card waits face down this long while the light builds (a tap flips it sooner). */
+export const LEGENDARY_BUILD_MS = 1900;
+
+/** How long a card waits face down before it flips by itself. */
+export function flipDelay(rarity: Rarity, calm: boolean): number {
+  if (rarity !== "legendary") return AUTO_FLIP_MS;
+  return calm ? AUTO_FLIP_MS + 300 : LEGENDARY_BUILD_MS;
+}
 
 /** Play the reveal; resolves when the player closes the summary. */
 export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
@@ -257,10 +266,25 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
     left.textContent = n > 0 ? tr(`${n} left`, `باقي ${fmtNum(n)}`) : "";
   };
 
+  // The legendary moment: the room turns gold, rays speed up and sparkles
+  // rise round the face-down card; the flip bursts them out.
+  let buildSparks: HTMLElement | null = null;
+  const legendaryStage = (stage: "build" | "reveal" | null): void => {
+    if (stage) root.dataset.legendary = stage;
+    else delete root.dataset.legendary;
+    buildSparks?.remove();
+    buildSparks = null;
+    if (calm || !stage) return;
+    if (stage === "build") buildSparks = mountSparkles(root, { count: 22, seed: 11, mode: "rise", className: "rw-sparks--build" });
+    else mountSparkles(root, { count: 26, seed: 29, mode: "burst", className: "rw-sparks--reveal", lifeMs: 1400 });
+  };
+
   const showCard = (item: LootCard, remaining: number): { flip: () => void; el: HTMLElement } => {
     const card = getCard(item.id);
     cardHost.innerHTML = "";
-    const wrap = el("div", `rw-card rw-card--${card.rarity}${item.isNew ? " is-new" : ""}`);
+    const legendary = card.rarity === "legendary";
+    legendaryStage(legendary ? "build" : null);
+    const wrap = el("div", `rw-card rw-card--${card.rarity}${item.isNew ? " is-new" : ""}${legendary ? " is-building" : ""}`);
     const inner = el("div", "rw-card__inner");
     const back = el("div", "rw-card__back");
     back.innerHTML = icon("crown");
@@ -276,17 +300,27 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
 
     const flip = (): void => {
       if (wrap.classList.contains("is-flipped")) return;
+      wrap.classList.remove("is-building");
       wrap.classList.add("is-flipped");
       flash.dataset.rarity = card.rarity;
       flash.classList.remove("is-on");
       void flash.offsetWidth;
       flash.classList.add("is-on");
       snd.cardFlip?.(card.rarity);
-      buzz("select");
+      if (legendary) {
+        legendaryStage("reveal");
+        // The legendary sting rings for shards too, not only a new card.
+        if (!item.isNew) snd.sting?.("legendary");
+        buzz("claim");
+        info.appendChild(el("div", "rw-card__ribbon rw-card__ribbon--legendary", tr("LEGENDARY!", "أسطورية!")));
+      } else {
+        buzz("select");
+      }
       if (item.isNew) {
         snd.newCard?.();
         snd.sting?.(card.rarity);
-        info.appendChild(el("div", "rw-card__ribbon", tr("NEW CARD!", "بطاقة جديدة!")));
+        if (!legendary) info.appendChild(el("div", "rw-card__ribbon", tr("NEW CARD!", "بطاقة جديدة!")));
+        else info.appendChild(el("div", "rw-card__new", tr("New card!", "بطاقة جديدة!")));
         info.appendChild(addToDeckButton(item.id));
       } else {
         const level = meta.profile.levels[item.id] ?? 1;
@@ -355,6 +389,7 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
   };
 
   const showSummary = (): Promise<void> => {
+    legendaryStage(null);
     root.dataset.stage = "summary";
     setLeft(0);
     cardHost.innerHTML = "";
@@ -422,7 +457,7 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
       const item = items[n];
       const view = showCard(item, items.length - n - 1);
       view.el.addEventListener("click", () => view.flip());
-      await wait(AUTO_FLIP_MS);
+      await wait(flipDelay(getCard(item.id).rarity, calm));
       view.flip();
       if (skipped) break;
       // A new card waits for the player; shards move on by themselves.
