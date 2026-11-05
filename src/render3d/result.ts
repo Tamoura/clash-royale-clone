@@ -5,11 +5,14 @@
  * buttons work from the first frame; the battle report waits, folded, at
  * the bottom. Under reduced motion everything appears at once.
  */
+import "../ui/styles/rewards.css";
+import { existingSoundEngine } from "../audio/sound";
 import type { Side } from "../game/arena";
 import { button } from "../ui/components";
 import { fmtNum, tr } from "../ui/i18n";
 import { icon } from "../ui/icons";
 import { reducedMotion } from "../ui/prefs";
+import { mountSparkles } from "../ui/sparkles";
 import { cardDisplayName } from "../render/cardNames";
 import type { Outcome, ResultStats, TimelineLine } from "./hudModel";
 
@@ -49,6 +52,23 @@ export interface ResultActions {
 
 const CROWN_STEP_MS = 250;
 const COUNT_MS = 600;
+/** A 3-crown win slams its crowns in one by one, slower and harder. */
+const SLAM_STEP_MS = 360;
+
+/** How the result screen celebrates: a 3-crown win gets its own show. */
+export type Celebration = "three-crowns" | "win" | "none";
+
+export function celebrationFor(outcome: Outcome, myCrowns: number): Celebration {
+  if (outcome !== "win") return "none";
+  return myCrowns >= 3 ? "three-crowns" : "win";
+}
+
+/** Confetti for a celebration: a 3-crown win throws more, bigger pieces with gold crowns among them. */
+export function confettiPlan(c: Celebration): { pieces: number; scale: number; crowns: number } {
+  if (c === "three-crowns") return { pieces: 84, scale: 1.45, crowns: 10 };
+  if (c === "win") return { pieces: 42, scale: 1, crowns: 0 };
+  return { pieces: 0, scale: 1, crowns: 0 };
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -84,6 +104,7 @@ export class ResultScreen {
     this.open = false;
     this.root.classList.remove("show");
     delete this.root.dataset.kind;
+    delete this.root.dataset.celebrate;
     this.root.replaceChildren();
   }
 
@@ -95,8 +116,11 @@ export class ResultScreen {
     root.replaceChildren();
     root.dataset.kind = d.outcome;
     root.classList.toggle("calm", calm);
+    const celebrate = celebrationFor(d.outcome, d.myCrowns);
+    if (celebrate === "three-crowns") root.dataset.celebrate = "three";
+    else delete root.dataset.celebrate;
 
-    if (d.outcome === "win" && !calm) root.appendChild(this.confetti());
+    if (d.outcome === "win" && !calm) root.appendChild(this.confetti(confettiPlan(celebrate)));
 
     const panel = el("div", "res-panel");
     root.appendChild(panel);
@@ -110,6 +134,17 @@ export class ResultScreen {
     ribbon.setAttribute("role", "heading");
     ribbon.setAttribute("aria-level", "2");
     panel.appendChild(ribbon);
+
+    // "3 CROWNS!": its own banner, stamped in once the third crown lands.
+    let three: HTMLElement | null = null;
+    if (celebrate === "three-crowns") {
+      three = el("div", "res-three");
+      three.insertAdjacentHTML("beforeend", icon("crown-filled"));
+      three.appendChild(el("span", "res-three__text", tr("3 CROWNS!", "٣ تيجان!")));
+      three.insertAdjacentHTML("beforeend", icon("crown-filled"));
+      three.setAttribute("role", "status");
+      panel.appendChild(three);
+    }
 
     // The why, right under the verdict: kids should never wonder why they lost.
     if (d.reason) {
@@ -211,13 +246,47 @@ export class ResultScreen {
     // ---- Timeline
     if (calm) {
       for (const c of fills) this.fill(c, false);
+      three?.classList.add("in");
       if (chestEl) chestEl.classList.add("in");
       return;
     }
     let t = 280; // after the ribbon lands
-    for (const c of fills) {
-      this.later(t, () => this.fill(c, true));
-      t += CROWN_STEP_MS;
+    if (celebrate === "three-crowns") {
+      // Mine slam in one by one (the panel thumps), then the banner and a burst.
+      const mine = fills.slice(0, Math.min(3, d.myCrowns));
+      const rest = fills.slice(mine.length);
+      t += 120;
+      mine.forEach((c, i) => {
+        this.later(t, () => {
+          this.fill(c, true, "slam");
+          panel.classList.remove("is-thump");
+          void panel.offsetWidth;
+          panel.classList.add("is-thump");
+          if (i === mine.length - 1) {
+            try {
+              existingSoundEngine()?.sting("legendary");
+            } catch {
+              // a celebration without sound is still a celebration
+            }
+          }
+        });
+        t += SLAM_STEP_MS;
+      });
+      const node = three;
+      this.later(t, () => {
+        node?.classList.add("in");
+        mountSparkles(root, { count: 28, seed: 33, mode: "burst", className: "res-three-sparks", lifeMs: 1500 });
+      });
+      t += 420;
+      for (const c of rest) {
+        this.later(t, () => this.fill(c, true));
+        t += CROWN_STEP_MS;
+      }
+    } else {
+      for (const c of fills) {
+        this.later(t, () => this.fill(c, true));
+        t += CROWN_STEP_MS;
+      }
     }
     if (counters.length) {
       this.later(t, () => this.countUp(counters));
@@ -291,10 +360,10 @@ export class ResultScreen {
     return det;
   }
 
-  private fill(c: HTMLElement, animate: boolean): void {
+  private fill(c: HTMLElement, animate: boolean, how: "pop" | "slam" = "pop"): void {
     c.innerHTML = icon("crown-filled");
     c.classList.add("filled");
-    if (animate) c.classList.add("pop");
+    if (animate) c.classList.add(how);
   }
 
   private countUp(items: { node: HTMLElement; to: number }[]): void {
@@ -319,19 +388,28 @@ export class ResultScreen {
     cancelAnimationFrame(this.raf);
   }
 
-  private confetti(): HTMLElement {
+  private confetti(plan: { pieces: number; scale: number; crowns: number }): HTMLElement {
     const box = el("div", "confetti-box");
     box.setAttribute("aria-hidden", "true");
     const colors = ["#f6c14e", "#3b82f6", "#ef4444", "#66bb6a", "#e879d0", "#fff"];
-    for (let i = 0; i < 42; i++) {
+    for (let i = 0; i < plan.pieces; i++) {
       const p = el("span", "confetti");
       p.style.left = `${(i * 137.5) % 100}%`;
       p.style.background = colors[i % colors.length];
       p.style.animationDelay = `${(i % 7) * 0.35}s`;
       p.style.animationDuration = `${2.4 + ((i * 13) % 10) * 0.18}s`;
-      p.style.width = `${7 + (i % 3) * 3}px`;
-      p.style.height = `${10 + ((i * 5) % 3) * 4}px`;
+      p.style.width = `${Math.round((7 + (i % 3) * 3) * plan.scale)}px`;
+      p.style.height = `${Math.round((10 + ((i * 5) % 3) * 4) * plan.scale)}px`;
       box.appendChild(p);
+    }
+    // Gold crowns tumble down with the paper on a 3-crown win.
+    for (let i = 0; i < plan.crowns; i++) {
+      const c = el("span", "confetti confetti--crown");
+      c.innerHTML = icon("crown-filled");
+      c.style.left = `${(i * 97.3 + 5) % 96}%`;
+      c.style.animationDelay = `${0.4 + (i % 5) * 0.5}s`;
+      c.style.animationDuration = `${3 + (i % 4) * 0.35}s`;
+      box.appendChild(c);
     }
     return box;
   }
