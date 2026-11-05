@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_DECK } from "../game/cards";
 import {
   STORAGE_KEYS,
+  affordableUpgrades,
   applyMatchResult,
+  badgeCounts,
+  tabBadges,
   loadProfile,
   newCardLevel,
   saveProfile,
@@ -14,6 +17,10 @@ import {
 } from "./progress";
 import { emptyChestSlots } from "./chests";
 import { MIGRATION_GOLD_BONUS, START_GOLD } from "./economy";
+import { DECK_SLOTS_KEY, freshSlots, loadDeckSlots, saveDeckSlots, setActiveSlot } from "./decks";
+import { freshPass } from "./pass";
+import { freshAchievements } from "./achievements";
+import { rollQuests } from "./quests";
 
 function memStorage(initial: Record<string, string> = {}): MetaStorage {
   const map = new Map(Object.entries(initial));
@@ -186,5 +193,78 @@ describe("progress", () => {
     expect(loaded.gold).toBe(333);
     expect(loaded.gems).toBe(2);
     expect(loaded.owned.sort()).toEqual([...DEFAULT_DECK].sort());
+  });
+
+  it("saveProfile keeps the active deck slot in step with the saved deck", () => {
+    const storage = memStorage();
+    const other = ["wizard", "witch", "hog-rider", "balloon", "prince", "pekka", "zap", "cannon"] as const;
+    saveDeckSlots(setActiveSlot(freshSlots(DEFAULT_DECK), 2), storage);
+    saveProfile(storage, baseProfile({ deck: [...other] }));
+    const slots = loadDeckSlots(storage, [...other]);
+    expect(slots.slots[2].cards).toEqual(other);
+    expect(slots.slots[0].cards).toEqual(DEFAULT_DECK);
+  });
+
+  it("a first-ever save migrates the old single deck into slot 1", () => {
+    const storage = memStorage({ [STORAGE_KEYS.deck]: JSON.stringify(DEFAULT_DECK) });
+    loadProfile(storage); // first boot: migrates and saves
+    expect(storage.getItem(DECK_SLOTS_KEY)).not.toBeNull();
+    const slots = loadDeckSlots(storage, []);
+    expect(slots.active).toBe(0);
+    expect(slots.slots[0].cards).toEqual(DEFAULT_DECK);
+  });
+});
+
+describe("tab badges", () => {
+  const profile = { owned: ["knight", "archers", "giant"] as const, shards: { knight: 2, archers: 1, giant: 5 }, gold: 30 };
+
+  it("counts upgrades the player can pay for (shards and gold)", () => {
+    const p = { ...profile, owned: [...profile.owned] };
+    // knight L1 -> 2: 2 shards, 20 gold (yes); archers: 1 shard (no); giant: rare, 50 gold (no).
+    expect(affordableUpgrades(p, {})).toEqual(["knight"]);
+    expect(affordableUpgrades({ ...p, gold: 60 }, {})).toEqual(["knight", "giant"]);
+    // Higher levels cost more: knight L2 needs 4 shards.
+    expect(affordableUpgrades(p, { knight: 2 })).toEqual([]);
+    // Max level: nothing to buy.
+    expect(affordableUpgrades({ ...p, gold: 99999, shards: { knight: 999 } }, { knight: 11 })).toEqual([]);
+  });
+
+  it("counts claimable road, pass, achievement and quest rewards", () => {
+    const p = { ...profile, owned: [...profile.owned], gold: 0 };
+    const none = badgeCounts({ profile: p, levels: {} });
+    expect(none).toEqual({ upgrades: 0, road: 0, pass: 0, achievements: 0, quests: 0 });
+
+    const pass = { ...freshPass("2026-11"), crowns: 35, claimed: [2] };
+    const ach = freshAchievements();
+    ach.counters.wins = 1;
+    const quests = rollQuests("2026-11-05");
+    const [q1, q2] = quests.active;
+    quests.progress[q1] = 1e9;
+    quests.progress[q2] = 1e9;
+    quests.claimed.push(q2);
+    const c = badgeCounts({
+      profile: p,
+      levels: {},
+      road: { reached: 120, claimed: [50] },
+      pass,
+      achievements: ach,
+      quests,
+    });
+    expect(c.road).toBe(1); // 100 (50 already claimed)
+    expect(c.pass).toBe(2); // tiers 1 and 3
+    expect(c.achievements).toBeGreaterThanOrEqual(1);
+    expect(c.quests).toBe(1);
+    const claimedAll = { ...ach, claimed: ["first-win", ...ach.claimed] };
+    expect(badgeCounts({ profile: p, levels: {}, achievements: claimedAll }).achievements).toBe(c.achievements - 1);
+  });
+
+  it("puts each count on the tab that holds it", () => {
+    expect(tabBadges({ upgrades: 2, road: 1, pass: 3, achievements: 4, quests: 1 })).toEqual({
+      shop: 0,
+      cards: 2,
+      battle: 5,
+      events: 0,
+      profile: 4,
+    });
   });
 });
