@@ -20,16 +20,8 @@ import { ARABIC } from "../render3d/theme";
 // is drawn, even with motion off: a warm halo behind the portrait, a gold
 // inner rim and a few twinkles.
 
-/** Class that gives any element the legendary frame (ring, glow and sweep). */
-export const LEGENDARY_FRAME_CLASS = "cr-legendary-frame";
-
 export function isLegendaryRarity(r: Rarity): boolean {
   return r === "legendary";
-}
-
-/** Add (or drop) the legendary frame on a host that does not carry a rarity class. */
-export function applyRarityFrame(host: HTMLElement, id: CardId): void {
-  host.classList.toggle(LEGENDARY_FRAME_CLASS, isLegendaryRarity(getCard(id).rarity));
 }
 
 export interface Twinkle {
