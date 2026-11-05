@@ -71,6 +71,9 @@ never writes it.
   shake, a 2-frame screen flash (skipped under reduced motion) and a 60 ms
   hit-stop.
 - The cast only pops a ring; troops' recoil now follows the landing, not the cast.
+- Once the match has a result the sim stops ticking, so `syncComets` and
+  `syncBurrows` draw nothing for a finished match: a rock still in the air
+  or a mound still ploughing leaves with the KO instead of hanging there.
 
 ### 5. Stone Golem death
 - `deathStyle` `crumble` (stone chunks, grit, a dust ring) and `shatter`
@@ -109,8 +112,10 @@ and token.
   shooters walking in clumps. Golden Age names are حارس الحجر, حفّار الرمال
   and الشهاب.
 - The Challenges screen lists the trials first ("Try the new cards"), each
-  with the card's portrait and an "Unlocks in Bone Pit (200 trophies)" chip,
-  then the puzzles.
+  with the card's portrait and an "Unlocks in Bone Pit (200 trophies)" chip
+  (`lockInfo`; once the player stands in that arena it reads "Find it in
+  chests" with a chest icon, like the collection's "In chests"), then the
+  puzzles.
 - Star retune. After sim v3 the Normal bot cleared every challenge 10/10.
   The waves were retuned and three challenges re-rated: Sky Pirates 2 to 3
   stars, The Horde 3 to 2. Clear rates (`challenges.test` harness, Normal
@@ -140,12 +145,20 @@ and token.
 
 ### 10. "New cards!" sheet (`ui/newCards.ts`, `ui/styles/newcards.css`)
 - A dialog over Home (the `battle-top` home slot). It shows the three cards'
-  portraits, names, blurbs, an "Unlocks in ..." line while a card is locked,
-  and a "Try it" button that closes Home and starts the trial. "Got it",
-  the close button, Escape or a tap outside close it.
+  portraits, names, blurbs, an "Unlocks in ..." line while a card's arena is
+  ahead ("Find it in chests" once it is reached), and a "Try it" button that
+  closes Home and starts the trial. "Got it", the close button, Escape or a
+  tap outside close it. Tab and Shift+Tab cycle inside it (`trapOrder`).
 - Shown once: closing sets `cr-clone-newcards-seen`. It waits until the guided
-  battle is done (`TUTORED_KEY`), and unreadable storage counts as seen.
-  Switching tabs takes it down without marking it seen.
+  battle is done (`TUTORED_KEY`), and unreadable storage counts as seen. It
+  also waits while Home's pointer hand shows a brand-new player their first
+  chest (home.ts `chestGuideSlot`), so it never covers that first-hour beat:
+  it appears on the next Home after the chest tap.
+- Leaving Home (another tab, another screen) takes it down without marking it
+  seen; `buildNewCardsSheet` returns `{ root, dispose }` and its document key
+  listener sits on an AbortController signal, so nothing is left behind. A
+  Home redraw in the same turn (e.g. the left-match notice at boot) keeps the
+  open sheet rather than popping a new one in.
 - It is mirrored for Arabic, still under reduced motion, and side by side in
   landscape. All text goes through `tr`, and it uses icons only (no emoji).
 - `registerNewCards(ctx)` wires it (see the integrator note: it needs the
@@ -159,7 +172,7 @@ Knights took a princess tower from 2534 to 134: the tower's emissive peaked
 at 0.22 (it was 1.0 before).
 
 ## Notes for the integrator
-- **One line in main.ts is needed to switch the New cards sheet on.** Starting
+- **Two lines in main.ts are needed to switch the New cards sheet on.** Starting
   a challenge needs `AppCtx.startChallenge`, and no slot or hook carries the
   context. Add `registerNewCards(ctx);` right after `registerRewards(ctx);`
   (main.ts ~863), with `import { registerNewCards } from "./ui/newCards";`.
@@ -167,11 +180,21 @@ at 0.22 (it was 1.0 before).
   call is not in this branch. I verified the sheet with it applied as a local,
   uncommitted patch (results below). No other wave-2 package edits main.ts,
   so the call can't conflict.
+  Until then the sheet is dead code, and the trials are reachable only from
+  Challenges (which unlocks at arena 1). The exact patch:
+
+  ```ts
+  import { registerRewards } from "./meta/rewardsWire";
+  import { registerNewCards } from "./ui/newCards";   // + this line
+  ...
+  registerRewards(ctx);
+  registerNewCards(ctx);                              // + this line
+  ```
 - `src/main.ts` diff in this branch: the `selectCard` line only (it passes
   the effective card to `setZoneVisible`).
 
 ## How it was verified
-- `npx tsc --noEmit`, `npx vitest run` (127 files, 1424 tests) and
+- `npx tsc --noEmit`, `npx vitest run` (127 files, 1428 tests) and
   `npm run build` pass.
 - New tests:
   - `render3d/cardwaveRigs.test.ts`: the rigs in both editions;
@@ -216,11 +239,31 @@ at 0.22 (it was 1.0 before).
     horizontal scroll.
   - No console or page errors in any run (only SwiftShader's GPU-stall warnings).
 
+## Review fixes (second pass)
+- Comet / Digger views retire when the match ends (tests in `cardwaveFx.test.ts`).
+- The sheet's Escape listener no longer leaks on a Home redraw; one sheet,
+  one listener (boot with a left-match marker: 1 capture listener, 1 sheet
+  build, the first Escape after "Got it" reaches the page). Switching to the
+  Cards tab aborts the listener; back on Battle it shows again, unseen.
+- Focus trap: 9 Tabs and 4 Shift+Tabs stay inside `.nc-sheet` and cycle
+  x / Try it x3 / Got it.
+- The sheet waits for the first-chest pointer: a seeded post-tutorial Home
+  (free chest, `cr-clone-pulse-chest`) shows the hand and no sheet; after the
+  chest tap the next Home shows the sheet. Both editions.
+- `lockInfo`: at 250 trophies the Stone Golem reads "Find it in chests" /
+  "ابحث عنها في الصناديق" in the sheet and on its Challenges row; English
+  numbers are grouped ("3,000 trophies").
+- Digger emerge: bigger clods (size 0.8-1.1) with a floor that survives
+  `?quality=low` (`Layer.min`: at least 10 + 6 clods and 5 dust puffs), and a
+  separate `dirt-dust` layer a shade darker than the floor; the Golden Age
+  clods and puff are darker too, so the burst reads on the pale tiles.
+- `crownCue`'s doc comment is back above it.
+
 ## Known gaps / follow-ups
-- The sheet needs the `registerNewCards(ctx)` line above.
+- The sheet needs the two `registerNewCards(ctx)` lines above.
 - SwiftShader runs at about 13 fps, so the emerge and impact bursts were
-  judged on frozen frames and a probe. A real-GPU look is worth a pass for
-  the particle sizes.
+  judged on frozen frames and a probe. A real-GPU look is still worth a pass
+  for the particle sizes.
 - The Comet on a tower: the crater and scorch sit under the tower body, so
   only the airborne part of the blast reads there (by design).
 - Bridge Spam is 0/30 for the Easy bot: it is the hardest three-star.
