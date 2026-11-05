@@ -95,7 +95,7 @@ replays the same mode. See `notes/features/draft-challenge-modes.md`.
 ### F — Multiplayer & Social
 - [ ] Hosted relay (beyond LAN) + rematch (L)
 - [ ] Emote wheel + more emotes (S)
-- [ ] Share-a-deck code (S)
+- [x] Share-a-deck code (S): shipped as decks-qol in the 2026-11 round (see below)
 
 ### G — Tech, Perf, Accessibility, Mobile
 - [ ] InstancedMesh for crowds/troops (M)
@@ -133,6 +133,104 @@ chosen via a 4-style prototype comparison. Shipped on PR #94:
 
 Note: most of the roster was already richly modeled; "still basic" was mainly
 the Knight + flat lighting, both fixed.
+
+## Enhancement round 2026-11: fair, clear and new for kids
+Plans: wave 1 and wave 2 (rebuilt); each package has its own notes file.
+Final branch: `claude/game-visuals-character-balance-w122wb`.
+
+### Wave 1 (merged)
+- [x] **sim-card-wave** (`sim-card-wave.md`, `card-wave-3.md`): sim v3
+      (SIM_VERSION 3 / PROTOCOL_VERSION 3) with Stone Golem (+ Pebble Golem
+      token), Digger and Comet; the death-loop fix; spawned units take the
+      spawner's level; a rebalance; overtime pacing (60 s at 3x elixir, troop
+      hits on crown towers x3).
+- [x] **online-truth** (`online-truth.md`): a forfeit is the forfeiter's
+      loss; your towers are always your colour; rematch offers reach the other
+      player; a friend who leaves is named as such; codes with a dash join.
+- [x] **first-hour** (`first-hour.md`): the tutorial without the KING/Skip
+      trap, trophy floors, a practice tier, twelve challenges, hints after a
+      loss, and joining from a link on the first visit.
+- [x] **battle-clarity** (`battle-clarity.md`): refused drops say why, the
+      KING charge, card info, goal and tiebreak text, the left-match settle
+      and replay polish.
+
+### Wave 2 (merged)
+- [x] **card-wave-art** (`card-wave-art.md`): real Stone Golem, Pebble Golem
+      and Digger rigs in both editions, a Comet portrait, the Digger's tunnel
+      mound and emerge burst, the Comet's ring, fall and impact, the golem
+      crumble, new sounds, three card trials (playable with locked cards),
+      retuned challenge stars, the "New cards!" Home sheet and a soft tower
+      hit flash.
+- [x] **rewards-legendary** (`rewards-legendary.md`): a Legendary tier (Magic
+      Archer, Electro Wizard, Princess, Mega Knight, Digger, Comet) with
+      rarer odds and a Rare-chest guarantee, a legendary frame and reveal,
+      coin-burst claims with a counting wallet, a 3-crown celebration, and
+      Golden Age Crown Pass text that reads right.
+- [x] **decks-qol** (`decks-qol.md`): three deck slots (the old deck migrates
+      into slot 1), shareable deck codes (`K7Q2-M9XA` style, with a check
+      character), swap mode on a full deck, and tab badges.
+- [x] **Integration fixes** (final round check): the New cards sheet is
+      switched on (`registerNewCards(ctx)` in main.ts); the Home Shop crafts
+      legendary shards at the card-info price (200 gold) and its hint says
+      so; the deck-code preview speaks of one locked card in the singular
+      (EN/AR); the result screen's Crown Pass progress reads "٣ من ١٠" in
+      Golden Age.
+
+Checked at the end of the round: `npx tsc --noEmit`, `npx vitest run`,
+`npm run build:all`, `tools/perf-budget.mjs` in both editions (inside the
+220 / 450 budgets), `tools/relay-smoke.mjs` against the combined server,
+a two-browser Play-a-friend match in both editions with decks holding Stone
+Golem, Digger and Comet (deck slot plus deck code; sync checksums all agree;
+forfeit gives DEFEAT / VICTORY), and both editions at 390x844 and 1280x800
+(Home with the New cards sheet and badges, a bot battle with the new cards,
+the 3-crown result, a forced legendary chest, a road claim burst, deck slots
+and codes, swap mode, trials, the Shop).
+
+### Deferred (not this round)
+- [ ] New card wave B: Venom Cloud, Blaze Lantern, Ballista
+- [ ] Online resume after a reload
+- [ ] Per-side Champion online
+- [ ] Tower level scaling
+- [ ] Bot end-game "go for it" mode (ladder 0-0 rate is ~55% bot-vs-bot)
+- [ ] Destroy-the-King challenges
+- [ ] Card mastery, weekly events, Legend Path
+- [ ] Battle log of 10 replays
+- [ ] Save export / import
+- [ ] 8 emotes online, plus a name / crest picker
+- [ ] Wide-screen Home layout
+- [ ] Sandbox enemy placement
+- [ ] Draft deck reveal
+- [ ] Desktop hover states
+- [ ] Bigger emotes
+- [ ] Home diorama reset after a battle
+- [ ] Per-arena prop kits
+- [ ] Spring secondary motion
+- [ ] KayKit parity
+- [ ] Balance edges: Mini P.E.K.K.A (~62.6%) and Giant / Royal Giant
+      (~38-40%)
+
+### Open problems after this round
+- [ ] Particle sizes for the Digger emerge and Comet impact bursts were
+      judged on SwiftShader (about 13 fps). Check them on a real GPU.
+- [ ] A Comet that lands on a tower puts its crater and scorch under the
+      tower body, so only the airborne part of the blast shows there.
+- [ ] Bridge Spam (3 stars) clears 0/30 for the Easy bot and 9/30 for the
+      Normal bot. It is the hardest challenge; watch kids' clear rates.
+- [ ] The 2D painted fallbacks for the new cards (`render/characters.ts`) are
+      Classic-only. The Golden Age looks come from the 3D portraits.
+- [ ] Home quest claims and the Shop's upgrade offers have no coin burst yet.
+      The legendary pity counter is not shown to the player.
+- [ ] Battle tooltip / card-info trait lines still mix Latin digits into
+      Arabic (e.g. "35٪").
+- [ ] Toasts from switching slots or loading a code sit over the top bar
+      (components.toast placement).
+- [ ] In the Lilita One font a zero looks like an O in deck codes. It does
+      no harm: O is read as 0 when a code is entered.
+- [ ] Tab badge counts refresh through refreshTopBars or a Home redraw; a
+      change that only calls ctx.persistProfile shows up on the next Home
+      build.
+- [ ] Golden Age Pebble Golems are small and sand-coloured, so they are hard
+      to see on the sand bridges at 1280x800.
 
 ## Recommended sequence
 1. **Feel & Safety** — Track A juice + the self-play CI guard (C).
