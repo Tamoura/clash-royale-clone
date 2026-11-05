@@ -22,6 +22,7 @@ import { ARABIC } from "../render3d/theme";
 import { button, toast } from "../ui/components";
 import { fmtNum } from "../ui/i18n";
 import { icon } from "../ui/icons";
+import { passFraction } from "../ui/passText";
 import { reducedMotion } from "../ui/prefs";
 import { buzz, chestArt, chestLabel, rewardSound } from "../ui/screens/chestReveal";
 import { chestSlotsGrid, freeChestTile, grantCurrency, openChestFlow } from "../ui/screens/chests";
@@ -139,7 +140,7 @@ function resultLines(ctx: AppCtx, s: MatchEndPayload): HTMLElement | null {
     tag.className = "rw-result__tag";
     tag.textContent = res.passTierUp
       ? tr(`Tier ${p.tier}!`, `المستوى ${fmtNum(p.tier)}!`)
-      : `${fmtNum(p.into)}/${fmtNum(p.need)}`;
+      : passFraction(p.into, p.need, ARABIC); // "٢ من ١٠" in Golden Age: no slash next to the dot-like zero
     row.appendChild(tag);
     box.appendChild(row);
   }
