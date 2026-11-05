@@ -137,14 +137,22 @@ interface LootCard {
   shards: number;
 }
 
-/** Cards in reveal order: commons first, the new card last (the big moment). */
+/**
+ * Cards in reveal order, building to the big moment: shards from common up,
+ * then a new card, and anything legendary last of all (its shards, then a
+ * new legendary), so the legendary build-up is always the finale.
+ */
 export function revealOrder(rewards: ChestRewards): LootCard[] {
   const items: LootCard[] = (Object.entries(rewards.shards) as [CardId, number][])
     .filter(([id, n]) => n > 0 && id !== rewards.newCard)
     .map(([id, n]) => ({ id, isNew: false, shards: n }));
-  items.sort((a, b) => RARITY_RANK[getCard(a.id).rarity] - RARITY_RANK[getCard(b.id).rarity]);
   if (rewards.newCard) items.push({ id: rewards.newCard, isNew: true, shards: rewards.shards[rewards.newCard] ?? 0 });
-  return items;
+  const rank = (item: LootCard): number => {
+    const r = RARITY_RANK[getCard(item.id).rarity];
+    return (r === RARITY_RANK.legendary ? 100 : 0) + (item.isNew ? 10 : 0) + r;
+  };
+  // A stable sort: equal ranks keep the chest's own order.
+  return items.sort((a, b) => rank(a) - rank(b));
 }
 
 // ---- The sequence -----------------------------------------------------------------
@@ -312,7 +320,9 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
         // The legendary sting rings for shards too, not only a new card.
         if (!item.isNew) snd.sting?.("legendary");
         buzz("claim");
-        info.appendChild(el("div", "rw-card__ribbon rw-card__ribbon--legendary", tr("LEGENDARY!", "أسطورية!")));
+        // One ribbon, so a new legendary takes no more room than any new card.
+        const words: [string, string] = item.isNew ? ["NEW LEGENDARY!", "أسطورية جديدة!"] : ["LEGENDARY!", "أسطورية!"];
+        info.appendChild(el("div", "rw-card__ribbon rw-card__ribbon--legendary", tr(...words)));
       } else {
         buzz("select");
       }
@@ -320,7 +330,6 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
         snd.newCard?.();
         snd.sting?.(card.rarity);
         if (!legendary) info.appendChild(el("div", "rw-card__ribbon", tr("NEW CARD!", "بطاقة جديدة!")));
-        else info.appendChild(el("div", "rw-card__new", tr("New card!", "بطاقة جديدة!")));
         info.appendChild(addToDeckButton(item.id));
       } else {
         const level = meta.profile.levels[item.id] ?? 1;

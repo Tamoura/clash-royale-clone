@@ -13,15 +13,38 @@ describe("chest reveal: the legendary moment", () => {
     expect(flipDelay("legendary", true)).toBeGreaterThan(flipDelay("epic", true));
   });
 
-  it("legendary shards come after the other shards, the new card last", () => {
+  it("without a legendary: shards from common up, the new card last", () => {
     const order = revealOrder({
       gold: 10,
       gems: 0,
       newCard: "wizard",
-      shards: { "mega-knight": 1, knight: 6, "baby-dragon": 2, wizard: 3 },
+      shards: { "baby-dragon": 2, knight: 6, wizard: 3, musketeer: 2 },
     });
-    expect(order.map((o) => o.id)).toEqual(["knight", "baby-dragon", "mega-knight", "wizard"]);
+    expect(order.map((o) => o.id)).toEqual(["knight", "musketeer", "baby-dragon", "wizard"]);
     expect(order[order.length - 1].isNew).toBe(true);
+    expect(order[order.length - 1].shards).toBe(3);
+  });
+
+  it("legendary shards are the finale, after an ordinary new card", () => {
+    const order = revealOrder({
+      gold: 10,
+      gems: 0,
+      newCard: "bats",
+      shards: { "mega-knight": 1, knight: 6, "baby-dragon": 2 },
+    });
+    expect(order.map((o) => o.id)).toEqual(["knight", "baby-dragon", "bats", "mega-knight"]);
+    expect(order.map((o) => o.isNew)).toEqual([false, false, true, false]);
+  });
+
+  it("a new legendary comes last of all, after legendary shards", () => {
+    const order = revealOrder({
+      gold: 10,
+      gems: 0,
+      newCard: "digger",
+      shards: { digger: 1, "magic-archer": 2, knight: 6 },
+    });
+    expect(order.map((o) => o.id)).toEqual(["knight", "magic-archer", "digger"]);
+    expect(order[2]).toEqual({ id: "digger", isNew: true, shards: 1 });
   });
 
   it("names the tier", () => {
