@@ -306,22 +306,63 @@ export function toastBottom(viewportH: number, bars: readonly Band[], safeBottom
   return Math.round(lift + TOAST_GAP);
 }
 
+/**
+ * Where toasts sit while a sheet or dialog is open (its panel's top edge at
+ * `overlayTop`): just above the panel, over the dimmed screen, because a
+ * sheet's own buttons (Upgrade, Add to deck) sit at its bottom, right where
+ * the tab bar was. A panel that leaves no room above it gets the stack
+ * pinned to the top of the screen, over the panel's handle and title strip,
+ * never over its actions. Returns the host's distance from the viewport's
+ * bottom edge for a stack `stackH` px tall.
+ */
+export function toastBottomOver(viewportH: number, overlayTop: number, stackH: number): number {
+  const above = viewportH - overlayTop + TOAST_GAP;
+  const pinned = viewportH - TOAST_GAP - Math.max(0, stackH);
+  return Math.round(Math.max(TOAST_GAP, Math.min(above, pinned)));
+}
+
 /** Bars docked low on the screen right now (the tab bar, a sticky footer). */
 const LOW_BARS = ".v2-tabs, .v2-footer";
+/** Open panels that own the screen: a dialog box first (it sits above sheets), then the top sheet. */
+const OVERLAY_PANELS = [".ui-modal .ui-modal__box", ".ui-sheet.is-open .ui-sheet__panel"];
+/** Full-screen layers that hide the bars under them (the chest reveal). */
+const FULL_COVERS = ".rw-reveal:not(.is-leaving)";
+
+/** The top edge of the open dialog or sheet panel, or null when none is open. */
+function overlayTop(): number | null {
+  for (const sel of OVERLAY_PANELS) {
+    const all = document.querySelectorAll<HTMLElement>(sel);
+    const panel = all[all.length - 1];
+    if (!panel) continue;
+    const r = panel.getBoundingClientRect();
+    if (r.height > 0 && r.top < window.innerHeight) return Math.max(0, r.top);
+  }
+  return null;
+}
 
 function placeToasts(host: HTMLElement): void {
+  const top = overlayTop();
+  if (top !== null) {
+    host.style.bottom = `${toastBottomOver(window.innerHeight, top, host.offsetHeight)}px`;
+    return;
+  }
   const bars: Band[] = [];
-  document.querySelectorAll<HTMLElement>(LOW_BARS).forEach((n) => {
-    if (n.offsetParent === null && getComputedStyle(n).position !== "fixed") return;
-    const r = n.getBoundingClientRect();
-    if (r.width > 0 && r.height > 0) bars.push({ top: r.top, bottom: r.bottom });
-  });
+  // Under a full-screen layer the bars are hidden: nothing to lift above.
+  if (!document.querySelector(FULL_COVERS)) {
+    document.querySelectorAll<HTMLElement>(LOW_BARS).forEach((n) => {
+      if (n.offsetParent === null && getComputedStyle(n).position !== "fixed") return;
+      const r = n.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) bars.push({ top: r.top, bottom: r.bottom });
+    });
+  }
   host.style.bottom = `calc(${toastBottom(window.innerHeight, bars)}px + env(safe-area-inset-bottom, 0px))`;
 }
 
 /**
  * A short message that fades out after 2.4s. Toasts stack near the bottom,
- * above the tab bar, so they never cover a screen's title or the wallet.
+ * above the tab bar, so they never cover a screen's title or the wallet;
+ * with a sheet or dialog open they sit just above its panel instead, clear
+ * of its buttons.
  */
 export function toast(text: string, tone: Tone = "neutral"): HTMLElement {
   if (!toastHost || !toastHost.isConnected) {
@@ -330,9 +371,10 @@ export function toast(text: string, tone: Tone = "neutral"): HTMLElement {
     toastHost.setAttribute("aria-live", "polite");
     document.body.appendChild(toastHost);
   }
-  placeToasts(toastHost);
   const t = el("div", `ui-toast ui-toast--${tone}`, text);
   toastHost.appendChild(t);
+  // Placed once the new toast is in the stack, so its height counts.
+  placeToasts(toastHost);
   setTimeout(() => t.classList.add("is-leaving"), TOAST_MS);
   setTimeout(() => t.remove(), TOAST_MS + 400);
   return t;

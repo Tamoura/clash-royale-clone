@@ -7,6 +7,7 @@ import {
   flightPoint,
   segmentedNext,
   toastBottom,
+  toastBottomOver,
   trapOrder,
   walletValue,
 } from "./components";
@@ -114,6 +115,35 @@ describe("toastBottom", () => {
     // 844x390: header at the top, tab bar 56px at the bottom.
     const b = toastBottom(390, [{ top: 0, bottom: 52 }, { top: 334, bottom: 390 }]);
     expect(390 - b).toBeGreaterThan(52 + 40); // room for a toast below the header
+  });
+});
+
+describe("toastBottomOver (a sheet or dialog is open)", () => {
+  it("sits just above the sheet, clear of its bottom actions", () => {
+    // 390x844 card info sheet: panel top 101, Upgrade button at 716-772.
+    const b = toastBottomOver(844, 101, 40);
+    const toastBottomY = 844 - b;
+    expect(toastBottomY).toBe(101 - 12);
+    expect(toastBottomY - 40).toBeGreaterThanOrEqual(12); // whole toast on screen
+    // Never near the sheet's Upgrade button (the old spot above the tab bar).
+    expect(toastBottomY).toBeLessThan(716);
+    expect(b).toBeGreaterThan(toastBottom(844, [{ top: 774, bottom: 844 }]));
+  });
+  it("a short sheet gets the toast right above it", () => {
+    expect(844 - toastBottomOver(844, 520, 40)).toBe(520 - 12);
+  });
+  it("a sheet that leaves no room above pins the stack to the top, over its title strip", () => {
+    // 844x390: the sheet's panel starts at 47.
+    const b = toastBottomOver(390, 47, 40);
+    expect(390 - b - 40).toBe(12); // stack top at the 12px gap
+    expect(390 - b).toBeLessThan(47 + 30); // ends within the handle / title strip
+    // Two toasts stacked still start on screen.
+    expect(390 - toastBottomOver(390, 47, 88) - 88).toBe(12);
+    // A full-screen panel (top 0) behaves the same.
+    expect(390 - toastBottomOver(390, 0, 40) - 40).toBe(12);
+  });
+  it("never goes below the bottom gap, even for a huge stack", () => {
+    expect(toastBottomOver(390, 47, 900)).toBe(12);
   });
 });
 
