@@ -73,10 +73,14 @@ export const ARCHETYPES: Readonly<Record<CardId, Archetype>> = {
   tornado: A("cast", "light"),
   "skeleton-barrel": A("chop", "light"),
   mirror: A("cast", "light"),
-  // Card wave 3: a boulder that slams buildings, and the pebbles it bursts into.
+  // Card wave 3. The Stone Golem heaves both boulder fists overhead and
+  // slams them down; "heavy" sinks it into every step (views/animate.ts
+  // adds a dust thud and a camera bump per footfall). Its pebbles slam too,
+  // lighter on their feet.
   "stone-golem": A("slam", "heavy"),
   "pebble-golem": A("slam", "medium"),
-  // The Digger swings a pickaxe.
+  // The Digger's pickaxe (the Golden Age shovel) comes down in quick chops:
+  // a 1.2 s hit speed gives a short windup and a snap through the blow.
   digger: A("chop", "medium"),
   comet: A("cast", "light"),
 };
