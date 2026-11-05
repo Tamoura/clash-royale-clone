@@ -12,7 +12,7 @@
  * - Events: Challenges, Daily, Draft and the last-battle replay.
  * - Profile: identity, record, achievements and Settings.
  */
-import type { AppCtx } from "../../app/ctx";
+import type { AppCtx, MetaState } from "../../app/ctx";
 import { on } from "../../app/hooks";
 import { renderHomeSlots, type HomeSlot } from "../../app/slots";
 import { getCard, type CardId } from "../../game/cards";
@@ -20,7 +20,7 @@ import { hasSavedChampion } from "../../game/customcard";
 import { dateKey } from "../../game/daily";
 import { trophyProgress } from "../../meta/arenas";
 import { addShards } from "../../meta/collection";
-import { SHARD_GOLD_PRICE, spendGold, upgradeCost } from "../../meta/economy";
+import { SHARD_GOLD_PRICE, shardGoldPrice, spendGold, upgradeCost } from "../../meta/economy";
 import { isOwnedDeck, ownedSet } from "../../meta/progress";
 import { claimQuest, isComplete, loadQuests, questDef, saveQuests } from "../../meta/quests";
 import { type Feature } from "../../meta/unlocks";
@@ -437,22 +437,25 @@ function cardsTab(ctx: AppCtx, panel: HTMLElement, redraw: () => void): void {
 
 // ---- Shop tab -------------------------------------------------------------------------
 
-interface CraftOffer {
+export interface CraftOffer {
   id: CardId;
   missing: number;
   price: number;
 }
 
 /** Owned cards short of shards for their next level, deck cards first. */
-function craftOffers(ctx: AppCtx): CraftOffer[] {
-  const { meta } = ctx;
+export function craftOffers(
+  meta: Pick<MetaState, "cardLevels" | "playerDeck"> & { profile: Pick<MetaState["profile"], "owned" | "shards"> },
+): CraftOffer[] {
   const out: CraftOffer[] = [];
   for (const id of meta.profile.owned) {
     const lvl = meta.cardLevels[id] ?? 1;
-    const cost = upgradeCost(getCard(id).rarity, lvl);
+    const rarity = getCard(id).rarity;
+    const cost = upgradeCost(rarity, lvl);
     if (!cost) continue;
     const missing = cost.shards - (meta.profile.shards[id] ?? 0);
-    if (missing > 0) out.push({ id, missing, price: missing * SHARD_GOLD_PRICE });
+    // Same per-rarity price as card info, so the two screens agree on legendaries.
+    if (missing > 0) out.push({ id, missing, price: missing * shardGoldPrice(rarity) });
   }
   const inDeck = (id: CardId): number => (meta.playerDeck.includes(id) ? 0 : 1);
   return out.sort((a, b) => inDeck(a.id) - inDeck(b.id) || a.price - b.price).slice(0, 6);
@@ -465,11 +468,11 @@ function shopTab(ctx: AppCtx, panel: HTMLElement, redraw: () => void): void {
   const hint = document.createElement("p");
   hint.className = "v2-hint";
   hint.textContent = tr(
-    `Short on shards? Craft them for ${SHARD_GOLD_PRICE} gold each.`,
-    `تنقصك شظايا؟ اصنعها مقابل ${fmtNum(SHARD_GOLD_PRICE)} ذهب لكل واحدة.`,
+    `Short on shards? Craft them for ${SHARD_GOLD_PRICE} gold each (${shardGoldPrice("legendary")} for a Legendary).`,
+    `تنقصك شظايا؟ اصنعها مقابل ${fmtNum(SHARD_GOLD_PRICE)} ذهب لكل واحدة (${fmtNum(shardGoldPrice("legendary"))} للأسطورية).`,
   );
   s.el.appendChild(hint);
-  const offers = craftOffers(ctx);
+  const offers = craftOffers(ctx.meta);
   if (offers.length === 0) {
     const none = document.createElement("p");
     none.className = "v2-empty";
