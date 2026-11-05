@@ -52,11 +52,53 @@ export function openDeckPicker(ctx: AppCtx, opts: DeckPickerOpts = { mode: "deck
 
 // ---- Pure editing rules (tested) ----------------------------------------------
 
+/**
+ * A locked card from an entered code, kept in the spot it left so the
+ * code's hand order survives: it is drawn just before `deck[at]` (after
+ * the last card when `at` is past the end).
+ */
+export interface Ghost {
+  id: CardId;
+  at: number;
+}
+
 export interface EditState {
   /** The deck being edited, in hand order (at most 8). */
   deck: CardId[];
   /** A collection card picked up in swap mode, waiting for a deck card. */
   pending: CardId | null;
+  /** Locked cards from an entered code, sorted by `at`. New cards fill their spots first. */
+  ghosts?: Ghost[];
+}
+
+/**
+ * Split an entered code into the cards the player owns (in code order)
+ * and ghosts for the locked ones, each in the spot it held in the code.
+ */
+export function loadCode(cards: readonly CardId[], owned: ReadonlySet<CardId>): { deck: CardId[]; ghosts: Ghost[] } {
+  const deck: CardId[] = [];
+  const ghosts: Ghost[] = [];
+  for (const id of cards) {
+    if (owned.has(id)) deck.push(id);
+    else ghosts.push({ id, at: deck.length });
+  }
+  return { deck, ghosts };
+}
+
+/** One of the 8 deck spots: a card (with its deck index), a ghost, or empty. */
+export type DeckSpot = { card: CardId; index: number } | { ghost: CardId } | null;
+
+/** The 8 spots as drawn: deck cards in order with each ghost in its spot, then empties. */
+export function deckSpots(deck: readonly CardId[], ghosts: readonly Ghost[] = []): DeckSpot[] {
+  const out: DeckSpot[] = [];
+  let g = 0;
+  for (let i = 0; i < deck.length; i++) {
+    while (g < ghosts.length && ghosts[g].at <= i) out.push({ ghost: ghosts[g++].id });
+    out.push({ card: deck[i], index: i });
+  }
+  while (g < ghosts.length) out.push({ ghost: ghosts[g++].id });
+  while (out.length < 8) out.push(null);
+  return out.slice(0, 8);
 }
 
 export type EditAction =
@@ -75,38 +117,81 @@ export type EditAction =
  * - Collection card not in the deck: added while there is room; with a
  *   full deck it is picked up (swap mode). Tapping it again drops it.
  * - Deck spot: removed (in swap mode: replaced by the picked-up card).
+ * - Ghosts (locked cards from a code) keep their spots: an added card
+ *   fills the first ghost's spot before it goes to the end.
  */
 export function editDeck(s: EditState, a: EditAction): EditState & { swapped?: number } {
   const deck = s.deck.slice();
-  if (a.kind === "cancel") return { deck, pending: null };
+  let ghosts = (s.ghosts ?? []).map((g) => ({ ...g }));
+  const done = (pending: CardId | null, swapped?: number): EditState & { swapped?: number } =>
+    swapped === undefined ? { deck, pending, ghosts } : { deck, pending, ghosts, swapped };
+  /** Take deck[k] out; ghosts after it move up with the cards. */
+  const remove = (k: number): void => {
+    deck.splice(k, 1);
+    ghosts = ghosts.map((g) => (g.at > k ? { ...g, at: g.at - 1 } : g));
+  };
+  /** A new card goes into the first ghost's spot, else at the end. */
+  const add = (id: CardId): void => {
+    const first = ghosts.shift();
+    if (!first) {
+      deck.push(id);
+      return;
+    }
+    deck.splice(first.at, 0, id);
+    ghosts = ghosts.map((g) => ({ ...g, at: g.at + 1 }));
+  };
+  if (a.kind === "cancel") return done(null);
   if (a.kind === "slot") {
-    if (a.index < 0 || a.index >= deck.length) return { deck, pending: s.pending };
+    if (a.index < 0 || a.index >= deck.length) return done(s.pending);
     if (s.pending && !deck.includes(s.pending)) {
       deck[a.index] = s.pending;
-      return { deck, pending: null, swapped: a.index };
+      return done(null, a.index);
     }
-    deck.splice(a.index, 1);
-    return { deck, pending: null };
+    remove(a.index);
+    return done(null);
   }
   const id = a.id;
   const at = deck.indexOf(id);
   if (s.pending) {
-    if (id === s.pending) return { deck, pending: null };
+    if (id === s.pending) return done(null);
     if (at >= 0) {
       deck[at] = s.pending;
-      return { deck, pending: null, swapped: at };
+      return done(null, at);
     }
-    return { deck, pending: id };
+    return done(id);
   }
   if (at >= 0) {
-    deck.splice(at, 1);
-    return { deck, pending: null };
+    remove(at);
+    return done(null);
   }
   if (deck.length < 8) {
-    deck.push(id);
-    return { deck, pending: null };
+    add(id);
+    return done(null);
   }
-  return { deck, pending: id };
+  return done(id);
+}
+
+/**
+ * How far to scroll the editor when swap mode starts (positive = down),
+ * so the "Now tap a card in your deck" bar and the deck are in view. It
+ * scrolls no further than needed to show the whole deck, and never past
+ * the bar; on a screen too short for the bar and a deck row together
+ * (phone landscape), the first deck row wins: the next tap goes there.
+ * 0 when everything is already in view.
+ */
+export function swapScroll(
+  view: { top: number; bottom: number },
+  barTop: number,
+  rowBottom: number,
+  gridBottom: number,
+  margin = 8,
+): number {
+  const barInView = barTop >= view.top;
+  if (barInView && gridBottom <= view.bottom) return 0;
+  const toBar = barTop - view.top - margin;
+  let d = barInView ? Math.max(0, Math.min(toBar, gridBottom - view.bottom + margin)) : toBar;
+  if (rowBottom - d > view.bottom) d = rowBottom - view.bottom + margin;
+  return Math.round(d);
 }
 
 /** The message for a code that could not be made or read (EN / AR). */
@@ -511,15 +596,25 @@ function openRenameSheet(ctx: AppCtx, current: string, fallback: string, onSave:
 
 // ---- The editor ---------------------------------------------------------------
 
+/** The open editor's Esc listener on document; aborted when the editor goes. */
+let editorKeys: AbortController | null = null;
+
 function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
   const { meta, tr } = ctx;
   const battle = opts.mode === "battle";
   const owned = ownedSet(meta.profile.owned);
   let slots = readSlots(ctx);
+  // Locked cards from an entered code (edit.ghosts) show greyed in the spots they left.
   let edit: EditState = { deck: meta.playerDeck.filter((id) => owned.has(id)).slice(0, 8), pending: null };
-  /** Locked cards from an entered code: shown greyed in the empty spots they left. */
-  let ghosts: CardId[] = [];
   let lastSwapped = -1;
+  // A new editor replaces the old one: drop the old one's Esc listener.
+  editorKeys?.abort();
+  const keys = new AbortController();
+  editorKeys = keys;
+  const stopKeys = (): void => {
+    keys.abort();
+    if (editorKeys === keys) editorKeys = null;
+  };
 
   const switcherHost = document.createElement("div");
   switcherHost.className = "dq-slots-row";
@@ -567,6 +662,7 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
         onClick: () => {
           if (!commitDeck()) return;
           sfx(ctx, "uiTap");
+          stopKeys();
           ctx.closeDeckPicker();
           ctx.startLadder();
         },
@@ -580,6 +676,7 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
         onClick: () => {
           if (!commitDeck()) return;
           sfx(ctx, "uiTap");
+          stopKeys();
           ctx.openHome();
         },
       });
@@ -588,19 +685,32 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
   function apply(a: EditAction): void {
     const before = edit.pending;
     const next = editDeck(edit, a);
-    edit = { deck: next.deck, pending: next.pending };
+    edit = { deck: next.deck, pending: next.pending, ghosts: next.ghosts };
     lastSwapped = next.swapped ?? -1;
     if (next.swapped !== undefined) sfx(ctx, "uiTap");
     sync();
-    if (edit.pending && edit.pending !== before) {
-      // Bring the prompt and the deck into view (the kid's next tap goes there).
-      const view = swapBar.closest(".v2-screen-body")?.getBoundingClientRect();
-      const top = swapBar.getBoundingClientRect().top;
-      const bottom = deckGrid.getBoundingClientRect().bottom;
-      if (!view || top < view.top || bottom > view.bottom) {
-        swapBar.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
-      }
+    if (edit.pending && edit.pending !== before) revealSwap();
+  }
+
+  /** Bring the swap prompt and the deck into view (the kid's next tap goes there). */
+  function revealSwap(): void {
+    const body = swapBar.closest<HTMLElement>(".v2-screen-body");
+    const row = deckGrid.firstElementChild as HTMLElement | null;
+    const behavior: ScrollBehavior = reducedMotion() ? "auto" : "smooth";
+    if (!body || !row) {
+      swapBar.scrollIntoView({ block: "start", behavior });
+      return;
     }
+    // Layout offsets, not boxes: the bar drops in and the deck cards wiggle (transforms).
+    const v = body.getBoundingClientRect();
+    const gridTop = deckGrid.getBoundingClientRect().top;
+    const d = swapScroll(
+      { top: v.top, bottom: v.bottom },
+      gridTop - (deckGrid.offsetTop - swapBar.offsetTop),
+      gridTop + row.offsetHeight,
+      gridTop + deckGrid.offsetHeight,
+    );
+    if (d) body.scrollBy({ top: d, behavior });
   }
 
   function pickSlot(i: number): void {
@@ -608,7 +718,6 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
     commitOrWarn();
     slots = activateSlot(ctx, slots, i);
     edit = { deck: meta.playerDeck.slice(), pending: null };
-    ghosts = [];
     lastSwapped = -1;
     sfx(ctx, "uiTap");
     drawSwitcher();
@@ -638,29 +747,36 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
   }
 
   function useCode(cards: CardId[]): void {
-    ghosts = cards.filter((id) => !owned.has(id));
-    edit = { deck: cards.filter((id) => owned.has(id)), pending: null };
+    // The code's hand order stays: locked cards wait as ghosts in their own spots.
+    edit = { ...loadCode(cards, owned), pending: null };
     lastSwapped = -1;
     const name = slotName(ctx, slots, slots.active);
+    const locked = (edit.ghosts ?? []).map((g) => cardDisplayName(g.id));
     if (commitDeck()) {
       toast(tr(`New deck in ${name}!`, `مجموعة جديدة في ${name}!`), "success");
     } else {
+      const names = locked.join(tr(", ", "، "));
       toast(
-        tr(
-          `Deck loaded. Pick ${ghosts.length === 1 ? "a card" : `${ghosts.length} cards`} for the empty spots.`,
-          `حُمّلت المجموعة. اختر ${fmtNum(ghosts.length)} من البطاقات للخانات الفارغة.`,
-        ),
+        locked.length === 1
+          ? tr(
+              `Deck loaded! ${names} is still locked: pick another card for its spot.`,
+              `حُمّلت المجموعة! ${names} ما زالت مقفلة: اختر بطاقة أخرى لخانتها.`,
+            )
+          : tr(
+              `Deck loaded! ${names} are still locked: pick other cards for their spots.`,
+              `حُمّلت المجموعة! ${names} ما زالت مقفلة: اختر بطاقات أخرى لخاناتها.`,
+            ),
         "neutral",
       );
     }
     sync();
   }
 
-  function deckSpot(i: number): HTMLButtonElement {
-    const id = edit.deck[i];
+  function deckSpot(s: DeckSpot): HTMLButtonElement {
     const spot = document.createElement("button");
     spot.type = "button";
-    if (id) {
+    if (s && "card" in s) {
+      const { card: id, index: i } = s;
       spot.className = `v2-tile rarity-${getCard(id).rarity}` + (i === lastSwapped ? " dq-swapped" : "");
       spot.dataset.deckCard = id;
       const art = document.createElement("div");
@@ -682,11 +798,12 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
       spot.addEventListener("click", () => apply({ kind: "slot", index: i }));
       return spot;
     }
-    const ghost = ghosts[i - edit.deck.length];
     spot.className = "v2-tile is-empty";
     spot.disabled = true;
-    if (ghost) {
+    if (s) {
+      const ghost = s.ghost;
       spot.classList.add("dq-ghost");
+      spot.dataset.ghost = ghost;
       const art = document.createElement("div");
       art.className = "v2-tile-art";
       art.appendChild(cardSilhouette(ghost));
@@ -695,6 +812,11 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
       lock.className = "dq-lock";
       lock.innerHTML = icon("lock");
       spot.appendChild(lock);
+      // Which locked card this spot stands for (a kid copying a sibling's deck needs to know).
+      const label = document.createElement("span");
+      label.className = "v2-tile-name";
+      label.textContent = cardDisplayName(ghost);
+      spot.appendChild(label);
       spot.setAttribute(
         "aria-label",
         tr(`Empty: ${cardDisplayName(ghost)} is not found yet. Pick another card.`, `فارغة: ${cardDisplayName(ghost)} لم تجدها بعد. اختر بطاقة أخرى.`),
@@ -707,10 +829,8 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
 
   function sync(): void {
     const { deck, pending } = edit;
-    // Ghosts only fill spots that are still empty.
-    ghosts = ghosts.slice(0, Math.max(0, 8 - deck.length));
     deckGrid.innerHTML = "";
-    for (let i = 0; i < 8; i++) deckGrid.appendChild(deckSpot(i));
+    for (const s of deckSpots(deck, edit.ghosts)) deckGrid.appendChild(deckSpot(s));
     deckGrid.classList.toggle("dq-swapping", !!pending);
 
     swapBar.innerHTML = "";
@@ -819,11 +939,18 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
     id: "deckPicker",
     title: battle ? tr("Battle deck", "مجموعة المعركة") : tr("Edit deck", "تعديل المجموعة"),
     footer,
-    onLeave: commitOrWarn,
+    onLeave: () => {
+      stopKeys();
+      commitOrWarn();
+    },
     build: (body) => {
       const d = section(tr("Your deck", "مجموعتك"), rename);
       d.el.classList.add("dq-deck");
-      d.el.append(switcherHost, swapBar, swapLive, deckGrid, summary, codeRow);
+      // The switcher lives in the head: its own row on phones, inline next
+      // to Name on short (landscape) screens, so the deck stays in view.
+      d.head.classList.add("dq-deck-head");
+      d.head.appendChild(switcherHost);
+      d.el.append(swapBar, swapLive, deckGrid, summary, codeRow);
       body.appendChild(d.el);
       if (battle) {
         const holder = document.createElement("div");
@@ -840,6 +967,7 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
         icon: "book",
         label: tr("Collection", "المجموعة"),
         onClick: () => {
+          stopKeys();
           commitOrWarn();
           ctx.openCollection();
         },
@@ -852,16 +980,18 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
     },
   });
   // Esc drops a picked-up card (an open sheet takes its own Esc first).
+  // Removed on every way out (Back, tabs, Save, Battle, Collection, the next
+  // editor), and as a last guard on the first key press after the editor left.
   const onKey = (e: KeyboardEvent): void => {
     if (!root.isConnected) {
-      document.removeEventListener("keydown", onKey);
+      stopKeys();
       return;
     }
     if (e.key !== "Escape" || e.defaultPrevented || !edit.pending || document.querySelector(".ui-sheet")) return;
     e.preventDefault();
     apply({ kind: "cancel" });
   };
-  document.addEventListener("keydown", onKey);
+  document.addEventListener("keydown", onKey, { signal: keys.signal });
   drawSwitcher();
   sync();
 }

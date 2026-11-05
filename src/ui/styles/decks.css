@@ -74,6 +74,18 @@
 /* Home Cards tab: the switcher sits between the head and the grid. */
 .v2-deck .dq-slots { margin-bottom: var(--sp-3); }
 
+/* Deck editor head. Phones: [Your deck ..... Name] with the switcher on
+   its own row below. Short screens (phone landscape, below): one row
+   [Your deck][1][2][3][pencil] and the deck in one row of eight, so the
+   deck is in view on open and under the swap prompt. */
+.dq-deck-head { flex-wrap: wrap; row-gap: var(--sp-2); }
+.dq-deck-head > .dq-slots-row {
+  order: 1;
+  flex: 1 0 100%;
+  min-width: 0;
+  margin: 0 0 var(--sp-1);
+}
+
 /* ── Swap mode ── */
 .dq-swapbar {
   display: flex;
@@ -136,6 +148,38 @@
   .v2-tile.dq-swapped { animation: none; }
 }
 
+/* Short screens (phone landscape): see the editor head notes above. */
+@media (max-height: 520px) {
+  .dq-deck-head { flex-wrap: nowrap; }
+  /* "Your deck" stays for screen readers; the screen title says it already. */
+  .dq-deck-head h3 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .dq-deck-head > .dq-slots-row { flex: 1 1 auto; margin: 0; }
+  .dq-deck-head > .dq-rename-btn { order: 2; flex: none; }
+  /* The pencil alone (its aria-label says "Rename Deck 1"). */
+  .dq-rename-btn.ui-btn { padding-inline: var(--sp-2); }
+  .dq-rename-btn .ui-btn__label { display: none; }
+  .dq-deck-head .dq-slots { padding: 2px; }
+  .dq-deck-head .dq-slot { min-height: 36px; gap: 4px; padding-inline: 4px; }
+  .dq-deck-head .dq-slot__num { width: 22px; height: 22px; }
+  .dq-deck .v2-deck-slots { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: var(--sp-1); }
+  /* Small tiles: a smaller elixir drop so the card art shows. */
+  .dq-deck .v2-deck-slots .v2-cost { top: 1px; inset-inline-start: 1px; width: 17px; height: 17px; font-size: 10px; }
+  .dq-deck .v2-deck-slots .dq-lock { top: 1px; inset-inline-end: 1px; width: 16px; height: 16px; }
+  .dq-deck .v2-deck-slots .dq-lock .ui-icon { width: 11px; height: 11px; }
+  .dq-deck .v2-deck-slots .v2-tile-name { padding-inline: 1px; font-size: 9px; }
+  .dq-swapbar { padding: 4px var(--sp-2); }
+  .dq-swapbar .v2-tile--mini { width: 36px; }
+  .dq-swapbar__cancel.ui-btn { min-height: 36px; }
+}
+
 /* An entered code's locked cards, greyed in the spots they left. */
 .v2-tile.is-empty.dq-ghost {
   position: relative;
@@ -144,6 +188,13 @@
 .v2-tile.dq-ghost canvas {
   filter: brightness(0) invert(0.62);
   opacity: 0.32;
+}
+/* The locked card's name, dimmed along the bottom edge. */
+.v2-tile.dq-ghost .v2-tile-name {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  color: var(--on-surface-dim);
 }
 .dq-lock {
   position: absolute;
