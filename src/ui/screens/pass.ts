@@ -6,7 +6,7 @@
  */
 import "../styles/rewards.css";
 import type { AppCtx } from "../../app/ctx";
-import { getCard, type CardId } from "../../game/cards";
+import { getCard, type CardId, type Rarity } from "../../game/cards";
 import { addShards } from "../../meta/collection";
 import {
   PASS_TIERS,
@@ -28,9 +28,10 @@ import { cardDisplayName } from "../../render/cardNames";
 import { setTowerFlair } from "../../render3d/scene3d";
 import { ARABIC } from "../../render3d/theme";
 import { makeCardCanvas } from "../cardFrame";
-import { button, screenHeader, sheet, toast } from "../components";
+import { button, rewardBursts, screenHeader, sheet, toast, walletChips } from "../components";
 import { fmtNum } from "../i18n";
 import { icon } from "../icons";
+import { passBarLine, passPillLine } from "../passText";
 import { reducedMotion } from "../prefs";
 import { buzz, chestArt, chestLabel, rarityLabel, rewardSound } from "./chestReveal";
 import { grantCurrency, openChestFlow } from "./chests";
@@ -106,7 +107,7 @@ function rewardArt(r: PassReward): HTMLElement {
 // ---- Claiming -----------------------------------------------------------------
 
 /** Pick one of three owned cards for a shard reward; resolves null if dismissed. */
-function pickShardCard(ctx: AppCtx, t: number, amount: Record<"common" | "rare" | "epic", number>): Promise<CardId | null> {
+function pickShardCard(ctx: AppCtx, t: number, amount: Record<Rarity, number>): Promise<CardId | null> {
   const { tr, meta } = ctx;
   const choices = shardChoices(meta.profile.owned, meta.playerDeck, meta.season.key, t);
   return new Promise((resolve) => {
@@ -140,7 +141,7 @@ function pickShardCard(ctx: AppCtx, t: number, amount: Record<"common" | "rare" 
       plus.textContent = `+${fmtNum(amount[rarity])}`;
       const have = document.createElement("span");
       have.className = "rw-pick__have";
-      have.textContent = `${rarityLabel(rarity, tr)} · ${tr("have", "لديك")} ${fmtNum(meta.profile.shards[id] ?? 0)}`;
+      have.textContent = `${rarityLabel(rarity, tr)}${tr(" · ", "، ")}${tr("have", "لديك")} ${fmtNum(meta.profile.shards[id] ?? 0)}`;
       b.append(name, plus, have);
       b.setAttribute("aria-label", `${cardDisplayName(id)}: +${amount[rarity]} ${tr("shards", "شظايا")}`);
       b.addEventListener("click", () => {
@@ -155,9 +156,10 @@ function pickShardCard(ctx: AppCtx, t: number, amount: Record<"common" | "rare" 
 /**
  * Claim tier t: shard tiers ask for a card first (dismissing keeps the tier
  * unclaimed), then the claim is saved before anything is paid, so a reload
- * can never pay it twice. Chests open with the reveal.
+ * can never pay it twice. Gold and gems burst from `from` (the Claim
+ * button) into the wallet; chests open with the reveal.
  */
-export async function claimPassTier(ctx: AppCtx, t: number): Promise<boolean> {
+export async function claimPassTier(ctx: AppCtx, t: number, from?: Element | DOMRect): Promise<boolean> {
   const { tr, meta } = ctx;
   const rewards = passRewards(t);
   const shardReward = rewards.find((r): r is Extract<PassReward, { kind: "shards" }> => r.kind === "shards");
@@ -174,14 +176,18 @@ export async function claimPassTier(ctx: AppCtx, t: number): Promise<boolean> {
   buzz("claim");
   const notes: string[] = [];
   const chests: ("free" | "rare")[] = [];
+  let gold = 0;
+  let gems = 0;
   for (const r of res.rewards) {
     switch (r.kind) {
       case "gold":
         grantCurrency(ctx, r.amount, 0);
+        gold += r.amount;
         notes.push(`+${fmtNum(r.amount)} ${tr("gold", "ذهب")}`);
         break;
       case "gems":
         grantCurrency(ctx, 0, r.amount);
+        gems += r.amount;
         notes.push(`+${fmtNum(r.amount)} ${tr("gems", "جواهر")}`);
         break;
       case "shards": {
@@ -209,8 +215,9 @@ export async function claimPassTier(ctx: AppCtx, t: number): Promise<boolean> {
     }
   }
   if (notes.length > 0) toast(notes.join(" · "), "success");
+  if (from && (gold > 0 || gems > 0)) await rewardBursts(from, gold, gems, { gold: meta.profile.gold, gems: meta.profile.gems });
   for (const c of chests) {
-    await openChestFlow(ctx, { kind: "bonus", rarity: c }, tr(`Crown Pass · Tier ${t}`, `تذكرة التاج · المستوى ${fmtNum(t)}`));
+    await openChestFlow(ctx, { kind: "bonus", rarity: c }, tr(`Crown Pass · Tier ${t}`, `تذكرة التاج، المستوى ${fmtNum(t)}`));
   }
   return true;
 }
@@ -233,7 +240,7 @@ export function passPill(ctx: AppCtx): HTMLElement {
   title.textContent = tr("Crown Pass", "تذكرة التاج");
   const sub = document.createElement("span");
   sub.className = "rw-hubcard__sub";
-  sub.textContent = p.maxed ? tr("Complete!", "اكتملت!") : `${tr("Tier", "المستوى")} ${fmtNum(p.tier)} · ${fmtNum(p.into)}/${fmtNum(p.need)}`;
+  sub.textContent = p.maxed ? tr("Complete!", "اكتملت!") : passPillLine(p.tier, p.into, p.need, ARABIC);
   const bar = document.createElement("span");
   bar.className = "rw-minibar";
   const fill = document.createElement("i");
@@ -279,7 +286,7 @@ export function passTrack(ctx: AppCtx, after: () => void): HTMLElement {
   h.textContent = tr("Crown Pass", "تذكرة التاج");
   const sub = document.createElement("span");
   const days = seasonDaysLeft(new Date());
-  sub.textContent = `${seasonName(pass.key)} · ${tr(days === 1 ? "ends tomorrow" : `${days} days left`, `باقٍ ${fmtNum(days)} يوم`)}`;
+  sub.textContent = `${seasonName(pass.key)}${tr(" · ", "، ")}${tr(days === 1 ? "ends tomorrow" : `${days} days left`, `باقٍ ${fmtNum(days)} يوم`)}`;
   titles.append(h, sub);
   head.appendChild(titles);
   const free = document.createElement("span");
@@ -303,7 +310,7 @@ export function passTrack(ctx: AppCtx, after: () => void): HTMLElement {
   label.className = "rw-bar__label";
   label.innerHTML = p.maxed
     ? tr("All 30 tiers open!", "فُتحت المستويات الثلاثون!")
-    : `${icon("crown-filled")} ${fmtNum(p.into)} / ${fmtNum(p.need)} · ${tr("next tier", "المستوى التالي")} ${fmtNum(p.tier + 1)}`;
+    : `${icon("crown-filled")} ${passBarLine(p.into, p.need, p.tier + 1, ARABIC)}`;
   bar.append(fill, label);
   prog.appendChild(bar);
   const how = document.createElement("p");
@@ -346,7 +353,7 @@ export function passTrack(ctx: AppCtx, after: () => void): HTMLElement {
         label: tr("Claim", "استلم"),
         onClick: () => {
           b.disabled = true;
-          void claimPassTier(ctx, t).then((ok) => {
+          void claimPassTier(ctx, t, b).then((ok) => {
             b.disabled = false;
             if (ok) after();
           });
@@ -404,7 +411,7 @@ export function seasonHistory(ctx: AppCtx): HTMLElement {
     li.className = "rw-history__row" + (r.now ? " is-now" : "");
     const name = document.createElement("span");
     name.className = "rw-history__name";
-    name.textContent = r.now ? `${seasonName(r.key)} · ${tr("now", "الآن")}` : seasonName(r.key);
+    name.textContent = r.now ? `${seasonName(r.key)}${tr(" · ", "، ")}${tr("now", "الآن")}` : seasonName(r.key);
     const best = document.createElement("span");
     best.className = "rw-history__stat";
     best.innerHTML = `${icon("trophy")}<b>${fmtNum(r.best)}</b>`;
@@ -443,7 +450,14 @@ function buildPass(ctx: AppCtx): void {
   screen.className = "rw-screen" + (reducedMotion() ? " is-calm" : "");
   if (ARABIC) screen.dir = "rtl";
   pickerRoot.appendChild(screen);
-  screen.appendChild(screenHeader({ title: tr("Crown Pass", "تذكرة التاج"), onBack: () => ctx.openHome(), backLabel: tr("Back", "رجوع") }));
+  screen.appendChild(
+    screenHeader({
+      title: tr("Crown Pass", "تذكرة التاج"),
+      onBack: () => ctx.openHome(),
+      backLabel: tr("Back", "رجوع"),
+      trailing: walletChips(ctx.meta.profile.gold, ctx.meta.profile.gems),
+    }),
+  );
   screen.appendChild(passTrack(ctx, () => buildPass(ctx)));
   screen.appendChild(seasonHistory(ctx));
 }

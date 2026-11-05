@@ -1,10 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_DECK } from "../game/cards";
 import { cardsAvailableAt } from "./arenas";
+import type { CardId } from "../game/cards";
 import { ownedSet, starterOwned } from "./collection";
 import {
   CHEST_TIMER_MS,
   FREE_CHEST_INTERVAL_MS,
+  LEGENDARY_NEW_CARD_MAX,
+  LEGENDARY_NEW_CARD_WEIGHT,
+  LEGENDARY_PITY_CHESTS,
+  LEGENDARY_PITY_KEY,
+  LEGENDARY_SHARD_CHANCE,
   chestsEarned,
   claimFreeChest,
   earlyTimerMs,
@@ -13,10 +19,17 @@ import {
   firstChestCard,
   freeChestReadyAt,
   grantMatchChest,
+  hasLegendary,
   isFreeChestReady,
+  isLegendary,
+  legendaryGuaranteed,
+  legendaryPity,
   mulberry32,
   noteChestsEarned,
   openChest,
+  rollChest,
+  setLegendaryPity,
+  type ChestRarity,
 } from "./chests";
 import { memoryKV } from "./kv";
 import { applyMatchResult, tryOpenChest, type PlayerProfile } from "./progress";
@@ -202,5 +215,195 @@ describe("free chest", () => {
     const late = t0 + 30 * HOUR;
     expect(claimFreeChest(late, kv)).toBe(true);
     expect(freeChestReadyAt(kv)).toBe(late + 4 * HOUR);
+  });
+});
+
+describe("legendary odds", () => {
+  // Bone Pit + Barbarian Bowl reached: the Digger (legendary) is findable
+  // next to ordinary new cards.
+  const TROPHIES = 450;
+  const starter = ownedSet(starterOwned());
+
+  function rate(chest: ChestRarity, pity: number, n: number, owned = starter): { legendary: number; newCard: number } {
+    let legendary = 0;
+    let newCard = 0;
+    for (let seed = 1; seed <= n; seed++) {
+      const r = rollChest({ rarity: chest, readyAt: 0 }, TROPHIES, owned, mulberry32(seed * 7919), pity);
+      if (r.newCard) newCard++;
+      if (hasLegendary(r)) legendary++;
+    }
+    return { legendary: legendary / n, newCard: newCard / n };
+  }
+
+  it("a legendary is a rare pull, rarer still from a Wooden chest", () => {
+    const free = rate("free", 0, 4000);
+    const rare = rate("rare", 0, 4000);
+    expect(free.legendary).toBeGreaterThan(0);
+    expect(free.legendary).toBeLessThan(0.02);
+    expect(rare.legendary).toBeGreaterThan(free.legendary);
+    expect(rare.legendary).toBeLessThan(0.06);
+    // Ordinary new cards still come all the time.
+    expect(free.newCard).toBeGreaterThan(0.35);
+    expect(rare.newCard).toBeGreaterThan(0.65);
+  });
+
+  it("weights a legendary far below any other new card", () => {
+    expect(LEGENDARY_NEW_CARD_WEIGHT.free).toBeLessThan(LEGENDARY_NEW_CARD_WEIGHT.rare);
+    expect(LEGENDARY_NEW_CARD_WEIGHT.rare).toBeLessThan(0.5);
+    // Among new cards rolled at this arena, the Digger shows up much less
+    // than an even share.
+    const unowned = cardsAvailableAt(TROPHIES).filter((id) => !starter.has(id));
+    let digger = 0;
+    let rolled = 0;
+    for (let seed = 1; seed <= 4000; seed++) {
+      const r = rollChest({ rarity: "rare", readyAt: 0 }, TROPHIES, starter, mulberry32(seed), 0);
+      if (!r.newCard) continue;
+      rolled++;
+      if (r.newCard === "digger") digger++;
+    }
+    expect(digger / rolled).toBeLessThan((1 / unowned.length) * 0.5);
+  });
+
+  it("the guarantee lives only in the big (Rare) chest", () => {
+    expect(legendaryGuaranteed("rare", LEGENDARY_PITY_CHESTS)).toBe(true);
+    expect(legendaryGuaranteed("rare", LEGENDARY_PITY_CHESTS - 1)).toBe(false);
+    expect(legendaryGuaranteed("free", 999)).toBe(false);
+    // Rare chest with a full pity counter: a legendary every time.
+    expect(rate("rare", LEGENDARY_PITY_CHESTS, 300).legendary).toBe(1);
+    // Wooden chest with a full counter: still just the normal odds.
+    expect(rate("free", 999, 2000).legendary).toBeLessThan(0.02);
+  });
+
+  it("the guarantee gives a new legendary when one is findable, else legendary shards", () => {
+    const r = rollChest({ rarity: "rare", readyAt: 0 }, TROPHIES, starter, mulberry32(3), LEGENDARY_PITY_CHESTS);
+    expect(r.newCard).toBe("digger");
+    const withDigger = new Set<CardId>([...starter, "digger"]);
+    const s = rollChest({ rarity: "rare", readyAt: 0 }, TROPHIES, withDigger, mulberry32(3), LEGENDARY_PITY_CHESTS);
+    expect(s.newCard === null || !isLegendary(s.newCard)).toBe(true);
+    expect(s.shards.digger ?? 0).toBeGreaterThan(0);
+    // Below the first legendary arena there is nothing to guarantee.
+    const low = rollChest({ rarity: "rare", readyAt: 0 }, 150, starter, mulberry32(3), LEGENDARY_PITY_CHESTS);
+    expect(hasLegendary(low)).toBe(false);
+  });
+
+  it("legendary shard drops are scarce next to the other cards", () => {
+    const owned = new Set<CardId>([...cardsAvailableAt(TROPHIES)]);
+    let legendaryShards = 0;
+    let epicShards = 0;
+    for (let seed = 1; seed <= 3000; seed++) {
+      const r = rollChest({ rarity: "rare", readyAt: 0 }, TROPHIES, owned, mulberry32(seed), 0);
+      for (const [id, n] of Object.entries(r.shards) as [CardId, number][]) {
+        if (isLegendary(id)) legendaryShards += n;
+        else if (id === "baby-dragon") epicShards += n; // one epic, for scale
+      }
+    }
+    expect(legendaryShards).toBeGreaterThan(0);
+    expect(legendaryShards).toBeLessThan(epicShards);
+  });
+
+  it("an established collection: the shard chance stays flat however many legendaries are owned", () => {
+    // Every card at the arena owned, so nothing new can drop: the only
+    // legendaries are shards for owned ones.
+    const legendaryRate = (chest: ChestRarity, trophies: number, owned: Set<CardId>): number => {
+      let n = 0;
+      const N = 6000;
+      for (let seed = 1; seed <= N; seed++) {
+        const r = rollChest({ rarity: chest, readyAt: 0 }, trophies, owned, mulberry32(seed * 104729), 0);
+        const legendaryDrops = (Object.keys(r.shards) as CardId[]).filter((id) => isLegendary(id) && id !== r.newCard);
+        // One shard drop for an owned legendary per chest at most.
+        expect(legendaryDrops.length).toBeLessThanOrEqual(1);
+        if (hasLegendary(r)) n++;
+      }
+      return n / N;
+    };
+    for (const trophies of [450, 2000, 2600, 3500]) {
+      const all = new Set<CardId>(cardsAvailableAt(trophies));
+      const free = legendaryRate("free", trophies, all);
+      const rare = legendaryRate("rare", trophies, all);
+      expect(free).toBeGreaterThan(0);
+      expect(free).toBeLessThan(LEGENDARY_SHARD_CHANCE.free + 0.01);
+      expect(rare).toBeGreaterThan(LEGENDARY_SHARD_CHANCE.rare - 0.015);
+      expect(rare).toBeLessThan(LEGENDARY_SHARD_CHANCE.rare + 0.015);
+    }
+  });
+
+  it("stays a rare pull at every stage of a collection, even with only legendaries left to find", () => {
+    const rateOf = (chest: ChestRarity, owned: Set<CardId>): { legendary: number; newLegendary: number } => {
+      let legendary = 0;
+      let newLegendary = 0;
+      const N = 6000;
+      for (let seed = 1; seed <= N; seed++) {
+        const r = rollChest({ rarity: chest, readyAt: 0 }, 3500, owned, mulberry32(seed * 7907), 0);
+        if (hasLegendary(r)) legendary++;
+        if (r.newCard && isLegendary(r.newCard)) newLegendary++;
+      }
+      return { legendary: legendary / N, newLegendary: newLegendary / N };
+    };
+    const all = cardsAvailableAt(3500);
+    const ordinary = all.filter((id) => !isLegendary(id));
+    const legendaries = all.filter(isLegendary);
+    // Every ordinary card owned, plus 0..5 of the six legendaries.
+    for (let k = 0; k < legendaries.length; k++) {
+      const owned = new Set<CardId>([...ordinary, ...legendaries.slice(0, k)]);
+      const rare = rateOf("rare", owned);
+      const free = rateOf("free", owned);
+      // A new legendary: at most the capped share of the chests that roll a new card.
+      expect(rare.newLegendary).toBeLessThan(0.75 * LEGENDARY_NEW_CARD_MAX.rare + 0.01);
+      expect(free.newLegendary).toBeLessThan(0.45 * LEGENDARY_NEW_CARD_MAX.free + 0.006);
+      // Everything legendary together (new card or shards) stays a rare pull.
+      expect(rare.legendary).toBeLessThan(0.12);
+      expect(free.legendary).toBeLessThan(0.04);
+    }
+    // Owning one legendary or all six: the same odds.
+    const oneLegendary = new Set<CardId>([...ordinary, "digger"]);
+    const allOwned = new Set<CardId>(all);
+    const shardsOnly = (owned: Set<CardId>): number => {
+      let n = 0;
+      for (let seed = 1; seed <= 6000; seed++) {
+        const r = rollChest({ rarity: "rare", readyAt: 0 }, 3500, owned, mulberry32(seed * 7907), 0);
+        if ((Object.keys(r.shards) as CardId[]).some((id) => isLegendary(id) && id !== r.newCard)) n++;
+      }
+      return n / 6000;
+    };
+    expect(Math.abs(shardsOnly(oneLegendary) - shardsOnly(allOwned))).toBeLessThan(0.012);
+  });
+
+  it("is deterministic for a seed and pity count", () => {
+    const a = rollChest({ rarity: "rare", readyAt: 0 }, 2500, starter, mulberry32(11), 4);
+    const b = rollChest({ rarity: "rare", readyAt: 0 }, 2500, starter, mulberry32(11), 4);
+    expect(a).toEqual(b);
+  });
+
+  it("openChest moves the stored pity counter: up without a legendary, back to 0 with one", () => {
+    const kv = memoryKV();
+    expect(legendaryPity(kv)).toBe(0);
+    // Training Camp: no legendary can drop, so every chest counts up.
+    for (let i = 0; i < LEGENDARY_PITY_CHESTS; i++) openChest({ rarity: "free", readyAt: 0 }, 0, starter, mulberry32(i), kv);
+    expect(legendaryPity(kv)).toBe(LEGENDARY_PITY_CHESTS);
+    // A Wooden chest at the Digger's arena does not cash the guarantee in...
+    const wooden = openChest({ rarity: "free", readyAt: 0 }, TROPHIES, starter, mulberry32(5), kv);
+    if (!hasLegendary(wooden)) expect(legendaryPity(kv)).toBe(LEGENDARY_PITY_CHESTS + 1);
+    // ...the next Rare chest does, and the counter starts over.
+    const big = openChest({ rarity: "rare", readyAt: 0 }, TROPHIES, starter, mulberry32(6), kv);
+    expect(hasLegendary(big)).toBe(true);
+    expect(big.newCard).toBe("digger");
+    expect(legendaryPity(kv)).toBe(0);
+    expect(kv.data[LEGENDARY_PITY_KEY]).toBe("0");
+  });
+
+  it("reads 0 pity when storage is missing, junk or throwing", () => {
+    expect(legendaryPity(null)).toBe(0);
+    expect(legendaryPity(memoryKV({ [LEGENDARY_PITY_KEY]: "junk" }))).toBe(0);
+    const throwing = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
+    };
+    expect(legendaryPity(throwing)).toBe(0);
+    expect(() => setLegendaryPity(3, throwing)).not.toThrow();
+    expect(() => openChest({ rarity: "rare", readyAt: 0 }, TROPHIES, starter, mulberry32(1), throwing)).not.toThrow();
   });
 });

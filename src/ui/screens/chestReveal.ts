@@ -15,10 +15,11 @@ import { upgradeCost } from "../../meta/economy";
 import { cardDisplayName } from "../../render/cardNames";
 import { ARABIC } from "../../render3d/theme";
 import { makeCardCanvas } from "../cardFrame";
-import { button, confirm } from "../components";
+import { button, confirm, rewardBursts } from "../components";
 import { fmtNum } from "../i18n";
 import { icon } from "../icons";
 import { getPrefs, reducedMotion } from "../prefs";
+import { mountSparkles } from "../sparkles";
 
 // ---- Feedback contracts -------------------------------------------------------
 
@@ -64,10 +65,19 @@ export function buzz(kind: "claim" | "select" | "deploy"): void {
 
 // ---- Helpers --------------------------------------------------------------------
 
-const RARITY_RANK: Record<Rarity, number> = { common: 0, rare: 1, epic: 2 };
+const RARITY_RANK: Record<Rarity, number> = { common: 0, rare: 1, epic: 2, legendary: 3 };
 
 export function rarityLabel(r: Rarity, tr: AppCtx["tr"]): string {
-  return r === "epic" ? tr("Epic", "ملحمية") : r === "rare" ? tr("Rare", "نادرة") : tr("Common", "عادية");
+  switch (r) {
+    case "legendary":
+      return tr("Legendary", "أسطورية");
+    case "epic":
+      return tr("Epic", "ملحمية");
+    case "rare":
+      return tr("Rare", "نادرة");
+    default:
+      return tr("Common", "عادية");
+  }
 }
 
 export function chestLabel(r: ChestRarity, tr: AppCtx["tr"]): string {
@@ -127,14 +137,22 @@ interface LootCard {
   shards: number;
 }
 
-/** Cards in reveal order: commons first, the new card last (the big moment). */
+/**
+ * Cards in reveal order, building to the big moment: shards from common up,
+ * then a new card, and anything legendary last of all (its shards, then a
+ * new legendary), so the legendary build-up is always the finale.
+ */
 export function revealOrder(rewards: ChestRewards): LootCard[] {
   const items: LootCard[] = (Object.entries(rewards.shards) as [CardId, number][])
     .filter(([id, n]) => n > 0 && id !== rewards.newCard)
     .map(([id, n]) => ({ id, isNew: false, shards: n }));
-  items.sort((a, b) => RARITY_RANK[getCard(a.id).rarity] - RARITY_RANK[getCard(b.id).rarity]);
   if (rewards.newCard) items.push({ id: rewards.newCard, isNew: true, shards: rewards.shards[rewards.newCard] ?? 0 });
-  return items;
+  const rank = (item: LootCard): number => {
+    const r = RARITY_RANK[getCard(item.id).rarity];
+    return (r === RARITY_RANK.legendary ? 100 : 0) + (item.isNew ? 10 : 0) + r;
+  };
+  // A stable sort: equal ranks keep the chest's own order.
+  return items.sort((a, b) => rank(a) - rank(b));
 }
 
 // ---- The sequence -----------------------------------------------------------------
@@ -148,6 +166,14 @@ export interface RevealOpts {
 
 const LONG_PRESS_MS = 550;
 const AUTO_FLIP_MS = 700;
+/** A legendary card waits face down this long while the light builds (a tap flips it sooner). */
+export const LEGENDARY_BUILD_MS = 1900;
+
+/** How long a card waits face down before it flips by itself. */
+export function flipDelay(rarity: Rarity, calm: boolean): number {
+  if (rarity !== "legendary") return AUTO_FLIP_MS;
+  return calm ? AUTO_FLIP_MS + 300 : LEGENDARY_BUILD_MS;
+}
 
 /** Play the reveal; resolves when the player closes the summary. */
 export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
@@ -248,10 +274,25 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
     left.textContent = n > 0 ? tr(`${n} left`, `باقي ${fmtNum(n)}`) : "";
   };
 
+  // The legendary moment: the room turns gold, rays speed up and sparkles
+  // rise round the face-down card; the flip bursts them out.
+  let buildSparks: HTMLElement | null = null;
+  const legendaryStage = (stage: "build" | "reveal" | null): void => {
+    if (stage) root.dataset.legendary = stage;
+    else delete root.dataset.legendary;
+    buildSparks?.remove();
+    buildSparks = null;
+    if (calm || !stage) return;
+    if (stage === "build") buildSparks = mountSparkles(root, { count: 22, seed: 11, mode: "rise", className: "rw-sparks--build" });
+    else mountSparkles(root, { count: 26, seed: 29, mode: "burst", className: "rw-sparks--reveal", lifeMs: 1400 });
+  };
+
   const showCard = (item: LootCard, remaining: number): { flip: () => void; el: HTMLElement } => {
     const card = getCard(item.id);
     cardHost.innerHTML = "";
-    const wrap = el("div", `rw-card rw-card--${card.rarity}${item.isNew ? " is-new" : ""}`);
+    const legendary = card.rarity === "legendary";
+    legendaryStage(legendary ? "build" : null);
+    const wrap = el("div", `rw-card rw-card--${card.rarity}${item.isNew ? " is-new" : ""}${legendary ? " is-building" : ""}`);
     const inner = el("div", "rw-card__inner");
     const back = el("div", "rw-card__back");
     back.innerHTML = icon("crown");
@@ -267,17 +308,28 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
 
     const flip = (): void => {
       if (wrap.classList.contains("is-flipped")) return;
+      wrap.classList.remove("is-building");
       wrap.classList.add("is-flipped");
       flash.dataset.rarity = card.rarity;
       flash.classList.remove("is-on");
       void flash.offsetWidth;
       flash.classList.add("is-on");
       snd.cardFlip?.(card.rarity);
-      buzz("select");
+      if (legendary) {
+        legendaryStage("reveal");
+        // The legendary sting rings for shards too, not only a new card.
+        if (!item.isNew) snd.sting?.("legendary");
+        buzz("claim");
+        // One ribbon, so a new legendary takes no more room than any new card.
+        const words: [string, string] = item.isNew ? ["NEW LEGENDARY!", "أسطورية جديدة!"] : ["LEGENDARY!", "أسطورية!"];
+        info.appendChild(el("div", "rw-card__ribbon rw-card__ribbon--legendary", tr(...words)));
+      } else {
+        buzz("select");
+      }
       if (item.isNew) {
         snd.newCard?.();
         snd.sting?.(card.rarity);
-        info.appendChild(el("div", "rw-card__ribbon", tr("NEW CARD!", "بطاقة جديدة!")));
+        if (!legendary) info.appendChild(el("div", "rw-card__ribbon", tr("NEW CARD!", "بطاقة جديدة!")));
         info.appendChild(addToDeckButton(item.id));
       } else {
         const level = meta.profile.levels[item.id] ?? 1;
@@ -345,7 +397,11 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
     return btn;
   };
 
+  /** Where the chest's gold flies from when Collect is pressed (the summary's pills). */
+  let collectFrom: DOMRect | null = null;
+
   const showSummary = (): Promise<void> => {
+    legendaryStage(null);
     root.dataset.stage = "summary";
     setLeft(0);
     cardHost.innerHTML = "";
@@ -371,7 +427,15 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
     const newId = items.find((i) => i.isNew)?.id;
     if (newId) summary.appendChild(addToDeckButton(newId));
     return new Promise((resolve) => {
-      const ok = button({ variant: "cta", size: "lg", label: tr("Collect", "استلام"), onClick: () => resolve() });
+      const ok = button({
+        variant: "cta",
+        size: "lg",
+        label: tr("Collect", "استلام"),
+        onClick: () => {
+          collectFrom = cur.getBoundingClientRect();
+          resolve();
+        },
+      });
       ok.classList.add("rw-summary__ok");
       summary.appendChild(ok);
       hint.textContent = "";
@@ -413,7 +477,7 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
       const item = items[n];
       const view = showCard(item, items.length - n - 1);
       view.el.addEventListener("click", () => view.flip());
-      await wait(AUTO_FLIP_MS);
+      await wait(flipDelay(getCard(item.id).rarity, calm));
       view.flip();
       if (skipped) break;
       // A new card waits for the player; shards move on by themselves.
@@ -426,5 +490,10 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
     document.removeEventListener("keydown", onKey, true);
     root.classList.add("is-leaving");
     window.setTimeout(() => root.remove(), calm ? 0 : 220);
+    // The gold (and gems) fly into the wallet of the screen underneath.
+    if (collectFrom) {
+      const { gold, gems } = meta.profile;
+      void rewardBursts(collectFrom, o.rewards.gold, o.rewards.gems, { gold, gems });
+    }
   });
 }

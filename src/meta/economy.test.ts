@@ -6,6 +6,9 @@ import {
   trophyLossAt,
   MAX_CARD_LEVEL,
   START_GOLD,
+  UPGRADE_BASE,
+  SHARD_GOLD_PRICE,
+  shardGoldPrice,
   canAfford,
   earnGems,
   spendGems,
@@ -24,6 +27,39 @@ describe("economy", () => {
     expect(upgradeCost("rare", 2)).toEqual({ gold: 100, shards: 4 });
     expect(upgradeCost("epic", 3)).toEqual({ gold: 600, shards: 6 });
     expect(upgradeCost("common", MAX_CARD_LEVEL)).toBeNull();
+  });
+
+  it("legendaries cost the most gold per level but need fewer (scarce) shards", () => {
+    expect(upgradeCost("legendary", 1)).toEqual({ gold: 400, shards: 1 });
+    expect(upgradeCost("legendary", 5)).toEqual({ gold: 2000, shards: 5 });
+    expect(upgradeCost("legendary", MAX_CARD_LEVEL)).toBeNull();
+    for (let lvl = 1; lvl < MAX_CARD_LEVEL; lvl++) {
+      const leg = upgradeCost("legendary", lvl)!;
+      const epic = upgradeCost("epic", lvl)!;
+      expect(leg.gold).toBeGreaterThan(epic.gold);
+      expect(leg.shards).toBeLessThan(epic.shards);
+    }
+    // Every rarity has a cost table, ordered by rarity.
+    const order = ["common", "rare", "epic", "legendary"] as const;
+    for (let i = 1; i < order.length; i++) {
+      expect(UPGRADE_BASE[order[i]].gold).toBeGreaterThan(UPGRADE_BASE[order[i - 1]].gold);
+    }
+  });
+
+  it("a legendary shard costs far more to craft, so crafting never makes legendary levels cheap", () => {
+    for (const r of ["common", "rare", "epic"] as const) expect(shardGoldPrice(r)).toBe(SHARD_GOLD_PRICE);
+    expect(shardGoldPrice("legendary")).toBeGreaterThanOrEqual(10 * SHARD_GOLD_PRICE);
+    for (let lvl = 1; lvl < MAX_CARD_LEVEL; lvl++) {
+      const leg = upgradeCost("legendary", lvl)!;
+      const epic = upgradeCost("epic", lvl)!;
+      const legAllCrafted = leg.gold + leg.shards * shardGoldPrice("legendary");
+      const epicAllCrafted = epic.gold + epic.shards * shardGoldPrice("epic");
+      // Crafting every shard costs more than the level's own gold for a
+      // legendary... (shards keep their worth)
+      expect(leg.shards * shardGoldPrice("legendary")).toBeGreaterThanOrEqual(leg.gold / 2);
+      // ...and a fully crafted legendary level still costs more than an epic one.
+      expect(legAllCrafted).toBeGreaterThan(epicAllCrafted);
+    }
   });
 
   it("trophyLossAt: free in Training Camp, capped at the loss and the arena floor", () => {

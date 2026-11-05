@@ -1,0 +1,157 @@
+/* ============================================================
+   Legendary card frame (imported by src/ui/cardFrame.ts).
+
+   Every card tile that carries its rarity as a class (collection, deck
+   builder, card info, draft, chest reveal, the chest summary, the pass
+   shard picker) gets the same frame when it is legendary: a gold border
+   whose ring slowly turns through a rainbow (Classic) or gold-turquoise-
+   lapis (Golden Age, tokens.css), a soft glow, and a sweep of light that
+   crosses the art every few seconds. Locked legendaries show a dim, still
+   ring. With reduced motion (the pref's .v2-calm / .is-calm roots, the
+   result overlay's .calm, or the OS setting) the ring stands still and the
+   sweep is gone. The battle hand gets a still ring only (no repaint cost
+   during a match).
+   ============================================================ */
+
+@property --cr-leg-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes crLegSpin {
+  to { --cr-leg-angle: 360deg; }
+}
+@keyframes crLegShine {
+  0%, 58% { transform: translateX(-130%) skewX(-12deg); }
+  86%, 100% { transform: translateX(130%) skewX(-12deg); }
+}
+
+/* ── The ring: a turning conic gradient under a transparent border ──
+   Tiles keep their own box-shadow states (ready, chosen in the deck
+   builder), so the frame never touches box-shadow on .v2-tile. */
+.v2-tile.rarity-legendary,
+.v2-ci-art.rarity-legendary {
+  --rarity: var(--cr-rarity-legendary);
+  border-color: transparent;
+  background:
+    linear-gradient(var(--surface-2), var(--surface-2)) padding-box,
+    conic-gradient(from var(--cr-leg-angle), var(--cr-legendary-ring)) border-box;
+  animation: crLegSpin 5s linear infinite;
+}
+.v2-ci-art.rarity-legendary:not(.is-locked) {
+  box-shadow: 0 0 14px var(--cr-legendary-glow), 0 4px 0 rgba(0, 0, 0, 0.45);
+}
+
+/* ── The sweep of light ── */
+.v2-tile.rarity-legendary:not(.is-locked)::after,
+.v2-ci-art.rarity-legendary:not(.is-locked)::after,
+.rw-card--legendary .rw-card__front::after,
+.rw-summary__cell--legendary::after,
+.rw-pick__card--legendary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(100deg, transparent 36%, var(--cr-legendary-shine) 50%, transparent 64%);
+  transform: translateX(-130%) skewX(-12deg);
+  animation: crLegShine 3.8s ease-in-out infinite;
+}
+
+/* Locked (not found yet): a dim, still ring that says "legendary to find". */
+.v2-tile.rarity-legendary.is-locked,
+.v2-ci-art.rarity-legendary.is-locked {
+  background:
+    linear-gradient(var(--surface-1), var(--surface-1)) padding-box,
+    conic-gradient(from 0deg, var(--cr-legendary-ring)) border-box;
+  animation: none;
+  opacity: 0.85;
+}
+
+/* Card info: the "Legendary" badge wears the ring colours too. */
+.ui-badge.v2-rarity--legendary {
+  background: linear-gradient(90deg, var(--cr-rarity-legendary), color-mix(in srgb, var(--cr-rarity-legendary) 55%, #fff), var(--cr-rarity-legendary));
+  color: #1a1030;
+  box-shadow: 0 0 10px var(--cr-legendary-glow);
+}
+
+/* ── Chest reveal card, summary cell, pass shard picker ── */
+.rw-card--legendary .rw-card__front {
+  --rw-rarity: var(--cr-rarity-legendary);
+  border: 4px solid transparent;
+  padding: 4px 4px 2px;
+  background:
+    linear-gradient(180deg, var(--surface-2), var(--surface-1)) padding-box,
+    conic-gradient(from var(--cr-leg-angle), var(--cr-legendary-ring)) border-box;
+  box-shadow: var(--elev-3);
+  animation: crLegSpin 4s linear infinite;
+}
+.rw-card--legendary .rw-card__rarity {
+  background: linear-gradient(90deg, var(--cr-rarity-legendary), color-mix(in srgb, var(--cr-rarity-legendary) 50%, #fff), var(--cr-rarity-legendary));
+}
+.rw-card--legendary.is-flipped {
+  filter: drop-shadow(0 0 30px var(--cr-legendary-glow)) drop-shadow(0 0 12px var(--cr-rarity-legendary));
+}
+.rw-summary__cell--legendary,
+.rw-pick__card--legendary {
+  --rw-rarity: var(--cr-rarity-legendary);
+  position: relative;
+  overflow: hidden;
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--surface-1), var(--surface-1)) padding-box,
+    conic-gradient(from var(--cr-leg-angle), var(--cr-legendary-ring)) border-box;
+  box-shadow: 0 0 10px var(--cr-legendary-glow);
+  animation: crLegSpin 5s linear infinite;
+}
+.rw-pick__card--legendary {
+  background:
+    linear-gradient(var(--surface-2), var(--surface-2)) padding-box,
+    conic-gradient(from var(--cr-leg-angle), var(--cr-legendary-ring)) border-box;
+}
+
+/* ── Battle hand: a still gold-and-rainbow ring (no animation in a match).
+   The v2 hand's art covers the button, so the ring is its border. ── */
+#hud.v2 button.card[data-rarity="legendary"]:not(.selected):not(.dragging) {
+  border-color: transparent;
+  background:
+    linear-gradient(#0d1426, #0d1426) padding-box,
+    conic-gradient(from 20deg, var(--cr-legendary-ring)) border-box;
+  box-shadow: 0 0 8px var(--cr-legendary-glow);
+}
+button.card[data-rarity="legendary"]:not(.selected):not(.dragging) {
+  box-shadow:
+    var(--cr-card-shadow),
+    inset 0 0 0 1.5px var(--cr-rarity-legendary),
+    0 0 9px var(--cr-legendary-glow);
+}
+
+/* ── Reduced motion: the ring stands still, no sweep, no pulse ── */
+.v2-calm .rarity-legendary,
+.is-calm .rw-card--legendary .rw-card__front,
+.is-calm .rw-summary__cell--legendary,
+.is-calm .rw-pick__card--legendary,
+.v2-calm .rw-pick__card--legendary {
+  animation: none !important;
+}
+.v2-calm .rarity-legendary::after,
+.is-calm .rw-card--legendary .rw-card__front::after,
+.is-calm .rw-summary__cell--legendary::after,
+.v2-calm .rw-pick__card--legendary::after {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rarity-legendary,
+  .rw-card--legendary .rw-card__front,
+  .rw-summary__cell--legendary,
+  .rw-pick__card--legendary {
+    animation: none !important;
+  }
+  .rarity-legendary::after,
+  .rw-card--legendary .rw-card__front::after,
+  .rw-summary__cell--legendary::after,
+  .rw-pick__card--legendary::after {
+    display: none;
+  }
+}

@@ -62,7 +62,12 @@ export function passRewards(t: number): PassReward[] {
     case 2:
       return [{ kind: "chest", chest: t >= 12 && t % 10 === 2 ? "rare" : "free" }];
     case 3:
-      return [{ kind: "shards", amount: late ? { common: 15, rare: 9, epic: 4 } : { common: 10, rare: 6, epic: 3 } }];
+      return [
+        {
+          kind: "shards",
+          amount: late ? { common: 15, rare: 9, epic: 4, legendary: 2 } : { common: 10, rare: 6, epic: 3, legendary: 1 },
+        },
+      ];
     default:
       return [{ kind: "gold", amount: 40 + 10 * t }];
   }

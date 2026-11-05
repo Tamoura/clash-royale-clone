@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   CARDS,
   DECK,
+  DEFAULT_DECK,
+  TOKEN_IDS,
   crazyCards,
   getCard,
   setCardOverrides,
@@ -260,8 +262,17 @@ describe("cards", () => {
 describe("rarities", () => {
   it("every card declares a rarity", () => {
     for (const id of DECK) {
-      expect(["common", "rare", "epic"]).toContain(getCard(id).rarity);
+      expect(["common", "rare", "epic", "legendary"]).toContain(getCard(id).rarity);
     }
+  });
+
+  it("has a small Legendary tier: Digger, Comet and CR's legendaries in the pool", () => {
+    const legendary = DECK.filter((id) => getCard(id).rarity === "legendary").sort();
+    expect(legendary).toEqual(["comet", "digger", "electro-wizard", "magic-archer", "mega-knight", "princess"]);
+    // Tokens never drop from chests, so they stay off the Legendary tier.
+    for (const id of TOKEN_IDS) expect(getCard(id).rarity).not.toBe("legendary");
+    // The starter deck is never legendary: legendaries are found, not given.
+    for (const id of DEFAULT_DECK) expect(getCard(id).rarity).not.toBe("legendary");
   });
 
   it("matches CR's classic assignments", () => {

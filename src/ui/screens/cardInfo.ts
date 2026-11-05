@@ -9,7 +9,7 @@ import type { AppCtx } from "../../app/ctx";
 import { getCard, type CardId, type Rarity } from "../../game/cards";
 import { ARENAS, unlockTrophiesFor } from "../../meta/arenas";
 import { addShards } from "../../meta/collection";
-import { SHARD_GOLD_PRICE, spendGold, upgradeCost } from "../../meta/economy";
+import { shardGoldPrice, spendGold, upgradeCost } from "../../meta/economy";
 import { ownedSet, tryUpgradeCard } from "../../meta/progress";
 import { cardStatLines, cardStatsAtLevel, type CardLevelStats } from "../../render/cardinfo";
 import { cardDisplayName } from "../../render/cardNames";
@@ -27,6 +27,7 @@ const RARITY: Record<Rarity, [string, string]> = {
   common: ["Common", "شائعة"],
   rare: ["Rare", "نادرة"],
   epic: ["Epic", "ملحمية"],
+  legendary: ["Legendary", "أسطورية"],
 };
 
 export function rarityLabel(ctx: AppCtx, r: Rarity): string {
@@ -156,7 +157,7 @@ export function openCardInfo(ctx: AppCtx, id: CardId, opts: CardInfoOpts = {}): 
   }
 
   async function craft(missing: number): Promise<void> {
-    const price = missing * SHARD_GOLD_PRICE;
+    const price = missing * shardGoldPrice(getCard(id).rarity);
     if (price >= CONFIRM_GOLD) {
       const ok = await ask({
         title: tr("Craft shards?", "صنع الشظايا؟"),
@@ -339,7 +340,7 @@ export function openCardInfo(ctx: AppCtx, id: CardId, opts: CardInfoOpts = {}): 
       actions.appendChild(up);
       const missing = Math.max(0, p.need - p.shards);
       if (missing > 0) {
-        const price = missing * SHARD_GOLD_PRICE;
+        const price = missing * shardGoldPrice(card.rarity);
         const hint = document.createElement("p");
         hint.className = "v2-ci-hint";
         hint.textContent = tr(

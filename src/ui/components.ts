@@ -10,7 +10,10 @@
  * and are unit-tested without a DOM.
  */
 import "./styles/components.css";
+import "./styles/rewards.css";
+import { fmtNum } from "./i18n";
 import { icon, type IconName } from "./icons";
+import { reducedMotion } from "./prefs";
 
 export type ButtonVariant = "cta" | "primary" | "secondary" | "ghost" | "icon";
 export type ButtonSize = "md" | "lg";
@@ -280,7 +283,87 @@ export function screenHeader(o: ScreenHeaderOpts): HTMLElement {
 const TOAST_MS = 2400;
 let toastHost: HTMLElement | null = null;
 
-/** A short message that fades out after 2.4s. */
+/** A vertical band of the screen (page px), e.g. a bar's top and bottom. */
+export interface Band {
+  top: number;
+  bottom: number;
+}
+
+/** Gap kept between a toast and the bar it sits on. */
+const TOAST_GAP = 12;
+
+/**
+ * Where toasts sit: near the bottom of the screen (titles live at the top),
+ * lifted above any bar docked in the bottom half (the tab bar, a sticky
+ * footer). Returns the host's distance from the viewport's bottom edge.
+ */
+export function toastBottom(viewportH: number, bars: readonly Band[], safeBottom = 0): number {
+  let lift = Math.max(0, safeBottom);
+  for (const b of bars) {
+    if (!(b.bottom > b.top) || b.top < viewportH * 0.5 || b.top >= viewportH) continue;
+    lift = Math.max(lift, viewportH - b.top);
+  }
+  return Math.round(lift + TOAST_GAP);
+}
+
+/**
+ * Where toasts sit while a sheet or dialog is open (its panel's top edge at
+ * `overlayTop`): just above the panel, over the dimmed screen, because a
+ * sheet's own buttons (Upgrade, Add to deck) sit at its bottom, right where
+ * the tab bar was. A panel that leaves no room above it gets the stack
+ * pinned to the top of the screen, over the panel's handle and title strip,
+ * never over its actions. Returns the host's distance from the viewport's
+ * bottom edge for a stack `stackH` px tall.
+ */
+export function toastBottomOver(viewportH: number, overlayTop: number, stackH: number): number {
+  const above = viewportH - overlayTop + TOAST_GAP;
+  const pinned = viewportH - TOAST_GAP - Math.max(0, stackH);
+  return Math.round(Math.max(TOAST_GAP, Math.min(above, pinned)));
+}
+
+/** Bars docked low on the screen right now (the tab bar, a sticky footer). */
+const LOW_BARS = ".v2-tabs, .v2-footer";
+/** Open panels that own the screen: a dialog box first (it sits above sheets), then the top sheet. */
+const OVERLAY_PANELS = [".ui-modal .ui-modal__box", ".ui-sheet.is-open .ui-sheet__panel"];
+/** Full-screen layers that hide the bars under them (the chest reveal). */
+const FULL_COVERS = ".rw-reveal:not(.is-leaving)";
+
+/** The top edge of the open dialog or sheet panel, or null when none is open. */
+function overlayTop(): number | null {
+  for (const sel of OVERLAY_PANELS) {
+    const all = document.querySelectorAll<HTMLElement>(sel);
+    const panel = all[all.length - 1];
+    if (!panel) continue;
+    const r = panel.getBoundingClientRect();
+    if (r.height > 0 && r.top < window.innerHeight) return Math.max(0, r.top);
+  }
+  return null;
+}
+
+function placeToasts(host: HTMLElement): void {
+  const top = overlayTop();
+  if (top !== null) {
+    host.style.bottom = `${toastBottomOver(window.innerHeight, top, host.offsetHeight)}px`;
+    return;
+  }
+  const bars: Band[] = [];
+  // Under a full-screen layer the bars are hidden: nothing to lift above.
+  if (!document.querySelector(FULL_COVERS)) {
+    document.querySelectorAll<HTMLElement>(LOW_BARS).forEach((n) => {
+      if (n.offsetParent === null && getComputedStyle(n).position !== "fixed") return;
+      const r = n.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) bars.push({ top: r.top, bottom: r.bottom });
+    });
+  }
+  host.style.bottom = `calc(${toastBottom(window.innerHeight, bars)}px + env(safe-area-inset-bottom, 0px))`;
+}
+
+/**
+ * A short message that fades out after 2.4s. Toasts stack near the bottom,
+ * above the tab bar, so they never cover a screen's title or the wallet;
+ * with a sheet or dialog open they sit just above its panel instead, clear
+ * of its buttons.
+ */
 export function toast(text: string, tone: Tone = "neutral"): HTMLElement {
   if (!toastHost || !toastHost.isConnected) {
     toastHost = el("div", "ui-toast-host");
@@ -290,9 +373,174 @@ export function toast(text: string, tone: Tone = "neutral"): HTMLElement {
   }
   const t = el("div", `ui-toast ui-toast--${tone}`, text);
   toastHost.appendChild(t);
+  // Placed once the new toast is in the stack, so its height counts.
+  placeToasts(toastHost);
   setTimeout(() => t.classList.add("is-leaving"), TOAST_MS);
   setTimeout(() => t.remove(), TOAST_MS + 400);
   return t;
+}
+
+// ---- Reward bursts: coins fly into the wallet, which counts up ----------------
+
+export type WalletKind = "gold" | "gems";
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/** Coins (or gems) that fly for a reward: 4 for a little, up to 12 for a lot. */
+export function burstCount(amount: number): number {
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return Math.max(4, Math.min(12, Math.round(3 + Math.log2(amount + 1) * 1.2)));
+}
+
+/**
+ * A point on coin i's flight (of n) from `a` to `b` at t in 0..1: first a
+ * little scatter outwards from the button, then a curved swoop into the
+ * wallet. Pure, so the shape is unit-tested.
+ */
+export function flightPoint(a: Point, b: Point, t: number, i: number, n: number): Point {
+  const k = Math.min(1, Math.max(0, t));
+  const ang = ((i + 0.5) / Math.max(1, n)) * Math.PI * 2;
+  const spread = 26 + (i % 3) * 10;
+  // Scatter: a burst ring round the start that the swoop then pulls in.
+  const scatter = Math.sin(Math.min(1, k * 2.2) * Math.PI) * (1 - k);
+  const sx = Math.cos(ang) * spread * scatter;
+  const sy = Math.sin(ang) * spread * scatter;
+  // Swoop: ease-in toward the target along a bowed path.
+  const e = k * k * (3 - 2 * k);
+  const bow = Math.sin(k * Math.PI) * (40 + (i % 4) * 12) * (i % 2 ? 1 : -1);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  return {
+    x: a.x + dx * e + (-dy / len) * bow + sx,
+    y: a.y + dy * e + (dx / len) * bow + sy,
+  };
+}
+
+/** The wallet number after `landed` of `n` coins have arrived (exact at the end). */
+export function walletValue(from: number, to: number, landed: number, n: number): number {
+  if (n <= 0 || landed >= n) return to;
+  const k = Math.max(0, landed) / n;
+  return Math.round(from + (to - from) * k);
+}
+
+/** Wallet counters, most specific first: tagged wallets, the top bar chip, a chest-room pill. */
+const WALLET_SELECTORS: Record<WalletKind, string[]> = {
+  gold: ['[data-wallet="gold"]', ".v2-topbar .v2-chip--gold", ".rw-chips .rw-pill:nth-child(1)"],
+  gems: ['[data-wallet="gems"]', ".v2-topbar .v2-chip--gems", ".rw-chips .rw-pill:nth-child(2)"],
+};
+
+function onScreen(n: Element): boolean {
+  const r = n.getBoundingClientRect();
+  return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth;
+}
+
+/** The wallet counter for gold or gems on screen now (the last mounted one wins), or null. */
+export function walletTarget(kind: WalletKind): HTMLElement | null {
+  for (const sel of WALLET_SELECTORS[kind]) {
+    const all = Array.from(document.querySelectorAll<HTMLElement>(sel)).filter(
+      (n) => !n.closest(".rw-reveal") && onScreen(n),
+    );
+    if (all.length) return all[all.length - 1];
+  }
+  return null;
+}
+
+/** A gold and gems wallet (header trailing) that reward bursts fly into. */
+export function walletChips(gold: number, gems: number): HTMLElement {
+  const chips = el("div", "rw-chips rw-wallet");
+  const pill = (kind: WalletKind, n: number): HTMLElement => {
+    const p = el("span", "rw-pill");
+    p.dataset.wallet = kind;
+    p.innerHTML = `${icon(kind === "gold" ? "coin" : "gem")}<b>${fmtNum(n)}</b>`;
+    return p;
+  };
+  chips.append(pill("gold", gold), pill("gems", gems));
+  return chips;
+}
+
+function setWallet(target: HTMLElement, value: number): void {
+  const num = target.querySelector("b") ?? target;
+  num.textContent = fmtNum(value);
+}
+
+function bump(target: HTMLElement): void {
+  target.classList.remove("is-bumped");
+  void target.offsetWidth;
+  target.classList.add("is-bumped");
+}
+
+export interface BurstOpts {
+  /** Where the coins start: the claim button (or its rect, taken before a re-render). */
+  from: Element | DOMRect;
+  kind: WalletKind;
+  amount: number;
+  /** The wallet's total after the reward (the counter ends exactly here). */
+  total: number;
+}
+
+const rectOf = (from: Element | DOMRect): DOMRect => (from instanceof Element ? from.getBoundingClientRect() : from);
+const centre = (r: DOMRect): Point => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+
+/**
+ * Fly a burst of coins (or gems) from a claim button into the wallet
+ * counter, which ticks up as they land and ends on `total`. The wallet is
+ * looked up after the caller's re-render, so callers pay first, rebuild,
+ * then call this. With reduced motion (or no wallet on screen) the counter
+ * just shows the total. Resolves when the last coin lands.
+ */
+export function rewardBurst(o: BurstOpts): Promise<void> {
+  const start = centre(rectOf(o.from));
+  const amount = Math.max(0, Math.floor(o.amount));
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      let target = walletTarget(o.kind);
+      const n = burstCount(amount);
+      if (!target || n === 0) return resolve();
+      if (reducedMotion() || typeof document.body.animate !== "function") {
+        setWallet(target, o.total);
+        return resolve();
+      }
+      const from = Math.max(0, o.total - amount);
+      setWallet(target, from);
+      const layer = el("div", "rw-burst");
+      layer.setAttribute("aria-hidden", "true");
+      document.body.appendChild(layer);
+      const end = centre(target.getBoundingClientRect());
+      let landed = 0;
+      const FLIGHT = 720;
+      const STAGGER = 55;
+      for (let i = 0; i < n; i++) {
+        const coin = el("span", `rw-burst__coin rw-burst__coin--${o.kind}`);
+        coin.innerHTML = icon(o.kind === "gold" ? "coin" : "gem");
+        layer.appendChild(coin);
+        const frames: Keyframe[] = [];
+        for (let f = 0; f <= 10; f++) {
+          const t = f / 10;
+          const p = flightPoint(start, end, t, i, n);
+          const scale = t < 0.2 ? 0.5 + t * 3.5 : 1.2 - (t - 0.2) * 0.55;
+          frames.push({ transform: `translate(${p.x}px, ${p.y}px) translate(-50%, -50%) scale(${scale.toFixed(2)})`, opacity: t > 0.96 ? 0 : 1 });
+        }
+        const anim = coin.animate(frames, { duration: FLIGHT, delay: i * STAGGER, easing: "linear", fill: "both" });
+        anim.onfinish = () => {
+          coin.remove();
+          landed++;
+          if (!target?.isConnected) target = walletTarget(o.kind);
+          if (target) {
+            setWallet(target, walletValue(from, o.total, landed, n));
+            bump(target);
+          }
+          if (landed >= n) {
+            layer.remove();
+            resolve();
+          }
+        };
+      }
+    });
+  });
 }
 
 export interface ConfirmOpts {
@@ -401,4 +649,18 @@ export function progressBar(o: ProgressOpts): HTMLElement {
 /** A small pill label. */
 export function badge(text: string, tone: Tone = "neutral"): HTMLElement {
   return el("span", `ui-badge ui-badge--${tone}`, text);
+}
+
+/** Gold and gems bursts from one claim, side by side; resolves when both have landed. */
+export function rewardBursts(
+  from: Element | DOMRect,
+  gold: number,
+  gems: number,
+  totals: { gold: number; gems: number },
+): Promise<void> {
+  const r = rectOf(from);
+  const jobs: Promise<void>[] = [];
+  if (gold > 0) jobs.push(rewardBurst({ from: r, kind: "gold", amount: gold, total: totals.gold }));
+  if (gems > 0) jobs.push(rewardBurst({ from: r, kind: "gems", amount: gems, total: totals.gems }));
+  return Promise.all(jobs).then(() => undefined);
 }

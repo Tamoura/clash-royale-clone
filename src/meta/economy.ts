@@ -48,6 +48,23 @@ export const CHEST_SKIP_GEMS = 10;
  * more waiting on chest luck to level the card you actually play). */
 export const SHARD_GOLD_PRICE = 15;
 
+/**
+ * Gold to craft one shard, by rarity. Legendary shards are the scarce ones
+ * (one chest roll each, see chests.ts), so crafting one costs half a
+ * level-1 legendary upgrade: kids can still finish a level they are close
+ * to, but chest shards keep their worth.
+ */
+export const SHARD_GOLD_PRICES: Readonly<Record<Rarity, number>> = {
+  common: SHARD_GOLD_PRICE,
+  rare: SHARD_GOLD_PRICE,
+  epic: SHARD_GOLD_PRICE,
+  legendary: 200,
+};
+
+export function shardGoldPrice(rarity: Rarity): number {
+  return SHARD_GOLD_PRICES[rarity];
+}
+
 /** One-time bonus when migrating an old all-cards save. */
 export const MIGRATION_GOLD_BONUS = 200;
 
@@ -56,11 +73,18 @@ export interface UpgradeCost {
   shards: number;
 }
 
-const BASE: Record<Rarity, UpgradeCost> = {
+/**
+ * Cost per level by rarity (times the level being left). Legendary shards
+ * are scarce, so a legendary needs one shard per level instead of two, and
+ * pays for the wow in gold.
+ */
+export const UPGRADE_BASE: Readonly<Record<Rarity, UpgradeCost>> = {
   common: { gold: 20, shards: 2 },
   rare: { gold: 50, shards: 2 },
   epic: { gold: 200, shards: 2 },
+  legendary: { gold: 400, shards: 1 },
 };
+const BASE = UPGRADE_BASE;
 
 /**
  * Cost to upgrade from `fromLevel` → fromLevel+1.
