@@ -306,8 +306,8 @@ export function toastBottom(viewportH: number, bars: readonly Band[], safeBottom
   return Math.round(lift + TOAST_GAP);
 }
 
-/** Bars docked low on the screen right now (tab bar, footers, a reveal's buttons). */
-const LOW_BARS = ".v2-tabs, .v2-footer, .rw-summary__ok, .res-actions";
+/** Bars docked low on the screen right now (the tab bar, a sticky footer). */
+const LOW_BARS = ".v2-tabs, .v2-footer";
 
 function placeToasts(host: HTMLElement): void {
   const bars: Band[] = [];

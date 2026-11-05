@@ -26,12 +26,10 @@
   0%, 58% { transform: translateX(-130%) skewX(-12deg); }
   86%, 100% { transform: translateX(130%) skewX(-12deg); }
 }
-@keyframes crLegPulse {
-  0%, 100% { box-shadow: 0 0 8px var(--cr-legendary-glow), 0 3px 0 rgba(0, 0, 0, 0.45); }
-  50% { box-shadow: 0 0 16px var(--cr-legendary-glow), 0 3px 0 rgba(0, 0, 0, 0.45); }
-}
 
-/* ── The ring: a turning conic gradient under a transparent border ── */
+/* ── The ring: a turning conic gradient under a transparent border ──
+   Tiles keep their own box-shadow states (ready, chosen in the deck
+   builder), so the frame never touches box-shadow on .v2-tile. */
 .v2-tile.rarity-legendary,
 .v2-ci-art.rarity-legendary,
 .cr-legendary-frame {
@@ -40,10 +38,10 @@
   background:
     linear-gradient(var(--surface-2), var(--surface-2)) padding-box,
     conic-gradient(from var(--cr-leg-angle), var(--cr-legendary-ring)) border-box;
-  animation: crLegSpin 5s linear infinite, crLegPulse 2.6s ease-in-out infinite;
-}
-.v2-tile.rarity-legendary.is-ready {
   animation: crLegSpin 5s linear infinite;
+}
+.v2-ci-art.rarity-legendary:not(.is-locked) {
+  box-shadow: 0 0 14px var(--cr-legendary-glow), 0 4px 0 rgba(0, 0, 0, 0.45);
 }
 
 /* ── The sweep of light ── */
@@ -72,7 +70,6 @@
   animation: none;
   opacity: 0.85;
 }
-.v2-tile.rarity-legendary.is-locked { box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45); }
 
 /* Card info: the "Legendary" badge wears the ring colours too. */
 .ui-badge.v2-rarity--legendary {
