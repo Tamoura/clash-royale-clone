@@ -471,7 +471,7 @@ function selectCard(id: CardId | null): void {
   hud.setSelected(id);
   // Troops and buildings show where they may go (the Mirror as what it copies).
   const kind = id === null ? null : (effectiveCard(battle, localSide(), id)?.card ?? getCard(id)).kind;
-  scene.setZoneVisible(kind === "troop" || kind === "building");
+  scene.setZoneVisible(kind === "troop" || kind === "building", id === null ? null : (effectiveCard(battle, localSide(), id)?.card ?? getCard(id)));
   // Nothing selected, nothing previewed: a ghost never outlives its card.
   if (id === null) clearPreview();
 }

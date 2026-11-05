@@ -1,8 +1,9 @@
 import type { CardId } from "../game/cards";
+import { ARABIC } from "./theme";
 
 /** How a troop's death reads on screen. */
 export interface DeathStyle {
-  kind: "puff" | "bones" | "sparks" | "deflate";
+  kind: "puff" | "bones" | "sparks" | "deflate" | "crumble";
   color: number;
   /** Scale applied to the primary death silhouette. */
   scale: number;
@@ -25,6 +26,13 @@ export function deathStyle(cardId: CardId | null): DeathStyle {
       return { kind: "deflate", color: 0xc62828, scale: 1.35, particles: 7 };
     case "baby-dragon":
       return { kind: "puff", color: 0x8bc34a, scale: 1.15, particles: 7 };
+    // A golem crumbles into stone chunks (its pebbles pop out of the rubble).
+    case "stone-golem":
+      return { kind: "crumble", color: ARABIC ? 0xc8b898 : 0x8e928a, scale: 1.5, particles: 10 };
+    case "pebble-golem":
+      return { kind: "crumble", color: ARABIC ? 0xc8b898 : 0x8e928a, scale: 0.8, particles: 6 };
+    case "digger":
+      return { kind: "puff", color: ARABIC ? 0xd8c49a : 0xa88a64, scale: 0.85, particles: 6 };
     default:
       return { kind: "puff", color: 0xd8cbb5, scale: 0.75, particles: 5 };
   }
@@ -43,6 +51,9 @@ const SHATTER_CARDS: ReadonlySet<CardId> = new Set<CardId>([
   "skeleton-army",
   "pekka",
   "mini-pekka",
+  // Stone has no face to knock out: a golem breaks into its boulders.
+  "stone-golem",
+  "pebble-golem",
 ]);
 
 /**

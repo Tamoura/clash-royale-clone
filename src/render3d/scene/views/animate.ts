@@ -18,7 +18,7 @@ import { damageLabel } from "../../popups";
 import { blobShadowScale, DUST_INTERVAL } from "../../ground";
 import { impactStyle } from "../../impactfx";
 import { deathMotion, toppleDirection } from "../../deathfx";
-import { DROP_FALL, dropDelay, dropDuration, dropPose, type DropPose } from "../../spawnfx";
+import { DROP_FALL, dropDelay, dropDuration, dropPose, popDuration, popPose, type DropPose, type PopPose } from "../../spawnfx";
 import { ARABIC } from "../../theme";
 import type { Battle3D } from "../../scene3d";
 import { SIM_DT, animClock, clampAlpha, pushSample, sampleTrack } from "../../anim/interp";
@@ -96,6 +96,13 @@ export interface TroopAnim {
   /** Seconds this unit waits in its deploy group's drop stagger. */
   dropDelay: number;
   landed: boolean;
+  /**
+   * World point a Pebble Golem hops out from (its Stone Golem's last spot),
+   * or null for every other entrance.
+   */
+  popFrom: { x: number; z: number } | null;
+  /** Walk-cycle half-steps taken (a heavy stomper thuds on each new one). */
+  steps: number;
 }
 
 /** A troop that drops in from the sky (not risers or the slam entrance). */
@@ -113,6 +120,46 @@ const RECOIL_FRESH = 1.2;
 const FROZEN_TINT = [0.25, 0.45, 0.6] as const;
 const SLOW_TINT = [0.12, 0.04, 0.17] as const;
 const FLASH_WARM = [1, 0.85, 0.7] as const;
+/**
+ * Towers and buildings take many hits: a full-white emissive frame turned
+ * the whole tower into a solid white block on every one. They get a soft
+ * warm pulse instead (peak TOWER_FLASH_PEAK), rising and falling over
+ * TOWER_FLASH_TIME, a little longer than a troop's snap so it reads as a throb.
+ */
+export const TOWER_FLASH = [1, 0.82, 0.62] as const;
+export const TOWER_FLASH_PEAK = 0.26;
+export const TOWER_FLASH_TIME = 0.22;
+
+/**
+ * The emissive tint of a hit flash, written into `out` (r, g, b). A troop
+ * snaps to pure white on the frame the blow lands, then glows warm and dies
+ * away over FLASH_TIME; a tower or building swells to a soft warm tint and
+ * back over TOWER_FLASH_TIME, never white. `left` is the flash time left.
+ */
+export function hitFlashTint(structure: boolean, left: number, fresh: boolean, out: number[]): number[] {
+  if (structure) {
+    const u = Math.min(1, Math.max(0, 1 - left / TOWER_FLASH_TIME)); // 0 -> 1 over the pulse
+    const k = TOWER_FLASH_PEAK * Math.sin(Math.PI * Math.min(1, u * 1.25 + 0.1));
+    out[0] = TOWER_FLASH[0] * k;
+    out[1] = TOWER_FLASH[1] * k;
+    out[2] = TOWER_FLASH[2] * k;
+    return out;
+  }
+  if (fresh) {
+    out[0] = out[1] = out[2] = 1;
+    return out;
+  }
+  const k = Math.max(0, left / FLASH_TIME);
+  out[0] = FLASH_WARM[0] * k;
+  out[1] = FLASH_WARM[1] * k;
+  out[2] = FLASH_WARM[2] * k;
+  return out;
+}
+
+/** Cards whose footfalls thud: a dust burst and a little camera bump per step. */
+const STOMPERS = new Set<Entity["cardId"]>(["stone-golem"]);
+/** Seconds after a Stone Golem falls that its pebbles count as bursting out of it. */
+const POP_WINDOW = 0.5;
 
 /** Freeze spells in force, tracked render-side from 'spell' events. */
 interface FreezeZone {
@@ -128,6 +175,8 @@ interface SceneAnim {
   /** The shared animation clock (sim time + alpha, held by hit-stop). */
   clock: number;
   freezes: FreezeZone[];
+  /** Recent Stone Golem deaths (sim time, arena spot): their pebbles pop out. */
+  golemFalls: { x: number; y: number; at: number }[];
 }
 
 const SCENES = new WeakMap<Battle3D, SceneAnim>();
@@ -137,7 +186,7 @@ const VIEW_OF = new WeakMap<Entity, EntityView>();
 function sceneAnim(b: Battle3D): SceneAnim {
   let s = SCENES.get(b);
   if (!s) {
-    s = { clock: 0, freezes: [] };
+    s = { clock: 0, freezes: [], golemFalls: [] };
     SCENES.set(b, s);
   }
   return s;
@@ -147,6 +196,8 @@ function sceneAnim(b: Battle3D): SceneAnim {
 const POS = { x: 0, z: 0 };
 const DIR = { x: 0, z: 0 };
 const DROP: DropPose = { visible: true, y: 0, sx: 1, sy: 1, sz: 1 };
+const POP: PopPose = { visible: true, y: 0, sx: 1, sy: 1, sz: 1, f: 0 };
+const TINT = [0, 0, 0];
 const TOWER_POSE = newSwingPose();
 
 /**
@@ -270,6 +321,17 @@ function initTroopAnim(b: Battle3D, view: EntityView, e: Entity): TroopAnim {
       }
     }
   }
+  // A Pebble Golem fresh out of a fallen Stone Golem hops out of its middle.
+  let popFrom: TroopAnim["popFrom"] = null;
+  if (e.cardId === "pebble-golem" && drops(view)) {
+    const now = b.syncState.time;
+    for (const f of sceneAnim(b).golemFalls) {
+      if (now - f.at <= POP_WINDOW && Math.hypot(f.x - e.x, f.y - e.y) <= 2.5) {
+        popFrom = toWorld(f.x, f.y);
+        break;
+      }
+    }
+  }
   const speed = e.speed > 0 ? e.speed : 1.1;
   const anim: TroopAnim = {
     cardId: e.cardId,
@@ -292,8 +354,10 @@ function initTroopAnim(b: Battle3D, view: EntityView, e: Entity): TroopAnim {
     jigZ: 0,
     frozen: false,
     ice: null,
-    dropDelay: drops(view) ? dropDelay(index, e.deployTimer) : 0,
+    dropDelay: drops(view) && !popFrom ? dropDelay(index, e.deployTimer) : 0,
     landed: !drops(view),
+    popFrom,
+    steps: 0,
   };
   return anim;
 }
@@ -432,7 +496,32 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
   let dsx = 1;
   let dsy = 1;
   let dsz = 1;
-  if (anim && drops(view)) {
+  if (e.burrowTimer > 0) {
+    // Tunnelling (the Digger): hidden underground; the entrance waits for
+    // the surface (hpBarVisible keeps the root hidden, burrow.ts draws the mound).
+  } else if (anim?.popFrom) {
+    // Bursting out of a fallen Stone Golem: hop from its middle to our spot.
+    const total = popDuration();
+    if (view.spawnT < total) {
+      const before = view.spawnT;
+      view.spawnT = Math.min(total, view.spawnT + dt);
+      popPose(view.spawnT, POP);
+      view.root.visible = POP.visible;
+      dropY = POP.y;
+      dsx = POP.sx;
+      dsy = POP.sy;
+      dsz = POP.sz;
+      view.root.position.x = anim.popFrom.x + (POS.x - anim.popFrom.x) * POP.f;
+      view.root.position.z = anim.popFrom.z + (POS.z - anim.popFrom.z) * POP.f;
+      if (!anim.landed && POP.f >= 1 && before < total) {
+        anim.landed = true;
+        b.fx.emit("dust", e.x, e.y, { radius: 0.6, color: view.spawnColor ?? 0xd9cdb8 });
+        contactRing(b, e.x, e.y, 0.7, 0xffffff);
+      }
+    } else if (!view.root.visible) {
+      view.root.visible = true;
+    }
+  } else if (anim && drops(view)) {
     const total = dropDuration(anim.dropDelay);
     if (view.spawnT < total) {
       const before = view.spawnT;
@@ -459,6 +548,7 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
     view.spawnT += dt;
     const f = Math.min(1, view.spawnT / SPAWN_POP_TIME);
     if (view.spawnStyle === "rise") {
+      view.root.visible = true; // a Digger was hidden through its tunnel
       view.root.position.y = -1.0 * (1 - f) * (1 - f);
       view.root.scale.setScalar(baseScale);
     } else if (view.spawnStyle === "slam") {
@@ -483,8 +573,9 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
 
   // A landed blow: flash, squint, and a recoil away from the attacker.
   const lost = view.lastHp - e.hp;
+  const structure = !view.isTroop;
   if (lost > 0.5) {
-    view.flashT = FLASH_TIME;
+    view.flashT = structure ? TOWER_FLASH_TIME : FLASH_TIME;
     // Troops recoil bodily; towers/buildings show damage other ways
     // (and deployed buildings decay every tick, which is not a "hit").
     if (e.kind === "troop") {
@@ -563,18 +654,12 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
   const raged = e.kind === "troop" && isRaged(state, e);
   const charging = e.chargeDistance > 0 && e.chargeProgress >= e.chargeDistance;
   if (view.flashT > 0) {
-    const fresh = view.flashT === FLASH_TIME; // the blow landed this frame
+    // A troop: one frame of pure white sells the impact, then a warm glow
+    // dies away. A tower or building: a soft warm throb (see hitFlashTint).
+    const fresh = view.flashT === FLASH_TIME && !structure; // the blow landed this frame
     view.flashT = Math.max(0, view.flashT - dt);
-    if (fresh) {
-      // One frame of pure white sells the impact...
-      for (const f of view.flashMats) f.mat.emissive.setRGB(1, 1, 1);
-    } else {
-      // ...then a warm glow that dies away.
-      const k = view.flashT / FLASH_TIME;
-      for (const f of view.flashMats) {
-        f.mat.emissive.setRGB(FLASH_WARM[0] * k, FLASH_WARM[1] * k, FLASH_WARM[2] * k);
-      }
-    }
+    hitFlashTint(structure, view.flashT, fresh, TINT);
+    for (const f of view.flashMats) f.mat.emissive.setRGB(TINT[0], TINT[1], TINT[2]);
     view.glowing = true;
   } else if (frozen) {
     for (const f of view.flashMats) f.mat.emissive.setRGB(FROZEN_TINT[0], FROZEN_TINT[1], FROZEN_TINT[2]);
@@ -704,6 +789,15 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
         view.dustT = DUST_INTERVAL;
         b.fx.emit("dust", e.x, e.y);
       }
+      // A golem's every footfall thuds (a half walk cycle is one step).
+      if (STOMPERS.has(e.cardId)) {
+        const steps = Math.floor(anim.stride / Math.PI);
+        if (steps > anim.steps) {
+          b.fx.emit("dust", e.x, e.y, { radius: 1.1, count: 4 });
+          shake(b, 0.05);
+        }
+        anim.steps = steps;
+      }
     }
     // Face the attack target, or the spot being walked toward —
     // turning smoothly rather than snapping (frozen units can't turn).
@@ -809,9 +903,17 @@ function setRecoil(e: Entity, fromX: number, fromY: number, at: number): void {
 export function viewsOnEvent(b: Battle3D, ev: BattleEvent): void {
   if (!b.syncState) return;
   const now = b.syncState.time;
-  if (ev.type === "spell") {
+  if (ev.type === "death" && ev.cardId === "stone-golem") {
+    const s = sceneAnim(b);
+    s.golemFalls = s.golemFalls.filter((f) => now - f.at <= POP_WINDOW);
+    s.golemFalls.push({ x: ev.x, y: ev.y, at: now });
+    return;
+  }
+  if (ev.type === "spell" || ev.type === "spell-land") {
     const card = getCard(ev.cardId);
     if (card.kind !== "spell") return;
+    // A delayed spell (the Comet) blasts when it lands, not when it is cast.
+    if ((card.landDelay ?? 0) > 0 && ev.type === "spell") return;
     if (ev.cardId === "freeze") {
       const s = sceneAnim(b);
       s.freezes = s.freezes.filter((z) => z.until > now && z.start <= now);
