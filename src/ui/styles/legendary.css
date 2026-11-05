@@ -113,7 +113,15 @@
     conic-gradient(from var(--cr-leg-angle), var(--cr-legendary-ring)) border-box;
 }
 
-/* ── Battle hand: a still gold-and-rainbow ring (no animation in a match) ── */
+/* ── Battle hand: a still gold-and-rainbow ring (no animation in a match).
+   The v2 hand's art covers the button, so the ring is its border. ── */
+#hud.v2 button.card[data-rarity="legendary"]:not(.selected):not(.dragging) {
+  border-color: transparent;
+  background:
+    linear-gradient(#0d1426, #0d1426) padding-box,
+    conic-gradient(from 20deg, var(--cr-legendary-ring)) border-box;
+  box-shadow: 0 0 8px var(--cr-legendary-glow);
+}
 button.card[data-rarity="legendary"]:not(.selected):not(.dragging) {
   box-shadow:
     var(--cr-card-shadow),
