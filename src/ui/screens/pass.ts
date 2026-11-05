@@ -6,7 +6,7 @@
  */
 import "../styles/rewards.css";
 import type { AppCtx } from "../../app/ctx";
-import { getCard, type CardId } from "../../game/cards";
+import { getCard, type CardId, type Rarity } from "../../game/cards";
 import { addShards } from "../../meta/collection";
 import {
   PASS_TIERS,
@@ -106,7 +106,7 @@ function rewardArt(r: PassReward): HTMLElement {
 // ---- Claiming -----------------------------------------------------------------
 
 /** Pick one of three owned cards for a shard reward; resolves null if dismissed. */
-function pickShardCard(ctx: AppCtx, t: number, amount: Record<"common" | "rare" | "epic", number>): Promise<CardId | null> {
+function pickShardCard(ctx: AppCtx, t: number, amount: Record<Rarity, number>): Promise<CardId | null> {
   const { tr, meta } = ctx;
   const choices = shardChoices(meta.profile.owned, meta.playerDeck, meta.season.key, t);
   return new Promise((resolve) => {

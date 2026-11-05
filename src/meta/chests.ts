@@ -179,6 +179,69 @@ export function grantMatchChest(
   return { slots: next, granted: true, rarity };
 }
 
+// ---- Legendary odds -------------------------------------------------------------
+//
+// Legendaries are the rare "wow" pulls. When a chest rolls its new card, a
+// legendary weighs much less than any other unowned card (less still in a
+// Wooden chest), and a legendary shard drop only sticks some of the time.
+// The guarantee (pity) lives only in the big chest: after
+// LEGENDARY_PITY_CHESTS chests in a row without a legendary, the next Rare
+// chest is sure to hold one (a new legendary if one is findable, else
+// shards for an owned one). Wooden chests never carry the guarantee.
+
+/** A legendary's weight against 1 for any other card when a chest picks its new card. */
+export const LEGENDARY_NEW_CARD_WEIGHT: Readonly<Record<ChestRarity, number>> = { free: 0.1, rare: 0.3 };
+
+/** Chance a shard drop that lands on an owned legendary stays legendary (else it rerolls). */
+export const LEGENDARY_SHARD_KEEP: Readonly<Record<ChestRarity, number>> = { free: 0.2, rare: 0.45 };
+
+/** Chests in a row without a legendary before the next Rare chest guarantees one. */
+export const LEGENDARY_PITY_CHESTS = 8;
+
+/** Chests opened since the last legendary (the pity counter). */
+export const LEGENDARY_PITY_KEY = "cr-clone-legendary-pity";
+
+export function legendaryPity(kv: KV | null = defaultKV()): number {
+  try {
+    const n = Number(kv?.getItem(LEGENDARY_PITY_KEY) ?? 0);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function setLegendaryPity(n: number, kv: KV | null = defaultKV()): void {
+  try {
+    kv?.setItem(LEGENDARY_PITY_KEY, String(Math.max(0, Math.floor(n))));
+  } catch {
+    // storage blocked: the guarantee just starts over next session
+  }
+}
+
+/** True when this chest must hold a legendary: a Rare chest with the pity counter full. */
+export function legendaryGuaranteed(chest: ChestRarity, pity: number): boolean {
+  return chest === "rare" && pity >= LEGENDARY_PITY_CHESTS;
+}
+
+export const isLegendary = (id: CardId): boolean => getCard(id).rarity === "legendary";
+
+/** True when a chest's rewards include a legendary (a new one or its shards). */
+export function hasLegendary(rewards: ChestRewards): boolean {
+  if (rewards.newCard && isLegendary(rewards.newCard)) return true;
+  return (Object.entries(rewards.shards) as [CardId, number][]).some(([id, n]) => n > 0 && isLegendary(id));
+}
+
+/** Pick from `list` with weights (the same rng draw count whatever the weights). */
+function pickWeighted<T>(rng: Rng, list: readonly T[], weight: (t: T) => number): T {
+  const total = list.reduce((s, t) => s + Math.max(0, weight(t)), 0);
+  let r = rng() * total;
+  for (const t of list) {
+    r -= Math.max(0, weight(t));
+    if (r < 0) return t;
+  }
+  return list[list.length - 1];
+}
+
 function shardAmount(rarity: Rarity, chest: ChestRarity, rng: Rng): number {
   const base = rarity === "common" ? 4 : rarity === "rare" ? 2 : 1;
   const mult = chest === "rare" ? 2 : 1;
@@ -186,13 +249,15 @@ function shardAmount(rarity: Rarity, chest: ChestRarity, rng: Rng): number {
 }
 
 /**
- * Open a ready chest. Caller removes the slot / spends skip gems separately.
+ * The rewards of a ready chest for a given pity count (pure: same inputs,
+ * same rewards). openChest wraps it with the stored counter.
  */
-export function openChest(
+export function rollChest(
   chest: ChestSlot,
   trophies: number,
   owned: OwnedSet,
   rng: Rng,
+  pity = 0,
 ): ChestRewards {
   const goldBase = chest.rarity === "rare" ? 80 : 40;
   const gold = goldBase + Math.floor(rng() * goldBase);
@@ -202,24 +267,61 @@ export function openChest(
 
   const shards: ShardMap = {};
   let newCard: CardId | null = null;
+  const guaranteed = legendaryGuaranteed(chest.rarity, pity);
+  const legWeight = LEGENDARY_NEW_CARD_WEIGHT[chest.rarity];
 
   const unowned = findableUnowned(trophies, owned);
+  const unownedLegendary = unowned.filter(isLegendary);
   // Prefer unlocking a new card when any are available.
-  if (unowned.length > 0 && rng() < (chest.rarity === "rare" ? 0.75 : 0.45)) {
-    newCard = pick(rng, unowned);
+  const rollNew = rng() < (chest.rarity === "rare" ? 0.75 : 0.45);
+  if (guaranteed && unownedLegendary.length > 0) {
+    newCard = pick(rng, unownedLegendary);
+  } else if (unowned.length > 0 && rollNew) {
+    newCard = pickWeighted(rng, unowned, (id) => (isLegendary(id) ? legWeight : 1));
   }
 
   const pool = cardsAvailableAt(trophies).filter(
     (id) => owned.has(id) || id === newCard,
   );
+  const plain = pool.filter((id) => !isLegendary(id));
+  const keep = LEGENDARY_SHARD_KEEP[chest.rarity];
   const drops = chest.rarity === "rare" ? 3 : 2;
   for (let n = 0; n < drops && pool.length > 0; n++) {
-    const id = pick(rng, pool);
+    let id = pick(rng, pool);
+    // A legendary shard drop only sticks some of the time.
+    if (isLegendary(id) && id !== newCard && rng() >= keep && plain.length > 0) id = pick(rng, plain);
     const card = getCard(id);
     shards[id] = (shards[id] ?? 0) + shardAmount(card.rarity, chest.rarity, rng);
   }
 
-  return { gold, gems, newCard, shards };
+  // The guarantee with nothing new to find: shards for an owned legendary.
+  const rewards: ChestRewards = { gold, gems, newCard, shards };
+  if (guaranteed && !hasLegendary(rewards)) {
+    const ownedLegendary = pool.filter(isLegendary);
+    if (ownedLegendary.length > 0) {
+      const id = pick(rng, ownedLegendary);
+      shards[id] = (shards[id] ?? 0) + shardAmount("legendary", chest.rarity, rng);
+    }
+  }
+  return rewards;
+}
+
+/**
+ * Open a ready chest. Caller removes the slot / spends skip gems separately.
+ * Reads the legendary pity counter from `kv` and moves it on (back to 0
+ * after a legendary, else one up), so call it once per chest actually opened.
+ */
+export function openChest(
+  chest: ChestSlot,
+  trophies: number,
+  owned: OwnedSet,
+  rng: Rng,
+  kv: KV | null = defaultKV(),
+): ChestRewards {
+  const pity = legendaryPity(kv);
+  const rewards = rollChest(chest, trophies, owned, rng, pity);
+  setLegendaryPity(hasLegendary(rewards) ? 0 : pity + 1, kv);
+  return rewards;
 }
 
 // ---- First chest: a guaranteed new card ----------------------------------

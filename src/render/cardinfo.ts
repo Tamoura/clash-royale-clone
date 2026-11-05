@@ -1,5 +1,5 @@
 import { levelMultiplier } from "../game/battle";
-import { getCard, SPEED_TILES_PER_SEC, type CardId, type Speed } from "../game/cards";
+import { getCard, SPEED_TILES_PER_SEC, type CardId, type Rarity, type Speed } from "../game/cards";
 import { ARABIC } from "../render3d/theme";
 import { cardDisplayName } from "./cardNames";
 
@@ -8,10 +8,11 @@ const cap = (s: string): string => s[0].toUpperCase() + s.slice(1);
 /** English/Arabic string pair — the Arabic edition shows Arabic tooltips. */
 const tr = (en: string, ar: string): string => (ARABIC ? ar : en);
 
-const RARITY_AR: Record<string, string> = {
+const RARITY_AR: Record<Rarity, string> = {
   common: "شائع",
   rare: "نادر",
   epic: "ملحمي",
+  legendary: "أسطوري",
 };
 
 const SPEED_AR: Record<string, string> = {
@@ -20,9 +21,11 @@ const SPEED_AR: Record<string, string> = {
   fast: "سريع",
 };
 
-function rarityLabel(rarity: string): string {
-  return ARABIC ? RARITY_AR[rarity] ?? rarity : cap(rarity);
+/** "Legendary" / "أسطوري": the rarity word in the battle tooltip and the card sheet. */
+export function rarityWord(rarity: Rarity, arabic = ARABIC): string {
+  return arabic ? RARITY_AR[rarity] ?? rarity : cap(rarity);
 }
+const rarityLabel = (rarity: Rarity): string => rarityWord(rarity);
 
 /** English plural of a card name ("Skeletons" stays, "Pebble Golem" gains an s). */
 function plural(name: string): string {

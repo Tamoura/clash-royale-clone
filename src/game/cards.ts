@@ -45,8 +45,11 @@ export type CardId =
 
 export type Speed = "slow" | "medium" | "fast";
 
-/** CR-style card rarity, shown as the card frame color. */
-export type Rarity = "common" | "rare" | "epic";
+/**
+ * CR-style card rarity, shown as the card frame color. Meta-only: it never
+ * reaches the sim or the checksum (chest odds, upgrade costs, frames).
+ */
+export type Rarity = "common" | "rare" | "epic" | "legendary";
 
 /** Tiles per second for each named speed. */
 export const SPEED_TILES_PER_SEC: Record<Speed, number> = {
@@ -269,7 +272,7 @@ export const CARDS: Record<CardId, Card> = {
   "magic-archer": {
     id: "magic-archer",
     name: "Magic Archer",
-    rarity: "epic",
+    rarity: "legendary",
     kind: "troop",
     cost: 4,
     count: 1,
@@ -545,7 +548,7 @@ export const CARDS: Record<CardId, Card> = {
   "electro-wizard": {
     id: "electro-wizard",
     name: "Electro Wizard",
-    rarity: "epic",
+    rarity: "legendary",
     kind: "troop",
     cost: 4,
     count: 1,
@@ -584,7 +587,7 @@ export const CARDS: Record<CardId, Card> = {
   princess: {
     id: "princess",
     name: "Princess",
-    rarity: "epic",
+    rarity: "legendary",
     kind: "troop",
     cost: 3,
     count: 1,
@@ -603,7 +606,7 @@ export const CARDS: Record<CardId, Card> = {
   "mega-knight": {
     id: "mega-knight",
     name: "Mega Knight",
-    rarity: "epic",
+    rarity: "legendary",
     kind: "troop",
     cost: 7,
     count: 1,
@@ -955,7 +958,7 @@ export const CARDS: Record<CardId, Card> = {
   digger: {
     id: "digger",
     name: "Digger",
-    rarity: "epic",
+    rarity: "legendary",
     kind: "troop",
     cost: 3,
     count: 1,
@@ -975,7 +978,7 @@ export const CARDS: Record<CardId, Card> = {
   comet: {
     id: "comet",
     name: "Comet",
-    rarity: "epic",
+    rarity: "legendary",
     kind: "spell",
     cost: 6,
     damage: 1000, // 400 to crown towers

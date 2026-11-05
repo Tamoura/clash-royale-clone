@@ -64,10 +64,19 @@ export function buzz(kind: "claim" | "select" | "deploy"): void {
 
 // ---- Helpers --------------------------------------------------------------------
 
-const RARITY_RANK: Record<Rarity, number> = { common: 0, rare: 1, epic: 2 };
+const RARITY_RANK: Record<Rarity, number> = { common: 0, rare: 1, epic: 2, legendary: 3 };
 
 export function rarityLabel(r: Rarity, tr: AppCtx["tr"]): string {
-  return r === "epic" ? tr("Epic", "ملحمية") : r === "rare" ? tr("Rare", "نادرة") : tr("Common", "عادية");
+  switch (r) {
+    case "legendary":
+      return tr("Legendary", "أسطورية");
+    case "epic":
+      return tr("Epic", "ملحمية");
+    case "rare":
+      return tr("Rare", "نادرة");
+    default:
+      return tr("Common", "عادية");
+  }
 }
 
 export function chestLabel(r: ChestRarity, tr: AppCtx["tr"]): string {

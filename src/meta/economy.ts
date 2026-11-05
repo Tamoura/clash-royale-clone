@@ -56,11 +56,18 @@ export interface UpgradeCost {
   shards: number;
 }
 
-const BASE: Record<Rarity, UpgradeCost> = {
+/**
+ * Cost per level by rarity (times the level being left). Legendary shards
+ * are scarce, so a legendary needs one shard per level instead of two, and
+ * pays for the wow in gold.
+ */
+export const UPGRADE_BASE: Readonly<Record<Rarity, UpgradeCost>> = {
   common: { gold: 20, shards: 2 },
   rare: { gold: 50, shards: 2 },
   epic: { gold: 200, shards: 2 },
+  legendary: { gold: 400, shards: 1 },
 };
+const BASE = UPGRADE_BASE;
 
 /**
  * Cost to upgrade from `fromLevel` → fromLevel+1.

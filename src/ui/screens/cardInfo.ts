@@ -27,6 +27,7 @@ const RARITY: Record<Rarity, [string, string]> = {
   common: ["Common", "شائعة"],
   rare: ["Rare", "نادرة"],
   epic: ["Epic", "ملحمية"],
+  legendary: ["Legendary", "أسطورية"],
 };
 
 export function rarityLabel(ctx: AppCtx, r: Rarity): string {
