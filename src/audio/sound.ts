@@ -75,6 +75,38 @@ export function panFor(x: number, localSide: Side): number {
 }
 
 /** A crown taken by the local side is a triumph; one taken from it is a loss. */
+/** The card-wave-3 cues a battle event plays (null: none of these). */
+export type WaveCue = "dig" | "pop" | "whoosh" | "boom" | "crumble" | "crumble-small" | "grind";
+
+/**
+ * Which new-card sound an event makes: the Digger digging in on its play
+ * and popping out on 'emerge'; the Comet whooshing in on its cast and
+ * booming on 'spell-land'; a Stone Golem grinding onto the field and
+ * crumbling when it falls (its pebbles crumble smaller).
+ */
+export function waveCue(ev: BattleEvent): WaveCue | null {
+  switch (ev.type) {
+    case "deploy":
+      if (ev.cardId === "digger") return "dig";
+      if (ev.cardId === "stone-golem") return "grind";
+      return null;
+    case "emerge":
+      return "pop";
+    case "spell": {
+      const card = getCard(ev.cardId);
+      return card.kind === "spell" && (card.landDelay ?? 0) > 0 ? "whoosh" : null;
+    }
+    case "spell-land":
+      return "boom";
+    case "death":
+      if (ev.cardId === "stone-golem") return "crumble";
+      if (ev.cardId === "pebble-golem") return "crumble-small";
+      return null;
+    default:
+      return null;
+  }
+}
+
 export function crownCue(winner: Side, localSide: Side): "cheer" | "groan" {
   return winner === localSide ? "cheer" : "groan";
 }
@@ -763,6 +795,54 @@ export class SoundEngine {
     this.tone(small ? 600 : 300, 0.15, { type: "triangle", slideTo: small ? 200 : 80, vol: 0.14 });
   }
 
+  /** The Digger dives in: a spade crunch and a rumble running off underground. */
+  private dig(vol: number): void {
+    this.noise(0.12, { vol: 0.24 * vol, filterFreq: 1600, type: "bandpass", q: 1.2 });
+    this.noise(0.9, { vol: 0.2 * vol, filterFreq: 220, brown: true, delay: 0.06, attack: 0.08 });
+    this.tone(90, 0.7, { type: "sine", slideTo: 55, vol: 0.12 * vol, delay: 0.06 });
+  }
+
+  /** Popping out of the ground: a bright cartoon pop over a burst of soil. */
+  private pop(): void {
+    if (this.throttled("pop", 80)) return;
+    this.tone(260, 0.12, { type: "sine", slideTo: 880, vol: 0.24 });
+    this.tone(660, 0.08, { type: "triangle", slideTo: 1320, vol: 0.1, delay: 0.05 });
+    this.noise(0.22, { vol: 0.2, filterFreq: 900, brown: true });
+  }
+
+  /** The Comet comes in: a rising roar that swells into its landing (1.8 s). */
+  private whoosh(): void {
+    this.noise(1.75, { vol: 0.16, type: "bandpass", filterFreq: 300, sweepTo: 2600, q: 1.1, attack: 1.4 });
+    this.noise(1.75, { vol: 0.1, filterFreq: 500, brown: true, attack: 1.5 });
+    this.tone(220, 1.7, { type: "sawtooth", slideTo: 110, vol: 0.04, delay: 0.1 });
+  }
+
+  /** The Comet lands: a deep boom, a rumble and crackling rock. */
+  private boom(): void {
+    this.tone(120, 0.9, { type: "sine", slideTo: 28, vol: 0.5 });
+    this.noise(1.1, { vol: 0.42, filterFreq: 300, brown: true });
+    this.noise(0.4, { vol: 0.22, filterFreq: 2200, sweepTo: 400, delay: 0.03 });
+    for (let i = 0; i < 4; i++) this.noise(0.05, { vol: 0.12, filterFreq: 3800, delay: 0.12 + i * 0.07 });
+  }
+
+  /** Stone breaking up: a gravelly rumble and clacking chunks (smaller for a pebble). */
+  private crumble(big: boolean): void {
+    if (this.throttled(big ? "crumble" : "crumble-small", 90)) return;
+    const k = big ? 1 : 0.55;
+    this.noise(big ? 0.8 : 0.35, { vol: 0.3 * k, filterFreq: 420, brown: true });
+    const clacks = big ? 5 : 3;
+    for (let i = 0; i < clacks; i++) {
+      this.noise(0.04, { vol: 0.16 * k, filterFreq: 2600 - i * 250, type: "bandpass", q: 2, delay: 0.04 + i * 0.06 });
+    }
+    this.tone(big ? 70 : 140, 0.4, { type: "sine", slideTo: big ? 35 : 70, vol: 0.2 * k });
+  }
+
+  /** A Stone Golem lands: grinding stone under the deploy thump. */
+  private grind(vol: number): void {
+    this.noise(0.5, { vol: 0.2 * vol, filterFreq: 600, type: "bandpass", q: 0.9, sweepTo: 250 });
+    this.tone(70, 0.4, { type: "sawtooth", slideTo: 45, vol: 0.08 * vol, delay: 0.05 });
+  }
+
   private towerDown(): void {
     this.noise(0.9, { vol: 0.38, filterFreq: 260, brown: true });
     this.noise(0.5, { vol: 0.16, filterFreq: 1800, sweepTo: 300, delay: 0.05 });
@@ -980,6 +1060,11 @@ export class SoundEngine {
   }
 
   private dispatch(ev: BattleEvent, mySide: Side): void {
+    const wave = waveCue(ev);
+    if (wave === "pop") return this.pop();
+    if (wave === "whoosh") return this.whoosh();
+    if (wave === "boom") return this.boom();
+    if (wave === "crumble" || wave === "crumble-small") return this.crumble(wave === "crumble");
     switch (ev.type) {
       case "ability":
         this.ability();
@@ -987,8 +1072,13 @@ export class SoundEngine {
       case "deploy": {
         // The opponent's plays sit a little further back in the mix.
         const vol = ev.side === mySide ? 1 : 0.7;
+        if (wave === "dig") {
+          this.dig(vol); // it goes straight underground: no landing thump
+          break;
+        }
         this.deploy(getCard(ev.cardId).cost, vol);
         this.bark(ev.cardId, vol);
+        if (wave === "grind") this.grind(vol);
         break;
       }
       case "spell":
