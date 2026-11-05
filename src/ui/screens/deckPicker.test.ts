@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CardId } from "../../game/cards";
 import type { DeckCodeError } from "../../meta/deckCode";
-import { codeErrorText, deckSpots, editDeck, loadCode, swapScroll, type EditState } from "./deckPicker";
+import { codeErrorText, codeLockedText, deckSpots, editDeck, loadCode, swapScroll, type EditState } from "./deckPicker";
 
 const FULL: CardId[] = ["knight", "archers", "giant", "fireball", "musketeer", "mini-pekka", "baby-dragon", "arrows"];
 const st = (deck: CardId[], pending: CardId | null = null): EditState => ({ deck: deck.slice(), pending });
@@ -163,5 +163,19 @@ describe("codeErrorText", () => {
     }
     expect(codeErrorText(en, "char", "U")).toContain('"U"');
     expect(codeErrorText(en, "length", "10")).toContain("This one has 10");
+  });
+});
+
+describe("codeLockedText", () => {
+  const en = (a: string): string => a;
+  const ar = (_: string, b: string): string => b;
+  it("speaks of one card in the singular, in both languages", () => {
+    expect(codeLockedText(en, ["Bats"])).toBe("1 card is still locked: Bats. You'll pick another card for its spot.");
+    expect(codeLockedText(ar, ["Bats"])).toContain("بطاقة واحدة");
+    expect(codeLockedText(ar, ["Bats"])).not.toContain("من البطاقات");
+  });
+  it("keeps the plural for two or more", () => {
+    expect(codeLockedText(en, ["Bats", "Comet"])).toBe("2 cards are still locked: Bats, Comet. You'll pick others for those spots.");
+    expect(codeLockedText(ar, ["Bats", "Comet"])).toContain("من البطاقات");
   });
 });

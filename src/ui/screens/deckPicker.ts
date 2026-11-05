@@ -194,6 +194,21 @@ export function swapScroll(
   return Math.round(d);
 }
 
+/** The code preview's note on locked cards: singular or plural in both languages, like the load toast. */
+export function codeLockedText(tr: AppCtx["tr"], names: string[]): string {
+  const list = names.join(tr(", ", "، "));
+  if (names.length === 1) {
+    return tr(
+      `1 card is still locked: ${list}. You'll pick another card for its spot.`,
+      `بطاقة واحدة ما زالت مقفلة: ${list}. ستختار غيرها لخانتها.`,
+    );
+  }
+  return tr(
+    `${names.length} cards are still locked: ${list}. You'll pick others for those spots.`,
+    `${fmtNum(names.length)} من البطاقات ما زالت مقفلة: ${list}. ستختار غيرها لتلك الخانات.`,
+  );
+}
+
 /** The message for a code that could not be made or read (EN / AR). */
 export function codeErrorText(tr: AppCtx["tr"], error: DeckCodeError, detail?: string): string {
   switch (error) {
@@ -533,11 +548,7 @@ function openCodeSheet(ctx: AppCtx, target: string, owned: Set<CardId>, onUse: (
       msg.textContent = tr("A real deck! You have every card in it.", "مجموعة حقيقية! لديك كل بطاقاتها.");
       msg.classList.add("is-ok");
     } else {
-      const names = locked.map(cardDisplayName).join(tr(", ", "، "));
-      msg.textContent = tr(
-        `${locked.length === 1 ? "1 card is" : `${locked.length} cards are`} still locked: ${names}. You'll pick others for those spots.`,
-        `${fmtNum(locked.length)} من البطاقات ما زالت مقفلة: ${names}. ستختار غيرها لتلك الخانات.`,
-      );
+      msg.textContent = codeLockedText(tr, locked.map(cardDisplayName));
       msg.classList.add("is-warn");
     }
     return r.cards;
