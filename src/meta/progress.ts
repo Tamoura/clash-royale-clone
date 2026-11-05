@@ -38,6 +38,11 @@ import {
   upgradeCost,
 } from "./economy";
 import { getCard } from "../game/cards";
+import { mirrorActiveDeck } from "./decks";
+import { claimable as roadClaimable } from "./road";
+import { claimableTiers, type PassState } from "./pass";
+import { ACHIEVEMENTS, isEarned, type AchievementState } from "./achievements";
+import { isComplete, type QuestState } from "./quests";
 
 export const STORAGE_KEYS = {
   trophies: "cr-clone-trophies",
@@ -231,6 +236,8 @@ export function saveProfile(storage: MetaStorage, profile: PlayerProfile): void 
   storage.setItem(STORAGE_KEYS.shards, JSON.stringify(profile.shards));
   storage.setItem(STORAGE_KEYS.chests, JSON.stringify(profile.chests));
   storage.setItem(STORAGE_KEYS.deck, JSON.stringify(profile.deck));
+  // The saved deck is the active deck slot's live copy (decks.ts).
+  mirrorActiveDeck(storage, profile.deck);
 }
 
 export function saveDeck(storage: MetaStorage, deck: CardId[]): void {
@@ -395,6 +402,69 @@ export function tryOpenChest(
     deck: [...profile.deck],
   };
   return { profile: next, rewards, ok: true };
+}
+
+// ---- Tab badges ---------------------------------------------------------------
+
+/** Owned cards whose next level the player can pay for right now (shards and gold). */
+export function affordableUpgrades(
+  p: Pick<PlayerProfile, "owned" | "shards" | "gold">,
+  levels: CardLevels,
+): CardId[] {
+  return p.owned.filter((id) => {
+    const cost = upgradeCost(getCard(id).rarity, levels[id] ?? 1);
+    return !!cost && canAfford(p.gold, p.shards[id] ?? 0, cost);
+  });
+}
+
+/** What a tab badge counts. Each source is optional: missing = nothing to claim. */
+export interface BadgeSources {
+  profile: Pick<PlayerProfile, "owned" | "shards" | "gold">;
+  levels: CardLevels;
+  /** Trophy Road: best trophies reached and the thresholds already claimed. */
+  road?: { reached: number; claimed: readonly number[] };
+  pass?: PassState | null;
+  achievements?: AchievementState | null;
+  /** Today's daily quests. */
+  quests?: QuestState | null;
+}
+
+export interface BadgeCounts {
+  upgrades: number;
+  road: number;
+  pass: number;
+  achievements: number;
+  quests: number;
+}
+
+/** How many things wait for the player, by kind. */
+export function badgeCounts(s: BadgeSources): BadgeCounts {
+  const a = s.achievements;
+  const q = s.quests;
+  return {
+    upgrades: affordableUpgrades(s.profile, s.levels).length,
+    road: s.road ? roadClaimable(s.road.reached, s.road.claimed).length : 0,
+    pass: s.pass ? claimableTiers(s.pass).length : 0,
+    achievements: a ? ACHIEVEMENTS.filter((d) => isEarned(a, d) && !a.claimed.includes(d.id)).length : 0,
+    quests: q ? q.active.filter((id) => isComplete(q, id) && !q.claimed.includes(id)).length : 0,
+  };
+}
+
+export type BadgeTab = "shop" | "cards" | "battle" | "events" | "profile";
+
+/**
+ * The number on each bottom tab, placed on the tab that holds the thing:
+ * Battle has the road, the Crown Pass pill and the daily quests; Cards the
+ * collection's upgrades; Profile the achievements.
+ */
+export function tabBadges(c: BadgeCounts): Record<BadgeTab, number> {
+  return {
+    shop: 0,
+    cards: c.upgrades,
+    battle: c.road + c.pass + c.quests,
+    events: 0,
+    profile: c.achievements,
+  };
 }
 
 export { MAX_CARD_LEVEL, starterOwned, isOwnedDeck, clampDeckToOwned, ownedSet };

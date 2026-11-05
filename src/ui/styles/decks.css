@@ -1,0 +1,366 @@
+/* ============================================================
+   Decks QoL: deck slots, swap mode, deck codes and tab badges
+   (src/ui/screens/deckPicker.ts, home.ts Cards tab, frame.ts).
+   Prefix dq-. Values come from tokens.css, so both editions
+   restyle through their token remaps; layout uses logical
+   properties so dir="rtl" mirrors it.
+   ============================================================ */
+
+/* ── Slot switcher: [1 Deck 1] [2 Deck 2] [3 Deck 3] (pencil) ── */
+.dq-slots-row { margin-bottom: var(--sp-3); }
+.dq-slots {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-1);
+  min-width: 0;
+  padding: var(--sp-1);
+  border-radius: var(--r-md);
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 0 0 1px var(--surface-3);
+}
+.dq-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--on-surface-dim);
+  font: inherit;
+  font-family: var(--cr-font);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.dq-slot:active { transform: scale(0.95); }
+.dq-slot__num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--on-surface);
+  font-size: var(--fs-xs);
+  line-height: 1;
+  box-shadow: 0 0 0 1.5px #1a1030;
+}
+.dq-slot__name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dq-slot.is-active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: var(--elev-1);
+}
+.dq-slot.is-active .dq-slot__num {
+  background: var(--accent-ink);
+  color: var(--accent);
+}
+.dq-slot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Home Cards tab: the switcher sits between the head and the grid. */
+.v2-deck .dq-slots { margin-bottom: var(--sp-3); }
+
+/* Deck editor head. Phones: [Your deck ..... Name] with the switcher on
+   its own row below. Short screens (phone landscape, below): one row
+   [Your deck][1][2][3][pencil] and the deck in one row of eight, so the
+   deck is in view on open and under the swap prompt. */
+.dq-deck-head { flex-wrap: wrap; row-gap: var(--sp-2); }
+.dq-deck-head > .dq-slots-row {
+  order: 1;
+  flex: 1 0 100%;
+  min-width: 0;
+  margin: 0 0 var(--sp-1);
+}
+
+/* ── Swap mode ── */
+.dq-swapbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+  padding: var(--sp-2);
+  border: 2px solid var(--accent);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface-1));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent);
+  animation: dqDrop var(--dur-med) var(--ease-pop);
+}
+.dq-swapbar[hidden] { display: none; }
+.dq-swapbar { scroll-margin-top: var(--sp-2); }
+.dq-swapbar .v2-tile--mini { width: 44px; }
+.dq-swapbar__text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--on-surface);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+.dq-swapbar__cancel.ui-btn {
+  flex: none;
+  min-height: 44px;
+  padding-inline: var(--sp-3);
+  font-size: var(--fs-sm);
+}
+@keyframes dqDrop {
+  from { transform: translateY(-6px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+/* Deck cards wiggle gently: "tap one of us". */
+.dq-swapping .v2-tile.dq-target {
+  box-shadow: 0 0 0 2px var(--accent), 0 0 12px color-mix(in srgb, var(--accent) 55%, transparent), 0 3px 0 rgba(0, 0, 0, 0.45);
+  animation: dqWiggle 0.9s ease-in-out infinite;
+}
+.dq-swapping .v2-tile.dq-target:nth-child(2n) { animation-delay: -0.45s; }
+@keyframes dqWiggle {
+  0%, 100% { transform: rotate(-1.6deg); }
+  50% { transform: rotate(1.6deg); }
+}
+/* The picked-up collection card floats above its neighbours. */
+.v2-pick-grid .v2-tile.dq-pending {
+  z-index: 1;
+  transform: translateY(-4px) scale(1.04);
+  box-shadow: 0 0 0 3px var(--accent), 0 0 18px color-mix(in srgb, var(--accent) 70%, transparent), 0 6px 0 rgba(0, 0, 0, 0.45);
+}
+.v2-tile.dq-swapped { animation: dqPop var(--dur-med) var(--ease-pop); }
+@keyframes dqPop {
+  0% { transform: scale(0.8); }
+  70% { transform: scale(1.08); }
+  100% { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dq-swapbar,
+  .dq-swapping .v2-tile.dq-target,
+  .v2-tile.dq-swapped { animation: none; }
+}
+
+/* Short screens (phone landscape): see the editor head notes above. */
+@media (max-height: 520px) {
+  .dq-deck-head { flex-wrap: nowrap; }
+  /* "Your deck" stays for screen readers; the screen title says it already. */
+  .dq-deck-head h3 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .dq-deck-head > .dq-slots-row { flex: 1 1 auto; margin: 0; }
+  .dq-deck-head > .dq-rename-btn { order: 2; flex: none; }
+  /* The pencil alone (its aria-label says "Rename Deck 1"). */
+  .dq-rename-btn.ui-btn { padding-inline: var(--sp-2); }
+  .dq-rename-btn .ui-btn__label { display: none; }
+  .dq-deck-head .dq-slots { padding: 2px; }
+  .dq-deck-head .dq-slot { min-height: 36px; gap: 4px; padding-inline: 4px; }
+  .dq-deck-head .dq-slot__num { width: 22px; height: 22px; }
+  .dq-deck .v2-deck-slots { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: var(--sp-1); }
+  /* Small tiles: a smaller elixir drop so the card art shows. */
+  .dq-deck .v2-deck-slots .v2-cost { top: 1px; inset-inline-start: 1px; width: 17px; height: 17px; font-size: 10px; }
+  .dq-deck .v2-deck-slots .dq-lock { top: 1px; inset-inline-end: 1px; width: 16px; height: 16px; }
+  .dq-deck .v2-deck-slots .dq-lock .ui-icon { width: 11px; height: 11px; }
+  .dq-deck .v2-deck-slots .v2-tile-name { padding-inline: 1px; font-size: 9px; }
+  .dq-swapbar { padding: 4px var(--sp-2); }
+  .dq-swapbar .v2-tile--mini { width: 36px; }
+  .dq-swapbar__cancel.ui-btn { min-height: 36px; }
+}
+
+/* An entered code's locked cards, greyed in the spots they left. */
+.v2-tile.is-empty.dq-ghost {
+  position: relative;
+  border-style: dashed;
+}
+.v2-tile.dq-ghost canvas {
+  filter: brightness(0) invert(0.62);
+  opacity: 0.32;
+}
+/* The locked card's name, dimmed along the bottom edge. */
+.v2-tile.dq-ghost .v2-tile-name {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  color: var(--on-surface-dim);
+}
+.dq-lock {
+  position: absolute;
+  top: 3px;
+  inset-inline-end: 3px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+}
+.dq-lock .ui-icon { width: 15px; height: 15px; }
+
+/* Screen-reader-only live line (swap mode). */
+.dq-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── Deck codes ── */
+.dq-code-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+.dq-code-row .ui-btn {
+  min-width: 0;
+  min-height: 44px;
+  padding-inline: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+.dq-code-row .ui-btn__label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dq-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.dq-sheet .v2-hint,
+.dq-sheet .dq-hint { margin: 0; }
+.dq-wide.ui-btn { width: 100%; }
+.dq-wide.is-done { background: var(--success); color: #fff; }
+.dq-mini-deck {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-1);
+  width: min(100%, 360px);
+  margin-inline: auto;
+}
+/* Short screens (phone landscape): one row of eight, no names. */
+@media (max-height: 520px) {
+  .dq-mini-deck { grid-template-columns: repeat(8, minmax(0, 1fr)); width: min(100%, 480px); }
+  .dq-mini-deck .v2-tile-name { display: none; }
+  .dq-sheet { gap: var(--sp-2); }
+  .dq-code { padding-block: var(--sp-2); }
+}
+.dq-mini-deck .v2-tile { border-width: 2px; }
+.dq-mini-deck .v2-tile-name { font-size: 10px; }
+.dq-mini-deck .v2-tile.is-locked .v2-tile-name { color: var(--on-surface-dim); }
+.dq-code {
+  display: block;
+  padding: var(--sp-3) var(--sp-2);
+  border-radius: var(--r-md);
+  background: var(--surface-0);
+  box-shadow: inset 0 0 0 2px var(--accent);
+  color: var(--accent);
+  /* Codes are always Latin: the same glyphs and spacing in both editions. */
+  font-family: "Lilita One", var(--cr-font);
+  font-size: clamp(22px, 7.4vw, 34px);
+  line-height: 1.1;
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-shadow: var(--cr-outline);
+  white-space: nowrap;
+  user-select: all;
+  -webkit-user-select: all;
+  unicode-bidi: isolate;
+}
+.dq-field {
+  display: flex;
+  gap: var(--sp-2);
+}
+.dq-input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--surface-0);
+  box-shadow: inset 0 0 0 2px var(--surface-3);
+  color: var(--on-surface);
+  font-family: "Lilita One", var(--cr-font);
+  font-size: var(--fs-lg);
+  line-height: 1;
+  text-align: center;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  box-sizing: border-box;
+}
+.dq-input::placeholder { color: var(--on-surface-dim); opacity: 0.6; }
+.dq-input:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
+.dq-input--name {
+  font-family: var(--cr-font);
+  letter-spacing: normal;
+  text-transform: none;
+}
+.dq-input.is-shake { animation: dqShake 0.32s ease-in-out; }
+@keyframes dqShake {
+  0%, 100% { transform: none; }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+.dq-paste.ui-btn { flex: none; min-height: 52px; }
+.dq-msg {
+  min-height: 1.4em;
+  margin: 0;
+  color: var(--on-surface-dim);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+.dq-msg:empty { display: none; }
+.dq-msg.is-error { color: #ff8a80; }
+.dq-msg.is-ok { color: var(--success); }
+.dq-msg.is-warn { color: var(--accent); }
+.dq-preview:empty { display: none; }
+
+/* ── Tab badges ── */
+.v2-tabs .home-tab { position: relative; }
+.dq-tab-badge {
+  position: absolute;
+  top: 2px;
+  inset-inline-start: calc(50% + 6px);
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-pill);
+  background: var(--danger);
+  color: #fff;
+  font-family: var(--cr-font);
+  font-size: 11px;
+  line-height: 1;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 0 2px #081130, 0 2px 0 rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  animation: dqBadgeIn var(--dur-med) var(--ease-pop);
+}
+.dq-tab-badge[hidden] { display: none; }
+:root[data-edition="arabic"] .dq-tab-badge { box-shadow: 0 0 0 2px var(--surface-0), 0 2px 0 rgba(0, 0, 0, 0.4); }
+@keyframes dqBadgeIn {
+  from { transform: scale(0.4); }
+  to { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dq-tab-badge { animation: none; }
+}
