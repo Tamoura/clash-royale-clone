@@ -324,6 +324,7 @@
 .rw-reveal__flash[data-rarity="common"] { --rw-flash: #e8eef7; }
 .rw-reveal__flash[data-rarity="rare"] { --rw-flash: var(--cr-rarity-rare); }
 .rw-reveal__flash[data-rarity="epic"] { --rw-flash: var(--cr-rarity-epic); }
+.rw-reveal__flash[data-rarity="legendary"] { --rw-flash: var(--cr-rarity-legendary); }
 .rw-reveal__flash.is-on {
   animation: rwFlash 620ms var(--ease-out);
 }
@@ -506,6 +507,7 @@
 }
 .rw-card--rare .rw-card__front { --rw-rarity: var(--cr-rarity-rare); }
 .rw-card--epic .rw-card__front { --rw-rarity: var(--cr-rarity-epic); }
+.rw-card--legendary .rw-card__front { --rw-rarity: var(--cr-rarity-legendary); } /* ring: styles/legendary.css */
 .rw-card__front canvas {
   width: 156px;
   height: 156px;
@@ -655,6 +657,7 @@
 }
 .rw-summary__cell--rare { --rw-rarity: var(--cr-rarity-rare); }
 .rw-summary__cell--epic { --rw-rarity: var(--cr-rarity-epic); }
+.rw-summary__cell--legendary { --rw-rarity: var(--cr-rarity-legendary); }
 .rw-summary__cell canvas {
   width: 64px;
   height: 64px;
@@ -1359,6 +1362,7 @@
 }
 .rw-pick__card--rare { --rw-rarity: var(--cr-rarity-rare); }
 .rw-pick__card--epic { --rw-rarity: var(--cr-rarity-epic); }
+.rw-pick__card--legendary { --rw-rarity: var(--cr-rarity-legendary); }
 .rw-pick__card canvas {
   width: 100%;
   max-width: 96px;

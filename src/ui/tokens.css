@@ -34,6 +34,15 @@
   --cr-rarity-common: #AAB7C4;
   --cr-rarity-rare:   #F59E0B;
   --cr-rarity-epic:   #B950E8;
+  --cr-rarity-legendary: #FFD54A;
+  /* Legendary frame: the stops of the turning shimmer ring, its glow and
+     the sweep of light (styles/legendary.css). Golden Age swaps the
+     rainbow for gold, turquoise and lapis tilework colours. */
+  --cr-legendary-ring:
+    #ffd54a 0deg, #ff7ad9 60deg, #9d7bff 120deg, #5ad8ff 180deg,
+    #7dffb0 240deg, #fff27a 300deg, #ffd54a 360deg;
+  --cr-legendary-glow:  rgba(255, 213, 74, 0.55);
+  --cr-legendary-shine: rgba(255, 255, 255, 0.55);
 
   /* ── Islamic edition overrides ── */
   --cr-panel-arabic:  #152030;
@@ -83,6 +92,11 @@
 
 /* ── Islamic edition token overrides ── */
 :root[data-edition="arabic"] {
+  --cr-rarity-legendary: #F2C649;
+  --cr-legendary-ring:
+    #f2c649 0deg, #1fc2b8 70deg, #2a5bd7 130deg, #f7e7b0 180deg,
+    #1fc2b8 250deg, #c9962a 310deg, #f2c649 360deg;
+  --cr-legendary-glow:  rgba(31, 194, 184, 0.5);
   --cr-panel:       var(--cr-panel-arabic);
   --cr-border:      var(--cr-border-arabic);
   --cr-gold-border: var(--cr-gold-arabic);

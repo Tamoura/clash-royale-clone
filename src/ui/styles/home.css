@@ -491,6 +491,7 @@
 .v2-tile:active { transform: scale(0.95); }
 .v2-tile.rarity-rare { --rarity: var(--cr-rarity-rare); }
 .v2-tile.rarity-epic { --rarity: var(--cr-rarity-epic); }
+.v2-tile.rarity-legendary { --rarity: var(--cr-rarity-legendary); } /* ring + shimmer: styles/legendary.css */
 .v2-tile-art { aspect-ratio: 1; }
 .v2-tile canvas {
   display: block;
@@ -1243,6 +1244,7 @@
 }
 .v2-ci-art.rarity-rare { --rarity: var(--cr-rarity-rare); }
 .v2-ci-art.rarity-epic { --rarity: var(--cr-rarity-epic); }
+.v2-ci-art.rarity-legendary { --rarity: var(--cr-rarity-legendary); }
 .v2-ci-art canvas { display: block; width: 100%; aspect-ratio: 1; }
 .v2-ci-art.is-locked canvas { filter: grayscale(1) brightness(0.6); }
 .v2-ci-art .v2-cost { width: 26px; height: 26px; font-size: var(--fs-sm); }
@@ -1251,6 +1253,7 @@
 .v2-rarity--common { background: var(--cr-rarity-common); color: #1a1030; }
 .v2-rarity--rare { background: var(--cr-rarity-rare); color: #1a1030; }
 .v2-rarity--epic { background: var(--cr-rarity-epic); color: #fff; }
+.v2-rarity--legendary { background: var(--cr-rarity-legendary); color: #1a1030; }
 .v2-ci-level { font-size: var(--fs-lg); line-height: var(--lh-lg); text-shadow: var(--cr-outline); }
 .v2-ci-stats {
   width: 100%;
