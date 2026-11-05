@@ -251,6 +251,31 @@ export const CARD_BLURBS: Partial<Record<CardId, CardBlurb>> = {
     good: [],
     watch: [],
   },
+  // Card wave 3.
+  "stone-golem": {
+    en: "A giant rock that stomps on towers. When it breaks, two Pebble Golems pop out!",
+    ar: "حارس من الحجر يدكّ الأبراج. وحين يتحطّم تخرج منه حصاتان!",
+    good: ["cannon", "tombstone"],
+    watch: ["pekka", "mini-pekka"],
+  },
+  "pebble-golem": {
+    en: "A little rock from a broken Stone Golem. It keeps marching on towers!",
+    ar: "حصاة صغيرة من حارس الحجر المتحطّم. تواصل السير نحو الأبراج!",
+    good: [],
+    watch: ["knight", "valkyrie"],
+  },
+  digger: {
+    en: "Digs under the ground to ANY spot. Drop it right next to a tower!",
+    ar: "حفّار يشقّ نفقًا إلى أي مكان. ضعه بجانب برج تمامًا!",
+    good: ["princess", "musketeer"],
+    watch: ["knight", "valkyrie"],
+  },
+  comet: {
+    en: "A huge flaming rock falls a moment later. Aim where the troops will be!",
+    ar: "شهاب ناري ضخم يسقط بعد لحظة. صوّب حيث سيكون الجنود!",
+    good: ["witch", "wizard"],
+    watch: ["hog-rider"],
+  },
   // The Studio champion is the player's own design: one line fits them all.
   champion: {
     en: "Your very own hero, designed in the Champion Studio!",
