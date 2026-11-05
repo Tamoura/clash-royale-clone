@@ -8,7 +8,8 @@
  *   start the battle track the frame the countdown ends.
  * - frame: the clock ticks in the last 10 seconds, and a tap of haptics
  *   when the local towers take damage.
- * - battleEvent / matchEnd / input: haptics, the results duck.
+ * - battleEvent / matchEnd / input: haptics, the results duck. The new cards
+ *   thud too: a Comet landing and a Stone Golem crumbling.
  * - Any button tap clicks (back buttons click "back") and buzzes lightly.
  *
  * The SoundEngine plays battle events itself (main.ts feeds it every event
@@ -115,6 +116,8 @@ on("battleEvent", ({ ev }) => {
   if (replay) return;
   if (ev.type === "death" && (ev.kind === "princess-tower" || ev.kind === "king-tower")) buzz("towerDown");
   else if (ev.type === "king-wake") buzz("king");
+  else if (ev.type === "spell-land") buzz("ability"); // the Comet's boom
+  else if (ev.type === "death" && ev.cardId === "stone-golem") buzz("deploy"); // it crumbles
 });
 
 on("matchEnd", ({ winner, mySide: side, replay: isReplay }) => {

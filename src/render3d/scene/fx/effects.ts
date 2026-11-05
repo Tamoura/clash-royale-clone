@@ -23,7 +23,9 @@ import { LOOK_AT, PREV_POS, SIDE_COLOR, arabic, disposeDeep, toWorld, type Entit
 import { addShake } from "../camera";
 import { CELL } from "./atlas";
 import { VfxPool } from "./pool";
-import { castAbility, castSpell, megaSlam as slamRecipe, type SpellContext } from "./spells";
+import { castAbility, castSpell, megaSlam as slamRecipe, spellRadius, type SpellContext } from "./spells";
+import { cometImpact } from "./comet";
+import { diggerEmerge } from "./burrow";
 
 /** The pool behind b.fx (initFx always installs one). */
 function V(b: Battle3D): VfxPool {
@@ -336,7 +338,21 @@ export function deployTelegraph(b: Battle3D, side: Side, cardId: CardId, ax: num
   const card = getCard(cardId);
   const r = card.kind === "building" ? 1.35 : card.kind === "troop" && card.count > 3 ? 1.5 : 1.05;
   v.decal("ring", ax, ay, r, { color: teamColor(side), hdr: 1.6, r0: r * 1.45, grow: 0.35, life: 1.3, alpha: 0.95 });
+  // A tunneller arrives from below, not from the sky: no falling shadow.
+  if (card.kind === "troop" && card.deployAnywhere) return;
   v.decal("shadow", ax, ay, r * 0.45, { r0: r * 1.5, grow: 0.35, life: 0.35, alpha: 0.55 });
+}
+
+/**
+ * A rock creature crumbling: big stone chunks, grit and a rolling dust
+ * ring (the body's own baked parts shatter on top, see deathfx).
+ */
+export function crumble(b: Battle3D, ax: number, ay: number, color: number, scale: number): void {
+  const v = V(b);
+  v.emit("debris", ax, ay, { color, radius: 0.9 * scale, count: Math.round(12 * scale) });
+  v.emit("chips", ax, ay, { color, radius: 0.8 * scale, z: 0.6 * scale });
+  v.emit("deployPuff", ax, ay, { color: 0xc8beac, radius: 1.4 * scale });
+  if (scale >= 1) v.shake(0.3);
 }
 
 /** Bone shards scattering from a fallen skeleton. */
@@ -417,6 +433,8 @@ export function emote(b: Battle3D, side: Side, emoji: string): void {
  * sky-slam shockwave for the Mega Knight, dust for everyone else.
  */
 export function spawnFlourish(b: Battle3D, view: EntityView, e: Entity): void {
+  // A tunneller is still underground: its entrance is the emerge burst.
+  if (e.burrowTimer > 0) return;
   if (view.spawnStyle === "rise") summonPortal(b, e.x, e.y, view.spawnColor);
   else if (view.spawnStyle === "slam") megaSlam(b, e.x, e.y);
   else if (view.isTroop) {
@@ -482,10 +500,18 @@ export function fxOnEvent(b: Battle3D, ev: BattleEvent): void {
         if (s.kind === "crush") v.emitWorld("dust", w.x, 0, w.z, { radius: 1.3 });
       }
       break;
+    case "emerge":
+      diggerEmerge(v, ev.x, ev.y);
+      break;
+    case "spell-land":
+      cometImpact(v, ev.x, ev.y, spellRadius(ev.cardId));
+      b.hitStop.punch(0.06);
+      break;
     case "death":
       if (ev.kind === "troop") {
         const style = deathStyle(ev.cardId);
-        if (style.kind === "bones") boneScatter(b, ev.x, ev.y, style.color);
+        if (style.kind === "crumble") crumble(b, ev.x, ev.y, style.color, style.scale);
+        else if (style.kind === "bones") boneScatter(b, ev.x, ev.y, style.color);
         else if (style.kind === "sparks") sparkBurst(b, ev.x, ev.y, style.color);
         else if (style.kind === "deflate") deflate(b, ev.x, ev.y, style.color);
         else puff(b, ev.x, ev.y, style.color, style.scale);

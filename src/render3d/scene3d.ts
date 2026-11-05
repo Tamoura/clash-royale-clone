@@ -7,7 +7,7 @@ import {
   type BattleState,
   type Entity,
 } from "../game/battle";
-import type { CardId } from "../game/cards";
+import type { Card, CardId } from "../game/cards";
 import { ShakeController } from "./shake";
 import { HitStopController } from "./hitstop";
 import { QualityGovernor, qualityPinFromUrl } from "./quality";
@@ -64,6 +64,8 @@ import {
   updateEffects,
 } from "./scene/fx/effects";
 import type { FxApi } from "./scene/fx/api";
+import { resetComets, syncComets } from "./scene/fx/comet";
+import { resetBurrows, syncBurrows } from "./scene/fx/burrow";
 import {
   buildBuildingMesh,
   buildGhost,
@@ -107,6 +109,11 @@ const ENEMY_ZONE_ALPHA = 1 - Math.pow(1 - ENEMY_ZONE_OPACITY, 2.2);
 const ENEMY_EDGE_DEPTH = 0.32;
 /** How long the refused-drop ring pulses (seconds). */
 export const BAD_SPOT_SECONDS = 1.2;
+
+/** A troop card that tunnels to any spot (the Digger) ignores the lane rules. */
+export function deploysAnywhere(card: Card | null): boolean {
+  return card?.kind === "troop" && card.deployAnywhere === true;
+}
 
 /*
  * Fields marked @internal are shared with the ./scene/ modules, which take
@@ -204,6 +211,8 @@ export class Battle3D {
   // Red "keep clear" disc around the enemy king (matches the deploy buffer).
   private readonly kingNoDeploy: THREE.Mesh;
   private zoneShown = false;
+  /** The selected card digs to any spot (the Digger): no enemy-half shade or red edge. */
+  private zoneAnywhere = false;
   private lastOpen: OpenLanes = { left: false, right: false };
   /** @internal */
   readonly container: HTMLElement;
@@ -534,27 +543,45 @@ export class Battle3D {
     this.ghost.rig.group.position.set(w.x, this.ghost.rig.hover ?? 0, w.z);
   }
 
-  setZoneVisible(visible: boolean): void {
+  /**
+   * Show or hide the deploy overlay for the selected card. A card that may
+   * deploy anywhere (`deployAnywhere`, the Digger) lights the whole field
+   * as deployable instead of shading the enemy half.
+   */
+  setZoneVisible(visible: boolean, card: Card | null = null): void {
     this.zoneShown = visible;
+    this.zoneAnywhere = deploysAnywhere(card);
     this.applyDeployZone();
   }
 
   /**
    * Show the deploy overlay: own half blue; each enemy-half lane is dark
    * (forbidden) until its tower falls, then it lights up blue (deployable).
+   * A dig-anywhere card shows both enemy lanes blue, with no dark shade, no
+   * red edge and no King keep-clear disc (its rule is tower clearance only).
    */
   private applyDeployZone(): void {
     const v = this.zoneShown;
-    const open = this.lastOpen;
+    const open = this.zoneAnywhere ? { left: true, right: true } : this.lastOpen;
     this.zonePlane.visible = v;
     this.laneBlueL.visible = v && open.left;
     this.laneBlueR.visible = v && open.right;
     // The king buffer only matters once a lane is open into enemy territory.
-    this.kingNoDeploy.visible = v && (open.left || open.right);
+    this.kingNoDeploy.visible = v && !this.zoneAnywhere && (open.left || open.right);
     this.enemyDarkL.visible = v && !open.left;
     this.enemyDarkR.visible = v && !open.right;
     this.enemyEdgeL.visible = v && !open.left;
     this.enemyEdgeR.visible = v && !open.right;
+  }
+
+  /** Which deploy-overlay parts are showing (tests and dev tools). */
+  get zoneParts(): { enemyDark: boolean; enemyEdge: boolean; laneBlue: boolean; kingDisc: boolean } {
+    return {
+      enemyDark: this.enemyDarkL.visible || this.enemyDarkR.visible,
+      enemyEdge: this.enemyEdgeL.visible || this.enemyEdgeR.visible,
+      laneBlue: this.laneBlueL.visible && this.laneBlueR.visible,
+      kingDisc: this.kingNoDeploy.visible,
+    };
   }
 
   /** Whether the deploy-zone overlay is up (a troop or building is selected). */
@@ -659,6 +686,9 @@ export class Battle3D {
     for (const e of state.entities) this.byId.set(e.id, e);
     this.setMatchPhase(state.time, state.overtime);
     syncProjectiles(this, state);
+    // Render-only telegraphs read straight off the sim: falling comets and digging Diggers.
+    syncComets(this, state, dt, alpha);
+    syncBurrows(this, state, dt, alpha);
     // Keep the deploy overlay in step with opened lanes (a tower falling
     // expands where you can deploy).
     const open = openLanes(state, viewSide);
@@ -800,6 +830,8 @@ export class Battle3D {
     }
     this.effects = [];
     this.fx.reset();
+    resetComets(this);
+    resetBurrows(this);
     for (const d of this.dying) {
       this.scene.remove(d.view.root);
       disposeDeep(d.view.root);

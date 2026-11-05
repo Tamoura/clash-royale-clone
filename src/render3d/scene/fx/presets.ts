@@ -24,6 +24,11 @@ export interface Layer {
   /** Atlas cell, or a list to pick from per particle. */
   cell: number | readonly number[];
   count: number;
+  /**
+   * Fewest particles the layer keeps after quality scaling (scaled by the
+   * caller's count), for a beat that must read on every phone. Default 1.
+   */
+  min?: number;
   life: Range;
   delay?: Range;
   /** Launch direction: an upward cone, any direction, flat outward, straight down, or still. */
@@ -226,6 +231,16 @@ export const PRESETS: Record<string, readonly Layer[]> = {
     { pool: "alpha", cell: CELL.PETAL, count: 7, life: [0.8, 1.1], dir: "out", speed: [1, 2], vy: [0.5, 1.5], height: 1.5, area: 0.3, drag: 1.5, gravity: 3, size0: [0.32, 0.42], size1: [0.24, 0.3], spin: [-9, 9], color0: 0xc62828, color1: 0x8e1c1c, alpha0: 1, alpha1: 0.3 },
     { pool: "alpha", cell: SMOKE, count: 4, life: [0.7, 0.9], dir: "up", spread: 0.8, speed: [0.5, 1], height: 1.4, area: 0.3, drag: 1.5, size0: 0.5, size1: 1.2, color0: 0xd8cbb5, alpha0: 0.7, alpha1: 0, push: 0.5, tint: false },
   ],
+  // A Digger breaking the surface: a fountain of big, chunky clods
+  // (re-tinted per arena: loam or sand). They keep a floor of clods at low
+  // quality, so the pop still reads on a phone.
+  "dirt-burst": [
+    { pool: "alpha", cell: CELL.CHIP, count: 16, min: 10, life: [0.85, 1.15], dir: "up", spread: 0.85, speed: [4.5, 8], area: 0.4, height: 0.3, gravity: 14, size0: [0.8, 1.1], size1: [0.6, 0.85], spin: [-12, 12], color0: 0x8a6a44, color1: 0x6f5236, alpha0: 1, alpha1: 0.75 },
+  ],
+  // The dust rolling out of that hole; callers tint it to stand out from the floor.
+  "dirt-dust": [
+    { pool: "alpha", cell: SMOKE, count: 9, min: 5, life: [0.9, 1.3], dir: "out", speed: [2, 3.4], vy: [0.5, 1.3], area: 0.45, height: 0.25, drag: 2.4, size0: [0.9, 1.2], size1: [2, 2.8], spin: [-0.8, 0.8], color0: 0x9a8264, color1: 0x7e6a52, alpha0: 0.9, alpha1: 0, push: 0.45 },
+  ],
   // Angry steam venting from a waking king.
   steam: [
     { pool: "alpha", cell: SMOKE, count: 6, life: [0.6, 0.8], delay: [0, 0.3], dir: "up", spread: 0.5, speed: [1.4, 2.2], area: 0.7, edge: true, height: 2.6, drag: 1.2, size0: [0.35, 0.45], size1: [0.9, 1.2], spin: [-1, 1], color0: 0xffb0a8, color1: 0xff8a80, alpha0: 0.85, alpha1: 0, push: 0.5 },
@@ -256,8 +271,11 @@ export function emitPreset(sp: Spawner, name: string, wx: number, wy: number, wz
   const rand = (): number => sp.rand();
   for (const L of layers) {
     // Quality and the caller's count scale everything, but a layer that
-    // exists keeps at least one particle (a lone flash or ring).
-    const n = Math.max(1, Math.round(L.count * countK * q));
+    // exists keeps at least one particle (a lone flash or ring), or its own
+    // floor (L.min, scaled by the caller's count) when it must read at any
+    // quality. A layer without a floor keeps the plain minimum of one.
+    const floor = L.min !== undefined ? Math.round(L.min * countK) : 1;
+    const n = Math.max(1, floor, Math.round(L.count * countK * q));
     const k = L.scales === false ? 1 : R;
     const tinted = opts?.color !== undefined && L.tint !== false;
     for (let i = 0; i < n; i++) {

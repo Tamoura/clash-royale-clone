@@ -29,6 +29,13 @@ export function spawnRecipe(cardId: CardId | null): SpawnRecipe {
   if (cardId === "witch") {
     return { kind: "drop", color: 0xb98bff, burst: 0.75 };
   }
+  // The Digger climbs out of the hole it dug (after its tunnel, see burrow.ts).
+  if (cardId === "digger") {
+    return { kind: "rise", color: 0xa88a64, burst: 0.7 };
+  }
+  if (cardId === "stone-golem") {
+    return { kind: "drop", color: 0xc8beac, burst: 1.1 };
+  }
   return { kind: "drop", color: 0xd9cdb8, burst: 0.45 };
 }
 
@@ -92,6 +99,56 @@ export function dropPose(t: number, delay: number, out: DropPose): DropPose {
   const s = (t - delay - DROP_FALL) / DROP_SETTLE;
   if (s < 1) {
     // Damped spring from the landing squash back to rest.
+    const d = (1 - s) * (1 - s) * Math.cos(s * Math.PI * 2.5);
+    out.sx = out.sz = 1 + 0.25 * d;
+    out.sy = 1 - 0.3 * d;
+  }
+  return out;
+}
+
+/** Pop-out (a Pebble Golem bursting from its Stone Golem): a beat inside the rubble... */
+export const POP_DELAY = 0.12;
+/** ...then a hop of this many seconds from the parent's middle to its own spot... */
+export const POP_TIME = 0.42;
+/** ...peaking this high (tiles), launched from this height inside the parent. */
+export const POP_HEIGHT = 1.3;
+export const POP_START = 0.9;
+
+/** The pop-out pose: a drop pose plus how far along the hop the unit is (0..1). */
+export interface PopPose extends DropPose {
+  f: number;
+}
+
+/** Total seconds a pop-out entrance lasts. */
+export function popDuration(): number {
+  return POP_DELAY + POP_TIME + DROP_SETTLE;
+}
+
+/**
+ * Pose `t` seconds after the unit appeared: hidden while the parent
+ * crumbles, a stretched hop out along a parabola (f runs 0 to 1 across it),
+ * then the drop's landing squash and wobble. Writes into `out`.
+ */
+export function popPose(t: number, out: PopPose): PopPose {
+  out.visible = t >= POP_DELAY;
+  out.sx = out.sy = out.sz = 1;
+  if (t < POP_DELAY) {
+    out.f = 0;
+    out.y = POP_START;
+    return out;
+  }
+  const f = (t - POP_DELAY) / POP_TIME;
+  if (f < 1) {
+    out.f = f;
+    out.y = POP_START * (1 - f) + POP_HEIGHT * 4 * f * (1 - f);
+    out.sx = out.sz = 0.88;
+    out.sy = 1.16;
+    return out;
+  }
+  out.f = 1;
+  out.y = 0;
+  const s = (t - POP_DELAY - POP_TIME) / DROP_SETTLE;
+  if (s < 1) {
     const d = (1 - s) * (1 - s) * Math.cos(s * Math.PI * 2.5);
     out.sx = out.sz = 1 + 0.25 * d;
     out.sy = 1 - 0.3 * d;

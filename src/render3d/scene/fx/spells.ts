@@ -13,6 +13,7 @@ import { MODE_GROUND, MODE_SEGMENT, clearSpec, makeRng, seedFrom, type ParticleS
 import { toWorld } from "../common";
 import { CELL, SMOKE_CELLS } from "./atlas";
 import type { VfxPool } from "./pool";
+import { cometCast } from "./comet";
 import * as THREE from "three";
 
 /** battle.ts deployCard: the Electro Wizard lands with a zap of this radius. */
@@ -469,6 +470,8 @@ export function castSpell(v: VfxPool, cardId: CardId, x: number, y: number, side
       return skeletonBarrel(v, x, y, r);
     case "mega-knight":
       return; // the slam is timed from his sky-drop spawn (spawnFlourish)
+    case "comet":
+      return cometCast(v, x, y, r); // the fall and impact follow the sim (comet.ts)
     default:
       return fallback(v, x, y, r);
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DECK, getCard, type CardId } from "../game/cards";
+import { CARDS, DECK, TOKEN_IDS, getCard, isDeckable, type CardId } from "../game/cards";
 import { tr } from "../ui/i18n";
 import { CARD_BLURBS, blurbText, cardBlurb } from "./cardBlurbs";
 
@@ -31,6 +31,20 @@ describe("card blurbs", () => {
       expect(ARABIC_LETTER.test(b!.ar), id).toBe(true);
       expect(ARABIC_LETTER.test(b!.en), id).toBe(false);
     }
+  });
+
+  it("covers every deckable card and token, card wave 3 included, in both editions", () => {
+    const ids = (Object.keys(CARDS) as CardId[]).filter((id) => isDeckable(id) || TOKEN_IDS.includes(id));
+    expect(ids).toEqual(expect.arrayContaining(["stone-golem", "pebble-golem", "digger", "comet"]));
+    for (const id of ids) {
+      const b = cardBlurb(id);
+      expect(b, id).not.toBeNull();
+      expect(ARABIC_LETTER.test(b!.ar), id).toBe(true);
+      expect(ARABIC_LETTER.test(b!.en), id).toBe(false);
+    }
+    // The Digger's line carries the play hint: next to a tower.
+    expect(CARD_BLURBS.digger?.en).toMatch(/tower/);
+    expect(CARD_BLURBS["stone-golem"]?.en).toMatch(/Pebble/);
   });
 
   it("gives the Studio champion a generic line", () => {

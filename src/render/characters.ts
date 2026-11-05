@@ -702,6 +702,140 @@ function drawCollector(ctx: Ctx, _anim: Anim): void {
   ctx.fill();
 }
 
+/** A lumpy rock outline (8 bumps) of radius r, for the golems. */
+function rockPath(ctx: Ctx, cx: number, cy: number, r: number, squash = 1): void {
+  const bumps = [1, 0.9, 1.04, 0.92, 1, 0.88, 1.02, 0.94];
+  ctx.beginPath();
+  for (let i = 0; i < bumps.length; i++) {
+    const a = (i / bumps.length) * Math.PI * 2 - Math.PI / 2;
+    const k = r * bumps[i];
+    const x = cx + Math.cos(a) * k;
+    const y = cy + Math.sin(a) * k * squash;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+/** Two glowing mint eye gems. */
+function gemEyes(ctx: Ctx, y: number, dx: number, r: number): void {
+  ctx.save();
+  ctx.shadowColor = "#7dffd0";
+  ctx.shadowBlur = 5;
+  ctx.fillStyle = "#7dffd0";
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(s * dx, y - r);
+    ctx.lineTo(s * dx + r, y);
+    ctx.lineTo(s * dx, y + r);
+    ctx.lineTo(s * dx - r, y);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawStoneGolem(ctx: Ctx, anim: Anim): void {
+  // Boulder fists; the leading one slams down on attack.
+  outlined(ctx, "#8e928a", () => rockPath(ctx, -9, 4, 3.4));
+  outlined(ctx, "#8e928a", () => rockPath(ctx, 9, 4 - anim.swing * 4, 3.6));
+  outlined(ctx, "#8e928a", () => rockPath(ctx, 0, 1, 9, 0.92)); // boulder body
+  // Cracks and the chest crystal.
+  ctx.strokeStyle = "#3a3833";
+  ctx.lineWidth = 0.9;
+  ctx.beginPath();
+  ctx.moveTo(3, -1);
+  ctx.lineTo(5, 2);
+  ctx.lineTo(4, 5);
+  ctx.moveTo(-5, 3);
+  ctx.lineTo(-3.5, 6);
+  ctx.stroke();
+  outlined(ctx, "#4a7fd1", () => {
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(1.8, 2.6);
+    ctx.lineTo(0, 5.2);
+    ctx.lineTo(-1.8, 2.6);
+    ctx.closePath();
+  });
+  // Small head sunk in, moss cap, eye gems under the brow.
+  outlined(ctx, "#8e928a", () => rockPath(ctx, 0, -8, 4.4));
+  outlined(ctx, "#6f9c3a", () => {
+    ctx.beginPath();
+    ctx.ellipse(0, -11.5, 4.2, 1.6, 0, 0, Math.PI * 2);
+  });
+  box(ctx, -4.2, -10.2, 8.4, 1.4, 0.6, "#676b64"); // brow ridge
+  gemEyes(ctx, -7.8, 1.8, 1.1);
+}
+
+function drawPebbleGolem(ctx: Ctx, anim: Anim): void {
+  outlined(ctx, "#8e928a", () => rockPath(ctx, -7, 3, 2.2));
+  outlined(ctx, "#8e928a", () => rockPath(ctx, 7, 3 - anim.swing * 3, 2.3));
+  outlined(ctx, "#8e928a", () => rockPath(ctx, 0, 0, 7)); // round pebble body
+  gemEyes(ctx, -1, 2.4, 1.4);
+  // Moss tuft with a two-leaf sprout: the cute read.
+  outlined(ctx, "#6f9c3a", () => {
+    ctx.beginPath();
+    ctx.ellipse(0, -6.6, 3.4, 1.3, 0, 0, Math.PI * 2);
+  });
+  ctx.strokeStyle = "#4e7a2b";
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(0, -7.4);
+  ctx.lineTo(0, -10);
+  ctx.stroke();
+  for (const s of [-1, 1]) {
+    outlined(ctx, "#6f9c3a", () => {
+      ctx.beginPath();
+      ctx.ellipse(s * 1.6, -10.4, 1.7, 0.8, s * 0.4, 0, Math.PI * 2);
+    });
+  }
+}
+
+function drawDigger(ctx: Ctx, anim: Anim): void {
+  // Pickaxe over the shoulder, chopping down on attack.
+  ctx.save();
+  ctx.translate(5.5, 1);
+  ctx.rotate(-0.35 - anim.swing * 1.6);
+  box(ctx, -0.6, -12, 1.2, 12, 0.5, "#7a5536"); // handle
+  outlined(ctx, "#aeb7c2", () => {
+    ctx.beginPath();
+    ctx.moveTo(-5.5, -10);
+    ctx.quadraticCurveTo(0, -14, 5.5, -10);
+    ctx.quadraticCurveTo(0, -12.2, -5.5, -10);
+    ctx.closePath();
+  });
+  ctx.restore();
+
+  box(ctx, -5.2, -1, 10.4, 9, 3, "#8d6e4a"); // work shirt
+  box(ctx, -5.2, 5.4, 10.4, 1.4, 0.6, "#3b2a1e"); // belt
+  for (const x of [-3.2, 2.2]) box(ctx, x, -1, 1, 6.4, 0.4, "#2463d6"); // braces
+  outlined(ctx, "#3b82f6", () => {
+    // neckerchief
+    ctx.beginPath();
+    ctx.moveTo(-3.6, -1.6);
+    ctx.lineTo(3.6, -1.6);
+    ctx.lineTo(0, 1.8);
+    ctx.closePath();
+  });
+  circle(ctx, 0, -6, 5.2, SKIN); // head
+  circle(ctx, 0, -5, 1.6, "#eab48c"); // big nose
+  box(ctx, -3.4, -3.8, 6.8, 1.4, 0.7, "#6b4a32"); // moustache
+  eyes(ctx, -7, 1.9, 0.75);
+  // Hard hat with a glowing headlamp.
+  outlined(ctx, "#e8c547", () => {
+    ctx.beginPath();
+    ctx.arc(0, -9, 5.4, Math.PI, 0);
+    ctx.closePath();
+  });
+  box(ctx, -6.4, -9.4, 12.8, 1.4, 0.7, "#b99a3a"); // brim
+  ctx.save();
+  ctx.shadowColor = "#fff3b0";
+  ctx.shadowBlur = 6;
+  circle(ctx, 0, -11.6, 1.6, "#fff3b0");
+  ctx.restore();
+}
+
 const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = {
   knight: drawKnight,
   archers: drawArcher,
@@ -728,6 +862,9 @@ const TROOP_PAINTERS: Partial<Record<CardId, (ctx: Ctx, anim: Anim) => void>> = 
   minions: drawGargoyle,
   "skeleton-army": drawSkeleton,
   executioner: drawValkyrie,
+  "stone-golem": drawStoneGolem,
+  "pebble-golem": drawPebbleGolem,
+  digger: drawDigger,
 };
 
 /**
@@ -954,6 +1091,43 @@ function drawBarrelArt(ctx: Ctx): void {
   circle(ctx, 1.5, -7, 1, "#1f2430");
 }
 
+/** Comet: a dark flaming rock diving down-left, its fire streaming behind it. */
+function drawCometArt(ctx: Ctx): void {
+  // Flame tail, widest at the rock, streaming to the upper right.
+  const tail = (color: string, w: number, len: number): void => {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(-2 - w * 0.7, 2 - w * 0.7);
+    ctx.quadraticCurveTo(len * 0.45, -len * 0.2, len * 0.7, -len * 0.7);
+    ctx.quadraticCurveTo(len * 0.2, -len * 0.45, -2 + w * 0.7, 2 + w * 0.7);
+    ctx.closePath();
+    ctx.fill();
+  };
+  tail("rgba(230,74,25,0.9)", 6.5, 15);
+  tail("rgba(255,152,0,0.95)", 4.8, 12);
+  tail("#ffe082", 3, 8.5);
+  // The rock: a lumpy basalt boulder split by lava veins.
+  outlined(ctx, "#5a4740", () => rockPath(ctx, -2.5, 2.5, 6.2));
+  ctx.strokeStyle = "#ffa040";
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.moveTo(-6.5, 1);
+  ctx.lineTo(-3, 2.5);
+  ctx.lineTo(-1.5, 6);
+  ctx.moveTo(-3, 2.5);
+  ctx.lineTo(1.5, 0.5);
+  ctx.moveTo(-4.5, -2);
+  ctx.lineTo(-2.5, -0.5);
+  ctx.stroke();
+  // Embers.
+  ctx.fillStyle = "#ffc061";
+  for (const [x, y, r] of [[7, -6, 0.9], [9.5, -3, 0.7], [4.5, -9, 0.6]] as const) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 function drawMirrorArt(ctx: Ctx): void {
   // Ornate gold hand mirror; the glass echoes a tiny second card.
   ctx.fillStyle = "#d9a93f";
@@ -1002,6 +1176,7 @@ export function drawCardArt(
   else if (cardId === "tornado") drawTornadoArt(ctx);
   else if (cardId === "skeleton-barrel") drawBarrelArt(ctx);
   else if (cardId === "mirror") drawMirrorArt(ctx);
+  else if (cardId === "comet") drawCometArt(ctx);
   else TROOP_PAINTERS[cardId]?.(ctx, STILL);
   ctx.restore();
 }

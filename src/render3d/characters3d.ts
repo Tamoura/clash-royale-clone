@@ -2555,6 +2555,431 @@ function buildMegaKnight(): TroopRig {
   return { group: g, arm, armRest: -0.4, swingAmp: 1.8, height: 1.75, legs, offArm };
 }
 
+// ---------------------------------------------------------------------------
+// Card wave 3: the Stone Golem, its Pebble Golems and the Digger.
+
+/** Deterministic 0..1 hash of a vertex position (boulder jitter). */
+function rockHash(x: number, y: number, z: number, seed: number): number {
+  const h = Math.sin(x * 127.1 + y * 311.7 + z * 74.7 + seed * 19.19) * 43758.5453;
+  return h - Math.floor(h);
+}
+
+/**
+ * A lumpy faceted boulder: an icosahedron whose corners are pushed in and
+ * out by a position hash, so shared corners move together (no cracks) and
+ * every face keeps its own flat normal (chiselled stone under the toon
+ * ramp). Cached per radius and seed like every other primitive.
+ */
+function boulderGeo(r: number, seed: number, detail = 1): THREE.BufferGeometry {
+  return cachedGeo(`rock:${r}:${seed}:${detail}`, () => {
+    const geo = new THREE.IcosahedronGeometry(r, detail);
+    const pos = geo.getAttribute("position") as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      // Round first: the same corner on two faces must hash identically.
+      const k = 1 + (rockHash(Math.round(x * 1e4), Math.round(y * 1e4), Math.round(z * 1e4), seed) - 0.5) * 0.24;
+      pos.setXYZ(i, x * k, y * k, z * k);
+    }
+    geo.computeVertexNormals();
+    return geo;
+  });
+}
+
+function boulder(r: number, color: number, x = 0, y = 0, z = 0, seed = 1): THREE.Mesh {
+  return shadowed(new THREE.Mesh(boulderGeo(r, seed), toon(color)), x, y, z);
+}
+
+/** Stone palette shared by the Classic golems (mossy grey granite). */
+const GOLEM = {
+  stone: 0x8e928a,
+  dark: 0x676b64,
+  crack: 0x3a3833,
+  moss: 0x6f9c3a,
+  mossDark: 0x4e7a2b,
+  gem: 0x7dffd0,
+} as const;
+
+/** Sandstone palette for the Golden Age golems (carved stone, turquoise inlay). */
+const SAND_GOLEM = {
+  stone: 0xc8b898,
+  dark: 0x9c8b6e,
+  crack: 0x5a4b3a,
+  inlay: 0x2fb3a4,
+  brass: 0xd8b25a,
+  gem: 0x8affef,
+} as const;
+
+/**
+ * A pair of glowing eye gems in dark sockets, grouped so the idle quirk can
+ * pulse them together. `r` is the gem radius; sockets sit just behind.
+ */
+function eyeGems(r: number, spread: number, y: number, z: number, gem: number, socket: number): THREE.Group {
+  const eyes = new THREE.Group();
+  eyes.name = "eye-gems";
+  eyes.position.set(0, y, z);
+  for (const s of [-1, 1]) {
+    eyes.add(sphere(r * 1.45, socket, s * spread, 0, -r * 0.5));
+    const gemMesh = new THREE.Mesh(cachedGeo(`gem:${r}`, () => new THREE.OctahedronGeometry(r, 1)), glow(gem, 2.2));
+    gemMesh.name = "eye-gem";
+    gemMesh.position.set(s * spread, 0, r * 0.35);
+    eyes.add(gemMesh);
+  }
+  return eyes;
+}
+
+/** A heavy stone arm: a column limb, a cracked boulder fist and a team band. */
+function golemArm(x: number, y: number, s: number, stone: number, dark: number, band: number, seed: number): THREE.Group {
+  const a = new THREE.Group();
+  a.position.set(x, y, 0.05);
+  a.add(box(0.36 * s, 0.62 * s, 0.36 * s, dark, 0, -0.34 * s, 0));
+  a.add(teamPart(cyl(0.24 * s, 0.24 * s, 0.12 * s, band, 0, -0.5 * s, 0), "dark")); // rune band
+  a.add(boulder(0.4 * s, stone, 0, -0.86 * s, 0.04 * s, seed)); // boulder fist
+  return a;
+}
+
+/**
+ * STONE GOLEM: a walking boulder. The body is one huge lumpy rock with a
+ * small head sunk into it, two glowing eye gems under a heavy brow, moss on
+ * the crown and shoulders, dark cracks across the chest, and arms that end
+ * in boulders. The team reads from a big chest crystal and the rune bands.
+ */
+function buildStoneGolem(): TroopRig {
+  const g = new THREE.Group();
+  const P = GOLEM;
+  const legs = [makeLeg(P.dark, -0.36, 0.42, 0.34), makeLeg(P.dark, 0.36, 0.42, 0.34)];
+  g.add(...legs);
+  g.add(boulder(0.6, P.dark, 0, 0.66, 0, 3)); // hips
+  const body = boulder(0.88, P.stone, 0, 1.28, 0, 7);
+  body.scale.set(1.12, 0.94, 0.9);
+  g.add(body);
+  // Cracks: dark zigzags chiselled across the front.
+  for (const [x, y, rz, h] of [[0.36, 1.46, 0.5, 0.3], [0.46, 1.2, -0.45, 0.24], [-0.44, 1.04, 0.35, 0.28], [-0.5, 1.26, -0.5, 0.18]] as const) {
+    const c = box(0.035, h, 0.03, P.crack, x, y, 0.76 - Math.abs(x) * 0.14);
+    c.rotation.z = rz;
+    c.name = "crack";
+    g.add(c);
+  }
+  // The team crystal set into the chest.
+  const crystal = teamPart(diamond(0.17, P.dark, 0, 1.3, 0.8));
+  crystal.scale.set(1, 1.35, 0.7);
+  g.add(crystal);
+  // Small head sunk into the shoulders, under a heavy brow ridge.
+  const head = boulder(0.42, P.stone, 0, 2.02, 0.16, 11);
+  head.name = "golem-head";
+  g.add(head);
+  g.add(box(0.62, 0.14, 0.22, P.dark, 0, 2.16, 0.46)); // brow ridge
+  g.add(eyeGems(0.085, 0.16, 2.02, 0.5, P.gem, P.crack));
+  // Moss: a cap on the crown and pads on both shoulders, with a few tufts.
+  const cap = sphere(0.32, P.moss, 0, 2.34, 0.08);
+  cap.scale.set(1.15, 0.36, 1.05);
+  cap.name = "moss";
+  g.add(cap);
+  for (const sx of [-1, 1]) {
+    const pad = sphere(0.3, P.moss, sx * 0.66, 1.86, 0);
+    pad.scale.set(1.1, 0.42, 1);
+    pad.name = "moss";
+    g.add(pad);
+    g.add(cone(0.06, 0.18, P.mossDark, sx * 0.62, 2.0, 0.12));
+  }
+  g.add(cone(0.06, 0.2, P.mossDark, 0.1, 2.46, 0.1));
+  g.add(cone(0.05, 0.16, P.mossDark, -0.12, 2.44, 0.02));
+
+  const offArm = golemArm(-1.0, 1.7, 1, P.stone, P.dark, P.dark, 13);
+  const arm = golemArm(1.0, 1.7, 1, P.stone, P.dark, P.dark, 17);
+  g.add(offArm, arm);
+  const eyes = g.getObjectByName("eye-gems")!;
+  // Idle quirk: the eye gems throb like a slow heartbeat.
+  const throb = (t: number, phase: number) => {
+    eyes.scale.setScalar(1 + Math.sin(t * 2.6 + phase) * 0.12);
+  };
+  return { group: g, arm, armRest: -0.3, swingAmp: 1.3, height: 2.5, legs, offArm, extras: throb };
+}
+
+/** PEBBLE GOLEM: a small round rock with big glowing eyes and a sprout on top. */
+function buildPebbleGolem(): TroopRig {
+  const g = new THREE.Group();
+  const P = GOLEM;
+  const legs = [makeLeg(P.dark, -0.2, 0.24, 0.2), makeLeg(P.dark, 0.2, 0.24, 0.2)];
+  g.add(...legs);
+  const body = boulder(0.52, P.stone, 0, 0.7, 0, 23);
+  body.scale.set(1.08, 0.96, 1);
+  g.add(body);
+  const nick = box(0.03, 0.16, 0.03, P.crack, -0.3, 0.6, 0.42); // a little crack
+  nick.rotation.z = 0.3;
+  g.add(nick);
+  g.add(eyeGems(0.075, 0.17, 0.8, 0.46, P.gem, P.crack));
+  g.add(teamPart(diamond(0.1, P.dark, 0, 0.5, 0.5))); // team pebble-gem
+  // A mossy tuft with a two-leaf sprout: the cute read.
+  const tuft = sphere(0.22, P.moss, 0, 1.16, 0);
+  tuft.scale.set(1.2, 0.4, 1.1);
+  tuft.name = "moss";
+  g.add(tuft);
+  g.add(cyl(0.025, 0.025, 0.2, P.mossDark, 0, 1.3, 0));
+  for (const s of [-1, 1]) {
+    const leaf = sphere(0.07, P.moss, s * 0.08, 1.42, 0);
+    leaf.scale.set(1.4, 0.45, 0.8);
+    leaf.rotation.z = s * 0.5;
+    g.add(leaf);
+  }
+  const offArm = golemArm(-0.52, 0.82, 0.5, P.stone, P.dark, P.dark, 29);
+  const arm = golemArm(0.52, 0.82, 0.5, P.stone, P.dark, P.dark, 31);
+  g.add(offArm, arm);
+  const eyes = g.getObjectByName("eye-gems")!;
+  const throb = (t: number, phase: number) => {
+    eyes.scale.setScalar(1 + Math.sin(t * 3.4 + phase) * 0.14);
+  };
+  return { group: g, arm, armRest: -0.3, swingAmp: 1.2, height: 1.3, legs, offArm, extras: throb };
+}
+
+/** A small dome with a brass finial: the Golden Age golems' crown. */
+function domeCap(r: number, x: number, y: number, z: number, stone: number, brass: number): THREE.Group {
+  const d = new THREE.Group();
+  d.position.set(x, y, z);
+  const dome = sphere(r, stone);
+  dome.scale.set(1, 0.8, 1);
+  dome.name = "golem-dome";
+  d.add(dome);
+  d.add(cyl(r * 1.02, r * 1.02, r * 0.18, brass, 0, -r * 0.05, 0));
+  d.add(cyl(r * 0.12, r * 0.18, r * 0.4, brass, 0, r * 0.9, 0));
+  d.add(sphere(r * 0.18, brass, 0, r * 1.18, 0));
+  return d;
+}
+
+/**
+ * Golden Age STONE GOLEM: a carved SANDSTONE guardian. A square-shouldered
+ * block body inlaid with a turquoise eight-point star, brass bands on the
+ * arms, a domed head with a brass finial and glowing turquoise eyes; a team
+ * sash crosses the chest.
+ */
+function buildSandstoneGolem(): TroopRig {
+  const g = new THREE.Group();
+  const P = SAND_GOLEM;
+  const legs = [makeLeg(P.dark, -0.36, 0.42, 0.36), makeLeg(P.dark, 0.36, 0.42, 0.36)];
+  g.add(...legs);
+  g.add(box(1.1, 0.5, 0.8, P.dark, 0, 0.66, 0)); // hip block
+  const body = box(1.6, 1.15, 1.2, P.stone, 0, 1.36, 0);
+  g.add(body);
+  g.add(box(1.7, 0.14, 1.28, P.dark, 0, 1.96, 0)); // carved cornice
+  // Turquoise eight-point star: two squares, one turned 45 degrees.
+  for (const rz of [0, Math.PI / 4]) {
+    const sq = box(0.42, 0.42, 0.05, P.inlay, 0, 1.36, 0.61);
+    sq.rotation.z = rz;
+    sq.name = "girih-star";
+    g.add(sq);
+  }
+  g.add(sphere(0.09, P.brass, 0, 1.36, 0.66)); // star boss
+  for (const sx of [-1, 1]) g.add(box(0.06, 0.8, 0.05, P.crack, sx * 0.56, 1.3, 0.61)); // carved grooves
+  const sash = teamPart(box(0.26, 1.5, 0.06, P.dark, 0, 1.36, 0.64));
+  sash.rotation.z = 0.72;
+  g.add(sash);
+  // Domed head, set low between the shoulders.
+  const head = box(0.66, 0.5, 0.6, P.stone, 0, 2.24, 0.08);
+  head.name = "golem-head";
+  g.add(head);
+  g.add(box(0.72, 0.1, 0.2, P.dark, 0, 2.38, 0.34)); // brow
+  g.add(eyeGems(0.08, 0.15, 2.22, 0.4, P.gem, P.crack));
+  g.add(domeCap(0.34, 0, 2.54, 0.06, P.stone, P.brass));
+
+  const mkArm = (x: number, seed: number): THREE.Group => {
+    const a = golemArm(x, 1.78, 1, P.stone, P.dark, P.dark, seed);
+    a.add(cyl(0.25, 0.25, 0.08, P.brass, 0, -0.2, 0)); // brass cuff
+    return a;
+  };
+  const offArm = mkArm(-1.02, 37);
+  const arm = mkArm(1.02, 41);
+  g.add(offArm, arm);
+  const eyes = g.getObjectByName("eye-gems")!;
+  const throb = (t: number, phase: number) => {
+    eyes.scale.setScalar(1 + Math.sin(t * 2.6 + phase) * 0.12);
+  };
+  return { group: g, arm, armRest: -0.3, swingAmp: 1.3, height: 2.6, legs, offArm, extras: throb };
+}
+
+/** Golden Age PEBBLE GOLEM: a little sandstone block with a dome and turquoise eyes. */
+function buildSandPebble(): TroopRig {
+  const g = new THREE.Group();
+  const P = SAND_GOLEM;
+  const legs = [makeLeg(P.dark, -0.2, 0.24, 0.2), makeLeg(P.dark, 0.2, 0.24, 0.2)];
+  g.add(...legs);
+  g.add(box(0.86, 0.74, 0.74, P.stone, 0, 0.66, 0));
+  g.add(eyeGems(0.07, 0.16, 0.78, 0.38, P.gem, P.crack));
+  for (const rz of [0, Math.PI / 4]) {
+    const sq = box(0.16, 0.16, 0.04, P.inlay, 0, 0.48, 0.38);
+    sq.rotation.z = rz;
+    g.add(sq);
+  }
+  g.add(teamPart(box(0.9, 0.1, 0.78, P.dark, 0, 0.32, 0))); // team plinth band
+  g.add(domeCap(0.22, 0, 1.1, 0, P.stone, P.brass));
+  const offArm = golemArm(-0.54, 0.8, 0.5, P.stone, P.dark, P.dark, 43);
+  const arm = golemArm(0.54, 0.8, 0.5, P.stone, P.dark, P.dark, 47);
+  g.add(offArm, arm);
+  const eyes = g.getObjectByName("eye-gems")!;
+  const throb = (t: number, phase: number) => {
+    eyes.scale.setScalar(1 + Math.sin(t * 3.4 + phase) * 0.14);
+  };
+  return { group: g, arm, armRest: -0.3, swingAmp: 1.2, height: 1.35, legs, offArm, extras: throb };
+}
+
+/**
+ * DIGGER: a stocky miner. A brass hard hat with a glowing headlamp, a big
+ * nose and bushy moustache, a work shirt with a team neckerchief and team
+ * braces, and a pickaxe that swings in quick chops.
+ */
+function buildDigger(): TroopRig {
+  const g = new THREE.Group();
+  const SHIRT = 0x8d6e4a, TROUSER = 0x4f4a44, BOOT = 0x3b2a1e, HAT = 0xe8c547, HATDK = 0xb99a3a;
+  const WOOD = 0x7a5536, STEEL = 0xaeb7c2, STACHE = 0x6b4a32;
+  const legs = [makeLeg(TROUSER, -0.15, 0.3, 0.17), makeLeg(TROUSER, 0.15, 0.3, 0.17)];
+  for (const leg of legs) leg.add(box(0.2, 0.1, 0.24, BOOT, 0, -0.27, 0.03)); // boots
+  g.add(...legs);
+  g.add(cyl(0.3, 0.36, 0.5, SHIRT, 0, 0.56, 0));
+  g.add(cyl(0.37, 0.37, 0.09, BOOT, 0, 0.34, 0)); // belt
+  g.add(box(0.12, 0.11, 0.06, 0xd6b25a, 0, 0.34, 0.36)); // buckle
+  for (const sx of [-1, 1]) {
+    const brace = teamPart(box(0.08, 0.46, 0.05, TROUSER, sx * 0.16, 0.58, 0.3), "dark");
+    brace.rotation.z = -sx * 0.08;
+    g.add(brace);
+  }
+  g.add(teamPart(cyl(0.3, 0.33, 0.12, SHIRT, 0, 0.84, 0))); // neckerchief
+  g.add(teamPart(cone(0.12, 0.2, SHIRT, 0, 0.74, 0.27), "main")); // its knot
+
+  const head = sphere(0.38, SKIN, 0, 1.18, 0);
+  addEyes(head, 0.38, 0.32, 0.1, "brave");
+  const nose = sphere(0.12, 0xeab48c, 0, -0.04, 0.38);
+  nose.name = "nose";
+  head.add(nose);
+  const stache = box(0.4, 0.1, 0.1, STACHE, 0, -0.16, 0.33);
+  stache.name = "mustache";
+  head.add(stache);
+  for (const s of [-1, 1]) {
+    const tip = sphere(0.08, STACHE, s * 0.21, -0.18, 0.32);
+    tip.name = "mustache";
+    tip.scale.set(1.1, 0.75, 0.8);
+    head.add(tip);
+  }
+  g.add(head);
+  // Hard hat: dome, brim, ridge, and the headlamp out front.
+  const hat = sphere(0.41, HAT, 0, 1.36, -0.02);
+  hat.scale.set(1, 0.62, 1.02);
+  hat.name = "hard-hat";
+  g.add(hat);
+  g.add(cyl(0.47, 0.47, 0.06, HATDK, 0, 1.32, 0.02)); // brim
+  g.add(box(0.08, 0.1, 0.62, HATDK, 0, 1.6, -0.02)); // ridge
+  const lampBody = cyl(0.1, 0.12, 0.12, 0x8a7a5a, 0, 1.46, 0.38);
+  lampBody.rotation.x = Math.PI / 2;
+  g.add(lampBody);
+  const lamp = new THREE.Mesh(cachedGeo("s:0.085:lamp", () => new THREE.SphereGeometry(0.085, 12, 10)), glow(0xfff3b0, 2.4));
+  lamp.name = "lamp";
+  lamp.position.set(0, 1.46, 0.45);
+  g.add(lamp);
+
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.42, 0.78, 0);
+  offArm.add(box(0.14, 0.32, 0.14, SHIRT, 0, -0.16, 0));
+  g.add(offArm);
+  // Pickaxe arm: a long handle up from the fist, a double pick head on top.
+  const arm = new THREE.Group();
+  arm.position.set(0.42, 0.8, 0);
+  arm.add(box(0.14, 0.32, 0.14, SHIRT, 0, -0.16, 0));
+  arm.add(cyl(0.04, 0.045, 0.86, WOOD, 0, 0.02, 0.04)); // handle
+  const pick = new THREE.Group();
+  pick.name = "pickaxe";
+  pick.position.set(0, 0.44, 0.04);
+  pick.add(box(0.1, 0.12, 0.22, 0x5d5f66, 0, 0, 0)); // collar
+  for (const dz of [-1, 1]) {
+    const blade = cone(0.07, 0.38, STEEL, 0, -0.06, dz * 0.28);
+    blade.rotation.x = dz * (Math.PI / 2 + 0.35); // curved down at both ends
+    pick.add(blade);
+  }
+  arm.add(pick);
+  g.add(arm);
+  return { group: g, arm, armRest: -0.5, swingAmp: 1.9, height: 1.72, legs, offArm };
+}
+
+/**
+ * Golden Age DIGGER: a desert TREASURE-DIGGER. A team-dyed turban, a pale
+ * sand robe with a team sash, a coin sack on the back, a brass oil lamp at
+ * the belt, and a long shovel for an attack arm.
+ */
+function buildTreasureDigger(): TroopRig {
+  const g = new THREE.Group();
+  const ROBE = 0xe6d8b8, ROBEDK = 0xb9a888, WOOD = 0x7a5536, IRON = 0x9aa3ad, GOLD = THEME.goldLight;
+  const legs = [makeLeg(ROBEDK, -0.14, 0.28, 0.16), makeLeg(ROBEDK, 0.14, 0.28, 0.16)];
+  g.add(...legs);
+  g.add(cyl(0.28, 0.42, 0.6, ROBE, 0, 0.52, 0)); // robe
+  g.add(teamPart(cyl(0.36, 0.37, 0.15, ROBEDK, 0, 0.48, 0))); // sash
+  g.add(box(0.12, 0.12, 0.05, GOLD, 0.16, 0.48, 0.36)); // sash buckle
+  // Coin sack on the back, gold spilling at the neck.
+  const sack = sphere(0.24, 0x8a6d4a, 0, 0.72, -0.34);
+  sack.name = "treasure-sack";
+  g.add(sack);
+  for (const dx of [-0.06, 0.06]) g.add(sphere(0.06, GOLD, dx, 0.94, -0.36));
+  // Brass oil lamp hanging at the hip, with a little flame.
+  g.add(sphere(0.09, GOLD, -0.3, 0.42, 0.16));
+  const flame = new THREE.Mesh(cachedGeo("s:0.05:flame", () => new THREE.SphereGeometry(0.05, 10, 8)), glow(0xffe08a, 2.2));
+  flame.name = "lamp";
+  flame.position.set(-0.3, 0.53, 0.2);
+  g.add(flame);
+
+  const head = sphere(0.34, SKIN, 0, 1.06, 0);
+  addEyes(head, 0.34, 0.34, 0.08, "brave");
+  const beard = sphere(0.26, 0x4a3426, 0, -0.22, 0.12);
+  beard.scale.set(0.9, 0.5, 0.75);
+  beard.name = "beard";
+  head.add(beard);
+  g.add(head);
+  const t = turban(0.34, ROBEDK, GOLD, true);
+  t.position.y = 1.16;
+  g.add(t);
+
+  const offArm = new THREE.Group();
+  offArm.position.set(-0.38, 0.74, 0);
+  offArm.add(box(0.13, 0.3, 0.13, ROBE, 0, -0.15, 0));
+  g.add(offArm);
+  // Shovel arm: a long shaft with a T grip below and a spade blade on top.
+  const arm = new THREE.Group();
+  arm.position.set(0.38, 0.76, 0);
+  arm.add(box(0.13, 0.3, 0.13, ROBE, 0, -0.15, 0));
+  arm.add(cyl(0.035, 0.04, 1.0, WOOD, 0, 0.12, 0.04)); // shaft
+  arm.add(box(0.2, 0.05, 0.05, WOOD, 0, -0.38, 0.04)); // T grip
+  const shovel = new THREE.Group();
+  shovel.name = "shovel";
+  shovel.position.set(0, 0.7, 0.04);
+  shovel.add(box(0.3, 0.34, 0.05, IRON, 0, 0, 0));
+  const tip = sphere(0.15, IRON, 0, 0.17, 0);
+  tip.scale.set(1, 0.6, 0.3);
+  shovel.add(tip);
+  shovel.add(cyl(0.06, 0.06, 0.1, IRON, 0, -0.2, 0)); // socket
+  arm.add(shovel);
+  g.add(arm);
+  const flicker = (time: number, phase: number) => {
+    flame.scale.setScalar(1 + Math.sin(time * 12 + phase) * 0.18);
+  };
+  return { group: g, arm, armRest: -0.5, swingAmp: 1.8, height: 1.62, legs, offArm, extras: flicker };
+}
+
+/**
+ * The Comet's flaming rock (a spell, so it is no troop rig): a dark basalt
+ * boulder split by glowing lava veins. Used by the card portrait and the
+ * falling comet in battle. The flame tail is the caller's business.
+ */
+export function buildCometRock(r = 0.5): THREE.Group {
+  const g = new THREE.Group();
+  g.name = "comet-rock";
+  const rock = new THREE.Mesh(boulderGeo(r, 53), toon(0x5a4740));
+  rock.name = "comet-body";
+  g.add(rock);
+  // Lava veins: thin hot bars wrapped across the faces.
+  const lava = glow(0xffa040, 2.6);
+  for (const [rx, ry, rz] of [[0.3, 0, 0.9], [1.2, 0.6, 0.2], [0.1, 1.4, -0.7]] as const) {
+    const vein = new THREE.Mesh(cachedGeo(`vein:${r}`, () => new THREE.TorusGeometry(r * 0.98, r * 0.06, 4, 18, Math.PI * 0.9)), lava);
+    vein.name = "comet-vein";
+    vein.rotation.set(rx, ry, rz);
+    g.add(vein);
+  }
+  return g;
+}
+
 /** Darken a hex color by factor f (0..1). */
 function shade(color: number, f: number): number {
   const c = new THREE.Color(color);
@@ -2780,12 +3205,10 @@ const BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   princess: buildPrincess,
   "mega-knight": buildMegaKnight,
   "royal-giant": buildRoyalGiant,
-  // Card wave 3 placeholders until their own rigs land: the Stone Golem and
-  // its Pebble Golems borrow the Giant (buildTroop throws without a builder).
-  "stone-golem": buildGiant,
-  "pebble-golem": buildGiant,
-  // ...and the Digger borrows the Mini P.E.K.K.A.
-  digger: buildMiniPekka,
+  // Card wave 3: a mossy boulder, the pebbles it bursts into, and a miner.
+  "stone-golem": buildStoneGolem,
+  "pebble-golem": buildPebbleGolem,
+  digger: buildDigger,
 };
 
 /**
@@ -3309,10 +3732,11 @@ const ISLAMIC_BUILDERS: Partial<Record<CardId, () => TroopRig>> = {
   skeletons: buildMilitia,
   "skeleton-army": buildMilitia,
   "royal-giant": buildBombardier,
-  // Card wave 3 placeholders: the edition's Giant (the war elephant).
-  "stone-golem": buildWarElephant,
-  "pebble-golem": buildWarElephant,
-  digger: buildDuelist,
+  // Card wave 3: a carved sandstone guardian, its little blocks, and a
+  // desert treasure-digger with a shovel.
+  "stone-golem": buildSandstoneGolem,
+  "pebble-golem": buildSandPebble,
+  digger: buildTreasureDigger,
 };
 
 /**
