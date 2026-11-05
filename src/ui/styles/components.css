@@ -233,10 +233,12 @@
 }
 
 /* ── Toast ── */
+/* Toasts sit low on the screen (components.ts placeToasts lifts the host
+   above the tab bar or a footer), never over a screen's title or wallet. */
 .ui-toast-host {
   position: fixed;
   inset-inline: var(--sp-4);
-  top: max(var(--sp-4), env(safe-area-inset-top, 0px));
+  bottom: calc(88px + env(safe-area-inset-bottom, 0px));
   z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
@@ -261,10 +263,10 @@
 .ui-toast--danger { box-shadow: inset 0 0 0 2px var(--danger), var(--elev-2); }
 .ui-toast.is-leaving {
   opacity: 0;
-  transform: translateY(-8px);
+  transform: translateY(8px);
 }
 @keyframes uiToastIn {
-  from { opacity: 0; transform: translateY(-12px) scale(0.96); }
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
   to { opacity: 1; transform: none; }
 }
 

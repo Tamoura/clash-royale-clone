@@ -8,7 +8,7 @@ import type { AppCtx } from "../../app/ctx";
 import { on } from "../../app/hooks";
 import { DECK } from "../../game/cards";
 import { ACHIEVEMENTS, achievementProgress, claimAchievement, isEarned, saveAchievements } from "../../meta/achievements";
-import { button } from "../components";
+import { button, rewardBurst } from "../components";
 import { fmtNum } from "../i18n";
 import { icon, type CrestIndex, type IconName } from "../icons";
 import { CREST_COUNT, PLAYER_NAME_MAX, getPrefs, sanitizePlayerName, setPrefs } from "../prefs";
@@ -167,12 +167,15 @@ function achievementsBoard(ctx: AppCtx, rerender: () => void): HTMLElement {
     const btn = claimButton(ctx, state, def.reward, () => {
       const res = claimAchievement(meta.achievements, def.id);
       if (!res) return;
+      // Where the coins start, taken before the re-render drops the button.
+      const from = btn.getBoundingClientRect();
       meta.achievements = res.state;
       saveAchievements(meta.achievements);
       meta.profile = { ...meta.profile, gold: meta.profile.gold + res.reward };
       ctx.persistProfile();
       refreshTopBars(ctx);
       rerender();
+      void rewardBurst({ from, kind: "gold", amount: res.reward, total: meta.profile.gold });
     });
     s.el.appendChild(goalRow(tr(def.en, def.ar), achievementProgress(a, def), def.target, btn));
   }

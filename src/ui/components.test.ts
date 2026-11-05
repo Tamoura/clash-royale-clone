@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { btnClass, clampProgress, confirmLook, segmentedNext, trapOrder } from "./components";
+import {
+  btnClass,
+  burstCount,
+  clampProgress,
+  confirmLook,
+  flightPoint,
+  segmentedNext,
+  toastBottom,
+  trapOrder,
+  walletValue,
+} from "./components";
 
 describe("btnClass", () => {
   it("combines the base, variant and size classes", () => {
@@ -81,6 +91,77 @@ describe("confirmLook", () => {
         const l = confirmLook({ emphasis, danger });
         expect(l.ok === "cta" && l.cancel === "cta").toBe(false);
       }
+    }
+  });
+});
+
+describe("toastBottom", () => {
+  it("sits just above the bottom edge when nothing is docked there", () => {
+    expect(toastBottom(844, [])).toBe(12);
+    expect(toastBottom(844, [], 34)).toBe(46);
+  });
+  it("lifts above the tab bar or a footer in the bottom half", () => {
+    // Tab bar 72px tall at the bottom of a 390x844 phone.
+    expect(toastBottom(844, [{ top: 772, bottom: 844 }])).toBe(72 + 12);
+    // A footer above the tab bar lifts it further.
+    expect(toastBottom(844, [{ top: 772, bottom: 844 }, { top: 700, bottom: 770 }])).toBe(144 + 12);
+  });
+  it("ignores bars in the top half (headers, the wallet) and junk", () => {
+    expect(toastBottom(844, [{ top: 0, bottom: 64 }, { top: 300, bottom: 360 }])).toBe(12);
+    expect(toastBottom(844, [{ top: 900, bottom: 950 }, { top: 800, bottom: 790 }])).toBe(12);
+  });
+  it("keeps a toast clear of a title in landscape too", () => {
+    // 844x390: header at the top, tab bar 56px at the bottom.
+    const b = toastBottom(390, [{ top: 0, bottom: 52 }, { top: 334, bottom: 390 }]);
+    expect(390 - b).toBeGreaterThan(52 + 40); // room for a toast below the header
+  });
+});
+
+describe("reward bursts", () => {
+  it("flies more coins for bigger rewards, within 4..12", () => {
+    expect(burstCount(0)).toBe(0);
+    expect(burstCount(-5)).toBe(0);
+    expect(burstCount(Number.NaN)).toBe(0);
+    expect(burstCount(1)).toBe(4);
+    expect(burstCount(50)).toBeGreaterThan(burstCount(5));
+    expect(burstCount(400)).toBeGreaterThanOrEqual(burstCount(50));
+    expect(burstCount(1_000_000)).toBe(12);
+  });
+
+  it("each coin starts at the button and lands exactly on the wallet", () => {
+    const a = { x: 200, y: 600 };
+    const b = { x: 320, y: 30 };
+    for (let i = 0; i < 8; i++) {
+      expect(flightPoint(a, b, 0, i, 8)).toEqual(a);
+      const end = flightPoint(a, b, 1, i, 8);
+      expect(end.x).toBeCloseTo(b.x, 6);
+      expect(end.y).toBeCloseTo(b.y, 6);
+    }
+  });
+
+  it("coins scatter apart mid-flight (not one blob) and head toward the wallet", () => {
+    const a = { x: 100, y: 700 };
+    const b = { x: 300, y: 20 };
+    const mid = [0, 1, 2, 3, 4, 5].map((i) => flightPoint(a, b, 0.5, i, 6));
+    const xs = mid.map((p) => p.x);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(30);
+    for (const p of mid) expect(p.y).toBeLessThan(a.y);
+    // Clamped outside 0..1.
+    expect(flightPoint(a, b, 2, 0, 6)).toEqual(flightPoint(a, b, 1, 0, 6));
+  });
+
+  it("the wallet counts up as coins land and ends exactly on the total", () => {
+    expect(walletValue(100, 150, 0, 5)).toBe(100);
+    expect(walletValue(100, 150, 2, 5)).toBe(120);
+    expect(walletValue(100, 150, 5, 5)).toBe(150);
+    expect(walletValue(100, 150, 9, 5)).toBe(150);
+    expect(walletValue(100, 150, 0, 0)).toBe(150);
+    // Never down along the way.
+    let last = 0;
+    for (let k = 0; k <= 7; k++) {
+      const v = walletValue(1000, 1333, k, 7);
+      expect(v).toBeGreaterThanOrEqual(last);
+      last = v;
     }
   });
 });

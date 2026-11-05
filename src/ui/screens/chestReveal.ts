@@ -15,7 +15,7 @@ import { upgradeCost } from "../../meta/economy";
 import { cardDisplayName } from "../../render/cardNames";
 import { ARABIC } from "../../render3d/theme";
 import { makeCardCanvas } from "../cardFrame";
-import { button, confirm } from "../components";
+import { button, confirm, rewardBursts } from "../components";
 import { fmtNum } from "../i18n";
 import { icon } from "../icons";
 import { getPrefs, reducedMotion } from "../prefs";
@@ -388,6 +388,9 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
     return btn;
   };
 
+  /** Where the chest's gold flies from when Collect is pressed (the summary's pills). */
+  let collectFrom: DOMRect | null = null;
+
   const showSummary = (): Promise<void> => {
     legendaryStage(null);
     root.dataset.stage = "summary";
@@ -415,7 +418,15 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
     const newId = items.find((i) => i.isNew)?.id;
     if (newId) summary.appendChild(addToDeckButton(newId));
     return new Promise((resolve) => {
-      const ok = button({ variant: "cta", size: "lg", label: tr("Collect", "استلام"), onClick: () => resolve() });
+      const ok = button({
+        variant: "cta",
+        size: "lg",
+        label: tr("Collect", "استلام"),
+        onClick: () => {
+          collectFrom = cur.getBoundingClientRect();
+          resolve();
+        },
+      });
       ok.classList.add("rw-summary__ok");
       summary.appendChild(ok);
       hint.textContent = "";
@@ -470,5 +481,10 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
     document.removeEventListener("keydown", onKey, true);
     root.classList.add("is-leaving");
     window.setTimeout(() => root.remove(), calm ? 0 : 220);
+    // The gold (and gems) fly into the wallet of the screen underneath.
+    if (collectFrom) {
+      const { gold, gems } = meta.profile;
+      void rewardBursts(collectFrom, o.rewards.gold, o.rewards.gems, { gold, gems });
+    }
   });
 }

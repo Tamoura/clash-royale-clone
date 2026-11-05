@@ -1627,3 +1627,51 @@
 .is-calm .rw-inbox {
   animation: none;
 }
+
+/* ── Reward bursts (components.ts rewardBurst): coins fly into the wallet ── */
+.rw-burst {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-toast) + 1);
+  overflow: hidden;
+  pointer-events: none;
+}
+.rw-burst__coin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 26px;
+  height: 26px;
+  will-change: transform, opacity;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.35)) drop-shadow(0 0 6px rgba(255, 214, 90, 0.55));
+}
+.rw-burst__coin--gems {
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.35)) drop-shadow(0 0 6px rgba(62, 224, 122, 0.55));
+}
+.rw-burst__coin .ui-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.v2-chip.is-bumped,
+.rw-pill.is-bumped,
+[data-wallet].is-bumped {
+  animation: rwWalletBump 240ms var(--ease-pop);
+}
+.v2-chip.is-bumped b,
+.rw-pill.is-bumped b {
+  color: var(--accent);
+}
+@keyframes rwWalletBump {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+/* A wallet in a screen header (road, pass): compact so the title keeps its room. */
+.ui-header .rw-wallet {
+  flex: none;
+}
+.ui-header .rw-wallet .rw-pill {
+  padding: var(--sp-1) 6px;
+  font-variant-numeric: tabular-nums;
+}

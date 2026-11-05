@@ -10,7 +10,7 @@ import { ARENAS } from "../../meta/arenas";
 import { claim, claimable, loadRoad, nextRoadNode, saveRoad } from "../../meta/road";
 import { roadSections, type RoadNode } from "../../meta/roadRewards";
 import { ARABIC } from "../../render3d/theme";
-import { button, screenHeader, toast } from "../components";
+import { button, rewardBursts, screenHeader, toast, walletChips } from "../components";
 import { fmtNum } from "../i18n";
 import { icon } from "../icons";
 import { reducedMotion } from "../prefs";
@@ -28,8 +28,11 @@ export function roadClaimable(ctx: AppCtx): RoadNode[] {
   return claimable(roadReached(ctx), loadRoad().claimed);
 }
 
-/** Claim one node: pay gold/gems, then reveal its chest if it has one. */
-export async function claimRoadNode(ctx: AppCtx, at: number): Promise<boolean> {
+/**
+ * Claim one node: pay gold/gems (bursting from `from`, the Claim button,
+ * into the wallet), then reveal its chest if it has one.
+ */
+export async function claimRoadNode(ctx: AppCtx, at: number, from?: Element | DOMRect): Promise<boolean> {
   const { tr } = ctx;
   const res = claim(loadRoad(), at, roadReached(ctx));
   if (!res) return false;
@@ -43,6 +46,10 @@ export async function claimRoadNode(ctx: AppCtx, at: number): Promise<boolean> {
     .filter(Boolean)
     .join(" · ");
   if (bits) toast(bits, "success");
+  if (from) {
+    const { gold, gems } = ctx.meta.profile;
+    await rewardBursts(from, n.gold ?? 0, n.gems ?? 0, { gold, gems });
+  }
   if (n.chest) await openChestFlow(ctx, { kind: "bonus", rarity: n.chest }, tr("Trophy Road", "طريق الكؤوس"));
   return true;
 }
@@ -141,11 +148,14 @@ function buildRoad(ctx: AppCtx, scrollToMarker: boolean): void {
   const claimedSet = new Set(road.claimed);
   const waiting = claimable(reached, road.claimed);
 
-  const chip = document.createElement("span");
-  chip.className = "rw-pill";
-  chip.innerHTML = `${icon("trophy")}<b>${fmtNum(trophies)}</b>`;
+  // The wallet claims fly into (trophies stand on the "You" marker below).
   screen.appendChild(
-    screenHeader({ title: tr("Trophy Road", "طريق الكؤوس"), onBack: () => ctx.openHome(), backLabel: tr("Back", "رجوع"), trailing: chip }),
+    screenHeader({
+      title: tr("Trophy Road", "طريق الكؤوس"),
+      onBack: () => ctx.openHome(),
+      backLabel: tr("Back", "رجوع"),
+      trailing: walletChips(meta.profile.gold, meta.profile.gems),
+    }),
   );
 
   const intro = document.createElement("p");
@@ -198,7 +208,7 @@ function buildRoad(ctx: AppCtx, scrollToMarker: boolean): void {
           label: tr("Claim", "استلم"),
           onClick: () => {
             b.disabled = true;
-            void claimRoadNode(ctx, n.at).then(() => buildRoad(ctx, false));
+            void claimRoadNode(ctx, n.at, b).then(() => buildRoad(ctx, false));
           },
         });
         b.classList.add("rw-node__claim");
