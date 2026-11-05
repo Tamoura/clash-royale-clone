@@ -206,10 +206,12 @@ export function slotSwitcher(ctx: AppCtx, slots: DeckSlots, onPick: (i: number) 
     const num = document.createElement("span");
     num.className = "dq-slot__num";
     num.textContent = fmtNum(i + 1);
+    // The number is in the circle: an unnamed slot just says "Deck".
     const name = document.createElement("span");
     name.className = "dq-slot__name";
-    name.textContent = slotName(ctx, slots, i);
+    name.textContent = slots.slots[i]?.name || tr("Deck", "مجموعة");
     b.append(num, name);
+    b.setAttribute("aria-label", slotName(ctx, slots, i));
     b.addEventListener("click", () => onPick(i));
     buttons.push(b);
     row.appendChild(b);
@@ -591,8 +593,13 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
     if (next.swapped !== undefined) sfx(ctx, "uiTap");
     sync();
     if (edit.pending && edit.pending !== before) {
-      // Bring the deck into view: the kid's next tap goes there.
-      deckGrid.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+      // Bring the prompt and the deck into view (the kid's next tap goes there).
+      const view = swapBar.closest(".v2-screen-body")?.getBoundingClientRect();
+      const top = swapBar.getBoundingClientRect().top;
+      const bottom = deckGrid.getBoundingClientRect().bottom;
+      if (!view || top < view.top || bottom > view.bottom) {
+        swapBar.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
+      }
     }
   }
 
@@ -608,25 +615,26 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
     sync();
   }
 
+  const rename = button({
+    variant: "secondary",
+    icon: "pencil",
+    label: tr("Name", "الاسم"),
+    onClick: () => {
+      const i = slots.active;
+      openRenameSheet(ctx, slots.slots[i].name, tr(`Deck ${i + 1}`, `مجموعة ${fmtNum(i + 1)}`), (n) => {
+        slots = renameSlot(slots, i, n);
+        saveDeckSlots(slots, store());
+        drawSwitcher();
+      });
+    },
+  });
+  rename.classList.add("v2-head-btn", "dq-rename-btn");
+
   function drawSwitcher(): void {
     switcherHost.innerHTML = "";
     switcherHost.appendChild(slotSwitcher(ctx, slots, pickSlot));
     const name = slotName(ctx, slots, slots.active);
-    const rename = button({
-      variant: "icon",
-      icon: "pencil",
-      ariaLabel: tr(`Rename ${name}`, `أعد تسمية ${name}`),
-      onClick: () => {
-        const i = slots.active;
-        openRenameSheet(ctx, slots.slots[i].name, tr(`Deck ${i + 1}`, `مجموعة ${fmtNum(i + 1)}`), (n) => {
-          slots = renameSlot(slots, i, n);
-          saveDeckSlots(slots, store());
-          drawSwitcher();
-        });
-      },
-    });
-    rename.classList.add("dq-rename-btn");
-    switcherHost.appendChild(rename);
+    rename.setAttribute("aria-label", tr(`Rename ${name}`, `أعد تسمية ${name}`));
   }
 
   function useCode(cards: CardId[]): void {
@@ -813,7 +821,7 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
     footer,
     onLeave: commitOrWarn,
     build: (body) => {
-      const d = section(tr("Your deck", "مجموعتك"));
+      const d = section(tr("Your deck", "مجموعتك"), rename);
       d.el.classList.add("dq-deck");
       d.el.append(switcherHost, swapBar, swapLive, deckGrid, summary, codeRow);
       body.appendChild(d.el);
