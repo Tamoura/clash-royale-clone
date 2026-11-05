@@ -468,8 +468,8 @@ function shopTab(ctx: AppCtx, panel: HTMLElement, redraw: () => void): void {
   const hint = document.createElement("p");
   hint.className = "v2-hint";
   hint.textContent = tr(
-    `Short on shards? Craft them for ${SHARD_GOLD_PRICE} gold each (${shardGoldPrice("legendary")} for a Legendary).`,
-    `تنقصك شظايا؟ اصنعها مقابل ${fmtNum(SHARD_GOLD_PRICE)} ذهب لكل واحدة (${fmtNum(shardGoldPrice("legendary"))} للأسطورية).`,
+    `Short on shards? Craft them for ${SHARD_GOLD_PRICE} gold each, ${shardGoldPrice("legendary")} for a Legendary.`,
+    `تنقصك شظايا؟ اصنعها مقابل ${fmtNum(SHARD_GOLD_PRICE)} ذهب لكل واحدة، و${fmtNum(shardGoldPrice("legendary"))} للأسطورية.`,
   );
   s.el.appendChild(hint);
   const offers = craftOffers(ctx.meta);
