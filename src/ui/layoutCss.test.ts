@@ -14,6 +14,8 @@ import { BATTLE_BOX } from "../render3d/scene/fit";
 import {
   CARD_ASPECT,
   SIDE_GAP,
+  SIDE_MIN,
+  SIDE_SLIM,
   cardHeight,
   handGridW,
   handPanelBudget,
@@ -45,6 +47,8 @@ function rule(selector: string): Record<string, string> {
 
 /** Every px length in a value, in order ("6px 8px max(10px, env(x))" -> [6, 8, 10]). */
 const px = (value: string): number[] => [...value.matchAll(/(-?\d+(?:\.\d+)?)px/g)].map((m) => Number(m[1]));
+/** What a wide panel's width takes off its column ("calc(var(--side) - 24px)" -> 24). */
+const inset = (selector: string): number => px(rule(selector).width)[0];
 /** A plain shorthand's lengths, zeros included ("14px 0 6px" -> [14, 0, 6]). */
 const lengths = (value: string): number[] => value.split(" ").map((t) => parseFloat(t));
 
@@ -143,5 +147,11 @@ describe("the tray's stylesheet numbers match layout.ts", () => {
     expect(lay.fieldW).toBe(Math.round(((2 * BATTLE_BOX.halfW) / BATTLE_BOX.height) * 900));
     const hug = rule(':root[data-layout="wide"]')["--hug"];
     expect(hug).toBe("max(12px, calc((100vw - var(--field-w)) / 2 - var(--side) + 12px))");
+    // A slim left panel (under SIDE_SLIM) may use the column's inner inset
+    // for its clock row, but never more than the column itself.
+    expect(SIDE_MIN).toBeLessThan(SIDE_SLIM);
+    const [slimInset] = px(rule(':root[data-layout="wide"][data-slim] #topbar.v2').width);
+    expect(slimInset).toBeGreaterThanOrEqual(12);
+    expect(slimInset).toBeLessThan(inset(':root[data-layout="wide"] #topbar'));
   });
 });

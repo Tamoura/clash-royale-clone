@@ -1,11 +1,11 @@
 /**
  * Applies the battle layout (layout.ts) to the page while a battle is on
- * screen: :root[data-layout] / [data-side] / [data-panel] with --side,
- * --field-w, --card-w, --card-h, --next-w, --king-w and --hand-cols for the
- * CSS (styles/hud.css), --band (tall: the measured scoreboard band), and
- * the matching frame for the camera. Menus and the home diorama keep their
- * phone-width column (no data-layout at all, and the tray falls back to
- * the stylesheet's own sizes).
+ * screen: :root[data-layout] / [data-side] / [data-slim] / [data-panel]
+ * with --side, --field-w, --card-w, --card-h, --next-w, --king-w and
+ * --hand-cols for the CSS (styles/hud.css), --band (tall: the measured
+ * scoreboard band), and the matching frame for the camera. Menus and the
+ * home diorama keep their phone-width column (no data-layout at all, and
+ * the tray falls back to the stylesheet's own sizes).
  *
  * Tall mode measures the scoreboard band floating over the top of the
  * board and frames the board under it (a little below the middle of what
@@ -15,7 +15,7 @@
 import type { Battle3D } from "../render3d/scene3d";
 import { TALL_ALIGN_Y, TALL_BOX, ZERO_INSETS, type Insets } from "../render3d/scene/fit";
 import { setEdgeShade } from "../render3d/scene/post";
-import { SIDE_ROOMY, battleLayout } from "./layout";
+import { SIDE_ROOMY, SIDE_SLIM, battleLayout } from "./layout";
 
 export interface LayoutControl {
   /** A battle is (or is no longer) on screen: lay out and re-size the canvas now. */
@@ -66,6 +66,7 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
       delete root.dataset.layout;
       delete root.dataset.side;
       delete root.dataset.panel;
+      delete root.dataset.slim;
       for (const name of LAYOUT_VARS) root.style.removeProperty(name);
       setEdgeShade(scene, 0);
       return;
@@ -75,6 +76,8 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
     root.dataset.layout = lay.mode;
     root.dataset.side = lay.side >= SIDE_ROOMY ? "roomy" : "narrow";
     root.dataset.panel = lay.stacked ? "stacked" : "inline";
+    if (lay.mode === "wide" && lay.side < SIDE_SLIM) root.dataset.slim = "";
+    else delete root.dataset.slim;
     root.style.setProperty("--side", `${lay.side}px`);
     root.style.setProperty("--field-w", `${lay.fieldW}px`);
     const px = (n: number): string => `${Math.round(n * 100) / 100}px`;

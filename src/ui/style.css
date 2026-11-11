@@ -2065,8 +2065,9 @@ button.card.ready-pop {
   width: 100%;
 }
 /* Between battles the HUD keeps its layout (the home diorama keeps its
-   frame) but is not drawn: its floating Next card, King and chat bubble
-   would otherwise show through the home screen's window onto the arena. */
+   frame) but is not drawn: the tray, with its Next card, King and chat
+   bubble, would otherwise show through the home screen's window onto the
+   arena. */
 :root:not([data-layout]) #hud,
 :root:not([data-layout]) #emotes {
   visibility: hidden;

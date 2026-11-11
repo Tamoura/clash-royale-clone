@@ -1080,6 +1080,26 @@
 :root[data-layout="wide"][data-side="narrow"] #topbar.v2 .clock.overtime::before {
   display: none;
 }
+/* Slim left panel (under 176px, layout.ts): no room for "TIME LEFT" on one
+   line beside the menu, so the caption goes (the countdown speaks for itself;
+   in overtime the word OVERTIME stands over the time, as above). The clock
+   row also takes the column's 12px inset on the board's side (the camera
+   keeps its own 8px gap past the column), with a slimmer menu button, so
+   OVERTIME and the menu both stay inside the column. */
+:root[data-layout="wide"][data-slim] #topbar.v2 {
+  width: calc(var(--side) - 12px);
+  column-gap: 4px;
+}
+:root[data-layout="wide"][data-slim] #topbar.v2 .clock::before {
+  display: none;
+}
+:root[data-layout="wide"][data-slim] #topbar.v2 .clock.overtime {
+  font-size: 12px;
+  padding-inline: 4px;
+}
+:root[data-layout="wide"][data-slim] #topbar.v2 .menu-toggle {
+  width: 40px;
+}
 /* King's ability: bottom of the left panel, above the chat bubble. */
 :root[data-layout="wide"] #hud.v2 .hud-ability {
   position: fixed;

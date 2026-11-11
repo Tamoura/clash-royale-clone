@@ -17,14 +17,19 @@
  *
  * Both candidates are sized from the stylesheet's own numbers and the one
  * that draws the bigger board wins. CSS and the camera both read the one
- * result (CSS through :root's data-layout / data-side / data-panel and the
- * --side, --field-w, --card-w, --card-h, --next-w, --king-w and --hand-cols
- * variables), so they never disagree.
+ * result (CSS through :root's data-layout / data-side / data-slim /
+ * data-panel and the --side, --field-w, --card-w, --card-h, --next-w,
+ * --king-w and --hand-cols variables), so they never disagree.
  */
 import { BATTLE_BOX, TALL_BOX, ZERO_INSETS, type ContentBox, type Insets } from "../render3d/scene/fit";
 
 /** Narrowest side panel: the left one's clock + menu row needs it, the right one a column of cards. */
 export const SIDE_MIN = 144;
+/**
+ * Side panels narrower than this are "slim": the left panel's clock drops
+ * its "TIME LEFT" caption (it wrapped onto two lines beside the menu).
+ */
+export const SIDE_SLIM = 176;
 /** Breathing room between the board's edging and a panel. */
 export const SIDE_GAP = 8;
 /**
