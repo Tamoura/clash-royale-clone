@@ -34,5 +34,14 @@ None (this is the ship package).
 - Size (4186f6c): the cast roster is a lazy chunk; initial `index-*.js` 339.2 -> 324.0 KB gz.
 - Licences and docs (2d3bd8e, a756251): THIRD_PARTY_NOTICES.md, README assets section, deploy guide lines, assets test.
 - perf:budget matrix on the dev server: every gate passes in both editions at both views (table in the art-direction ship log).
-- Verification matrix running (`/tmp/claude-0/art/ship/tools/run-verify.sh`: jobs-std, jobs-looks, jobs-extra). Next: look at every image, prod smoke, Fast 3G fresh profile, guest view, owner sheets, notes.
+- Verification matrix done and looked at (66 dev captures: `matrix/`, `looks/`, `extra/`, contact sheets `looks-sheet-{classic,golden}.png`); no errors in any. Production on the relay (port 3206, stopped by PID): smokes, Fast 3G fresh and returning profiles, an online "Play a friend" match in both editions (`prod/`); no errors, no failed requests.
+- Owner sheets: `/tmp/claude-0/art/ship/before-after-phone.png` and `before-after-desk.png` (built by `tools/sheets.sh`).
+- Notes: the art-direction ship log section "5. ship" (eb3a16a).
+- Final quality bar on `eb3a16a`: `npx tsc --noEmit` clean; `npx vitest run` 140 files / 1,732 tests pass (golden.test.ts and bot.test.ts identical to `0a8c97d`, `git diff 0a8c97d -- src/game` empty); `npm run build:all` succeeds; `npm run perf:budget` (its own dev server) passes every gate in both editions at both views (fight 180-206 calls, 628k-670k triangles, 75-76 textures; empty 100-114 calls, 251k-274k triangles).
+- Cleanup: dev server on 3205 stopped by PID; the throwaway baseline worktree removed. Not pushed: the publish step belongs to the workflow's shipper (the computed task says not to push).
+
+## Requests for the publish step
+
+- Push `art/ship` (fast-forward of `claude/game-visuals-character-balance-w122wb`, 12 commits on top of `29f6451`).
+- Frozen-file follow-ups for their owners (not art changes): wide-mode top margin for the far king (`WIDE_BOX` in `scene/fit.ts` and `ui/layout.ts`, compact-hand), and keeping `?viewpoint=enemy` across bot-battle starts in main.ts (DEV aid).
 
