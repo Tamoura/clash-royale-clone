@@ -19,13 +19,17 @@ import { toon } from "../../characters3d";
 import { Ring, makeRng, type ParticleSpec } from "../../particles";
 import { particleScale } from "../../quality";
 import { reducedMotion } from "../../../ui/prefs";
-import { toWorld } from "../common";
+import { LOOK, toWorld } from "../common";
+import type { ArenaLook } from "../../arenaLooks";
 import type { DecalKindName, FxApi } from "./api";
 import { ATLAS_GRID, makeParticleAtlas } from "./atlas";
-import { DecalLayer, type DecalOpts } from "./decals";
+import { DecalLayer, SCORCH_ALPHA, scorchColor, type DecalOpts } from "./decals";
 import { GlyphLayer } from "./glyphs";
 import { IceDomes } from "./iceDome";
 import { emitPreset, type EmitOpts, type PoolKind, type Spawner } from "./presets";
+
+/** Bloom contract (art bible 5): a screen flash never asks for more than this. */
+export const FX_MAX_FLASH = 0.25;
 
 /** Pool capacities before the quality scale. */
 export const ADD_CAP = 1024;
@@ -312,6 +316,32 @@ interface Scheduled {
   frames: number;
 }
 
+/** "#rrggbb" or "rgb(a)(r,g,b,...)" to a hex number (no alpha warnings from THREE.Color). */
+export function cssHex(css: string, fallback: number): number {
+  const hex = /^#([0-9a-f]{6})$/i.exec(css.trim());
+  if (hex) return parseInt(hex[1], 16);
+  const rgb = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(css);
+  if (rgb) return (Number(rgb[1]) << 16) | (Number(rgb[2]) << 8) | Number(rgb[3]);
+  return fallback;
+}
+
+const DUST_HSL = { h: 0, s: 0, l: 0 };
+
+/**
+ * Dust for a look: 90% lane, 10% floor, held to a mid lightness and a
+ * muted saturation, so footsteps and landings read as the floor stirred up
+ * and never as white blobs (a snow look's dust is a soft blue-grey).
+ */
+export function floorDust(look: ArenaLook): number {
+  // The Golden Age court keeps its own plaster and lane dirt ("r,g,b").
+  const base = look.islamic ? cssHex(look.islamic.plaster, 0xd8c8a0) : cssHex(look.floor.a, 0x9a8a6a);
+  const lane = look.islamic ? cssHex(`rgb(${look.islamic.lane})`, 0xd6b25e) : cssHex(look.floor.lane, 0xc9b99c);
+  const c = new THREE.Color(base).lerp(new THREE.Color(lane), 0.9);
+  c.getHSL(DUST_HSL, THREE.SRGBColorSpace);
+  c.setHSL(DUST_HSL.h, Math.min(DUST_HSL.s, 0.42), Math.min(0.66, Math.max(0.36, DUST_HSL.l * 0.92)), THREE.SRGBColorSpace);
+  return c.getHex();
+}
+
 /** Draw an emote bubble into its (reused) canvas. */
 function paintBubble(ctx: CanvasRenderingContext2D, emoji: string): void {
   ctx.clearRect(0, 0, 128, 128);
@@ -408,6 +438,18 @@ export class VfxPool implements FxApi, Spawner {
 
   rand = (): number => this.rng();
 
+  private dustLook: ArenaLook | null = null;
+  private dust = 0xc9b99c;
+
+  /** The current arena's floor dust colour (the lanes' dirt, a touch of the floor). */
+  floorColor(): number {
+    if (this.dustLook !== LOOK) {
+      this.dustLook = LOOK;
+      this.dust = floorDust(LOOK);
+    }
+    return this.dust;
+  }
+
   scale(): number {
     return particleScale();
   }
@@ -438,12 +480,14 @@ export class VfxPool implements FxApi, Spawner {
   /** FxApi: a ground mark of radius `r` tiles at arena (x, y). */
   decal(kind: DecalKindName, x: number, y: number, r: number, opts?: DecalOpts): void {
     const w = toWorld(x, y);
-    this.decals.add(kind, w.x, w.z, r, this.uTime.value, opts);
+    // A scorch takes a warm brown leaning toward this floor's dust unless the caller picks.
+    const o = kind === "scorch" && opts?.color === undefined ? { alpha: SCORCH_ALPHA, ...opts, color: scorchColor(this.floorColor()) } : opts;
+    this.decals.add(kind, w.x, w.z, r, this.uTime.value, o);
   }
 
-  /** Floating damage number at a world point. */
-  popup(wx: number, wy: number, wz: number, text: string, scale: number, color: string, crit = false): void {
-    this.glyphs.popup(wx, wy, wz, text, scale, color, crit, this.uTime.value);
+  /** Floating damage number at a world point (`target`: the entity hit, so merges go by it). */
+  popup(wx: number, wy: number, wz: number, text: string, scale: number, color: string, crit = false, target?: number): void {
+    this.glyphs.popup(wx, wy, wz, text, scale, color, crit, this.uTime.value, this.host.camera.matrixWorldInverse, target);
   }
 
   /** Freeze dome over arena (x, y). */
@@ -475,7 +519,7 @@ export class VfxPool implements FxApi, Spawner {
       this.later(delay, 1, level, frames);
       return;
     }
-    this.flashLevel = Math.max(this.flashLevel, level);
+    this.flashLevel = Math.max(this.flashLevel, Math.min(FX_MAX_FLASH, level));
     this.flashFrames = Math.max(this.flashFrames, frames);
   }
 

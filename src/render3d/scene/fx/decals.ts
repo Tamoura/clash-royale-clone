@@ -11,6 +11,40 @@ import * as THREE from "three";
 import type { DecalKindName } from "./api";
 import { DECAL_CELL, DECAL_COLS, DECAL_ROWS, makeDecalAtlas } from "./atlas";
 
+/**
+ * Bloom contract (art bible 5): a mark's colour never goes past 1, so no
+ * ground mark crosses the bloom threshold (callers' `hdr` is honoured up
+ * to this ceiling).
+ */
+export const DECAL_MAX_RGB = 1;
+
+/**
+ * The spell ring's inner rim: a cream (linear luminance about 0.83), under
+ * the 0.9 bloom threshold, so the rim of a big spell ring never blooms into
+ * a whitish haze inside the ring ("nothing opaque white").
+ */
+export const RING_RIM = 0xf2ebdd;
+const RIM_LINEAR = new THREE.Color(RING_RIM);
+const glslVec3 = (c: THREE.Color): string => `vec3(${c.r.toFixed(4)}, ${c.g.toFixed(4)}, ${c.b.toFixed(4)})`;
+
+/** Linear luminance of a hex colour (what the bloom threshold measures). */
+export function linearLuminance(hex: number): number {
+  const c = new THREE.Color(hex);
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+}
+
+/**
+ * A fireball scorch: a warm dark brown, a third of the way toward the
+ * floor's own dust colour, so the mark sits on the floor (grass, plaster,
+ * snow) instead of punching a black hole in it.
+ */
+export const SCORCH_BROWN = 0x3a2a22;
+export function scorchColor(floorDust: number): number {
+  return new THREE.Color(SCORCH_BROWN).lerp(new THREE.Color(floorDust).multiplyScalar(0.55), 0.33).getHex();
+}
+/** A scorch's default peak opacity (the texture's own soft alpha does the rest). */
+export const SCORCH_ALPHA = 0.7;
+
 export const DECAL_CAP = 16;
 /** Default decal life in seconds (the spec's 6-8 s window). */
 export const DECAL_LIFE = 7;
@@ -57,8 +91,10 @@ attribute vec4 aC; // rgba
 attribute vec4 aD; // rotation
 varying vec2 vUv;
 varying vec4 vCol;
+varying float vRing;
 void main() {
   float age = uTime - aB.x;
+  vRing = abs(aB.z - ${DECAL_CELL.ring}.0) < 0.5 ? 1.0 : 0.0;
   if (age < 0.0 || age > aB.y) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     vUv = vec2(0.0);
@@ -85,11 +121,20 @@ const FRAG = /* glsl */ `
 uniform sampler2D uMap;
 varying vec2 vUv;
 varying vec4 vCol;
+varying float vRing;
 void main() {
   vec4 tex = texture2D(uMap, vUv);
   float a = tex.a * vCol.a;
   if (a < 0.004) discard;
-  gl_FragColor = vec4(vCol.rgb * tex.rgb, a);
+  vec3 col = min(vCol.rgb, vec3(${DECAL_MAX_RGB.toFixed(1)}));
+  if (vRing > 0.5) {
+    // Two-tone ring: red = tinted band, green = cream inner rim (RING_RIM), blue = tinted fill.
+    float w = tex.g / max(tex.r + tex.g + tex.b, 1e-3);
+    col = mix(col, ${glslVec3(RIM_LINEAR)}, w);
+  } else {
+    col *= tex.rgb;
+  }
+  gl_FragColor = vec4(col, a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;

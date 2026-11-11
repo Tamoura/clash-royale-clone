@@ -211,16 +211,26 @@ function shed(v: VfxPool, at: THREE.Vector3, heading: THREE.Vector3): void {
     s.life = 0.35 + v.rand() * 0.3;
     s.size0 = 0.32 + v.rand() * 0.2;
     s.size1 = 0.05;
-    TMP.setHex(i % 2 ? 0xffc061 : 0xff6a1f);
-    s.r0 = TMP.r * 3;
-    s.g0 = TMP.g * 3;
-    s.b0 = TMP.b * 3;
-    s.r1 = TMP.r;
-    s.g1 = TMP.g;
-    s.b1 = TMP.b;
-    s.cell = i % 2 ? CELL.EMBER : CELL.FLAME;
     s.rot = v.rand() * 6;
-    v.spawn("add", s);
+    if (i % 2) {
+      // An ember (a spark: allowed past the bloom threshold).
+      TMP.setHex(0xffc061);
+      s.r0 = TMP.r * 2;
+      s.g0 = TMP.g * 2;
+      s.b0 = TMP.b * 2;
+      s.r1 = TMP.r;
+      s.g1 = TMP.g;
+      s.b1 = TMP.b;
+      s.cell = CELL.EMBER;
+      v.spawn("add", s);
+    } else {
+      // A toon flame tongue in its own three tones.
+      s.r0 = s.g0 = s.b0 = s.r1 = s.g1 = s.b1 = 1;
+      s.a1 = 0;
+      s.size0 *= 1.4;
+      s.cell = CELL.FLAME3;
+      v.spawn("alpha", s);
+    }
   }
   const s = clearSpec(S);
   s.x = at.x;

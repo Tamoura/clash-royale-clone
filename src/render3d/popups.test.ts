@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { POPUP_LIFE, damageLabel, popupAlpha, popupRise, popupScale } from "./popups";
+import { BIG_HIT_SCALE, DAMAGE_GOLD, POPUP_LIFE, damageLabel, popupAlpha, popupRise, popupScale, towerHitLabel } from "./popups";
 
 describe("damage labels", () => {
   it("ignores chip damage", () => {
@@ -11,13 +11,22 @@ describe("damage labels", () => {
     expect(damageLabel(159.7)?.text).toBe("160");
   });
 
-  it("grows and heats up with the hit size", () => {
+  it("grows with the hit size, always in the one gold (art bible 8)", () => {
     const small = damageLabel(110)!;
     const medium = damageLabel(320)!;
     const huge = damageLabel(750)!;
     expect(medium.scale).toBeGreaterThan(small.scale);
     expect(huge.scale).toBeGreaterThan(medium.scale);
-    expect(small.color).not.toBe(huge.color);
+    expect(huge.scale).toBeCloseTo(BIG_HIT_SCALE);
+    for (const l of [small, medium, huge]) expect(l.color).toBe(DAMAGE_GOLD);
+    expect(DAMAGE_GOLD).toBe("#ffd23f");
+  });
+
+  it("tower hits print about 1.3x, crits on a tower a step larger", () => {
+    expect(towerHitLabel(damageLabel(110)!).scale).toBeCloseTo(1.3);
+    expect(towerHitLabel(damageLabel(320)!).scale).toBeCloseTo(1.3);
+    expect(towerHitLabel(damageLabel(750)!).scale).toBeGreaterThan(1.3);
+    expect(towerHitLabel(damageLabel(110)!).text).toBe("110");
   });
 
   it("only huge hits are crits", () => {

@@ -11,21 +11,35 @@ export interface DeathStyle {
   particles: number;
 }
 
-/** Per-card death theatrics; default is the classic dust puff. */
+/**
+ * Per-card death theatrics. Every puff is tinted (art bible 8: never
+ * white): a creature leaves a puff of its own colour, everyone else a
+ * dusty violet-grey.
+ */
 export function deathStyle(cardId: CardId | null): DeathStyle {
   switch (cardId) {
     case "skeletons":
     case "skeleton-army":
-      return { kind: "bones", color: 0xf5f2ea, scale: 0.9, particles: 4 };
+      return { kind: "bones", color: 0xe9dfc8, scale: 0.9, particles: 4 };
     case "pekka":
     case "mini-pekka":
       return { kind: "sparks", color: 0x8c7bff, scale: 1.1, particles: 9 };
     case "electro-wizard":
       return { kind: "sparks", color: 0x76e6ff, scale: 1.1, particles: 9 };
     case "balloon":
-      return { kind: "deflate", color: 0xc62828, scale: 1.35, particles: 7 };
+      // The Golden Age flies a fire kite: its silk tears in saffron.
+      return { kind: "deflate", color: ARABIC ? 0xe0a030 : 0xd9a441, scale: 1.35, particles: 7 };
     case "baby-dragon":
-      return { kind: "puff", color: 0x8bc34a, scale: 1.15, particles: 7 };
+      return { kind: "puff", color: ARABIC ? 0xb98a5a : 0x6fae3e, scale: 1.1, particles: 7 };
+    case "minions":
+      return { kind: "puff", color: ARABIC ? 0x8a6a4a : 0x8a7f9e, scale: 0.75, particles: 5 };
+    case "bats":
+      return { kind: "puff", color: 0x7a5aa8, scale: 0.6, particles: 4 };
+    case "gargoyles":
+      return { kind: "puff", color: ARABIC ? 0x8a6a4a : 0x8d8a84, scale: 0.8, particles: 5 };
+    case "giant":
+      // The Golden Age giant is a war elephant.
+      return { kind: "puff", color: ARABIC ? 0x9a8f86 : 0xa08f86, scale: 1.2, particles: 6 };
     // A golem crumbles into stone chunks (its pebbles pop out of the rubble).
     case "stone-golem":
       return { kind: "crumble", color: ARABIC ? 0xc8b898 : 0x8e928a, scale: 1.5, particles: 10 };
@@ -34,7 +48,7 @@ export function deathStyle(cardId: CardId | null): DeathStyle {
     case "digger":
       return { kind: "puff", color: ARABIC ? 0xd8c49a : 0xa88a64, scale: 0.85, particles: 6 };
     default:
-      return { kind: "puff", color: 0xd8cbb5, scale: 0.75, particles: 5 };
+      return { kind: "puff", color: 0x9d93a8, scale: 0.75, particles: 5 };
   }
 }
 

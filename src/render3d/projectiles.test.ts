@@ -9,14 +9,28 @@ describe("projectile styles", () => {
     expect(projectileStyle("archers", "troop").arc).toBeGreaterThan(0.5);
   });
 
-  it("casters throw glowing orbs in their signature colors", () => {
+  it("casters throw glowing shots in their signature colors", () => {
     const wizard = projectileStyle("wizard", "troop");
     const witch = projectileStyle("witch", "troop");
     expect(wizard.glow).toBe(true);
     expect(witch.glow).toBe(true);
     expect(wizard.color).not.toBe(witch.color);
+    expect(wizard.form).toBe("fireball"); // a modelled fireball, not an orb with a cone
     expect(wizard.trail).toBe("embers");
-    expect(witch.trail).toBe("streak");
+    expect(witch.trail).toBe("sparkle");
+  });
+
+  it("every shot has a modelled form (art bible 8)", () => {
+    expect(projectileStyle("baby-dragon", "troop").form).toBe("fireball");
+    expect(projectileStyle("musketeer", "troop").form).toBe("tracer");
+    expect(projectileStyle("electro-wizard", "troop").form).toBe("bolt");
+    expect(projectileStyle("ice-wizard", "troop").form).toBe("shard");
+    for (const id of ["archers", "magic-archer", "princess"] as const) {
+      const a = projectileStyle(id, "troop");
+      expect(a.form, id).toBe("arrow");
+      expect(a.fletch, id).toBeDefined();
+    }
+    expect(projectileStyle(null, "princess-tower").fletch).toBeDefined();
   });
 
   it("the musketeer fires a fast ball with a muzzle flash", () => {

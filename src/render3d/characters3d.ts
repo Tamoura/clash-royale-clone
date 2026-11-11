@@ -4,8 +4,10 @@ import type { CardId } from "../game/cards";
 import { loadChampion, normalizeChampion, type ChampionDef } from "../game/customcard";
 import type { Side } from "../game/arena";
 import { applyTeam, teamPart } from "./teamColors";
-import { INK_FRAGMENT, OUTLINE_MIN_RADIUS, installInk, outlineHull } from "./outlineMaterial";
+import { INK_FRAGMENT, OUTLINE_CSS_PX, OUTLINE_MIN_RADIUS, installInk, outlineHull } from "./outlineMaterial";
+import { currentQuality } from "./quality";
 import { ARABIC, THEME } from "./theme";
+import { cameraZForView } from "./scene/common";
 import { rigArchetype, type AttackStyle, type QuadGait, type Weight } from "./anim/archetypes";
 import { BASE_CADENCE, hopScale, legPhase, stepSquash } from "./anim/gait";
 
@@ -112,6 +114,83 @@ function grainMap(): THREE.DataTexture {
 }
 
 /**
+ * The art bible's material language for baked rigs (creatures, buildings and
+ * the procedural fallback cast), matching the KayKit cast's (cast/bake.ts):
+ * - a three-band toon ramp at 0.62 / 0.86 / 1.0 with soft 0.04 edges;
+ * - a cool rim (#BFE3FF at 0.35), off at the quality levels without rim light;
+ * - painted ground occlusion: the lowest 18% of the unit darkens by up to 15%;
+ * - silhouette-only ink at 1.6 CSS px: the shell sits behind the body along
+ *   the view, so only the outline survives (no fins, no crease lines);
+ * - status and hit tints MIX toward their colour, never add light, so a
+ *   flash can never cross the bloom threshold.
+ * Each wave-1 package holds these constants locally; ship unifies them.
+ */
+export const RIG_RAMP = [0.62, 0.86, 1.0] as const;
+export const RIG_RIM = { color: 0xbfe3ff, strength: 0.35 } as const;
+export const RIG_INK_PX = 1.6;
+/** World units the ink shell sits behind the body (silhouette-only ink). */
+export const RIG_INK_DEPTH = 0.3;
+export const RIG_AO = { share: 0.18, dark: 0.15 } as const;
+/** Albedo saturation multiplier applied when a rig is baked. */
+export const RIG_SATURATION = 1.12;
+/** The most a status tint (freeze, rage, slow) may pull a pixel toward its colour. */
+export const RIG_TINT_MAX = 0.6;
+/** The most a hit flash (a near-white tint) may: art bible 6, 0.35 on troops. */
+export const RIG_FLASH_MAX = 0.35;
+/** Rim strength (1 on, 0 off) shared by every rig material; follows the quality level. */
+export const RIG_RIM_UNIFORM = { value: 1 };
+
+/** Keep the shared rim switch in step with the live quality level (called per animated rig). */
+function syncRigRim(): void {
+  RIG_RIM_UNIFORM.value = currentQuality().rimLight ? 1 : 0;
+}
+
+/** The vertex and fragment changes that give a baked rig material the art bible's language. */
+function installRigLanguage(sh: THREE.WebGLProgramParametersWithUniforms): void {
+  sh.uniforms.uRigRim = RIG_RIM_UNIFORM;
+  if (!sh.uniforms.uAoTop) sh.uniforms.uAoTop = { value: 0.55 };
+  sh.vertexShader = sh.vertexShader
+    .replace("#include <common>", "#include <common>\n varying float vGroundY;")
+    .replace("#include <fog_vertex>", "vGroundY = (modelMatrix * vec4(transformed, 1.0)).y;\n #include <fog_vertex>")
+    // Silhouette-only ink: push the shell back along the view before widening it.
+    .replace(
+      "vec3 nView = normalize(normalMatrix * outlineNormal);",
+      `vec3 _back = projectionMatrix[3][3] > 0.5 ? vec3(0.0, 0.0, -${RIG_INK_DEPTH.toFixed(3)}) : normalize(mvPosition.xyz) * ${RIG_INK_DEPTH.toFixed(3)};
+           gl_Position = projectionMatrix * vec4(mvPosition.xyz + _back, 1.0);
+           vec3 nView = normalize(normalMatrix * outlineNormal);`,
+    )
+    .replace("* uInkPx * 2.0 / uInkViewport", `* uInkPx * ${((2 * RIG_INK_PX) / OUTLINE_CSS_PX).toFixed(4)} / uInkViewport`);
+  sh.fragmentShader = sh.fragmentShader
+    .replace("#include <common>", "#include <common>\n varying float vGroundY;\n uniform float uRigRim;\n uniform float uAoTop;")
+    .replace(
+      "#include <gradientmap_pars_fragment>",
+      `vec3 getGradientIrradiance( vec3 normal, vec3 lightDirection ) {
+         float x = dot( normal, lightDirection ) * 0.5 + 0.5;
+         float k = ${RIG_RAMP[0].toFixed(2)} + ${(RIG_RAMP[1] - RIG_RAMP[0]).toFixed(2)} * smoothstep(0.40, 0.44, x) + ${(RIG_RAMP[2] - RIG_RAMP[1]).toFixed(2)} * smoothstep(0.68, 0.72, x);
+         return vec3(k);
+       }`,
+    )
+    .replace(
+      "#include <emissivemap_fragment>",
+      "#include <emissivemap_fragment>\n vec3 _tint = totalEmissiveRadiance;\n totalEmissiveRadiance = vec3(0.0);",
+    )
+    .replace(
+      "#include <dithering_fragment>",
+      `${INK_FRAGMENT}
+         gl_FragColor.rgb *= 1.0 - ${RIG_AO.dark.toFixed(2)} * (1.0 - smoothstep(0.0, uAoTop, vGroundY));
+         float _rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
+         _rim = smoothstep(0.62, 1.0, _rim) * ${RIG_RIM.strength.toFixed(2)} * uRigRim;
+         gl_FragColor.rgb += _rim * vec3(0.749, 0.890, 1.0);
+         float _k = max(_tint.r, max(_tint.g, _tint.b));
+         // A white or warm-white tint is a hit flash: art bible 6 caps it at RIG_FLASH_MAX.
+         float _cap = min(_tint.r, min(_tint.g, _tint.b)) >= 0.6 * _k ? ${RIG_FLASH_MAX.toFixed(2)} : ${RIG_TINT_MAX.toFixed(2)};
+         if (_k > 0.001) gl_FragColor.rgb = mix(gl_FragColor.rgb, _tint / _k, min(_k, _cap));
+       }
+       #include <dithering_fragment>`,
+    );
+}
+
+/**
  * Inject a cool Fresnel rim-light into a lit material's fragment shader —
  * a bright edge where the surface turns away from the camera. This single
  * touch makes every rounded shape read as 3D and gives the whole roster a
@@ -125,6 +204,7 @@ function addRimLight(
 ): void {
   mat.onBeforeCompile = (sh) => {
     if (ink) installInk(sh);
+    if (ink && mat.userData.aoTop) sh.uniforms.uAoTop = mat.userData.aoTop;
     if (dark) {
       // A second team shade rides in a vertex attribute (see teamToon).
       sh.uniforms.uDark = { value: dark };
@@ -134,6 +214,11 @@ function addRimLight(
       sh.fragmentShader = sh.fragmentShader
         .replace("#include <common>", "#include <common>\n uniform vec3 uDark;\n varying float vDark;")
         .replace("#include <map_fragment>", "diffuseColor.rgb = mix(diffuse, uDark, vDark);\n #include <map_fragment>");
+    }
+    if (ink) {
+      // Baked rigs speak the cast's material language (see installRigLanguage).
+      installRigLanguage(sh);
+      return;
     }
     // Coloured light ramp: sample the gradient's RGB, not just red.
     sh.fragmentShader = sh.fragmentShader.replace(
@@ -151,18 +236,9 @@ function addRimLight(
          #endif
        }`,
     );
-    if (ink) {
-      // Baked rigs only: feet and hems darken toward the ground they stand
-      // on (painted contact occlusion), so bodies read as rooted volumes.
-      sh.vertexShader = sh.vertexShader
-        .replace("#include <common>", "#include <common>\n varying float vGroundY;")
-        .replace("#include <fog_vertex>", "vGroundY = (modelMatrix * vec4(transformed, 1.0)).y;\n #include <fog_vertex>");
-      sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\n varying float vGroundY;");
-    }
     sh.fragmentShader = sh.fragmentShader.replace(
       "#include <dithering_fragment>",
-      `${ink ? INK_FRAGMENT : "{"}
-         ${ink ? "gl_FragColor.rgb *= 0.7 + 0.3 * smoothstep(0.0, 0.55, vGroundY);" : ""}
+      `{
          float _rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
          _rim = smoothstep(0.72, 1.0, _rim) * 0.26;
          gl_FragColor.rgb += _rim * vec3(0.42, 0.56, 0.80);
@@ -222,8 +298,10 @@ export function bakedToon(): THREE.MeshToonMaterial {
  * A unit's own copy of the baked material: its emissive carries the flash,
  * rage and freeze glows, so it can never be shared between units.
  */
-export function unitBakedToon(): THREE.MeshToonMaterial {
+export function unitBakedToon(aoTop = 0.55): THREE.MeshToonMaterial {
   const mat = bakedToon().clone();
+  // The ground-occlusion band (world units): the lowest RIG_AO.share of this unit.
+  mat.userData.aoTop = { value: aoTop };
   addRimLight(mat, "baked", true); // clone() drops shader hooks
   mat.userData.shared = false;
   mat.userData.baked = true;
@@ -257,9 +335,20 @@ export function paintedToon(mat: THREE.MeshToonMaterial): THREE.MeshToonMaterial
  * mutes emissives far less, so gems, orbs, and robot eyes stay hot.
  */
 function glow(color: number, _intensity = 1.6): THREE.MeshBasicMaterial {
-  const mat = new THREE.MeshBasicMaterial({ color });
+  const mat = new THREE.MeshBasicMaterial({ color: underBloom(color) });
   mat.toneMapped = false; // full saturation, no filmic rolloff
   return mat;
+}
+
+/** The brightest linear luminance a rig's glow part may have (art bible 5: under the 0.9 bloom threshold). */
+export const RIG_GLOW_MAX = 0.8;
+
+/** `hex` scaled down, if need be, so its linear luminance stays at or under RIG_GLOW_MAX. */
+export function underBloom(hex: number): THREE.Color {
+  const c = new THREE.Color(hex);
+  const lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  if (lum > RIG_GLOW_MAX) c.multiplyScalar(RIG_GLOW_MAX / lum);
+  return c;
 }
 
 type Ctx3 = THREE.Object3D;
@@ -780,10 +869,21 @@ function buildGiant(): TroopRig {
  */
 const BRICK = 0x9a5a44, BRICK_DK = 0x5e3426;
 
+/** The war elephant's body scale inside its rig (see buildWarElephant). */
+export const ELEPHANT_SCALE = 0.72;
+
 function buildWarElephant(): TroopRig {
+  // Built at full size inside a body group scaled ELEPHANT_SCALE, so the
+  // field's giant scale lands the head-top in the art bible's large band
+  // (3.3-3.8) and the body stays about two tiles wide.
+  const root = new THREE.Group();
   const g = new THREE.Group();
+  g.scale.setScalar(ELEPHANT_SCALE);
+  root.add(g);
   const GRAY = 0x8d8f96, GRAYDK = 0x6d6f77, IVORY = 0xf1e7cf;
-  const GOLD = THEME.goldLight, CLOTH = BRICK, CLOTH2 = THEME.deepBlue;
+  // Art bible 7: the ONE team slot is the saddle cloth (the caparison); the
+  // howdah, canopy and medallion keep the edition's emerald, turquoise and gold.
+  const GOLD = THEME.goldLight, CLOTH = THEME.emerald, CLOTH2 = THEME.turquoise;
 
   // Four heavy pillar legs (front pair, back pair) for a quadruped gait.
   const legs = [
@@ -796,9 +896,10 @@ function buildWarElephant(): TroopRig {
 
   // Barrel body.
   const body = sphere(0.82, GRAY, 0, 1.28, -0.05);
-  body.scale.set(1.05, 0.95, 1.55);
+  body.scale.set(0.84, 0.95, 1.55);
   g.add(body);
   const rump = sphere(0.66, GRAY, 0, 1.28, -0.9);
+  rump.scale.set(0.86, 1, 1);
   g.add(rump);
   const tail = cyl(0.05, 0.04, 0.5, GRAYDK, 0, 1.05, -1.5);
   tail.rotation.x = 0.35;
@@ -813,8 +914,8 @@ function buildWarElephant(): TroopRig {
     g.add(sphere(0.07, 0x1f2430, s * 0.22, 1.5, 1.36)); // small eye
     const ear = new THREE.Group();
     ear.name = "ear";
-    ear.position.set(s * 0.5, 1.55, 0.85);
-    const flap = sphere(0.4, GRAYDK, s * 0.18, 0, 0);
+    ear.position.set(s * 0.44, 1.55, 0.85);
+    const flap = sphere(0.36, GRAYDK, s * 0.14, 0, 0);
     flap.scale.set(0.28, 1.05, 1.1);
     ear.add(flap);
     g.add(ear);
@@ -844,16 +945,22 @@ function buildWarElephant(): TroopRig {
 
   // Caparison: jewel-toned cloth draped over the body with a gold hem and
   // hanging tassels — Moorish parade barding.
-  const drape = box(1.55, 0.7, 1.7, CLOTH, 0, 1.2, -0.05);
-  g.add(drape);
-  g.add(box(1.6, 0.12, 1.75, GOLD, 0, 0.9, -0.05)); // gold hem
+  // The saddle cloth hangs off both flanks (wider than the body, so it shows
+  // from every side) with a blanket on top that the howdah sits on.
+  const drape = box(1.56, 0.66, 1.62, 0xffffff, 0, 1.26, -0.05);
+  drape.name = "saddle-cloth";
+  g.add(teamPart(drape));
+  const blanket = box(1.24, 0.1, 1.34, 0xffffff, 0, 1.8, -0.15);
+  blanket.name = "saddle-cloth";
+  g.add(teamPart(blanket));
+  g.add(box(1.6, 0.12, 1.66, GOLD, 0, 0.96, -0.05)); // gold hem
   for (let i = 0; i < 4; i++) {
     const x = -0.6 + i * 0.4;
     for (const s of [-1, 1]) {
-      g.add(cone(0.07, 0.18, GOLD, x, 0.78, s * 0.85)); // hem tassels
+      g.add(cone(0.07, 0.18, GOLD, s * 0.82, 0.84, x)); // hem tassels
     }
   }
-  g.add(teamPart(box(0.5, 0.4, 0.04, CLOTH2, 0, 1.5, 1.32), "dark")); // brow medallion cloth
+  g.add(box(0.5, 0.4, 0.04, CLOTH2, 0, 1.5, 1.32)); // brow medallion cloth
   g.add(diamond(0.1, GOLD, 0, 1.5, 1.36)); // forehead jewel
 
   // Domed howdah (the carriage) seated on the back.
@@ -863,7 +970,7 @@ function buildWarElephant(): TroopRig {
     g.add(cyl(0.05, 0.05, 0.55, GOLD, sx * 0.42, 2.18, -0.15 + sz * 0.42)); // posts
   }
   g.add(box(0.92, 0.22, 0.92, CLOTH, 0, 2.06, -0.15)); // side panels
-  const dome = teamPart(sphere(0.5, CLOTH2, 0, 2.5, -0.15)); // canopy dome
+  const dome = sphere(0.5, CLOTH2, 0, 2.5, -0.15); // canopy dome
   dome.scale.set(1.1, 0.7, 1.1);
   g.add(dome);
   g.add(cyl(0.52, 0.52, 0.08, GOLD, 0, 2.34, -0.15)); // canopy rim
@@ -919,7 +1026,7 @@ function buildWarElephant(): TroopRig {
   // Idle life: the trunk curls and the ears flap gently.
   const ears = g.children.filter((c) => c.name === "ear");
   const rig: TroopRig = {
-    group: g, arm, armRest: -0.25, swingAmp: 1.0, height: 2.9, legs, offArm,
+    group: root, arm, armRest: -0.25, swingAmp: 1.0, height: 2.9 * ELEPHANT_SCALE, legs, offArm,
     extras: (time, phase) => {
       trunk.rotation.x = Math.sin(time * 2 + phase) * 0.18;
       for (let i = 0; i < ears.length; i++) {
@@ -1466,103 +1573,241 @@ function buildWitch(): TroopRig {
   return { group: g, arm, armRest: -0.9, swingAmp: 1.1, height: 1.8, offArm, extras: orbitSkull };
 }
 
+/**
+ * Art bible 7: a creature wears its team colour on ONE cloth or trim slot.
+ * A scarf knotted round the neck: the wrap, a knot at the nape and two
+ * tails streaming out behind (so the side also reads from the back). All
+ * in one node, so the bake merges it into one team mesh. `back` is how far
+ * behind the neck the tails fly (clear of the body).
+ */
+function teamScarf(r: number, y: number, z: number, back: number, tilt = 0.3): THREE.Mesh[] {
+  const wrap = new THREE.Mesh(cachedGeo(`scarf:${r}`, () => new THREE.TorusGeometry(r, r * 0.3, 8, 22)), toon(0xffffff));
+  wrap.rotation.x = Math.PI / 2 + tilt;
+  shadowed(wrap, 0, y, z);
+  wrap.name = "scarf";
+  const knot = sphere(round3(r * 0.36), 0xffffff, 0, y + r * 0.15, z - r * 0.95);
+  knot.name = "scarf";
+  const parts: THREE.Mesh[] = [teamPart(wrap), teamPart(knot, "dark")];
+  for (const s of [-1, 1]) {
+    const tail = box(round3(r * 0.5), round3(r * 1.5), round3(r * 0.14), 0xffffff, s * r * 0.32, y + r * 0.05, z - back);
+    tail.rotation.set(-1.2, 0, s * 0.35);
+    tail.name = "scarf";
+    parts.push(teamPart(tail, "dark"));
+  }
+  return parts;
+}
+
+/** A team collar: a thick ring round the neck with a stud in front (one slot). */
+function teamCollar(r: number, y: number, z: number, tilt = 0.25): THREE.Mesh[] {
+  const ring = new THREE.Mesh(cachedGeo(`collar:${r}`, () => new THREE.TorusGeometry(r, r * 0.26, 8, 22)), toon(0xffffff));
+  ring.rotation.x = Math.PI / 2 + tilt;
+  shadowed(ring, 0, y, z);
+  ring.name = "collar";
+  return [teamPart(ring)];
+}
+
+/** A team bandana tied round a head: a band and two short tails behind (one slot). */
+function teamBandana(r: number, y: number, z: number): THREE.Mesh[] {
+  const band = new THREE.Mesh(cachedGeo(`bandana:${r}`, () => new THREE.TorusGeometry(r, r * 0.2, 8, 22)), toon(0xffffff));
+  band.rotation.x = Math.PI / 2 - 0.25;
+  shadowed(band, 0, y, z);
+  band.name = "bandana";
+  const parts: THREE.Mesh[] = [teamPart(band)];
+  for (const s of [-1, 1]) {
+    const tail = box(round3(r * 0.34), round3(r * 0.75), round3(r * 0.1), 0xffffff, s * r * 0.24, y - r * 0.32, z - r * 1.02);
+    tail.rotation.set(-0.7, 0, s * 0.45);
+    tail.name = "bandana";
+    parts.push(teamPart(tail, "dark"));
+  }
+  return parts;
+}
+
+/**
+ * A membrane wing: three rounded lobes fanned from the shoulder (a scalloped
+ * trailing edge), a darker bone along the leading edge and a claw at its tip.
+ */
+function membraneWing(s: number, span: number, depth: number, skin: number, rib: number): THREE.Group {
+  const wing = new THREE.Group();
+  for (let i = 0; i < 3; i++) {
+    const a = -0.42 + i * 0.42;
+    const len = span * (1 - i * 0.16);
+    const m = lobe(skin);
+    m.scale.set(len, 0.06, depth * 0.62);
+    m.position.set(s * len * 0.5 * Math.cos(a), -i * 0.012, -Math.sin(Math.abs(a) + 0.2) * depth * 0.42);
+    m.rotation.y = s * a;
+    m.name = "wing-membrane";
+    wing.add(m);
+  }
+  const bone = box(round3(span * 0.9), 0.07, 0.07, rib, s * span * 0.45, 0.03, depth * 0.24);
+  bone.name = "wing-rib";
+  wing.add(bone);
+  const claw = cone(0.05, 0.12, rib, s * span * 0.92, 0.06, depth * 0.26);
+  claw.rotation.z = -s * Math.PI / 2;
+  wing.add(claw);
+  return wing;
+}
+
+/** A flattened wing lobe: a low-poly sphere (it is squashed flat, so 12 x 8 segments read smooth). */
+function lobe(color: number): THREE.Mesh {
+  return shadowed(new THREE.Mesh(cachedGeo("lobe", () => new THREE.SphereGeometry(0.5, 12, 8)), toon(color)), 0, 0, 0);
+}
+
+/** A feathered wing: three long rounded feathers fanned from the shoulder, darker at the tips. */
+function featherWing(s: number, span: number, depth: number, feather: number, tip: number, name: string): THREE.Group {
+  const wing = new THREE.Group();
+  for (let i = 0; i < 3; i++) {
+    const a = -0.3 + i * 0.32;
+    const len = span * (1 - i * 0.14);
+    const f = lobe(feather);
+    f.scale.set(len, 0.07, depth * 0.42);
+    f.position.set(s * len * 0.5 * Math.cos(a), -i * 0.015, -Math.sin(a + 0.3) * depth * 0.5);
+    f.rotation.y = s * a;
+    f.name = name;
+    wing.add(f);
+    const t = lobe(tip);
+    t.scale.set(len * 0.34, 0.075, depth * 0.36);
+    t.position.set(s * len * 0.84 * Math.cos(a), -i * 0.015 + 0.004, -Math.sin(a + 0.3) * depth * 0.5);
+    t.rotation.y = s * a;
+    wing.add(t);
+  }
+  return wing;
+}
+
+/**
+ * BALLOON (art bible 7): a panelled parchment hot-air envelope with tan ribs
+ * and ONE team stripe round its middle, a wicker basket and a skeleton pilot
+ * in an aviator cap and goggles (the cast's skeleton look), dropping a bomb.
+ */
 function buildBalloon(): TroopRig {
   const g = new THREE.Group();
-  // CR palette: dark navy/teal patched envelope, not a carnival red one.
-  const NAVY = 0x2f7d8a, NAVYDK = 0x225a64;
-  const envelope = sphere(0.55, NAVY, 0, 1.5, 0);
+  // Parchment with tan ribs and trim: a light neutral clear of every team
+  // family in both palettes (a sunflower envelope sat 14 degrees from the
+  // colour-blind orange and swallowed the enemy's stripe), so blue, red and
+  // orange stripes all pop on it.
+  const PARCH = 0xefe2c2, TRIM = 0x9c7a55, TAN = 0xb08a5e, WICKER = 0x8f6c4a, WICKERDK = 0x6a5038;
+  const BONE = 0xece4cf, LEATHER = 0x7a4e2c, BRASS = 0xd9b04a;
+  const envelope = sphere(0.62, PARCH, 0, 1.55, 0);
   envelope.scale.set(1, 1.15, 1);
+  envelope.name = "envelope";
   g.add(envelope);
-  for (const a of [-0.6, 0.6]) {
-    const stripe = teamPart(cyl(0.46, 0.46, 0.14, NAVYDK, 0, 1.5 + a * 0.45, 0));
-    stripe.scale.x = 1.2;
-    g.add(stripe);
+  // Tan ribs: four meridians, so the envelope reads as sewn panels.
+  for (const ry of [0, Math.PI / 2]) {
+    const rib = new THREE.Mesh(cachedGeo("balloon-rib", () => new THREE.TorusGeometry(0.625, 0.03, 6, 32)), toon(TAN));
+    rib.scale.set(1, 1.15, 1);
+    rib.rotation.y = ry;
+    shadowed(rib, 0, 1.55, 0);
+    g.add(rib);
   }
-  const patch = box(0.26, 0.22, 0.06, 0xcdb079, 0.28, 1.62, 0.42); // tan patch
-  patch.rotation.z = 0.3;
-  g.add(patch);
-  g.add(cone(0.16, 0.22, NAVYDK, 0, 0.78, 0)); // throat
-  // Wicker basket on ropes.
-  const basket = cyl(0.26, 0.2, 0.3, 0x8d6e63, 0, 0.42, 0);
-  g.add(basket);
-  g.add(cyl(0.27, 0.27, 0.05, 0x6d4c41, 0, 0.58, 0)); // rim
+  const crown = sphere(0.26, TRIM, 0, 2.22, 0);
+  crown.scale.set(1, 0.45, 1);
+  g.add(crown);
+  // The ONE team slot: a broad stripe round the envelope's upper shoulder,
+  // where the battle camera (and the player) look down on it.
+  const stripe = cyl(0.555, 0.64, 0.34, 0xffffff, 0, 1.76, 0);
+  stripe.name = "envelope-stripe";
+  g.add(teamPart(stripe));
+  g.add(cyl(0.2, 0.13, 0.22, TRIM, 0, 0.84, 0)); // skirt
   for (const s of [-1, 1]) {
-    const rope = cyl(0.015, 0.015, 0.45, 0xd7ccc8, s * 0.22, 0.78, 0);
-    rope.rotation.z = -s * 0.35;
-    g.add(rope);
+    for (const z of [-1, 1]) {
+      const rope = cyl(0.015, 0.015, 0.4, TAN, s * 0.17, 0.72, z * 0.12);
+      rope.rotation.z = -s * 0.32;
+      g.add(rope);
+    }
   }
-  // Skeleton pilot peeking out.
-  const skull = sphere(0.14, 0xf5f2ea, 0, 0.68, 0.12);
-  skull.add(sphere(0.035, 0x1f2430, -0.05, 0.01, 0.115));
-  skull.add(sphere(0.035, 0x1f2430, 0.05, 0.01, 0.115));
+  // Wicker basket with a rim.
+  g.add(cyl(0.28, 0.22, 0.3, WICKER, 0, 0.42, 0));
+  g.add(cyl(0.3, 0.3, 0.06, WICKERDK, 0, 0.58, 0));
+  // Skeleton pilot: a big skull in a leather aviator cap with brass goggles.
+  const skull = sphere(0.17, BONE, 0, 0.74, 0.04);
+  skull.add(sphere(0.045, 0x2b2333, -0.06, 0.0, 0.14));
+  skull.add(sphere(0.045, 0x2b2333, 0.06, 0.0, 0.14));
   g.add(skull);
-
-  // Bomb-dropping arm: bony arm holding a fizzing bomb under the basket.
+  const cap = sphere(0.18, LEATHER, 0, 0.8, 0.02);
+  cap.scale.set(1.02, 0.7, 1.02);
+  cap.name = "aviator-cap";
+  g.add(cap);
+  for (const s of [-1, 1]) {
+    const flap = box(0.06, 0.14, 0.1, LEATHER, s * 0.16, 0.7, 0.02);
+    g.add(flap);
+    const goggle = cyl(0.05, 0.05, 0.04, BRASS, s * 0.06, 0.86, 0.15);
+    goggle.rotation.x = Math.PI / 2 - 0.4;
+    g.add(goggle);
+  }
+  // Bomb-dropping arm: a bony arm holding a fizzing bomb under the basket.
   const arm = new THREE.Group();
-  arm.position.set(0.24, 0.5, 0.1);
-  arm.add(box(0.06, 0.2, 0.06, 0xf5f2ea, 0, -0.1, 0));
-  const bomb = sphere(0.16, 0x263238, 0, -0.3, 0.04);
+  arm.position.set(0.26, 0.5, 0.1);
+  arm.add(box(0.06, 0.2, 0.06, BONE, 0, -0.1, 0));
+  const bomb = sphere(0.16, 0x2f3540, 0, -0.3, 0.04);
   arm.add(bomb);
   const fuse = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), glow(0xffa000, 2));
   fuse.position.set(0, -0.12, 0.04);
   arm.add(fuse);
   g.add(arm);
-  return { group: g, arm, armRest: -0.3, swingAmp: 1.4, height: 2.2, hover: 1.7 };
+  return { group: g, arm, armRest: -0.3, swingAmp: 1.4, height: 2.3, hover: 1.7 };
 }
 
+/**
+ * BABY DRAGON (art bible 7): a chubby green dragon that never blooms. Big
+ * leafy wings, ivory horns, a spiny back ridge and a spade-tipped tail read
+ * from any side; its ONE team slot is a scarf knotted round the neck.
+ */
 function buildBabyDragon(): TroopRig {
   const g = new THREE.Group();
-  const BODY = 0x4caf50, BELLY = 0xd4e8a8, TEAL = 0x26a69a, TEALDK = 0x1a7a72;
+  const BODY = 0x5cb84a, BODYDK = 0x3f8f3a, BELLY = 0xf2e3a2, WING = 0x3c9a6a, WINGDK = 0x2a7050, IVORY = 0xf3ead2;
   const body = sphere(0.5, BODY, 0, 0.52, 0);
   body.scale.set(0.95, 0.92, 1.1);
   g.add(body);
   const belly = sphere(0.38, BELLY, 0, 0.44, 0.2);
   belly.scale.set(0.8, 0.75, 0.6);
   g.add(belly);
-  const head = sphere(0.4, 0x59b75d, 0, 1.08, 0.24);
+  const head = sphere(0.4, BODY, 0, 1.1, 0.22);
   g.add(head);
-  const snout = sphere(0.22, 0x66bb6a, 0, 0.98, 0.56);
+  const snout = sphere(0.24, 0x6cc458, 0, 1.0, 0.56);
   snout.scale.set(1, 0.7, 0.9);
   g.add(snout);
-  g.add(sphere(0.035, 0x1f2430, -0.07, 1.02, 0.72));
-  g.add(sphere(0.035, 0x1f2430, 0.07, 1.02, 0.72));
-  // Signature lolling blue tongue under the snout.
-  const tongue = sphere(0.08, 0x4f9fd8, 0, 0.86, 0.64);
+  for (const s of [-1, 1]) g.add(sphere(0.035, 0x2b2333, s * 0.08, 1.05, 0.76)); // nostrils
+  const tongue = sphere(0.08, 0xff9fb6, 0, 0.88, 0.64);
   tongue.name = "tongue";
   tongue.scale.set(0.8, 0.4, 1.3);
   tongue.rotation.x = 0.35;
   g.add(tongue);
-  // Big yellow toy eyes.
+  // Big toy eyes.
   for (const s of [-1, 1]) {
-    g.add(sphere(0.1, 0xfff59d, s * 0.18, 1.2, 0.48));
-    g.add(sphere(0.05, 0x1f2430, s * 0.18, 1.2, 0.56));
+    g.add(sphere(0.12, 0x2b2333, s * 0.18, 1.22, 0.47));
+    g.add(sphere(0.105, 0xfffbea, s * 0.18, 1.22, 0.5));
+    g.add(sphere(0.055, 0x1f2430, s * 0.18, 1.22, 0.59));
   }
-  // Teal back-swept horns (CR baby-dragon palette).
+  // Ivory horns swept back, and a spiny ridge down the back.
   for (const s of [-1, 1]) {
-    const horn = cone(0.08, 0.24, TEAL, s * 0.16, 1.42, 0.08);
+    const horn = cone(0.09, 0.3, IVORY, s * 0.17, 1.46, 0.06);
     horn.name = "horn";
-    horn.rotation.z = -s * 0.25;
-    horn.rotation.x = -0.35;
+    horn.rotation.z = -s * 0.3;
+    horn.rotation.x = -0.45;
     g.add(horn);
   }
-  const tail = cone(0.14, 0.65, BODY, 0, 0.44, -0.7);
+  for (let i = 0; i < 3; i++) {
+    const spine = cone(0.08 - i * 0.012, 0.2 - i * 0.03, BODYDK, 0, 0.98 - i * 0.2, -0.38 - i * 0.12);
+    spine.rotation.x = -0.6 - i * 0.2;
+    spine.name = "spine";
+    g.add(spine);
+  }
+  const tail = cone(0.15, 0.7, BODY, 0, 0.44, -0.72);
   tail.rotation.x = Math.PI / 2.3;
+  const spade = diamond(0.13, BODYDK, 0, -0.38, 0);
+  spade.scale.set(1.2, 0.8, 0.4);
+  tail.add(spade);
   g.add(tail);
   const wagTail = (t: number, phase: number) => {
     tail.rotation.z = Math.sin(t * 5 + phase) * 0.35;
   };
-  g.add(sphere(0.13, 0x59b75d, -0.22, 0.12, 0.1));
-  g.add(sphere(0.13, 0x59b75d, 0.22, 0.12, 0.1));
+  g.add(sphere(0.14, BODY, -0.22, 0.12, 0.1));
+  g.add(sphere(0.14, BODY, 0.22, 0.12, 0.1));
+  g.add(...teamScarf(0.34, 0.9, 0.16, 0.62));
 
   const wings: Wing[] = [];
   for (const s of [-1, 1]) {
-    const wing = new THREE.Group();
-    wing.position.set(s * 0.38, 0.88, -0.1);
-    // Stubby teal membranes relative to chubby body (toy-like).
-    const membrane = box(0.58, 0.05, 0.38, TEAL, s * 0.32, 0, 0);
-    membrane.name = "wing-membrane";
-    wing.add(teamPart(membrane, "dark"));
-    wing.add(box(0.56, 0.04, 0.06, TEALDK, s * 0.31, 0.03, 0.18));
+    const wing = membraneWing(s, 0.62, 0.5, WING, WINGDK);
+    wing.position.set(s * 0.36, 0.9, -0.12);
     wing.rotation.z = s * 0.3;
     g.add(wing);
     wings.push({ obj: wing, base: s * 0.3, amp: s * 0.6 });
@@ -1572,70 +1817,59 @@ function buildBabyDragon(): TroopRig {
     arm: null,
     armRest: 0,
     swingAmp: 0,
-    height: 1.55,
+    height: 1.6,
     hover: 1.0,
     wings,
     extras: wagTail,
   };
 }
 
+/**
+ * GARGOYLES (art bible 7): little stone imps with stone bat wings, curled
+ * horns and amber eyes; the ONE team slot is a collar.
+ */
 function buildGargoyle(): TroopRig {
   const g = new THREE.Group();
-  const SKINB = 0x5a4390, SKINDK = 0x3e2c66, MEMBRANE = 0x9b5fd8;
-  const body = sphere(0.24, SKINB, 0, 0.38, 0);
+  const STONE = 0x948f86, STONEDK = 0x6b675f, WING = 0x7a766e, HORN = 0xd8cfb8;
+  const body = sphere(0.25, STONE, 0, 0.4, 0);
   body.scale.set(1, 1.2, 0.9);
   g.add(body);
-  const head = sphere(0.22, 0x6a51a3, 0, 0.76, 0.04);
+  const head = sphere(0.23, STONE, 0, 0.8, 0.04);
   g.add(head);
-  // Glowing violet eyes (CR Minions read) + snaggle fangs + little horns.
+  g.add(box(0.36, 0.07, 0.1, STONEDK, 0, 0.9, 0.2)); // heavy brow
   for (const s of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), glow(0xb666ff, 2));
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), glow(0xffdf5a, 2));
     eye.name = "eyeglow";
-    eye.position.set(s * 0.09, 0.8, 0.2);
+    eye.position.set(s * 0.09, 0.82, 0.2);
     g.add(eye);
-    const ear = cone(0.065, 0.2, SKINDK, s * 0.14, 0.96, -0.02);
-    ear.name = "horn";
-    ear.rotation.z = -s * 0.4;
-    g.add(ear);
-    g.add(box(0.028, 0.07, 0.025, 0xffffff, s * 0.045, 0.62, 0.2)); // fang
+    const horn = new THREE.Mesh(cachedGeo("garg-horn", () => new THREE.TorusGeometry(0.1, 0.035, 6, 10, Math.PI * 1.1)), toon(HORN));
+    horn.name = "horn";
+    horn.rotation.set(0, s * 1.3, s * 0.4);
+    shadowed(horn, s * 0.16, 0.98, -0.02);
+    g.add(horn);
+    g.add(box(0.03, 0.07, 0.025, 0xece4cf, s * 0.05, 0.66, 0.21)); // fang
   }
-  const legs = [
-    makeLeg(SKINDK, -0.08, 0.16, 0.06),
-    makeLeg(SKINDK, 0.08, 0.16, 0.06),
-  ];
+  g.add(...teamCollar(0.17, 0.6, 0.02));
+  const legs = [makeLeg(STONEDK, -0.09, 0.17, 0.07), makeLeg(STONEDK, 0.09, 0.17, 0.07)];
   g.add(...legs);
-
   const offArm = new THREE.Group();
-  offArm.position.set(-0.22, 0.48, 0);
-  offArm.add(box(0.07, 0.2, 0.07, SKINB, 0, -0.1, 0));
+  offArm.position.set(-0.23, 0.5, 0);
+  offArm.add(box(0.08, 0.22, 0.08, STONE, 0, -0.11, 0));
   g.add(offArm);
   const arm = new THREE.Group();
-  arm.position.set(0.22, 0.48, 0);
-  arm.add(box(0.07, 0.2, 0.07, SKINB, 0, -0.1, 0));
-  arm.add(cone(0.04, 0.1, 0xb7c2cc, 0, -0.22, 0.03)); // claw
+  arm.position.set(0.23, 0.5, 0);
+  arm.add(box(0.08, 0.22, 0.08, STONE, 0, -0.11, 0));
+  arm.add(cone(0.045, 0.12, HORN, 0, -0.25, 0.03)); // claw
   g.add(arm);
-
   const wings: Wing[] = [];
   for (const s of [-1, 1]) {
-    const wing = new THREE.Group();
-    wing.position.set(s * 0.18, 0.64, -0.12);
-    const membrane = box(0.48, 0.035, 0.32, MEMBRANE, s * 0.26, 0, 0);
-    membrane.name = "wing-membrane";
-    wing.add(teamPart(membrane, "dark"));
+    const wing = membraneWing(s, 0.46, 0.36, WING, STONEDK);
+    wing.position.set(s * 0.18, 0.66, -0.12);
     wing.rotation.z = s * 0.45;
     g.add(wing);
     wings.push({ obj: wing, base: s * 0.45, amp: s * 0.8 });
   }
-  return {
-    group: g,
-    arm,
-    armRest: -0.45,
-    swingAmp: 1.3,
-    height: 1.05,
-    hover: 0.9,
-    wings,
-    legs,
-  };
+  return { group: g, arm, armRest: -0.45, swingAmp: 1.3, height: 1.1, hover: 0.9, wings, legs };
 }
 
 function buildValkyrie(): TroopRig {
@@ -2000,10 +2234,33 @@ function buildCamelRaider(): TroopRig {
  * Same role (slow flying building-seeker with a death blast), new silhouette:
  * a diamond canopy instead of a balloon envelope. Tails flutter in idle.
  */
+/** How far the fire kite's sail tips back from upright (radians). */
+const KITE_TILT = 1.0;
+
+const KITE_FWD = new THREE.Vector3();
+
+/**
+ * The yaw (in `rig`'s own frame) that turns a child toward the camera's
+ * horizontal view direction, whichever way the unit faces: the host's camera
+ * sits at +z, an online guest's at -z (cameraZForView). Reads the rig's live
+ * world transform, so the lean, the body twist and the facing all count.
+ */
+export function yawTowardCamera(rig: THREE.Object3D): number {
+  rig.getWorldDirection(KITE_FWD);
+  const worldYaw = Math.atan2(KITE_FWD.x, KITE_FWD.z);
+  const camYaw = cameraZForView() >= 0 ? 0 : Math.PI;
+  let d = camYaw - worldYaw;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
 function buildFireKite(): TroopRig {
   const g = new THREE.Group();
-  const PAPER = BRICK;
-  const GOLD = THEME.goldLight, CLOTH = THEME.deepBlue;
+  // Turquoise silk on gold spars (the edition's colours, never a team hue);
+  // the ONE team slot is the pair of cloth tails.
+  const PAPER = THEME.turquoise;
+  const GOLD = THEME.goldLight, CLOTH = 0xffffff;
 
   // Diamond canopy: a flattened octahedron with gold spars.
   const canopy = new THREE.Mesh(
@@ -2011,13 +2268,26 @@ function buildFireKite(): TroopRig {
     toon(PAPER),
   );
   canopy.scale.set(0.8, 1.1, 0.26);
-  canopy.position.set(0, 1.5, 0);
   canopy.castShadow = true;
   canopy.receiveShadow = true;
-  g.add(canopy);
-  g.add(box(0.06, 1.5, 0.05, GOLD, 0, 1.5, 0.1)); // vertical spar
-  g.add(box(1.1, 0.06, 0.05, GOLD, 0, 1.5, 0.1)); // cross spar
-  g.add(diamond(0.12, GOLD, 0, 1.5, 0.16)); // center boss
+  // The sail flies tipped back toward the sky, and its mount turns it to the
+  // camera every frame (yawTowardCamera), so the battle camera sees its face
+  // whichever way the kite flies: your own kite flies away from you, and a
+  // sail tipped in the rig's frame showed you its edge. An upright sail was
+  // a thin edge from above. The mount carries the sail and its tails.
+  const mount = new THREE.Group();
+  mount.name = "kite-mount";
+  mount.position.set(0, 1.5, 0);
+  mount.userData.animated = true; // the bake keeps it a node of its own
+  g.add(mount);
+  const sail = new THREE.Group();
+  sail.name = "kite-sail";
+  sail.rotation.x = -KITE_TILT;
+  sail.add(canopy);
+  sail.add(box(0.06, 1.5, 0.05, GOLD, 0, 0, 0.1)); // vertical spar
+  sail.add(box(1.1, 0.06, 0.05, GOLD, 0, 0, 0.1)); // cross spar
+  sail.add(diamond(0.12, GOLD, 0, 0, 0.16)); // center boss
+  mount.add(sail);
   // Crescent finial at the kite's crown.
   const finial = new THREE.Mesh(
     cachedGeo("crescent:0.12", () => {
@@ -2030,22 +2300,23 @@ function buildFireKite(): TroopRig {
     }),
     toon(GOLD),
   );
-  finial.position.set(0, 2.36, 0);
+  finial.position.set(0, 0.86, 0);
   finial.castShadow = true;
-  g.add(finial);
+  sail.add(finial);
 
   // Fluttering cloth tails off the kite's lower point.
   const tails: THREE.Mesh[] = [];
   for (const [dx, len, color] of [
-    [-0.14, 0.5, CLOTH],
-    [0, 0.62, GOLD],
-    [0.14, 0.5, CLOTH],
+    [-0.17, 0.82, CLOTH],
+    [0, 0.6, GOLD],
+    [0.17, 0.82, CLOTH],
   ] as const) {
-    const tail = box(0.09, len, 0.03, color, dx, 0.52 - len / 2, -0.05);
+    // From the sail's lower point (tipped forward by KITE_TILT), in the mount's frame.
+    const tail = box(color === CLOTH ? 0.15 : 0.08, len, 0.04, color, dx, -0.79 * Math.cos(KITE_TILT) - len / 2, 0.79 * Math.sin(KITE_TILT));
     tail.name = "kite-tail";
     if (color === CLOTH) teamPart(tail); // the two cloth tails fly team colours
     tails.push(tail);
-    g.add(tail);
+    mount.add(tail);
   }
 
   // Hanging brazier basket on ropes below the canopy.
@@ -2076,6 +2347,7 @@ function buildFireKite(): TroopRig {
   return {
     group: g, arm, armRest: -0.3, swingAmp: 1.4, height: 2.3, hover: 1.7,
     extras: (time, phase) => {
+      mount.rotation.y = yawTowardCamera(g);
       for (let i = 0; i < tails.length; i++) {
         tails[i].rotation.x = Math.sin(time * 6 + phase + i * 1.1) * 0.35;
       }
@@ -2425,68 +2697,80 @@ function buildMagicArcher(): TroopRig {
   return { group: g, arm, armRest: -1.0, swingAmp: 0.7, height: 1.5, legs, offArm };
 }
 
+/** BATS (art bible 7): violet, with big ears, membrane wings and amber eyes; a team collar. */
 function buildBat(): TroopRig {
   const g = new THREE.Group();
-  const body = sphere(0.16, 0x3a2f4a, 0, 0.3, 0);
+  const VIOLET = 0x8257c4, VIOLETDK = 0x55388f, EAR = 0xe8a6cf;
+  const body = sphere(0.18, VIOLET, 0, 0.3, 0);
   body.scale.set(1, 1.05, 0.9);
   g.add(body);
   for (const s of [-1, 1]) {
-    g.add(cone(0.06, 0.16, 0x2c2338, s * 0.08, 0.46, 0)); // ear
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), glow(0xffd54f, 2));
-    eye.position.set(s * 0.06, 0.32, 0.13);
+    const ear = cone(0.08, 0.22, VIOLETDK, s * 0.09, 0.5, 0);
+    ear.rotation.z = -s * 0.25;
+    g.add(ear);
+    const inner = cone(0.045, 0.14, EAR, s * 0.09, 0.49, 0.04);
+    inner.rotation.z = -s * 0.25;
+    g.add(inner);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), glow(0xffdf5a, 2));
+    eye.position.set(s * 0.07, 0.33, 0.15);
     g.add(eye);
-    g.add(box(0.02, 0.05, 0.02, 0xffffff, s * 0.03, 0.22, 0.12)); // fang
+    g.add(box(0.025, 0.055, 0.02, 0xf0e8d6, s * 0.035, 0.22, 0.14)); // fang
   }
+  g.add(...teamCollar(0.12, 0.2, 0.0, 0.1));
   const wings: Wing[] = [];
   for (const s of [-1, 1]) {
-    const wing = new THREE.Group();
-    wing.position.set(s * 0.12, 0.32, -0.04);
-    wing.add(teamPart(box(0.34, 0.03, 0.22, 0x2c2338, s * 0.18, 0, 0), "dark"));
+    const wing = membraneWing(s, 0.36, 0.28, VIOLETDK, 0x3e2870);
+    wing.position.set(s * 0.13, 0.33, -0.04);
     wing.rotation.z = s * 0.4;
     g.add(wing);
     wings.push({ obj: wing, base: s * 0.4, amp: s * 0.9 });
   }
-  return { group: g, arm: null, armRest: 0, swingAmp: 0, height: 0.7, hover: 0.85, wings };
+  return { group: g, arm: null, armRest: 0, swingAmp: 0, height: 0.75, hover: 0.85, wings };
 }
 
+/**
+ * MINIONS (art bible 7): purple-grey flying imps, never signature blue: one
+ * ivory horn, pointed ears, a big snub nose and grey membrane wings; the ONE
+ * team slot is a bandana with its tails flying behind.
+ */
 function buildMinion(): TroopRig {
   const g = new THREE.Group();
-  // Violet imp, not blue: the team colour is the belly band and wings.
-  const VIOLET = 0x6a4fb0, VIOLETDK = 0x4a3590;
-  const body = sphere(0.2, VIOLET, 0, 0.36, 0);
+  const SKINP = 0x9a8fb2, SKINDK = 0x6c6286, WING = 0x7d7396, IVORY = 0xf0e6cc;
+  const body = sphere(0.21, SKINP, 0, 0.36, 0);
   body.scale.set(1, 1.15, 0.92);
   g.add(body);
-  const band = teamPart(cyl(0.21, 0.21, 0.09, VIOLETDK, 0, 0.34, 0));
-  band.scale.z = 0.94; // hug the squashed body
-  g.add(band);
-  g.add(sphere(0.17, 0x7d63c4, 0, 0.66, 0.03)); // head
-  g.add(cone(0.05, 0.14, 0xd9ccff, 0, 0.84, 0)); // horn
-  const beak = cone(0.05, 0.12, 0xffca28, 0, 0.64, 0.2);
-  beak.rotation.x = Math.PI / 2;
-  g.add(beak);
+  g.add(box(0.2, 0.06, 0.08, 0x5a4a3a, 0, 0.24, 0.12)); // belt
+  const head = sphere(0.18, SKINP, 0, 0.67, 0.03);
+  g.add(head);
+  g.add(...teamBandana(0.17, 0.74, 0.03));
+  g.add(cone(0.055, 0.18, IVORY, 0, 0.9, 0)); // horn
+  const nose = sphere(0.06, 0xb3a8c8, 0, 0.64, 0.2);
+  g.add(nose);
   for (const s of [-1, 1]) {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), glow(0xfff1a8, 2));
-    eye.position.set(s * 0.07, 0.7, 0.16);
+    eye.position.set(s * 0.075, 0.7, 0.16);
     g.add(eye);
+    const ear = cone(0.05, 0.16, SKINDK, s * 0.19, 0.7, 0);
+    ear.rotation.z = -s * 1.1;
+    g.add(ear);
   }
   const offArm = new THREE.Group();
-  offArm.position.set(-0.18, 0.44, 0);
-  offArm.add(box(0.06, 0.18, 0.06, VIOLET, 0, -0.09, 0));
+  offArm.position.set(-0.19, 0.44, 0);
+  offArm.add(box(0.07, 0.19, 0.07, SKINP, 0, -0.09, 0));
   g.add(offArm);
   const arm = new THREE.Group();
-  arm.position.set(0.18, 0.44, 0.04);
-  arm.add(box(0.06, 0.18, 0.06, VIOLET, 0, -0.09, 0));
+  arm.position.set(0.19, 0.44, 0.04);
+  arm.add(box(0.07, 0.19, 0.07, SKINP, 0, -0.09, 0));
   g.add(arm);
   const wings: Wing[] = [];
   for (const s of [-1, 1]) {
-    const wing = new THREE.Group();
+    const wing = membraneWing(s, 0.42, 0.32, WING, SKINDK);
     wing.position.set(s * 0.16, 0.56, -0.1);
-    wing.add(teamPart(box(0.4, 0.03, 0.26, VIOLETDK, s * 0.22, 0, 0), "dark"));
     wing.rotation.z = s * 0.45;
     g.add(wing);
     wings.push({ obj: wing, base: s * 0.45, amp: s * 0.8 });
   }
-  return { group: g, arm, armRest: -0.4, swingAmp: 0.8, height: 0.95, hover: 0.88, wings, offArm };
+  return { group: g, arm, armRest: -0.4, swingAmp: 0.8, height: 1.0, hover: 0.88, wings, offArm };
 }
 
 function buildExecutioner(): TroopRig {
@@ -2619,7 +2903,7 @@ const GOLEM = {
   crack: 0x3a3833,
   moss: 0x6f9c3a,
   mossDark: 0x4e7a2b,
-  gem: 0x7dffd0,
+  gem: 0x5ee8bb,
 } as const;
 
 /** Sandstone palette for the Golden Age golems (carved stone, turquoise inlay). */
@@ -2629,7 +2913,7 @@ const SAND_GOLEM = {
   crack: 0x5a4b3a,
   inlay: 0x2fb3a4,
   brass: 0xd8b25a,
-  gem: 0x8affef,
+  gem: 0x4fe3d6,
 } as const;
 
 /**
@@ -2650,12 +2934,20 @@ function eyeGems(r: number, spread: number, y: number, z: number, gem: number, s
   return eyes;
 }
 
-/** A heavy stone arm: a column limb, a cracked boulder fist and a team band. */
-function golemArm(x: number, y: number, s: number, stone: number, dark: number, band: number, seed: number): THREE.Group {
+/**
+ * A heavy stone arm: a column limb, a cracked boulder fist and a carved
+ * band whose rune glows (under the bloom threshold). Not a team slot: a
+ * golem's one team slot sits on its chest.
+ */
+function golemArm(x: number, y: number, s: number, stone: number, dark: number, band: number, seed: number, rune: number = GOLEM.gem): THREE.Group {
   const a = new THREE.Group();
   a.position.set(x, y, 0.05);
   a.add(box(0.36 * s, 0.62 * s, 0.36 * s, dark, 0, -0.34 * s, 0));
-  a.add(teamPart(cyl(0.24 * s, 0.24 * s, 0.12 * s, band, 0, -0.5 * s, 0), "dark")); // rune band
+  a.add(cyl(round3(0.24 * s), round3(0.24 * s), round3(0.12 * s), band, 0, -0.5 * s, 0)); // carved band
+  const glyph = new THREE.Mesh(cachedGeo(`rune:${s}`, () => new THREE.BoxGeometry(0.16 * s, 0.05 * s, 0.03 * s)), glow(rune, 1.4));
+  glyph.name = "rune";
+  glyph.position.set(0, -0.5 * s, 0.245 * s);
+  a.add(glyph);
   a.add(boulder(0.4 * s, stone, 0, -0.86 * s, 0.04 * s, seed)); // boulder fist
   return a;
 }
@@ -2683,7 +2975,9 @@ function buildStoneGolem(): TroopRig {
     g.add(c);
   }
   // The team crystal set into the chest.
-  const crystal = teamPart(diamond(0.17, P.dark, 0, 1.3, 0.8));
+  const crystalMesh = diamond(0.17, P.dark, 0, 1.3, 0.8);
+  crystalMesh.name = "chest-crystal";
+  const crystal = teamPart(crystalMesh);
   crystal.scale.set(1, 1.35, 0.7);
   g.add(crystal);
   // Small head sunk into the shoulders, under a heavy brow ridge.
@@ -2731,7 +3025,9 @@ function buildPebbleGolem(): TroopRig {
   nick.rotation.z = 0.3;
   g.add(nick);
   g.add(eyeGems(0.075, 0.17, 0.8, 0.46, P.gem, P.crack));
-  g.add(teamPart(diamond(0.1, P.dark, 0, 0.5, 0.5))); // team pebble-gem
+  const gem = diamond(0.1, P.dark, 0, 0.5, 0.5);
+  gem.name = "chest-gem";
+  g.add(teamPart(gem)); // team pebble-gem
   // A mossy tuft with a two-leaf sprout: the cute read.
   const tuft = sphere(0.22, P.moss, 0, 1.16, 0);
   tuft.scale.set(1.2, 0.4, 1.1);
@@ -2792,7 +3088,9 @@ function buildSandstoneGolem(): TroopRig {
   }
   g.add(sphere(0.09, P.brass, 0, 1.36, 0.66)); // star boss
   for (const sx of [-1, 1]) g.add(box(0.06, 0.8, 0.05, P.crack, sx * 0.56, 1.3, 0.61)); // carved grooves
-  const sash = teamPart(box(0.26, 1.5, 0.06, P.dark, 0, 1.36, 0.64));
+  const sashMesh = box(0.26, 1.5, 0.06, P.dark, 0, 1.36, 0.64);
+  sashMesh.name = "sash";
+  const sash = teamPart(sashMesh);
   sash.rotation.z = 0.72;
   g.add(sash);
   // Domed head, set low between the shoulders.
@@ -2804,7 +3102,7 @@ function buildSandstoneGolem(): TroopRig {
   g.add(domeCap(0.34, 0, 2.54, 0.06, P.stone, P.brass));
 
   const mkArm = (x: number, seed: number): THREE.Group => {
-    const a = golemArm(x, 1.78, 1, P.stone, P.dark, P.dark, seed);
+    const a = golemArm(x, 1.78, 1, P.stone, P.dark, P.dark, seed, P.gem);
     a.add(cyl(0.25, 0.25, 0.08, P.brass, 0, -0.2, 0)); // brass cuff
     return a;
   };
@@ -2831,10 +3129,12 @@ function buildSandPebble(): TroopRig {
     sq.rotation.z = rz;
     g.add(sq);
   }
-  g.add(teamPart(box(0.9, 0.1, 0.78, P.dark, 0, 0.32, 0))); // team plinth band
+  const plinth = box(0.9, 0.1, 0.78, P.dark, 0, 0.32, 0);
+  plinth.name = "plinth-band";
+  g.add(teamPart(plinth)); // team plinth band
   g.add(domeCap(0.22, 0, 1.1, 0, P.stone, P.brass));
-  const offArm = golemArm(-0.54, 0.8, 0.5, P.stone, P.dark, P.dark, 43);
-  const arm = golemArm(0.54, 0.8, 0.5, P.stone, P.dark, P.dark, 47);
+  const offArm = golemArm(-0.54, 0.8, 0.5, P.stone, P.dark, P.dark, 43, P.gem);
+  const arm = golemArm(0.54, 0.8, 0.5, P.stone, P.dark, P.dark, 47, P.gem);
   g.add(offArm, arm);
   const eyes = g.getObjectByName("eye-gems")!;
   const throb = (t: number, phase: number) => {
@@ -2992,8 +3292,10 @@ export function buildCometRock(r = 0.5): THREE.Group {
   const rock = new THREE.Mesh(boulderGeo(r, 53), toon(0x5a4740));
   rock.name = "comet-body";
   g.add(rock);
-  // Lava veins: thin hot bars wrapped across the faces.
-  const lava = glow(0xffa040, 2.6);
+  // Lava veins: thin hot bars wrapped across the faces. The comet's core is
+  // one of the few things allowed past the bloom threshold (art bible 5).
+  const lava = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffa040).multiplyScalar(1.6) });
+  lava.toneMapped = false;
   for (const [rx, ry, rz] of [[0.3, 0, 0.9], [1.2, 0.6, 0.2], [0.1, 1.4, -0.7]] as const) {
     const vein = new THREE.Mesh(cachedGeo(`vein:${r}`, () => new THREE.TorusGeometry(r * 0.98, r * 0.06, 4, 18, Math.PI * 0.9)), lava);
     vein.name = "comet-vein";
@@ -3001,6 +3303,197 @@ export function buildCometRock(r = 0.5): THREE.Group {
     g.add(vein);
   }
   return g;
+}
+
+// ---------------------------------------------------------------------------
+// Card buildings (art bible 7): cannon, tombstone and elixir collector, in
+// the creatures' material language. Each is a TroopRig-shaped group that
+// bakeRig() folds into a couple of inked draws like any troop; the cannon's
+// barrel is a pivot (userData.animated) the scene aims at its target. Each
+// wears its team colour on ONE slot: the cannon's pennant, the tombstone's
+// wreath, the collector's rim band. ship wires these into
+// scene/views/troops.ts buildBuildingMesh (see notes/features/art-creatures-fx.md).
+// ---------------------------------------------------------------------------
+
+/** A card building's rig: the group, its aimable barrel (cannons), and where its HP bar sits. */
+export interface BuildingRig extends TroopRig {
+  barrel?: THREE.Group;
+  /** World height (rig units) for the HP bar above the building. */
+  barY: number;
+}
+
+/** The buildings with a procedural model. */
+export const BUILDING_IDS = ["cannon", "tombstone", "elixir-collector"] as const;
+
+/** A team pennant on a pole: the pole is wood, the flag the ONE team slot. */
+function teamPennant(x: number, z: number, h: number): THREE.Mesh[] {
+  const pole = cyl(0.03, 0.035, h, 0x6b4a2c, x, h / 2, z);
+  const flag = new THREE.Mesh(cachedGeo("pennant", () => {
+    const g = new THREE.BufferGeometry();
+    // A swallow-free triangle flag, two-sided by thickness (a thin wedge).
+    const pts = [
+      [0, 0, 0.03], [0.56, -0.13, 0.015], [0, -0.3, 0.03],
+      [0, 0, -0.03], [0, -0.3, -0.03], [0.56, -0.13, -0.015],
+    ];
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pts.flat()), 3));
+    g.setIndex([0, 2, 1, 3, 5, 4, 0, 1, 3, 3, 1, 5, 2, 4, 1, 4, 5, 1, 0, 3, 2, 3, 4, 2]);
+    g.computeVertexNormals();
+    return g;
+  }), toon(0xffffff));
+  shadowed(flag, x + 0.02, h - 0.02, z);
+  flag.name = "pennant";
+  return [pole, teamPart(flag)];
+}
+
+/** CANNON: a bronze barrel on a timber carriage with spoked wheels, shot stacked behind, a team pennant. */
+function buildCannonRig(): BuildingRig {
+  const g = new THREE.Group();
+  const WOOD = 0x8a5a36, WOODDK = 0x5e3d24, IRON = 0x3a3f46;
+  const BRONZE = ARABIC ? 0xc2a052 : 0xa9844e, BRONZEDK = ARABIC ? 0x8f7434 : 0x7a5e36, TRIM = ARABIC ? THEME.turquoise : 0xd8b25a;
+  // Stone footing so the gun sits on the field like a fixture.
+  const base = cyl(0.72, 0.8, 0.16, ARABIC ? THEME.stone : 0x9a958c, 0, 0.08, 0);
+  g.add(base);
+  // Carriage cheeks and axle.
+  for (const sx of [-1, 1]) g.add(box(0.14, 0.34, 0.86, WOOD, sx * 0.27, 0.42, -0.05));
+  const axle = cyl(0.05, 0.05, 0.8, WOODDK, 0, 0.32, 0.12);
+  axle.rotation.z = Math.PI / 2;
+  g.add(axle);
+  for (const sx of [-1, 1]) {
+    const wheel = cyl(0.3, 0.3, 0.1, WOOD, sx * 0.42, 0.32, 0.12);
+    wheel.rotation.z = Math.PI / 2;
+    g.add(wheel);
+    const tyre = new THREE.Mesh(cachedGeo("cannon-tyre", () => new THREE.TorusGeometry(0.3, 0.045, 6, 18)), toon(IRON));
+    tyre.rotation.y = Math.PI / 2;
+    shadowed(tyre, sx * 0.42, 0.32, 0.12);
+    g.add(tyre);
+    const hub = cyl(0.08, 0.08, 0.14, IRON, sx * 0.44, 0.32, 0.12);
+    hub.rotation.z = Math.PI / 2;
+    g.add(hub);
+  }
+  // Shot stacked behind the carriage.
+  for (const [x, y, z] of [[-0.42, 0.25, -0.5], [-0.26, 0.25, -0.56], [-0.34, 0.39, -0.52]] as const) g.add(sphere(0.1, IRON, x, y, z));
+  // The barrel: a pivot the scene turns toward the target (+z forward).
+  const barrel = new THREE.Group();
+  barrel.name = "barrel";
+  barrel.userData.animated = true;
+  barrel.position.set(0, 0.66, 0);
+  const tube = cyl(0.15, 0.21, 1.05, BRONZE, 0, 0.06, 0.28);
+  tube.rotation.x = Math.PI / 2 - 0.16;
+  barrel.add(tube);
+  for (const z of [0.0, 0.42]) {
+    const band = cyl(0.205 - z * 0.08, 0.205 - z * 0.08, 0.08, BRONZEDK, 0, 0.06 + z * 0.16, z);
+    band.rotation.x = Math.PI / 2 - 0.16;
+    barrel.add(band);
+  }
+  const muzzle = cyl(0.19, 0.17, 0.1, TRIM, 0, 0.14, 0.78);
+  muzzle.rotation.x = Math.PI / 2 - 0.16;
+  barrel.add(muzzle);
+  barrel.add(sphere(0.24, BRONZEDK, 0, 0, -0.22)); // breech
+  barrel.add(sphere(0.08, BRONZE, 0, 0, -0.48)); // cascabel knob
+  g.add(barrel);
+  g.add(...teamPennant(0.38, -0.52, 1.25));
+  return { group: g, arm: null, armRest: 0, swingAmp: 0, height: 1.25, barrel, barY: 1.55 };
+}
+
+/** TOMBSTONE: a rounded headstone on an earth mound, a carved skull, a green soul-light, a team wreath. */
+function buildTombstoneRig(): BuildingRig {
+  const g = new THREE.Group();
+  const STONE = ARABIC ? 0xcdbb94 : 0x9aa1a8, STONEDK = ARABIC ? 0x9c8b6e : 0x6d747c, EARTH = ARABIC ? 0xa88a5c : 0x6b5a45, BONE = 0xe9dfc8;
+  const mound = cyl(0.56, 0.68, 0.22, EARTH, 0, 0.11, 0);
+  g.add(mound);
+  const bump = sphere(0.36, EARTH, 0.1, 0.2, 0.18);
+  bump.scale.set(1.3, 0.35, 1);
+  g.add(bump);
+  // Headstone: a slab with a round top (an arch top in the Golden Age).
+  g.add(box(0.86, 1.0, 0.24, STONE, 0, 0.74, -0.14));
+  const cap = cyl(0.43, 0.43, 0.24, STONE, 0, 1.24, -0.14);
+  cap.rotation.x = Math.PI / 2;
+  g.add(cap);
+  if (ARABIC) {
+    const tip = cone(0.14, 0.3, STONE, 0, 1.78, -0.14);
+    g.add(tip);
+    g.add(box(0.7, 0.08, 0.26, THEME.turquoise, 0, 0.5, -0.14)); // inlaid band
+  } else {
+    const crack = box(0.035, 0.34, 0.03, STONEDK, 0.24, 1.0, -0.01);
+    crack.rotation.z = 0.5;
+    g.add(crack);
+  }
+  g.add(box(0.94, 0.1, 0.32, STONEDK, 0, 0.27, -0.14)); // plinth
+  // Carved skull on the face.
+  const skull = sphere(0.15, BONE, 0, 1.18, -0.01);
+  skull.scale.set(1, 0.95, 0.5);
+  g.add(skull);
+  for (const sx of [-1, 1]) g.add(sphere(0.04, 0x2b2333, sx * 0.055, 1.19, 0.06));
+  // The ONE team slot: a wreath hung on the stone's face.
+  const wreath = new THREE.Mesh(cachedGeo("wreath", () => new THREE.TorusGeometry(0.22, 0.07, 8, 18)), toon(0xffffff));
+  wreath.name = "wreath";
+  shadowed(wreath, 0, 0.72, 0.0);
+  g.add(teamPart(wreath));
+  g.add(teamPart(sphere(0.075, 0xffffff, 0, 0.5, 0.04), "dark")); // its bow
+  // Bones on the mound and the soul-light (under the bloom threshold).
+  const bone = box(0.26, 0.05, 0.05, BONE, -0.34, 0.24, 0.3);
+  bone.rotation.y = 0.6;
+  g.add(bone);
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), glow(0x76ff03, 2));
+  orb.name = "soul-light";
+  orb.position.set(0, ARABIC ? 1.98 : 1.72, -0.14);
+  g.add(orb);
+  return { group: g, arm: null, armRest: 0, swingAmp: 0, height: 1.7, barY: 2.05 };
+}
+
+/** ELIXIR COLLECTOR: a hooped vat brimming with glowing elixir, a pump, a big drop; a team rim band. */
+function buildCollectorRig(): BuildingRig {
+  const g = new THREE.Group();
+  const WOOD = ARABIC ? 0xb08a4a : 0x8d6e4a, WOODDK = ARABIC ? 0x8a6a34 : 0x5e4632, HOOP = ARABIC ? THEME.goldLight : 0x4a4f57;
+  g.add(cyl(0.74, 0.8, 0.18, ARABIC ? THEME.stone : 0x9a958c, 0, 0.09, 0)); // footing
+  const vat = cyl(0.56, 0.62, 0.72, WOOD, 0, 0.56, 0);
+  g.add(vat);
+  for (const y of [0.32, 0.62]) {
+    const hoop = new THREE.Mesh(cachedGeo(`vat-hoop:${y}`, () => new THREE.TorusGeometry(0.6 - (y - 0.32) * 0.1, 0.03, 6, 22)), toon(HOOP));
+    hoop.rotation.x = Math.PI / 2;
+    shadowed(hoop, 0, y, 0);
+    g.add(hoop);
+  }
+  // The ONE team slot: the band round the vat's rim.
+  const rim = cyl(0.6, 0.6, 0.12, 0xffffff, 0, 0.92, 0);
+  rim.name = "rim-band";
+  g.add(teamPart(rim));
+  // Elixir (pink-magenta, under the bloom threshold) and its drop.
+  const brew = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.06, 18), glow(0xd946ef, 2));
+  brew.position.y = 0.96;
+  g.add(brew);
+  const drop = new THREE.Mesh(cachedGeo("elixir-drop", () => {
+    const pts: THREE.Vector2[] = [];
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10;
+      const a = t * Math.PI;
+      pts.push(new THREE.Vector2(Math.sin(a) * 0.18 * (t < 0.5 ? 1 : 1 - (t - 0.5) * 1.6), -Math.cos(a) * 0.18 + t * t * 0.22));
+    }
+    return new THREE.LatheGeometry(pts, 14);
+  }), glow(0xe879f9, 2));
+  drop.name = "elixir-drop";
+  drop.position.y = 1.3;
+  g.add(drop);
+  // A little hand pump at the side.
+  g.add(box(0.1, 0.5, 0.1, WOODDK, 0.52, 0.86, -0.3));
+  const handle = box(0.36, 0.06, 0.06, WOODDK, 0.42, 1.1, -0.3);
+  handle.rotation.z = 0.35;
+  g.add(handle);
+  g.add(cyl(0.05, 0.05, 0.22, HOOP, 0.52, 0.7, -0.12));
+  return { group: g, arm: null, armRest: 0, swingAmp: 0, height: 1.45, barY: 1.85 };
+}
+
+/**
+ * The model for a card building on `side` (the side it wears, as for
+ * buildTroop), or null for a building without one. Bake it with bakeRig
+ * (key `${id}:${side}:${edition}:${palette}`) like a troop.
+ */
+export function buildBuildingRig(cardId: CardId | string, side: Side = "player"): BuildingRig | null {
+  const rig = cardId === "cannon" ? buildCannonRig() : cardId === "tombstone" ? buildTombstoneRig() : cardId === "elixir-collector" ? buildCollectorRig() : null;
+  if (!rig) return null;
+  outlineRig(rig.group);
+  applyTeam(rig.group, side);
+  return rig;
 }
 
 /** Darken a hex color by factor f (0..1). */
@@ -3562,15 +4055,13 @@ function buildRocHatchling(): TroopRig {
   g.add(tail);
   g.add(sphere(0.12, GOLD, -0.2, 0.12, 0.1));
   g.add(sphere(0.12, GOLD, 0.2, 0.12, 0.1));
+  // Art bible 7: the ONE team slot, a scarf like the Classic dragon's.
+  g.add(...teamScarf(0.32, 0.88, 0.16, 0.6));
 
   const wings: Wing[] = [];
   for (const s of [-1, 1]) {
-    const wing = new THREE.Group();
+    const wing = featherWing(s, 0.74, 0.46, GOLD, 0xb98a2e, "roc-wing");
     wing.position.set(s * 0.36, 0.86, -0.08);
-    const feather = box(0.7, 0.06, 0.42, GOLD, s * 0.38, 0, 0);
-    feather.name = "roc-wing";
-    wing.add(feather);
-    wing.add(teamPart(box(0.65, 0.04, 0.08, THEME.terracotta, s * 0.36, 0.04, 0.18))); // team wing bar
     wing.rotation.z = s * 0.28;
     g.add(wing);
     wings.push({ obj: wing, base: s * 0.28, amp: s * 0.55 });
@@ -3589,16 +4080,17 @@ function buildRocHatchling(): TroopRig {
  */
 function buildWarFalcon(): TroopRig {
   const g = new THREE.Group();
-  const PLUME = BRICK, GOLD = THEME.goldLight, BODY = 0xc9a165;
+  // Art bible 7: the ONE team slot is the falconer's hood; the wings are barred brown.
+  const PLUME = 0x86694f, GOLD = THEME.goldLight, BODY = 0xc9a165;
   const body = sphere(0.22, BODY, 0, 0.4, 0);
   body.scale.set(0.9, 1.15, 1.1);
   g.add(body);
   const head = sphere(0.16, BODY, 0, 0.72, 0.12);
   g.add(head);
-  const hood = sphere(0.17, PLUME, 0, 0.74, 0.1);
+  const hood = sphere(0.17, 0xffffff, 0, 0.74, 0.1);
   hood.name = "falcon-hood";
   hood.scale.set(1.05, 0.9, 1.0);
-  g.add(hood);
+  g.add(teamPart(hood));
   g.add(box(0.2, 0.04, 0.04, GOLD, 0, 0.74, 0.26)); // hood strap
   const beak = cone(0.04, 0.12, GOLD, 0, 0.68, 0.28);
   beak.name = "beak";
@@ -3627,11 +4119,8 @@ function buildWarFalcon(): TroopRig {
 
   const wings: Wing[] = [];
   for (const s of [-1, 1]) {
-    const wing = new THREE.Group();
+    const wing = featherWing(s, 0.52, 0.3, PLUME, 0x5c3c22, "falcon-wing");
     wing.position.set(s * 0.14, 0.58, -0.08);
-    const tip = box(0.5, 0.03, 0.22, PLUME, s * 0.28, 0, 0);
-    tip.name = "falcon-wing";
-    wing.add(teamPart(tip));
     wing.rotation.z = s * 0.5;
     g.add(wing);
     wings.push({ obj: wing, base: s * 0.5, amp: s * 0.75 });
@@ -3937,6 +4426,7 @@ const TAU = Math.PI * 2;
  * always give the same pose (a frozen unit holds perfectly still).
  */
 export function animateTroop(rig: TroopRig, opts: AnimateOpts): void {
+  syncRigRim();
   const t = opts.time;
   const arch = rigArchetype(rig);
   const style: AttackStyle = opts.style ?? arch?.attackStyle ?? "chop";

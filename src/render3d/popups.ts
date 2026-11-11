@@ -9,16 +9,26 @@ export interface DamageLabel {
   crit?: boolean;
 }
 
+/** Art bible 8: every damage number is gold, stroked dark (glyphs.ts). */
+export const DAMAGE_GOLD = "#ffd23f";
+/** Crits and tower hits print about this much larger than a normal hit. */
+export const BIG_HIT_SCALE = 1.3;
+
 /**
  * Label for `dmg` HP lost since the last popup, or null for chip
- * damage not worth a number.
+ * damage not worth a number. Size, not colour, says how big the hit was.
  */
 export function damageLabel(dmg: number): DamageLabel | null {
   if (dmg < 25) return null;
   const text = String(Math.round(dmg));
-  if (dmg >= 500) return { text, scale: 1.9, color: "#ff5252", crit: true };
-  if (dmg >= 200) return { text, scale: 1.45, color: "#ffab40" };
-  return { text, scale: 1.0, color: "#ffffff" };
+  if (dmg >= 500) return { text, scale: BIG_HIT_SCALE, color: DAMAGE_GOLD, crit: true };
+  if (dmg >= 200) return { text, scale: 1.12, color: DAMAGE_GOLD };
+  return { text, scale: 1.0, color: DAMAGE_GOLD };
+}
+
+/** The same label on a tower: printed at least BIG_HIT_SCALE (crits a step larger still). */
+export function towerHitLabel(label: DamageLabel): DamageLabel {
+  return { ...label, scale: label.crit ? BIG_HIT_SCALE * 1.12 : Math.max(label.scale, BIG_HIT_SCALE) };
 }
 
 /*

@@ -12,7 +12,12 @@ describe("3D troop rigs", () => {
   it("builds a rig for every troop card", () => {
     for (const id of TROOP_IDS) {
       const rig = buildTroop(id as CardId);
-      expect(rig.group.children.length).toBeGreaterThan(2);
+      // Built from many parts (some rigs nest them in a scaled body group).
+      let meshes = 0;
+      rig.group.traverse((o) => {
+        if ((o as THREE.Mesh).isMesh) meshes++;
+      });
+      expect(meshes, id).toBeGreaterThan(2);
       expect(rig.height).toBeGreaterThan(0.5);
       // Every troop animates somehow: a weapon arm or flapping wings.
       expect(rig.arm !== null || (rig.wings?.length ?? 0) > 0).toBe(true);
@@ -22,7 +27,12 @@ describe("3D troop rigs", () => {
   it("builds rigs for the firecracker and magic archer", () => {
     for (const id of ["firecracker", "magic-archer"] as const) {
       const rig = buildTroop(id);
-      expect(rig.group.children.length).toBeGreaterThan(2);
+      // Built from many parts (some rigs nest them in a scaled body group).
+      let meshes = 0;
+      rig.group.traverse((o) => {
+        if ((o as THREE.Mesh).isMesh) meshes++;
+      });
+      expect(meshes, id).toBeGreaterThan(2);
       expect(rig.height).toBeGreaterThan(0.5);
       expect(rig.arm).not.toBeNull(); // both wield a weapon arm
     }
@@ -346,6 +356,52 @@ describe("islamic reskins (ARABIC mode)", () => {
     expect(rig.arm).not.toBeNull(); // fire-pot dropping arm
   });
 
+  it("the fire-kite's sail shows its face to the camera whichever way the kite flies, baked or not", async () => {
+    const { CAM_HOME, setViewSide } = await import("./scene/common");
+    const { bakeRig } = await import("./rigBake");
+    const LEAN = (14 * Math.PI) / 180;
+    const q = new THREE.Quaternion();
+    /** |sail normal . direction to the camera| for a kite flying at `yaw`, with or without the cast's lean. */
+    const faceShown = (baked: boolean, yaw: number, lean: number, camZ: number): number => {
+      const rig = buildTroop("balloon", "player");
+      if (baked) bakeRig(rig, "balloon:player:arabic:default");
+      // Lean toward the camera about the axis across its view (pivot at the feet), then the facing.
+      const leanNode = new THREE.Group();
+      leanNode.rotation.x = Math.sign(camZ) * lean;
+      const root = new THREE.Group();
+      root.rotation.y = yaw;
+      root.add(rig.group);
+      leanNode.add(root);
+      leanNode.updateMatrixWorld(true);
+      animateTroop(rig, { moving: true, swing: 0, time: 1.3, phase: 0.4 });
+      leanNode.updateMatrixWorld(true);
+      let sail: THREE.Object3D | undefined;
+      rig.group.traverse((o) => {
+        if (o.name === "kite-sail") sail = o;
+      });
+      expect(sail, "kite-sail").toBeDefined();
+      sail!.getWorldQuaternion(q);
+      const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+      const toCam = new THREE.Vector3(CAM_HOME.x, CAM_HOME.y, camZ).normalize();
+      return Math.abs(normal.dot(toCam));
+    };
+    try {
+      for (const baked of [false, true]) {
+        for (const [camZ, side] of [[CAM_HOME.z, "player"], [-CAM_HOME.z, "enemy"]] as const) {
+          setViewSide(side);
+          for (const yaw of [0, Math.PI, Math.PI / 2, -Math.PI / 2, 2.4]) {
+            for (const lean of [0, LEAN]) {
+              const shown = faceShown(baked, yaw, lean, camZ);
+              expect(shown, `baked ${baked}, view ${side}, yaw ${yaw.toFixed(2)}, lean ${lean.toFixed(2)}`).toBeGreaterThanOrEqual(0.6);
+            }
+          }
+        }
+      }
+    } finally {
+      setViewSide("player");
+    }
+  });
+
   it("the musketeer is a janissary with a tall börk hat", () => {
     const names = new Set<string>();
     buildTroop("musketeer").group.traverse((o) => names.add(o.name));
@@ -410,7 +466,8 @@ describe("islamic reskins (ARABIC mode)", () => {
       expect(rig.hover).toBeGreaterThan(0);
       expect(rig.wings?.length).toBe(2);
       const names = new Set<string>();
-      rig.group.traverse((o) => names.add(o.name));
+      // The hood is the falcon's team slot: its name lives on in userData.part.
+      rig.group.traverse((o) => names.add(o.userData.part ?? o.name));
       expect(names.has("falcon-hood")).toBe(true);
       expect(names.has("beak")).toBe(true);
     }
@@ -705,4 +762,199 @@ describe("team identity (palette)", () => {
       expect(TEAM[palette].player.main).not.toBe(TEAM[palette].enemy.main);
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// Creatures and card buildings (art bible 7): one team slot each, signature
+// colours clear of the team hue families after the bake grade.
+// ---------------------------------------------------------------------------
+
+/** The ONE team slot (its part name) each creature wears, per edition. */
+const CREATURE_SLOTS: Record<"classic" | "islamic", Partial<Record<CardId, string>>> = {
+  classic: {
+    "baby-dragon": "scarf",
+    balloon: "envelope-stripe",
+    bats: "collar",
+    minions: "bandana",
+    gargoyles: "collar",
+    "stone-golem": "chest-crystal",
+    "pebble-golem": "chest-gem",
+  },
+  islamic: {
+    giant: "saddle-cloth",
+    balloon: "kite-tail",
+    "baby-dragon": "scarf",
+    minions: "falcon-hood",
+    gargoyles: "falcon-hood",
+    "stone-golem": "sash",
+    "pebble-golem": "plinth-band",
+  },
+};
+
+/** The rig's team parts' slot names, and whether they all ride one node (one baked team mesh). */
+function teamSlots(root: THREE.Object3D): { slots: Set<string>; parents: Set<THREE.Object3D> } {
+  const slots = new Set<string>();
+  const parents = new Set<THREE.Object3D>();
+  root.traverse((o) => {
+    if (!isTeamPart(o)) return;
+    slots.add(String(o.userData.part ?? "unnamed"));
+    parents.add(o.parent!);
+  });
+  return { slots, parents };
+}
+
+/** Rig units squared: a part whose largest face is at least this big is a body surface, not trim. */
+const BIG_SURFACE = 0.3;
+
+for (const edition of ["classic", "islamic"] as const) {
+  describe(`creatures (${edition} edition)`, () => {
+    it("each creature wears its team colour on ONE slot, on one node", async () => {
+      const build = await editionBuilder(edition);
+      for (const [id, slot] of Object.entries(CREATURE_SLOTS[edition]) as [CardId, string][]) {
+        const { slots, parents } = teamSlots(build(id, "enemy").group);
+        expect([...slots], id).toEqual([slot]);
+        expect(parents.size, `${id} team parts on one node`).toBe(1);
+      }
+    });
+
+    it("no creature colour falls in a team hue family after the bake grade", async () => {
+      const build = await editionBuilder(edition);
+      const { gradeRigHsl, inTeamFamily } = await import("./rigBake");
+      const hits: string[] = [];
+      for (const id of Object.keys(CREATURE_SLOTS[edition]) as CardId[]) {
+        build(id, "player").group.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh || isTeamPart(m) || o.name === "outline") return;
+          const mat = m.material as THREE.Material & { color?: THREE.Color; isMeshToonMaterial?: boolean };
+          // Glow parts are light (coals, fuses, eyes), not signature cloth: PALETTE_ALLOW covers them.
+          if (!mat.color || !mat.isMeshToonMaterial) return;
+          const hsl = { h: 0, s: 0, l: 0 };
+          mat.color.getHSL(hsl, THREE.SRGBColorSpace);
+          const out = gradeRigHsl(hsl.h, hsl.s, hsl.l, { h: 0, s: 0, l: 0 });
+          if (inTeamFamily(out.h, out.s, out.l)) hits.push(`${id}:${o.name || "unnamed"}#${mat.color.getHexString(THREE.SRGBColorSpace)}`);
+        });
+      }
+      expect(hits).toEqual([]);
+    });
+
+    // Classic only: the Golden Age's own gold and sandstone sit next to the
+    // colour-blind orange by design (notes: Known gaps, Requests for ship).
+    if (edition === "classic") it("no big creature surface falls in the colour-blind palette's team families either", async () => {
+      // The colour-blind enemy is orange (#FF8A00): a body, envelope, sail or
+      // wing that sits next to it hides the enemy's team slot. Gold and bronze
+      // TRIM is allowed (small parts); big surfaces are not.
+      const build = await editionBuilder(edition);
+      const { gradeRigHsl, inTeamFamily } = await import("./rigBake");
+      const hits: string[] = [];
+      const box = new THREE.Box3();
+      const size = new THREE.Vector3();
+      for (const id of Object.keys(CREATURE_SLOTS[edition]) as CardId[]) {
+        const rig = build(id, "player");
+        rig.group.updateMatrixWorld(true);
+        rig.group.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh || isTeamPart(m) || o.name === "outline") return;
+          const mat = m.material as THREE.Material & { color?: THREE.Color; isMeshToonMaterial?: boolean };
+          if (!mat.color || !mat.isMeshToonMaterial) return;
+          box.setFromObject(m).getSize(size);
+          const area = [size.x * size.y, size.y * size.z, size.x * size.z].sort((a, b) => b - a)[0];
+          if (area < BIG_SURFACE) return;
+          const hsl = { h: 0, s: 0, l: 0 };
+          mat.color.getHSL(hsl, THREE.SRGBColorSpace);
+          const out = gradeRigHsl(hsl.h, hsl.s, hsl.l, { h: 0, s: 0, l: 0 });
+          if (inTeamFamily(out.h, out.s, out.l, "cb")) hits.push(`${id}:${o.name || "unnamed"}#${mat.color.getHexString(THREE.SRGBColorSpace)} ${area.toFixed(2)}`);
+        });
+      }
+      expect(hits).toEqual([]);
+    });
+  });
+}
+
+describe("creature specifics (art bible 7)", () => {
+  it("Classic minions are purple-grey, never signature blue", async () => {
+    const build = await editionBuilder("classic");
+    const hsl = { h: 0, s: 0, l: 0 };
+    let checked = 0;
+    build("minions", "player").group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || isTeamPart(m)) return;
+      const c = (m.material as THREE.Material & { color?: THREE.Color }).color;
+      if (!c) return;
+      c.getHSL(hsl, THREE.SRGBColorSpace);
+      const h = hsl.h * 360;
+      // Nothing saturated in the blue family (190-245 degrees).
+      if (h > 190 && h < 245) expect(hsl.s, o.name).toBeLessThan(0.3);
+      checked++;
+    });
+    expect(checked).toBeGreaterThan(5);
+  });
+
+  it("the baby dragon is green and never blooms (no glow parts)", async () => {
+    const build = await editionBuilder("classic");
+    let glow = 0;
+    build("baby-dragon", "player").group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh && (m.material as THREE.Material).type === "MeshBasicMaterial") glow++;
+    });
+    expect(glow).toBe(0);
+  });
+
+  it("the war elephant stands in the large band, not a colossus", async () => {
+    const rig = buildTroop("giant", "player");
+    // troops.ts scales the giant by 1.48 x 1.14: head-top 3.3-3.8 (art bible 6).
+    const top = rig.height * 1.48 * 1.14;
+    expect(top).toBeGreaterThan(3.3);
+    expect(top).toBeLessThan(3.8);
+  });
+
+  it("rig glow parts stay under the bloom threshold", async () => {
+    const { RIG_GLOW_MAX } = await import("./characters3d");
+    for (const id of ["stone-golem", "pebble-golem", "gargoyles", "bats", "balloon"] as CardId[]) {
+      buildTroop(id, "player").group.traverse((o) => {
+        const m = o as THREE.Mesh;
+        const mat = m.material as THREE.MeshBasicMaterial | undefined;
+        if (!m.isMesh || mat?.type !== "MeshBasicMaterial") return;
+        const c = mat.color;
+        expect(0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, `${id}:${o.name}`).toBeLessThanOrEqual(RIG_GLOW_MAX + 1e-6);
+      });
+    }
+  });
+});
+
+describe("card buildings (art bible 7)", () => {
+  const SLOTS: Record<string, string> = { cannon: "pennant", tombstone: "wreath", "elixir-collector": "rim-band" };
+  for (const edition of ["classic", "islamic"] as const) {
+    it(`build, wear one team slot and bake light (${edition})`, async () => {
+      vi.resetModules();
+      if (edition === "classic") vi.doMock("./theme", async (orig) => ({ ...(await orig<typeof import("./theme")>()), ARABIC: false }));
+      try {
+        const m = await import("./characters3d");
+        const { bakeRig, countMeshes } = await import("./rigBake");
+        for (const id of m.BUILDING_IDS) {
+          for (const side of ["player", "enemy"] as Side[]) {
+            const rig = m.buildBuildingRig(id, side)!;
+            expect(rig, id).not.toBeNull();
+            const { slots, parents } = teamSlots(rig.group);
+            expect([...slots], id).toEqual(id === "tombstone" ? ["wreath", "unnamed"] : [SLOTS[id]]);
+            expect(parents.size, id).toBe(1);
+            expect(rig.barY).toBeGreaterThan(rig.height);
+            const stats = bakeRig(rig, `${id}:${side}:${edition === "classic" ? "normal" : "arabic"}:default`);
+            expect(stats.baked, id).toBe(true);
+            expect(countMeshes(rig.group, false), id).toBeLessThanOrEqual(6);
+            if (id === "cannon") {
+              // The barrel stays its own node: the scene aims it at the target.
+              expect(rig.barrel).toBeDefined();
+              let inTree = false;
+              rig.group.traverse((o) => (inTree ||= o === rig.barrel));
+              expect(inTree).toBe(true);
+            }
+          }
+        }
+        expect(m.buildBuildingRig("knight")).toBeNull();
+      } finally {
+        vi.doUnmock("./theme");
+        vi.resetModules();
+      }
+    });
+  }
 });
