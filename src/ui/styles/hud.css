@@ -153,6 +153,12 @@
   right: -5px;
   line-height: 1.25;
 }
+/* The tray's smallest cards (44 to 56px) fit the chip, the "+N" badge and
+   the droplet one above the other only if the large text setting stops
+   growing the chip here (the badge, which matters mid-battle, still grows). */
+:root[data-layout="tall"] #hud.v2 .lvl-chip {
+  font-size: min(var(--fs-xs), 13px);
+}
 
 /* ── Next card: a mini card at the row's start, its label a tab on its bottom edge ── */
 #hud.v2 .hud-next {
