@@ -14,8 +14,15 @@ Owns: `src/render3d/scene/views/towers.ts`, `towers.test.ts`, `towerCraft.ts`, `
 |---|---|---|---|---|---|---|
 | start (b7ae4ce) | classic | 178 | 266,074 | 432 | 769,658 | 49 |
 | start (b7ae4ce) | golden | 167 | 137,566 | 402 | 509,454 | 49 |
-| end | classic | see below | | | | |
-| end | golden | see below | | | | |
+| end (this branch) | classic | 112 | 282,270 | 365 | 785,954 | 52 |
+| end (this branch) | golden | 135 | 164,154 | 370 | 536,038 | 52 |
+| end, 1440x900@1 | classic | 112 | 282,270 | 369 | 785,898 | 52 |
+| end, 1440x900@1 | golden | 135 | 164,154 | 366 | 536,082 | 52 |
+
+Empty calls: classic 178 -> 112, golden 167 -> 135 (ceilings 184 / 173 met with room to spare). The
+triangle growth (+16k classic empty, +27k golden) is the keeps being drawn into the per-frame shadow
+pass on this base (see Requests for ship 2); the three new textures are the roof tiles, the crack sheet
+and the zellige band.
 
 Acceptance ceilings: empty calls at most start + 6 (classic 184, golden 173, and golden at most 200);
 all six towers at most 60k triangles at L0.
@@ -106,11 +113,23 @@ holds every set of six at or under 60k.
    collapse and ruin.
 3. The fallback (hand-built) crew casts no shadow, as before; a provider's crew casts (one caster per unit).
 
-## Screenshots
+## Screenshots and checks
 
-- Iterations: /tmp/claude-0/art/towers/it/
-- Matrix: /tmp/claude-0/art/towers/<edition>-<arena>-<viewport>.png
-- Close-ups: /tmp/claude-0/art/towers/closeups.png; damage: /tmp/claude-0/art/towers/damage.png
+- Iterations: /tmp/claude-0/art/towers/it/ (start-*.png is the art/base state).
+- Matrix (standard spawns, 6 s): /tmp/claude-0/art/towers/<normal|arabic>-<arena>-390x844@2.png and
+  -1440x900.png for training-camp, barbarian-bowl, pekka-playhouse, legendary-peak, plus
+  <edition>-training-camp-390x844-low.png. By eye against the baseline: team read at a glance from
+  roofs/domes, banner, trim and paving inlay; plates clear of roofs and crew on the phone; crews inside
+  the parapet; the king reads as a face and a crown band under his canopy; L4 looks finished without ink.
+- Close-ups: /tmp/claude-0/art/towers/closeups.png (princess + king, both teams, meadow, snow, forge,
+  neon, courtyard, souk, copper, medina; flair 1 and 2; ?viewpoint=enemy), raws in raw/close-*.png.
+- Damage: /tmp/claude-0/art/towers/damage.png (both editions: 100%, 60%, 30%, collapsing at 0.25 and
+  0.6 s, ruin), raws in raw/dmg-*.png.
+- Crew seam with a stand-in provider (capsules of the cast's crew heights, 1.62 and 2.07 world units):
+  raw/provider-normal-crop.png, raw/provider-arabic-crop.png: crews stand inside the parapet, heads
+  above it; the canopy grows with the king.
+- King KO and Victory (both editions): raw/ko-*.png; no console errors or warnings in any capture (the
+  only console lines are the pre-existing 403s for font files outside Vite's fs allow list).
 
 ## Known gaps
 
@@ -127,4 +146,6 @@ holds every set of six at or under 60k.
   screen-space HP plates; chunked collapse + ruin; tests (towers, towerStyles, towerCollapse) green.
 - 292261e: ink hulls after the surfaces (shadow pass and L4 skip them); fallback crew casts no shadow.
   Full vitest (137 files, 1560 tests), tsc and build green.
-- Next: matrix, close-up and damage sheets; final perf numbers into the table; final quality bar.
+- 6c6b137 + sheets: matrix, close-up and damage sheets, stand-in provider and KO/Victory checks done;
+  final quality bar green (tsc, vitest 137 files / 1560 tests, build, perf both editions and 1440x900).
+- State: DONE for wave 1. Ship: wire the crew provider (Requests for ship 1).
