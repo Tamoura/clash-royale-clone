@@ -67,6 +67,31 @@ GOLDEN AGE
 - Prototype branches, kept locally: `proto/kit-everything` (B, `49d0001`), `proto/handcrafted-plus` (C, `52a1c29`), `proto/kit-world` (A, `e4be8f7`).
 
 
+## Ship log
+
+### 1. stage (with art/base)
+
+`art/stage` merged with --no-ff (it brings `art/base`: the handcrafted-plus prototype on the compact tray). No conflicts; the dry-run merges of towers, creatures-fx and cast-kit on top stay clean too.
+
+- Seams: none to wire yet. The crew provider needs towers and cast-kit; the `castReady()` battle-start gate needs cast-kit. The crowd events (`arenaOnEvent`, `updateCrowd`) are already called from scene3d.ts.
+- Stage request 1 applied in part: one troop shadow caster per unit (`ranked.slice(0, 1)` in troops.ts). The line and comment match cast-kit's own change, so its merge stays clean. Still open for the cast-kit merge: call `registerTroopCaster(mesh)` and `troopShadowLevel()` with no argument (both give the same result as today's code).
+- Still open for later merges:
+  - cast-kit: mixer rate from `currentQuality().mixerHz` (60, 30 or 20 Hz) and one shared pose per swarm at L4 (request 2); blob shadow offset by `SHADOW_SLOPE` times the unit's height on L1 to L3 (request 3).
+  - cast-kit and creatures-fx: albedo + rim + hit flash under `BLOOM.threshold` (0.92 linear); the fireball impact puff must not read as an opaque white disc (request 4).
+  - towers: measure the camera-facing walls under the stage's `LIGHT_RIG` (sun from the upper left); if a wall looks dull, lift its albedo, never move the sun. The aprons are painted to `TOWER_FOOTPRINT + APRON` (0.62 tiles) (request 5).
+
+perf-budget after the merge (`?quality=high`, training-camp, dev server). Gates: empty <= 220 calls, fight <= 450 calls.
+
+| View | Edition | Empty calls / tris | Fight calls / tris | Fight textures |
+|---|---|---|---|---|
+| 390x844@2 | Classic | 176 / 202,978 | 419 / 669,718 | 49 |
+| 390x844@2 | Golden Age | 170 / 191,770 | 419 / 678,878 | 49 |
+| 1440x900@1 | Classic | 178 / 226,100 | 415 / 692,752 | 49 |
+| 1440x900@1 | Golden Age | 176 / 207,666 | 426 / 694,918 | 49 |
+
+One caster per unit cut the fight by 12 to 16 calls compared with the stage's own end numbers (431 to 438).
+
+
 ## Art bible
 
 TOY TOURNAMENT: ART BIBLE (Crown Rush, both editions, all 22 arena looks)
