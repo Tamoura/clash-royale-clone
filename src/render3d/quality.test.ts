@@ -54,10 +54,15 @@ describe("quality ladder", () => {
       particles: 1,
       outlines: true,
       rimLight: true,
+      troopShadows: true,
+      dressing: "full",
+      crowdAnim: true,
+      tufts: true,
+      mixerHz: 60,
     });
-    expect(l1).toMatchObject({ dprCap: 2, pixelBudget: 1.7e6, minScale: 0.9, bloom: 0.5, shadowSize: 1024 });
-    expect(l2).toMatchObject({ dprCap: 1.75, pixelBudget: 1.3e6, minScale: 0.8, bloom: 0, particles: 0.75 });
-    expect(l3).toMatchObject({ dprCap: 1.5, pixelBudget: 1e6, minScale: 0.75, shadowSize: 512, particles: 0.5 });
+    expect(l1).toMatchObject({ dprCap: 2, pixelBudget: 1.7e6, minScale: 0.9, bloom: 0.5, shadowSize: 1024, troopShadows: false, mixerHz: 60 });
+    expect(l2).toMatchObject({ dprCap: 1.5, pixelBudget: 1.3e6, minScale: 0.8, bloom: 0, particles: 0.75, crowdAnim: false, tufts: true, mixerHz: 30 });
+    expect(l3).toMatchObject({ dprCap: 1.5, pixelBudget: 1e6, minScale: 0.75, shadowSize: 512, particles: 0.5, dressing: "inner", tufts: false, mixerHz: 30 });
     expect(l4).toEqual({
       dprCap: 1.25,
       pixelBudget: 0.75e6,
@@ -68,7 +73,20 @@ describe("quality ladder", () => {
       particles: 0.35,
       outlines: false,
       rimLight: false,
+      troopShadows: false,
+      dressing: "min",
+      crowdAnim: false,
+      tufts: false,
+      mixerHz: 20,
     });
+  });
+
+  it("maps the art bible ladder: troop shadows, dressing, crowd, tufts and mixer rates", () => {
+    expect(QUALITY_LEVELS.map((l) => l.troopShadows)).toEqual([true, false, false, false, false]);
+    expect(QUALITY_LEVELS.map((l) => l.dressing)).toEqual(["full", "full", "full", "inner", "min"]);
+    expect(QUALITY_LEVELS.map((l) => l.crowdAnim)).toEqual([true, true, false, false, false]);
+    expect(QUALITY_LEVELS.map((l) => l.tufts)).toEqual([true, true, true, false, false]);
+    expect(QUALITY_LEVELS.map((l) => l.mixerHz)).toEqual([60, 60, 30, 30, 20]);
   });
 });
 

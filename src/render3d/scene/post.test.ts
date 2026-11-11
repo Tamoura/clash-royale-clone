@@ -1,7 +1,28 @@
+import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { BLOOM_HALF_PX, DIORAMA_DPR, bloomScaleFor, edgeShadeStops, finalFragmentShader, renderDpr } from "./post";
+import {
+  BLOOM,
+  BLOOM_HALF_PX,
+  DEFAULT_GRADE,
+  DIORAMA_DPR,
+  MAX_FLASH,
+  SPLIT_TONE,
+  TROOP_CASTERS_PER_UNIT,
+  bloomScaleFor,
+  edgeShadeStops,
+  finalFragmentShader,
+  gradeFor,
+  registerTroopCaster,
+  renderDpr,
+  sampleQuality,
+  setFlash,
+  troopShadowLevel,
+} from "./post";
+import { LIGHT_RIG } from "./sky";
+import { ISLAMIC_LOOKS, LOOKS } from "../arenaLooks";
+import type { Battle3D } from "../scene3d";
 import hudCss from "../../ui/styles/hud.css?raw";
-import { MIN_RENDER_SCALE, QUALITY_LEVELS } from "../quality";
+import { MIN_RENDER_SCALE, QUALITY_LEVELS, QualityGovernor } from "../quality";
 
 describe("fused final pass", () => {
   it("routes FXAA's output colour through the tone map and grade", () => {
@@ -46,9 +67,9 @@ describe("edge shade", () => {
   });
 
   it("fades out at 22% / 78% of the width, or where a wide board begins", () => {
-    expect(edgeShadeStops(668, 1440)).toEqual([0.45, 0.22, 0.78]);
+    expect(edgeShadeStops(668, 1440)).toEqual([0.24, 0.22, 0.78]);
     const [a, l, r] = edgeShadeStops(1000, 1440);
-    expect(a).toBe(0.45);
+    expect(a).toBe(0.24);
     expect(l).toBeCloseTo(0.5 - 500 / 1440, 9);
     expect(r).toBeCloseTo(0.5 + 500 / 1440, 9);
   });
@@ -93,7 +114,7 @@ describe("renderDpr", () => {
   const px = (w: number, h: number, dpr: number): number => w * h * dpr * dpr;
 
   it("leaves phones at their capped device ratio on every level", () => {
-    expect(QUALITY_LEVELS.map((l) => renderDpr(390, 653, 3, l, false))).toEqual([2, 2, 1.75, 1.5, 1.25]);
+    expect(QUALITY_LEVELS.map((l) => renderDpr(390, 653, 3, l, false))).toEqual([2, 2, 1.5, 1.5, 1.25]);
     expect(renderDpr(390, 653, 1, L0, false)).toBe(1);
   });
 
@@ -138,5 +159,88 @@ describe("renderDpr", () => {
 
   it("treats a missing device ratio as 1", () => {
     expect(renderDpr(390, 653, 0, L0, false)).toBe(1);
+  });
+});
+
+describe("art bible contract (stage)", () => {
+  it("blooms only emissive cores: threshold >= 0.9, strength <= 0.35, radius about 0.3", () => {
+    expect(BLOOM.threshold).toBeGreaterThanOrEqual(0.9);
+    expect(BLOOM.strength).toBeLessThanOrEqual(0.35);
+    expect(BLOOM.radius).toBeGreaterThanOrEqual(0.25);
+    expect(BLOOM.radius).toBeLessThanOrEqual(0.35);
+  });
+
+  it("keeps a white toon surface under the full daylight rig below the bloom threshold", () => {
+    // Toon diffuse = albedo * irradiance / pi; the brightest lit band is 1.0.
+    const white = 0.9; // linear albedo of a near-white paint
+    const irradiance = LIGHT_RIG.sunIntensity + 1.05 /* brightest hemisphere */ + LIGHT_RIG.fillIntensity;
+    expect((white * irradiance) / Math.PI).toBeLessThan(BLOOM.threshold);
+  });
+
+  it("caps the screen flash at 0.25", () => {
+    expect(MAX_FLASH).toBe(0.25);
+    const uniforms = { uFlash: { value: 0 } };
+    const b = { finalPass: { material: { uniforms } } } as unknown as Battle3D;
+    setFlash(b, 1);
+    expect(uniforms.uFlash.value).toBe(0.25);
+    setFlash(b, 0.1);
+    expect(uniforms.uFlash.value).toBe(0.1);
+  });
+
+  it("grades every look inside the bible's limits (vignette <= 0.24)", () => {
+    const all = [...Object.values(LOOKS), ...Object.values(ISLAMIC_LOOKS)];
+    expect(all).toHaveLength(22);
+    for (const look of all) {
+      const g = gradeFor(look);
+      expect(g.vignette).toBeLessThanOrEqual(0.24);
+      expect(g.saturation).toBeGreaterThanOrEqual(1.04);
+      expect(g.saturation).toBeLessThanOrEqual(1.16);
+      expect(g.contrast).toBeGreaterThanOrEqual(1.03);
+      expect(g.contrast).toBeLessThanOrEqual(1.08);
+    }
+    expect(DEFAULT_GRADE).toMatchObject({ saturation: 1.12, contrast: 1.06 });
+  });
+
+  it("bakes the split tone into the final pass", () => {
+    const src = finalFragmentShader();
+    expect(src).toContain(`vec3( ${SPLIT_TONE.shadows.join(", ")} )`);
+    expect(src).toContain(`vec3( ${SPLIT_TONE.highlights.join(", ")} )`);
+  });
+
+  it("casts troop shadows on the top level only, both editions, read live", () => {
+    expect(QUALITY_LEVELS.map((l) => troopShadowLevel(l))).toEqual([true, false, false, false, false]);
+    expect(TROOP_CASTERS_PER_UNIT).toBe(1);
+  });
+
+  it("follows a Settings step-down live: no frozen troop shadows", () => {
+    const gov = new QualityGovernor("auto", "high");
+    const caster = new THREE.Mesh();
+    registerTroopCaster(caster);
+    expect(caster.castShadow).toBe(true);
+    expect(troopShadowLevel()).toBe(true);
+    gov.setPref("medium");
+    expect(troopShadowLevel()).toBe(false);
+    const late = new THREE.Mesh();
+    registerTroopCaster(late);
+    expect(late.castShadow).toBe(false); // built after the step: no shadow
+    gov.setPref("high");
+  });
+
+  it("re-renders the shadow map without troops when the governor steps down mid-battle", () => {
+    const gov = new QualityGovernor("auto", "high");
+    const scene = new THREE.Scene();
+    const caster = new THREE.Mesh();
+    caster.userData.troopCaster = true;
+    scene.add(caster);
+    const shadowMap = { needsUpdate: false };
+    const b = { scene, quality: gov, renderer: { shadowMap }, dying: [], lastFrameAt: 0, resize: () => {} } as unknown as Battle3D;
+    sampleQuality(b);
+    expect(caster.castShadow).toBe(true);
+    shadowMap.needsUpdate = false;
+    gov.setPref("medium"); // what Settings (or a governor step) does
+    sampleQuality(b);
+    expect(caster.castShadow).toBe(false);
+    expect(shadowMap.needsUpdate).toBe(true); // one more render clears the old troop shadows
+    gov.setPref("high");
   });
 });

@@ -58,7 +58,27 @@ export interface QualityLevel {
   outlines: boolean;
   /** The cool back-rim light that separates troops from the ground. */
   rimLight: boolean;
+  /**
+   * Troops cast real shadows into the sun's map (re-rendered every frame);
+   * otherwise they keep their sun-offset blob shadows. See troopShadowLevel.
+   */
+  troopShadows: boolean;
+  /**
+   * How much of the set is dressed: 'full' adds the outer ring (wide screens)
+   * and the long-side props, 'inner' keeps the court ring, stands and crowd,
+   * 'min' the same with the cheapest props (the forest falls back to blobs).
+   */
+  dressing: Dressing;
+  /** The crowd bobs and cheers (static from L2 down). */
+  crowdAnim: boolean;
+  /** Instanced grass tufts on grassy floors (the top three levels). */
+  tufts: boolean;
+  /** Animation mixer rate for the modelled cast (Hz). */
+  mixerHz: 20 | 30 | 60;
 }
+
+/** Set dressing tiers (see QualityLevel.dressing). */
+export type Dressing = "full" | "inner" | "min";
 
 /**
  * The lowest render scale any level allows (device px per CSS px). The old
@@ -78,10 +98,23 @@ const L0: QualityLevel = {
   particles: 1,
   outlines: true,
   rimLight: true,
+  troopShadows: true,
+  dressing: "full",
+  crowdAnim: true,
+  tufts: true,
+  mixerHz: 60,
 };
-const L1: QualityLevel = { ...L0, pixelBudget: 1.7e6, minScale: 0.9, bloom: 0.5, shadowSize: 1024 };
-const L2: QualityLevel = { ...L1, dprCap: 1.75, pixelBudget: 1.3e6, minScale: 0.8, bloom: 0, particles: 0.75 };
-const L3: QualityLevel = { ...L2, dprCap: 1.5, pixelBudget: 1e6, minScale: 0.75, shadowSize: 512, particles: 0.5 };
+// Art bible section 11: L1 halves bloom and keeps a static 1024 map (troops
+// fall back to blobs); L2 drops bloom, caps DPR at 1.5, freezes the crowd and
+// halves the mixers; L3 sheds pixels, the outer ring and the tufts; L4 drops
+// the shadow map, FXAA, rim and ink and runs the mixers at 20 Hz.
+const L1: QualityLevel = { ...L0, pixelBudget: 1.7e6, minScale: 0.9, bloom: 0.5, shadowSize: 1024, troopShadows: false };
+const L2: QualityLevel = {
+  ...L1, dprCap: 1.5, pixelBudget: 1.3e6, minScale: 0.8, bloom: 0, particles: 0.75, crowdAnim: false, mixerHz: 30,
+};
+const L3: QualityLevel = {
+  ...L2, pixelBudget: 1e6, minScale: 0.75, shadowSize: 512, particles: 0.5, dressing: "inner", tufts: false,
+};
 const L4: QualityLevel = {
   ...L3,
   dprCap: 1.25,
@@ -92,6 +125,8 @@ const L4: QualityLevel = {
   rimLight: false,
   particles: 0.35,
   outlines: false,
+  dressing: "min",
+  mixerHz: 20,
 };
 
 /** L0 (best) .. L4 (cheapest). */

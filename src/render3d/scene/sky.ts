@@ -37,9 +37,38 @@ const NIGHT_HOR = new THREE.Color();
 const FWD = new THREE.Vector3();
 const UPV = new THREE.Vector3();
 
+/**
+ * THE light rig (art bible section 5). Every package reads light from here;
+ * nobody hard-codes a light direction.
+ *
+ * The sun comes from the player's upper left at about 50 degrees, warm, so
+ * every shadow falls to the lower right of the screen. A hemisphere (cool
+ * sky, look-tinted ground) fills, a cool back rim separates troops from the
+ * floor, and a soft 0.3 fill comes from the camera side.
+ */
+export const LIGHT_RIG = {
+  /** Where the sun stands (world units from the origin; only the direction matters). */
+  sunPosition: new THREE.Vector3(-12.6, 15.2, -1.2),
+  /** Daylight sun strength (the living sky dims it toward night). */
+  sunIntensity: 1.7,
+  /** The warm daylight colour looks default to. */
+  sunColor: 0xffedc8,
+  rimColor: 0x9fc4ff,
+  rimIntensity: 0.45,
+  rimPosition: new THREE.Vector3(8, 10, -14),
+  fillIntensity: 0.3,
+  fillPosition: new THREE.Vector3(2, 8, 14),
+} as const;
+
+/** Unit vector toward the sun (for blob-shadow offsets and painted shading). */
+export const SUN_DIRECTION = LIGHT_RIG.sunPosition.clone().normalize();
+
+/** Ground offset of a shadow per world unit of height (x, z): shadows fall away from the sun. */
+export const SHADOW_SLOPE = new THREE.Vector2(-SUN_DIRECTION.x / SUN_DIRECTION.y, -SUN_DIRECTION.z / SUN_DIRECTION.y);
+
+const SUN_INTENSITY = LIGHT_RIG.sunIntensity;
+
 /** Dome layout in camera-up units: where the fog band ends, the horizon, the zenith. */
-/** Daylight sun strength (the living sky dims it toward night). */
-const SUN_INTENSITY = 1.95;
 
 const DOME_CENTRE_U = 14.8;
 const HORIZON_AT = 1.6;
@@ -225,10 +254,10 @@ export function buildLights(b: Battle3D): void {
   b.lightGroup.add(b.hemi);
   const sun = new THREE.DirectionalLight(LOOK.sun, SUN_INTENSITY);
   b.sun = sun;
-  // A low sun over the viewer's left shoulder: the faces the camera sees are
-  // lit, right-hand faces fall into cool shade, and every tower and troop
-  // throws a soft shadow to the right, across the board.
-  sun.position.set(-9, 17, 11);
+  // The sun over the board's upper left: tops and left faces lit, right-hand
+  // faces in cool shade, and every tower and troop throws a soft shadow to
+  // the lower right.
+  sun.position.copy(LIGHT_RIG.sunPosition);
   sun.castShadow = true;
   const mobile =
     b.container.clientWidth < 720 || window.matchMedia("(pointer: coarse)").matches;
@@ -239,7 +268,7 @@ export function buildLights(b: Battle3D): void {
   sun.shadow.camera.up.set(0, 0, -1);
   sun.shadow.camera.left = -15;
   sun.shadow.camera.right = 15;
-  sun.shadow.camera.top = 21;
+  sun.shadow.camera.top = 23;
   sun.shadow.camera.bottom = -21;
   sun.shadow.camera.near = 2;
   sun.shadow.camera.far = 60;
@@ -249,12 +278,12 @@ export function buildLights(b: Battle3D): void {
   b.lightGroup.add(sun);
   // Cool back-rim light to separate troops from the ground and pair
   // with the material rim highlight.
-  const backRim = new THREE.DirectionalLight(0x9fc4ff, 0.6);
-  backRim.position.set(-8, 10, -14);
+  const backRim = new THREE.DirectionalLight(LIGHT_RIG.rimColor, LIGHT_RIG.rimIntensity);
+  backRim.position.copy(LIGHT_RIG.rimPosition);
   b.lightGroup.add(backRim);
   // Soft fill from the player's side so shadowed faces keep color.
-  const fill = new THREE.DirectionalLight(LOOK.fill, 0.3);
-  fill.position.set(-6, 8, 14);
+  const fill = new THREE.DirectionalLight(LOOK.fill, LIGHT_RIG.fillIntensity);
+  fill.position.copy(LIGHT_RIG.fillPosition);
   b.fillLight = fill;
   b.lightGroup.add(fill);
   // Top quality only: two short-range lamps warm the bridges at night.
@@ -306,7 +335,7 @@ export function gradeSky(b: Battle3D, dt: number): void {
   if (p < 0.5) b.sun.color.set(LOOK.sun).lerp(SUNSET, p * 2);
   else b.sun.color.copy(SUNSET).lerp(MOON, (p - 0.5) * 2);
   b.sun.intensity = SUN_INTENSITY - 0.9 * p;
-  b.fillLight.intensity = 0.3 - 0.15 * p;
+  b.fillLight.intensity = LIGHT_RIG.fillIntensity * (1 - 0.5 * p);
   // Lanterns/neon: dim by day (unless the look is already a night set),
   // fully lit by night.
   const skyLum = SKY_LUM.set(LOOK.sky).getHSL(HSL).l;

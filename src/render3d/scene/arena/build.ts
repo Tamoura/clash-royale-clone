@@ -12,6 +12,7 @@ import { reducedMotion } from "../../../ui/prefs";
 import { toon } from "../../characters3d";
 import { batchStatic } from "../../staticBatch";
 import { THEME } from "../../theme";
+import type { QualityLevel } from "../../quality";
 import type { Battle3D } from "../../scene3d";
 import { LOOK, arabic, toWorld, unlitGlow, viewSide } from "../common";
 import { skyHorizon } from "../sky";
@@ -31,6 +32,8 @@ interface ArenaArt {
   ambient: Ambient | null;
   /** Crowd seats 0..kitSeats-1 belong to the backdrop stand (host-view x/z). */
   kitSeats: Array<{ x: number; z: number }>;
+  /** The quality level the set was last dressed for. */
+  level: QualityLevel | null;
 }
 const ART = new WeakMap<Battle3D, ArenaArt>();
 
@@ -728,7 +731,9 @@ export function buildArena(b: Battle3D): void {
     pools,
     ambient,
     kitSeats: kitSeats.map((st) => ({ x: st.x, z: st.z })),
+    level: null,
   });
+  applyArenaQuality(b, b.quality.level);
   applyEndStrings(b);
   // Hundreds of static props -> one draw call per look.
   batchStatic(b.arenaGroup, (o) => o.userData.noBatch === true);
@@ -1011,3 +1016,13 @@ export function updateCrowd(b: Battle3D, dt: number): void {
 
 /** Arena reactions to battle events (none yet; arena work hooks in here). */
 export function arenaOnEvent(_b: Battle3D, _ev: BattleEvent): void {}
+
+/**
+ * Apply a quality level to the set: the dressing tier, tufts and whether the
+ * crowd animates. Called by post.applyQuality on every level change.
+ */
+export function applyArenaQuality(b: Battle3D, level: QualityLevel): void {
+  const art = ART.get(b);
+  if (!art) return;
+  art.level = level;
+}
