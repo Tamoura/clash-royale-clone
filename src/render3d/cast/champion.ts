@@ -46,7 +46,7 @@ const FILE_OF: Record<Headgear, FileId> = {
 
 /** The outfit and trim swatches of each body. */
 const OUTFIT: Partial<Record<FileId, Swatch>> = { knight: "0,1", rogue: "0,1", rogue_hooded: "0,1", barbarian: "0,1" };
-const TRIM: Partial<Record<FileId, Swatch>> = { knight: "7,0", rogue: "3,0", rogue_hooded: "3,0", barbarian: "7,0" };
+const TRIM: Partial<Record<FileId, Swatch>> = { knight: "7,0", rogue: "3,0", rogue_hooded: "3,0", barbarian: "1,1" };
 
 const ATTACK: Record<WeaponKind, string> = {
   sword: "1H_Melee_Attack_Chop",
@@ -89,6 +89,11 @@ function headgearExtras(g: Headgear, body: number, trim: number, edition: Editio
       return turban(body, trim, HEAD_TOP - 0.18, 0.5, gold);
     case "helmet":
       return edition === "golden" ? turbanHelmet(0xc3ccd6, body, gold) : [x("head", trim, () => ball(0.12, 0, HEAD_TOP + 0.2, -0.05, 1, 2, 1.6, 10))];
+    case "horns":
+      return [
+        x("head", 0xf2ead8, () => new THREE.ConeGeometry(0.12, 0.55, 8).rotateZ(-0.9).translate(0.6, HEAD_TOP - 0.02, 0)),
+        x("head", 0xf2ead8, () => new THREE.ConeGeometry(0.12, 0.55, 8).rotateZ(0.9).translate(-0.6, HEAD_TOP - 0.02, 0)),
+      ];
     case "none":
       return edition === "golden" ? turban(body, trim, HEAD_TOP - 0.18, 0.5) : [];
     default:

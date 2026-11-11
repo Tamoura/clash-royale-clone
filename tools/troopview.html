@@ -59,27 +59,32 @@
         ["attack (yours 3/4)", "player", Math.PI * 0.75, "attack"],
       ];
       const cell = 3.3;
-      const W = cards.length * cell;
+      // ?bands=2 wraps the roster into blocks stacked down the sheet.
+      const bands = Math.max(1, Number(q.get("bands") || 1));
+      const perBand = Math.ceil(cards.length / bands);
+      const W = perBand * cell;
+      const bandZ = (5 * cell * 1.15 + 1.6);
       const rowZ = (r) => r * cell * 1.15;
       const aspect = innerWidth / innerHeight;
       // Frame every row: the board's depth shrinks by the camera pitch, the bodies stand ~3.5 tall.
       const pitch = Math.asin(-DIR.y);
-      const needH = (rowZ(rows.length - 1) * Math.sin(pitch) + 3.5 * Math.cos(pitch) + 2.2) / 2;
+      const needH = ((rowZ(rows.length - 1) + bandZ * (bands - 1)) * Math.sin(pitch) + 3.5 * Math.cos(pitch) + 2.2) / 2;
       const needW = W / 2 + 0.6;
       const halfH = Math.max(needH, needW / aspect) / zoom;
       const halfW = halfH * aspect;
       const cam = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, -100, 200);
-      const midZ = rowZ(rows.length - 1) / 2 - 0.9;
+      const midZ = (rowZ(rows.length - 1) + bandZ * (bands - 1)) / 2 - 0.9;
       cam.position.set(0, 1.6, midZ).addScaledVector(DIR, -60);
       cam.lookAt(0, 1.6, midZ);
       const tags = [];
       const units = [];
       cards.forEach((card, i) => {
-        const x = (i - (cards.length - 1) / 2) * cell;
+        const band = Math.floor(i / perBand);
+        const x = ((i % perBand) - (perBand - 1) / 2) * cell;
         rows.forEach(([, team, yaw, pose], r) => {
           const u = makeKitTroop(card, team, edition, false);
           if (!u) return;
-          const z = rowZ(r);
+          const z = rowZ(r) + band * bandZ;
           const root = new THREE.Group();
           root.position.set(x, 0, z);
           root.rotation.y = yaw;
@@ -94,7 +99,7 @@
           root.add(ring);
           scene.add(root);
           units.push([u, pose]);
-          if (r === 0) tags.push({ name: `${card} h${u.height.toFixed(2)} w${bakedSize(card)}`, p: new THREE.Vector3(x, 0, -1.7) });
+          if (r === 0) tags.push({ name: `${card} h${u.height.toFixed(2)}`, p: new THREE.Vector3(x, 0, band * bandZ - 1.7) });
         });
       });
       for (const [u, pose] of units) {
@@ -154,8 +159,8 @@
         el.style.top = `${((1 - v.y) / 2) * innerHeight}px`;
         document.body.appendChild(el);
       }
-      rows.forEach(([name], r) => {
-        const v = new THREE.Vector3(-W / 2, 0, rowZ(r)).project(cam);
+      for (let band = 0; band < bands; band++) rows.forEach(([name], r) => {
+        const v = new THREE.Vector3(-W / 2, 0, rowZ(r) + band * bandZ).project(cam);
         const el = document.createElement("div");
         el.className = "row";
         el.textContent = name;
