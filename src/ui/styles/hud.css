@@ -209,6 +209,7 @@
   background: radial-gradient(circle at 50% 35%, #34457a 0%, #141d3a 72%);
   box-shadow: var(--elev-2);
   color: var(--on-surface);
+  font-family: var(--cr-font);
   cursor: pointer;
   touch-action: none;
 }
