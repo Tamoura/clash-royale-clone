@@ -29,3 +29,8 @@ all six towers at most 60k triangles at L0.
 ## Progress log
 
 - Worktree created from art/base; start perf recorded.
+- 199cfdc..93b58e9: keep rewritten as ONE mesh per tower (towerCraft.ts KeepSculpt + keepMaterial) for both
+  editions; live team colour by uniform; silhouette ink in the same draw; damage stages by uniform; crew seam;
+  screen-space HP plates; chunked collapse + ruin; tests (towers, towerStyles, towerCollapse) green.
+- Next: by-eye pass on flair tiers, look extras, ?viewpoint=enemy, Golden Age collapse; then sheets, matrix,
+  quality bar (tsc, vitest, build, perf both editions), notes.
