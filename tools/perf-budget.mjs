@@ -79,8 +79,21 @@ try {
     localStorage.setItem("cr-clone-tutored", "1");
   }, EDITION);
   page.on("pageerror", (e) => errors.push(e.message));
+  // The battle-start gate (main.ts) latches the cast for the whole battle,
+  // so start only once the pack is in (DEV logs "cast: pack ready") or has
+  // failed; a slow software-GL boot would otherwise measure the procedural
+  // roster. `cast` in the output says which roster was measured.
+  let castState = null;
+  const castSettled = new Promise((done) => {
+    page.on("console", (m) => {
+      const text = m.text();
+      if (text.startsWith("cast: pack ready")) done((castState = "cast"));
+      else if (text.startsWith("cast: pack failed")) done((castState = "procedural"));
+    });
+  });
   await page.goto(`${base}/?quality=high${ARENA ? `&arena=${ARENA}` : ""}`, { waitUntil: "load" });
   await page.waitForFunction(() => window.__cr, { timeout: 60000 });
+  await Promise.race([castSettled, wait(45000)]);
   await wait(1500);
   await page.evaluate(() => document.querySelector(".home-battle")?.click());
   await wait(600);
@@ -134,7 +147,7 @@ try {
     polling: 50,
   });
   const fight = await frame();
-  result = { edition: EDITION, empty, fight };
+  result = { edition: EDITION, cast: castState ?? "timeout", empty, fight };
 } finally {
   await browser.close();
   await server?.close();
