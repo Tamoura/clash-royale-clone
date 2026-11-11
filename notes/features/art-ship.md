@@ -40,7 +40,19 @@ None (this is the ship package).
 - Final quality bar on `eb3a16a`: `npx tsc --noEmit` clean; `npx vitest run` 140 files / 1,732 tests pass (golden.test.ts and bot.test.ts identical to `0a8c97d`, `git diff 0a8c97d -- src/game` empty); `npm run build:all` succeeds; `npm run perf:budget` (its own dev server) passes every gate in both editions at both views (fight 180-206 calls, 628k-670k triangles, 75-76 textures; empty 100-114 calls, 251k-274k triangles).
 - Cleanup: dev server on 3205 stopped by PID; the throwaway baseline worktree removed.
 - Polish round start (`d9e4ead`): critics' issues deduplicated (table above). Renders come from a snapshot copy of the worktree (`/home/user/wt-art-ship-snap`, its own Vite on 3205 with HMR off and its own cache dir) so edits never reload a capture; drivers in `/tmp/claude-0/art/ship/polish/tools/`, shots in `/tmp/claude-0/art/ship/polish/it*/`.
-- Polish commits: d838882 (floors, night grade, emote, diorama, ruin, roc, numbers), f4e30c0 (outer ring, contact shadows, flyer discs, bridges, aprons, far band), 5080d91 (floors to a 0.70 screen value, dark ashlar, HP numerals, crowd, tray gap, elephant). Not pushed: the publish step belongs to the workflow's shipper (the computed task says not to push).
+- Polish commits: d838882 (floors, night grade, emote, diorama, ruin, roc, numbers), f4e30c0 (outer ring, contact shadows, flyer discs, bridges, aprons, far band), 5080d91 (floors to a 0.70 screen value, dark ashlar, HP numerals, crowd, tray gap, elephant), c0fcb9f (neon gatehouse deck).
+- Polish by eye (all looked at; `/tmp/claude-0/art/ship/polish/it1..it5/`): the four showcase looks per edition at 390x844@1 high (it4), courtyard and medina and neon at 390x844@2 (it3, it5), the home diorama at 2x (it2), destroy runs in courtyard and forge (it2), the emote bubble (it4), 1440x900 Classic meadow and Golden Age courtyard and medina (it3, it4), 360x640 (it4), L4 phone (it3). Measured on screen at 390 px: meadow court 0.65 luma, snow 0.68, neon 0.64, courtyard 0.71, souk 0.45, medina 0.37 (night), forge 0.21; units and lanes read in every look; no page or console errors in any capture.
+- Polish quality bar at c0fcb9f: `npx tsc --noEmit` clean; `npx vitest run` 140 files / 1,756 tests; `git diff 0a8c97d -- src/game` empty and no frozen file touched (src/ui, hud, hudModel, fit, camera framing, main.ts); `npm run build:all` succeeds (index 325.4 KB gz, +1.4 KB, so initial JS is +41.5 KB over `ed45f9c`, budget +50); `tools/perf-budget.mjs --matrix` passes every gate:
+
+| View | Edition | Empty calls / tris | Fight calls / tris | Fight textures |
+|---|---|---|---|---|
+| 390x844@2 | Classic | 102 / 251,230 | 179 / 628,222 | 76 |
+| 1440x900@1 | Classic | 106 / 276,298 | 183 / 653,294 | 76 |
+| 390x844@2 | Golden Age | 110 / 256,952 | 201 / 659,360 | 75 |
+| 1440x900@1 | Golden Age | 116 / 275,132 | 208 / 677,612 | 75 |
+
+  (empty triangles at 1440x900 stay over the 260k target, under the 300k gate, as before.)
+- Cleanup: the snapshot server on 3205 stopped by PID and `/home/user/wt-art-ship-snap` removed. Nothing pushed. Not pushed: the publish step belongs to the workflow's shipper (the computed task says not to push).
 
 ## Polish round (after the three critics' review of the final build)
 
