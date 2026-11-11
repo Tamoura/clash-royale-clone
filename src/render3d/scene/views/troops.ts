@@ -19,8 +19,7 @@ import { makeTeamDisc, refreshTeamDisc } from "../../teamBase";
 import { applyTeam, teamColor, teamCss, teamPalette } from "../../teamColors";
 import { onPrefs, type TeamPalette } from "../../../ui/prefs";
 import { ARABIC } from "../../theme";
-import { currentQuality } from "../../quality";
-import { troopShadowLevel } from "../post";
+import { registerTroopCaster } from "../post";
 import { castActiveForBattle, hasKitTroop, kitTroopCards, loadKitTroops, makeKitGhost, makeKitTroop, setCastPalette } from "../../cast/index";
 import { invalidatePortrait } from "../../cardportraits";
 import {
@@ -766,11 +765,9 @@ export function buildTroopMesh(e: Entity, withLabel = false): EntityView {
   // the troopCaster meshes when the level changes, so it follows the LIVE
   // level). ONE caster per unit: a cast character's single skinned mesh,
   // or a rig's biggest chunk.
-  const dyn = troopShadowLevel(currentQuality());
   root.traverse((o) => (o.castShadow = false));
   if (kitUnit) {
-    kitUnit.caster.userData.troopCaster = true;
-    kitUnit.caster.castShadow = dyn;
+    registerTroopCaster(kitUnit.caster);
   } else if (rig) {
     rig.group.updateMatrixWorld(true);
     const box = new THREE.Box3();
@@ -785,10 +782,7 @@ export function buildTroopMesh(e: Entity, withLabel = false): EntityView {
       ranked.push({ mesh, extent: size.x + size.y + size.z });
     });
     ranked.sort((a, b) => b.extent - a.extent);
-    for (const { mesh } of ranked.slice(0, 1)) {
-      mesh.userData.troopCaster = true;
-      mesh.castShadow = dyn;
-    }
+    for (const { mesh } of ranked.slice(0, 1)) registerTroopCaster(mesh);
   }
 
   // HP bar clear of the head (the lean tips the head toward the camera, away from the bar).

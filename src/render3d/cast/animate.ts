@@ -23,9 +23,9 @@ export const HIT_REACT_WEIGHT = 0.45;
 /** Units of one card per side from which they share one pose. */
 export const SWARM_SHARE = 6;
 
-/** Mixer updates per second at quality level `index` (art bible 6). */
+/** Mixer updates per second at quality level `index` (art bible 6): that level's QualityLevel.mixerHz. */
 export function mixerHz(index: number): number {
-  return index <= 1 ? 60 : index <= 3 ? 30 : 20;
+  return QUALITY_LEVELS[Math.min(QUALITY_LEVELS.length - 1, Math.max(0, index))].mixerHz;
 }
 
 const AXIS = new THREE.Vector3();
@@ -123,7 +123,7 @@ export function swarmSize(key: string): number {
 /** Advance the mixer at the quality level's rate (a unit's own clock accumulates between steps). */
 function stepMixer(u: KitUnit, dt: number): void {
   u.acc += dt;
-  const hz = mixerHz(QUALITY_LEVELS.indexOf(currentQuality()));
+  const hz = currentQuality().mixerHz;
   if (u.acc + 1e-4 < 1 / hz) return;
   u.mixer.update(u.acc);
   u.acc = 0;

@@ -8,7 +8,8 @@ import { SIM_DT } from "../../anim/interp";
 import { deathMotion, deathStyle } from "../../deathfx";
 import { POP_DELAY, popDuration, popPose, spawnRecipe, type PopPose } from "../../spawnfx";
 import type { Battle3D } from "../../scene3d";
-import { TOWER_FLASH_PEAK, TOWER_FLASH_TIME, hitFlashTint } from "../views/animate";
+import { TOWER_FLASH_PEAK, TOWER_FLASH_TIME, hitFlashTint, troopFlashTint } from "../views/animate";
+import { FLASH_TIME } from "../common";
 import { burrowProgress, burrowStart, burrowsInFlight, resetBurrows, syncBurrows } from "./burrow";
 import { COMET_SKY_HEIGHT, cometPosition, cometProgress, cometsInFlight, landDelayOf, resetComets, syncComets } from "./comet";
 import { VfxPool } from "./pool";
@@ -285,11 +286,12 @@ describe("tower hit flash", () => {
     expect(Math.max(...out)).toBeLessThan(0.02); // and gone at the end
   });
 
-  it("troops keep their one-frame white snap and warm fade", () => {
+  it("troops flash at most 0.35 toward warm white, never the white snap (art bible 6)", () => {
     const out = [0, 0, 0];
-    expect(hitFlashTint(false, 0.12, true, out)).toEqual([1, 1, 1]);
-    hitFlashTint(false, 0.06, false, out);
-    expect(out[0]).toBeCloseTo(0.5);
-    expect(out[2]).toBeLessThan(out[0]);
+    expect(Math.max(...troopFlashTint(FLASH_TIME, out))).toBeLessThanOrEqual(0.35);
+    expect(out[0]).toBeGreaterThan(0.3); // still visible
+    expect(out[2]).toBeLessThan(out[0]); // warm, not white
+    expect(Math.max(...hitFlashTint(false, FLASH_TIME, true, out))).toBeLessThanOrEqual(0.35);
+    expect(Math.max(...troopFlashTint(0, out))).toBe(0); // and gone at the end
   });
 });

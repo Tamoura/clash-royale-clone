@@ -138,31 +138,19 @@ export const TOWER_FLASH_TIME = 0.22;
 /**
  * The emissive tint of a hit flash, written into `out` (r, g, b). A tower
  * or building swells to a soft warm tint (peak TOWER_FLASH_PEAK, 0.25) and
- * back over TOWER_FLASH_TIME. The troop branch is the LEGACY white snap,
- * kept only for an older test: the game tints troops with troopFlashTint.
- * `left` is the flash time left.
+ * back over TOWER_FLASH_TIME; a troop takes troopFlashTint (peak
+ * HIT_FLASH_PEAK, never white). `left` is the flash time left; `_fresh`
+ * (the blow landed this frame) is kept for the old signature.
  */
-export function hitFlashTint(structure: boolean, left: number, fresh: boolean, out: number[]): number[] {
-  if (structure) {
-    const u = Math.min(1, Math.max(0, 1 - left / TOWER_FLASH_TIME)); // 0 -> 1 over the pulse
-    const k = TOWER_FLASH_PEAK * Math.sin(Math.PI * Math.min(1, u * 1.25 + 0.1));
-    out[0] = TOWER_FLASH[0] * k;
-    out[1] = TOWER_FLASH[1] * k;
-    out[2] = TOWER_FLASH[2] * k;
-    return out;
-  }
-  if (fresh) {
-    out[0] = out[1] = out[2] = 1;
-    return out;
-  }
-  const k = Math.max(0, left / LEGACY_FLASH_TIME);
-  out[0] = LEGACY_FLASH_WARM[0] * k;
-  out[1] = LEGACY_FLASH_WARM[1] * k;
-  out[2] = LEGACY_FLASH_WARM[2] * k;
+export function hitFlashTint(structure: boolean, left: number, _fresh: boolean, out: number[]): number[] {
+  if (!structure) return troopFlashTint(left, out);
+  const u = Math.min(1, Math.max(0, 1 - left / TOWER_FLASH_TIME)); // 0 -> 1 over the pulse
+  const k = TOWER_FLASH_PEAK * Math.sin(Math.PI * Math.min(1, u * 1.25 + 0.1));
+  out[0] = TOWER_FLASH[0] * k;
+  out[1] = TOWER_FLASH[1] * k;
+  out[2] = TOWER_FLASH[2] * k;
   return out;
 }
-const LEGACY_FLASH_TIME = 0.12;
-const LEGACY_FLASH_WARM = [1, 0.85, 0.7] as const;
 
 /**
  * A troop's hit flash (art bible 6), written into `out`: it jumps to
