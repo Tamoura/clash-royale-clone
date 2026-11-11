@@ -187,13 +187,24 @@ function addLip(k: Kit): void {
   const L = k.look;
   const z = 17.7;
   const kind = L.backdrop;
-  const stone = L.edging;
   if (kind === "castle" || kind === "alhambra" || kind === "minaret") {
-    k.part("lip wall", new THREE.BoxGeometry(24, 0.42, 0.7), stone, { y: 0.15, z });
-    k.part("lip cap", new THREE.BoxGeometry(24.2, 0.1, 0.85), kind === "castle" ? 0xd9a93f : 0xcaa23f, { y: 0.4, z });
-    for (let i = -5; i <= 5; i++) k.part("lip post", new THREE.BoxGeometry(0.42, 0.62, 0.8), stone, { x: i * 2.2, y: 0.25, z });
-    for (let i = -4; i <= 4; i += 2) {
-      k.part("planter", new THREE.IcosahedronGeometry(0.42, 0), L.tree.leafA, { x: i * 2.2 + 1.1, y: 0.62, z: z + 0.1, sy: 0.8 });
+    // The near band: a dressed-stone terrace wall with a capstone run, piers
+    // and flower boxes (low: it must never cover your king).
+    const wall = kind === "castle" ? L.cornerPost : L.edging;
+    const capC = kind === "castle" ? new THREE.Color(wall).multiplyScalar(1.12).getHex() : 0xcaa23f;
+    k.part("lip wall", new THREE.BoxGeometry(24, 0.42, 0.7), wall, { y: 0.15, z });
+    k.part("lip cap", new THREE.BoxGeometry(24.2, 0.09, 0.82), capC, { y: 0.4, z });
+    for (let i = -5; i <= 5; i++) {
+      k.part("lip post", new THREE.BoxGeometry(0.42, 0.6, 0.8), new THREE.Color(wall).multiplyScalar(0.92).getHex(), { x: i * 2.2, y: 0.24, z });
+      k.part("lip post cap", new THREE.BoxGeometry(0.5, 0.07, 0.88), capC, { x: i * 2.2, y: 0.56, z });
+    }
+    for (let i = -5; i < 5; i++) {
+      const x = i * 2.2 + 1.1;
+      k.part("flower box", new THREE.BoxGeometry(1.3, 0.16, 0.42), 0x8a5a2a, { x, y: 0.5, z: z + 0.05 });
+      for (let j = 0; j < 3; j++) {
+        k.part("box shrub", new THREE.IcosahedronGeometry(0.24, 1), j === 1 ? L.tree.leafB : L.tree.leafA, { x: x - 0.4 + j * 0.4, y: 0.64, z: z + 0.05, sy: 0.75 });
+        k.part("box bloom", new THREE.SphereGeometry(0.06, 5, 4), [0xfff176, 0xf48fb1, 0xffffff][(i + j + 5) % 3], { x: x - 0.32 + j * 0.4, y: 0.8, z: z + 0.15 });
+      }
     }
     return;
   }

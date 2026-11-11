@@ -12,7 +12,7 @@
 import * as THREE from "three";
 import type { ArenaLook, BackdropKind } from "../../arenaLooks";
 
-export const KIT_TRIANGLE_BUDGET = 1200;
+export const KIT_TRIANGLE_BUDGET = 2000;
 /** Kits are laid out against this back wall line (before KIT_SHIFT)... */
 export const KIT_BACK_Z = -21;
 /** ...then the whole set moves this much toward the field, so the sky shows above it. */

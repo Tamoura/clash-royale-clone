@@ -19,7 +19,8 @@ import { ARENA_WIDTH, BRIDGE_XS, RIVER_HALF_WIDTH, RIVER_Y } from "../../../game
 import type { ArenaLook, BandKind } from "../../arenaLooks";
 import { toon } from "../../characters3d";
 import { toWorld } from "../common";
-import { parseColor } from "./groundPaint";
+import { Sculpt, sculptMaterial, tone } from "../views/towerCraft";
+import { hashString, parseColor } from "./groundPaint";
 
 const MODES: Record<BandKind, number> = { water: 0, lava: 1, ice: 2, chasm: 3, neon: 4 };
 /** Bridge deck half-width (world units) where the water meets the piers. */
@@ -236,8 +237,10 @@ export function buildRiver(parent: THREE.Object3D, look: ArenaLook): RiverHandle
   mesh.userData.noBatch = true;
   parent.add(mesh);
 
-  // Stone lips along both banks (the floor paint bakes their AO strip).
-  const lipColor = kind === "ice" ? 0xdcecf6 : kind === "neon" ? 0x3a4060 : kind === "lava" ? 0x3a2a2a : look.edging;
+  // Bank lips by band kind (the floor paint bakes their banks and AO):
+  // dressed stone over water, basalt over lava, snow over ice, a rocky cliff
+  // edge over a chasm and a chrome kerb over neon.
+  const lipColor = LIP_COLOR[kind] ?? look.edging;
   for (const side of [-1, 1]) {
     const lip = new THREE.Mesh(new THREE.BoxGeometry(span, 0.16, 0.22), toon(lipColor));
     lip.position.set(0, 0.05, side * (RIVER_HALF_WIDTH + 0.1));
@@ -245,7 +248,84 @@ export function buildRiver(parent: THREE.Object3D, look: ArenaLook): RiverHandle
     lip.name = "bank lip";
     parent.add(lip);
   }
+  buildRiverDecor(parent, look);
   return { mesh, material };
+}
+
+const LIP_COLOR: Partial<Record<BandKind, number>> = {
+  ice: 0xeef6fb,
+  neon: 0xaab4cc,
+  lava: 0x2c2426,
+  chasm: 0x4a3f6a,
+};
+
+/**
+ * River dressing: reeds on both banks and lily pads in the shallows (green
+ * water looks), snow lumps (winter), basalt boulders (lava), crystal shards
+ * at a chasm's lip. One sculpted mesh; nothing sits on the bridges.
+ */
+function buildRiverDecor(parent: THREE.Object3D, look: ArenaLook): void {
+  const kind = look.band.kind;
+  const s = new Sculpt((_x, _y, _z, ny) => (ny > 0.7 ? 1.05 : ny < -0.4 ? 0.72 : 1));
+  let seed = hashString(`river:${look.id}`);
+  const rand = (): number => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const clearOfBridges = (x: number): boolean => BRIDGE_XS.every((bx) => Math.abs(x - toWorld(bx, RIVER_Y).x) > 1.6);
+  const half = ARENA_WIDTH / 2 + (look.islamic ? 0 : 6);
+  const green = look.band.kind === "water" && (look.tree.leafA & 0x00ff00) > 0x006000 && !["snow", "ice", "atlas"].includes(look.id);
+  if (kind === "water" && green && !look.islamic) {
+    const reed = tone(look.tree.leafA, 0.9, 0.9);
+    const reedLt = tone(look.tree.leafB, 1.1, 0.9);
+    for (let i = 0; i < 22; i++) {
+      const x = (rand() * 2 - 1) * half;
+      if (!clearOfBridges(x)) continue;
+      const z = (rand() < 0.5 ? -1 : 1) * (RIVER_HALF_WIDTH + 0.3 + rand() * 0.3);
+      for (let k = 0; k < 5; k++) {
+        const h = 0.35 + rand() * 0.3;
+        const g = new THREE.ConeGeometry(0.035, h, 4);
+        g.rotateZ((rand() - 0.5) * 0.5);
+        s.add(g, k % 2 ? reed : reedLt, x + (rand() - 0.5) * 0.3, h / 2, z + (rand() - 0.5) * 0.15, 0, (_x, y) => 0.75 + 0.35 * Math.min(1, y / 0.5));
+        if (k === 0 && rand() < 0.6) {
+          const head = new THREE.CylinderGeometry(0.04, 0.04, 0.14, 5);
+          s.add(head, 0x6b4a2a, x, h + 0.02, z, 0);
+        }
+      }
+    }
+    // Lily pads in the shallows, some with a flower.
+    for (let i = 0; i < 12; i++) {
+      const x = (rand() * 2 - 1) * (ARENA_WIDTH / 2 + 4);
+      if (!clearOfBridges(x)) continue;
+      const z = (rand() < 0.5 ? -1 : 1) * (RIVER_HALF_WIDTH - 0.22 - rand() * 0.25);
+      const r = 0.16 + rand() * 0.1;
+      const pad = new THREE.CylinderGeometry(r, r, 0.02, 12, 1, false, 0.4, Math.PI * 2 - 0.5);
+      s.add(pad, tone(0x3f8f45, 0.9 + rand() * 0.2), x, 0.045, z, rand() * 6, () => 1);
+      if (rand() < 0.35) s.add(new THREE.SphereGeometry(0.06, 6, 4), rand() < 0.5 ? 0xf8b8d0 : 0xfff6e0, x + 0.04, 0.08, z, 0);
+    }
+  } else if (kind === "lava" || kind === "chasm" || (kind === "ice" && !look.islamic) || (kind === "water" && !green && !look.islamic)) {
+    const snowy = kind === "ice" || ["snow", "ice"].includes(look.id);
+    const col = kind === "lava" ? 0x2a2224 : snowy ? 0xf2f8fc : kind === "chasm" ? 0x5a4a8a : tone(look.rock, 1, 0.8);
+    for (let i = 0; i < 16; i++) {
+      const x = (rand() * 2 - 1) * half;
+      if (!clearOfBridges(x)) continue;
+      const z = (rand() < 0.5 ? -1 : 1) * (RIVER_HALF_WIDTH + 0.28 + rand() * 0.2);
+      const r = 0.14 + rand() * 0.14;
+      const g = snowy ? new THREE.SphereGeometry(r * 1.3, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2) : new THREE.IcosahedronGeometry(r, 0);
+      g.scale(1.3, snowy ? 0.55 : 0.7, 1);
+      s.add(g, tone(col, 0.92 + rand() * 0.16), x, snowy ? 0.02 : r * 0.35, z, rand() * 3);
+      if (kind === "chasm" && rand() < 0.5) {
+        const shard = new THREE.OctahedronGeometry(0.12);
+        shard.scale(0.6, 1.8, 0.6);
+        s.add(shard, 0xc8a8ff, x + 0.15, 0.2, z, rand());
+      }
+    }
+  }
+  const mesh = s.mesh(sculptMaterial(), "river-decor");
+  if (mesh) {
+    mesh.castShadow = false;
+    parent.add(mesh);
+  }
 }
 
 export interface WaterfallHandle {

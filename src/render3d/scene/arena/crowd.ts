@@ -51,14 +51,15 @@ function hash(i: number, salt: number): number {
 /** Torso plus arms: arms down, or (cheer = true) raised in a V. */
 function bodyGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
-  const torso = new THREE.CylinderGeometry(0.12, 0.16, 0.3, 7, 1);
+  // Low counts on purpose: about 50 triangles a spectator, 200-odd of them.
+  const torso = new THREE.CylinderGeometry(0.12, 0.16, 0.3, 6, 1, true);
   torso.translate(0, 0.15, 0);
   parts.push(torso);
-  const shoulders = new THREE.SphereGeometry(0.125, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2);
+  const shoulders = new THREE.SphereGeometry(0.125, 6, 2, 0, Math.PI * 2, 0, Math.PI / 2);
   shoulders.translate(0, 0.3, 0);
   parts.push(shoulders);
   for (const sx of [-1, 1]) {
-    const arm = new THREE.CylinderGeometry(0.04, 0.045, 0.24, 5, 1);
+    const arm = new THREE.CylinderGeometry(0.04, 0.045, 0.24, 4, 1, true);
     arm.translate(0, 0.12, 0);
     // Raised to the side in a cheering V.
     arm.rotateZ(sx * -2.55);
@@ -72,7 +73,7 @@ function bodyGeometry(): THREE.BufferGeometry {
 
 /** A round head with a hair cap: the hair is darker vertex colour (times the skin instance colour). */
 function headGeometry(): THREE.BufferGeometry {
-  const g = new THREE.SphereGeometry(0.13, 8, 6).toNonIndexed();
+  const g = new THREE.SphereGeometry(0.13, 7, 5).toNonIndexed();
   g.translate(0, 0.43, 0);
   const pos = g.getAttribute("position");
   const col = new Float32Array(pos.count * 3);

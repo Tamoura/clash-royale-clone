@@ -18,6 +18,7 @@ import { LOOK, arabic, toWorld, unlitGlow, viewSide } from "../common";
 import { skyHorizon } from "../sky";
 import { buildAmbient, disposeAmbient, updateAmbient, type Ambient } from "./ambient";
 import { buildBackdrop, type Backdrop } from "./backdrop";
+import { buildClassicBridges } from "./bridges";
 import { makeCrowd, poseCrowd, type Crowd, type CrowdSeat } from "./crowd";
 import { groundTexture, hashString } from "./groundPaint";
 import { LightPools, type LightSpot } from "./lightPools";
@@ -775,48 +776,6 @@ export function finishArena(b: Battle3D): RiverHandle {
         }
       }
     }
-  } else if (LOOK.band.bridge === "gate") {
-    // Neon arena: each crossing is a gold crown-buckle gate set into the
-    // dark metal band (reference screenshot), flanked by slate posts.
-    const SLATE = 0x343a52;
-    const SLATEDK = 0x23283c;
-    const GOLD = 0xd9a93f;
-    const GOLDLT = 0xf2c14e;
-    for (const bx of BRIDGE_XS) {
-      const w = toWorld(bx, RIVER_Y);
-      const deck = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.24, 2.6), toon(SLATE));
-      deck.position.set(w.x, 0.1, 0);
-      deck.castShadow = true;
-      deck.receiveShadow = true;
-      b.arenaGroup.add(deck);
-      const plate = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.08, 2.0), toon(GOLD));
-      plate.position.set(w.x, 0.25, 0);
-      plate.castShadow = true;
-      b.arenaGroup.add(plate);
-      const boss = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.09, 1.3), toon(GOLDLT));
-      boss.position.set(w.x, 0.31, 0);
-      b.arenaGroup.add(boss);
-      for (const sz of [-1, 1]) {
-        for (const dx of [-0.38, 0, 0.38]) {
-          const point = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.3, 4), toon(GOLDLT));
-          point.rotation.y = Math.PI / 4;
-          point.position.set(w.x + dx, 0.32, sz * 0.85);
-          point.castShadow = true;
-          b.arenaGroup.add(point);
-        }
-      }
-      for (const sx of [-1, 1]) {
-        for (const sz of [-1, 1]) {
-          const post = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.5, 0.34), toon(SLATEDK));
-          post.position.set(w.x + sx * 1.0, 0.3, sz * 1.2);
-          post.castShadow = true;
-          b.arenaGroup.add(post);
-          const cap = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.09, 0.4), toon(GOLD));
-          cap.position.set(w.x + sx * 1.0, 0.58, sz * 1.2);
-          b.arenaGroup.add(cap);
-        }
-      }
-    }
   } else if (LOOK.band.bridge === "timber") {
     // Hand-built timber crossings: uneven planks over dark bearers, stone
     // abutments at both ends, and post-and-rope rails with capped posts.
@@ -858,40 +817,7 @@ export function finishArena(b: Battle3D): RiverHandle {
     const bridges = sc.mesh(sculptMaterial(), "timber-bridges");
     if (bridges) b.arenaGroup.add(bridges);
   } else {
-    // Stone (or ice) arch crossings: a masonry deck with a low arched
-    // parapet on each side, capped in the look's edging color.
-    const ice = LOOK.band.bridge === "ice";
-    const STONE = ice ? 0xdcecf6 : LOOK.tower.plinth;
-    const STONEDK = ice ? 0xb8d4e8 : LOOK.edging;
-    for (const bx of BRIDGE_XS) {
-      const w = toWorld(bx, RIVER_Y);
-      const deck = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.24, 2.6), toon(STONE));
-      deck.position.set(w.x, 0.1, 0);
-      deck.castShadow = true;
-      deck.receiveShadow = true;
-      b.arenaGroup.add(deck);
-      // Keystone arch belly under the deck (reads from the camera angle).
-      const arch = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 2.0, 12, 1, false, 0, Math.PI), toon(STONEDK));
-      arch.rotation.z = Math.PI / 2;
-      arch.rotation.y = Math.PI / 2;
-      arch.position.set(w.x, -0.02, 0);
-      arch.scale.set(0.45, 1, 1);
-      b.arenaGroup.add(arch);
-      for (const side of [-1, 1]) {
-        const parapet = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 2.7), toon(STONEDK));
-        parapet.position.set(w.x + side * 0.95, 0.35, 0);
-        parapet.castShadow = true;
-        b.arenaGroup.add(parapet);
-        for (const ez of [-1.2, 1.2]) {
-          const finial = new THREE.Mesh(
-            ice ? new THREE.ConeGeometry(0.14, 0.42, 6) : new THREE.SphereGeometry(0.16, 8, 6),
-            toon(ice ? 0xffffff : LOOK.edging),
-          );
-          finial.position.set(w.x + side * 0.95, ice ? 0.7 : 0.6, ez);
-          b.arenaGroup.add(finial);
-        }
-      }
-    }
+    buildClassicBridges(b.arenaGroup, LOOK, (c) => b.glow(c));
   }
 
   return river;
