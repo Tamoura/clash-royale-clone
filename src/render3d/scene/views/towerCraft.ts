@@ -311,6 +311,7 @@ export class KeepSculpt {
   /** The chunk parts are added to. */
   chunk: KeepChunk = "base";
   private parts = new Map<KeepChunk, THREE.BufferGeometry[]>();
+  private inks = new Map<KeepChunk, THREE.BufferGeometry[]>();
   verts = 0;
   constructor(private readonly shade: Shade = () => 1) {}
 
@@ -369,7 +370,7 @@ export class KeepSculpt {
           hn[dst * 3 + 2] = sm[src * 3 + 2];
         }
       }
-      this.push(this.part(hp, hn, new Float32Array(n * 2), new Float32Array(n * 3), [0, 0, 1, 0], [from, to]));
+      this.push(this.part(hp, hn, new Float32Array(n * 2), new Float32Array(n * 3), [0, 0, 1, 0], [from, to]), true);
       added += n;
     }
     g.dispose();
@@ -402,15 +403,21 @@ export class KeepSculpt {
     return g;
   }
 
-  private push(g: THREE.BufferGeometry): void {
-    let list = this.parts.get(this.chunk);
-    if (!list) this.parts.set(this.chunk, (list = []));
+  private push(g: THREE.BufferGeometry, ink = false): void {
+    const map = ink ? this.inks : this.parts;
+    let list = map.get(this.chunk);
+    if (!list) map.set(this.chunk, (list = []));
     list.push(g);
     this.verts += g.getAttribute("position").count;
   }
 
-  /** Merge everything into one geometry, chunk by chunk; ranges are in vertices. */
-  build(): { geometry: THREE.BufferGeometry; ranges: Map<KeepChunk, { start: number; count: number }> } {
+  /**
+   * Merge everything into one geometry: every chunk's surfaces, chunk by
+   * chunk, then every ink hull. Ranges are in vertices; the first
+   * `bodyCount` vertices are the surfaces, so the shadow pass (and the
+   * main pass with ink off) can stop there.
+   */
+  build(): { geometry: THREE.BufferGeometry; ranges: Map<KeepChunk, { start: number; count: number }>; bodyCount: number } {
     const all: THREE.BufferGeometry[] = [];
     const ranges = new Map<KeepChunk, { start: number; count: number }>();
     let start = 0;
@@ -422,11 +429,15 @@ export class KeepSculpt {
       start += count;
       all.push(...list);
     }
+    const bodyCount = start;
+    for (const chunk of KEEP_CHUNKS) all.push(...(this.inks.get(chunk) ?? []));
     const merged = all.length ? mergeGeometries(all, false) : new THREE.BufferGeometry();
     for (const g of all) g.dispose();
     this.parts.clear();
+    this.inks.clear();
     merged.computeBoundingSphere();
-    return { geometry: merged!, ranges };
+    merged.userData.bodyCount = bodyCount;
+    return { geometry: merged!, ranges, bodyCount };
   }
 }
 
@@ -714,6 +725,23 @@ export function keepMaterial(map: THREE.Texture, team: number): { material: THRE
   return { material: mat, depth, uniforms };
 }
 
+/**
+ * The ink hulls sit after the surfaces (geometry.userData.bodyCount): the
+ * shadow pass never draws them, nor does the main pass with ink off (L4),
+ * so they cost nothing where they do not show. Ink is sized per renderer.
+ */
+export function inkRangeHooks(mesh: THREE.Mesh): void {
+  const g = mesh.geometry;
+  const body = (g.userData.bodyCount as number | undefined) ?? Infinity;
+  mesh.onBeforeRender = (renderer) => {
+    fitInk(renderer);
+    g.setDrawRange(0, INK.uInkOn.value > 0.5 ? Infinity : body);
+  };
+  mesh.onBeforeShadow = () => {
+    g.setDrawRange(0, body);
+  };
+}
+
 /** The finished keep mesh (cast and receive shadow; ink sized per renderer). */
 export function keepMesh(s: KeepSculpt, map: THREE.Texture, team: number, name = "keep"): {
   mesh: THREE.Mesh;
@@ -727,7 +755,7 @@ export function keepMesh(s: KeepSculpt, map: THREE.Texture, team: number, name =
   mesh.customDepthMaterial = depth;
   mesh.castShadow = mesh.receiveShadow = true;
   mesh.userData.noBatch = true;
-  mesh.onBeforeRender = fitInk;
+  inkRangeHooks(mesh);
   mesh.userData.keepUniforms = uniforms;
   return { mesh, uniforms, ranges };
 }
@@ -735,7 +763,7 @@ export function keepMesh(s: KeepSculpt, map: THREE.Texture, team: number, name =
 // ---- Shared shapes ---------------------------------------------------------------
 
 /** A smooth bell-cast cone (lathe): flared eave lip up to the apex. */
-function bellCone(rb: number, h: number, seg = 18, rows = 6): THREE.LatheGeometry {
+function bellCone(rb: number, h: number, seg = 16, rows = 5): THREE.LatheGeometry {
   const pts = [new THREE.Vector2(rb + 0.05, -0.05)];
   for (let i = 0; i <= rows; i++) {
     const t = i / rows;
@@ -1141,7 +1169,7 @@ function buildBanner(c: Ctx, emblem: (ex: number, ey: number, ez: number, o: Par
   const rod = new THREE.CylinderGeometry(0.035, 0.035, bw + 0.2, 8);
   rod.rotateZ(Math.PI / 2);
   s.add(rod, GOLD, 0, top + 0.01, z + camSide * 0.02, 0, lit);
-  for (const sx of [-1, 1]) s.add(new THREE.SphereGeometry(0.055, 8, 6), GOLD, sx * (bw / 2 + 0.1), top + 0.01, z + camSide * 0.02, 0, lit);
+  for (const sx of [-1, 1]) s.add(new THREE.SphereGeometry(0.055, 6, 4), GOLD, sx * (bw / 2 + 0.1), top + 0.01, z + camSide * 0.02, 0, lit);
 }
 
 /** A thin box on wall face `face`, centred `along` across it at height y, `out` from the centre. */
@@ -1539,7 +1567,7 @@ function finish(
     gunMesh.customDepthMaterial = mesh.customDepthMaterial;
     gunMesh.castShadow = gunMesh.receiveShadow = true;
     gunMesh.userData.noBatch = true;
-    gunMesh.onBeforeRender = fitInk;
+    inkRangeHooks(gunMesh);
     gunMesh.position.copy(c.gunAt);
   }
   const pw = c.R * 1.45;

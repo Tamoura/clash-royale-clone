@@ -347,7 +347,9 @@ export function buildTowerMesh(e: Entity): EntityView {
     mount.add(crew.rig.group);
     view.defender = crew.rig;
   }
-  mount.traverse((o) => (o.castShadow = true));
+  // A provider's crew is one skinned draw: it casts like a field troop. The
+  // hand-built crew is many limbs: tiny on the roof, not worth a shadow pass.
+  mount.traverse((o) => (o.castShadow = crew.kind === "provider"));
   view.defenderMount = mount;
 
   const plate: THREE.Object3D[] = [];
@@ -590,7 +592,6 @@ function chunkPiece(keep: KeepBuild, chunk: KeepChunk): THREE.Group | null {
   const mesh = new THREE.Mesh(g, keep.mesh.material);
   mesh.customDepthMaterial = keep.mesh.customDepthMaterial;
   mesh.castShadow = mesh.receiveShadow = true;
-  mesh.onBeforeRender = keep.mesh.onBeforeRender;
   mesh.position.copy(CENTER).negate();
   const pivot = new THREE.Group();
   pivot.name = chunk;
