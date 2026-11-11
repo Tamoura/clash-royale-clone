@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { getCard, type CardId } from "../game/cards";
 import { animateTroop, buildCometRock, buildTroop, outlineRig } from "./characters3d";
 import { disposeDeep } from "./scene/common";
+import { animateKitTroop, hasKitTroop, makeKitTroop } from "./cast/index";
 
 /**
  * Pre-rendered 3D card portraits: each troop/building character is
@@ -98,8 +99,22 @@ function cometSubject(): { group: THREE.Group; height: number } {
   return { group: g, height: 1.5 };
 }
 
-/** The posed rig for a troop or building card (the HUD shows your own side). */
-function troopSubject(id: CardId): { group: THREE.Group; height: number } {
+/** The posed subject for a troop or building card (the HUD shows your own side). */
+function troopSubject(id: CardId): { group: THREE.Group; height: number; cast: boolean } {
+  // The cast: the card shows the modelled character the battle fields, in this edition's look.
+  const kit = hasKitTroop(id) ? makeKitTroop(id, "player", undefined, false) : null;
+  if (kit) {
+    for (let i = 0; i < 6; i++) animateKitTroop(kit, { moving: false, attacking: false, cooldown: 1, hitSpeed: 1, rate: 1, frozen: false }, 0.05);
+    kit.actions.idle.time = 0.2;
+    kit.mixer.update(0);
+    kit.group.rotation.y = 0.45; // three-quarter front
+    // Framed from the knees up: the big head and the weapon are the card. Riders show their mount.
+    const knee = kit.mount ? 0.06 : 0.16;
+    kit.group.position.y = -kit.height * knee;
+    const holder = new THREE.Group();
+    holder.add(kit.group);
+    return { group: holder, height: kit.height * (1 - knee * 1.25), cast: true };
+  }
   const rig = buildTroop(id, "player");
   // Portraits are not baked (one capture, then gone): per-mesh ink hulls.
   outlineRig(rig.group);
@@ -107,7 +122,7 @@ function troopSubject(id: CardId): { group: THREE.Group; height: number } {
   animateTroop(rig, { moving: false, swing: 0, time: 0.6, phase: 0 });
   // After animateTroop (which owns body yaw): three-quarter hero angle.
   rig.group.rotation.y = 0.5;
-  return { group: rig.group, height: (rig.hover ?? 0) + rig.height };
+  return { group: rig.group, height: (rig.hover ?? 0) + rig.height, cast: false };
 }
 
 function renderPortrait(id: CardId): HTMLCanvasElement | null {
@@ -118,14 +133,16 @@ function renderPortrait(id: CardId): HTMLCanvasElement | null {
   try {
     const gl = acquireRenderer();
     scene = new THREE.Scene();
-    const subject = card.kind === "spell" ? cometSubject() : troopSubject(id);
+    const subject = card.kind === "spell" ? { ...cometSubject(), cast: false } : troopSubject(id);
     rigGroup = subject.group;
     scene.add(subject.group);
-    scene.add(new THREE.HemisphereLight(0xdfeaff, 0x4a5070, 1.3));
-    const key = new THREE.DirectionalLight(0xfff2d8, 2.2);
+    // The cast's bright palettes wash out under the rigs' studio light (the "pale knight"): softer for them.
+    const k = subject.cast ? 0.72 : 1;
+    scene.add(new THREE.HemisphereLight(0xdfeaff, 0x4a5070, 1.3 * k));
+    const key = new THREE.DirectionalLight(0xfff2d8, 2.2 * k);
     key.position.set(3, 5, 5);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0x8fb6ff, 1.2);
+    const rim = new THREE.DirectionalLight(0x8fb6ff, 1.2 * k);
     rim.position.set(-4, 3, -3);
     scene.add(rim);
 

@@ -1,8 +1,11 @@
 /**
- * Unit meshes: troop and building views with their team disc, name chip,
- * contact shadow and HP bar, the shared HP/label/status sprites, and the
- * translucent deploy ghost. Optional KayKit glTF models load on demand.
- * Team colours follow the player's teamPalette pref live (no reload).
+ * Unit meshes: troop and building views with their team disc, contact
+ * shadow and HP bar, the shared HP/status sprites, and the translucent
+ * deploy ghost. Humanoid troops are the modelled cast (./../../cast/) when
+ * the battle fields it, else the procedural roster. Every troop body hangs
+ * under a LEAN node (tipped toward the camera each frame in animate.ts);
+ * the disc, contact shadow and HP bar do not lean. Team colours follow the
+ * player's teamPalette pref live (no reload). No floating name tags.
  */
 import * as THREE from "three";
 import type { Side } from "../../../game/arena";
@@ -18,7 +21,8 @@ import { onPrefs, type TeamPalette } from "../../../ui/prefs";
 import { ARABIC } from "../../theme";
 import { currentQuality } from "../../quality";
 import { troopShadowLevel } from "../post";
-import { kaykitOptIn } from "../../modelsOptIn";
+import { castActiveForBattle, hasKitTroop, kitTroopCards, loadKitTroops, makeKitGhost, makeKitTroop, setCastPalette } from "../../cast/index";
+import { invalidatePortrait } from "../../cardportraits";
 import {
   BAR_TILT,
   GAME_FONT,
@@ -29,30 +33,20 @@ import {
   type HpText,
 } from "../common";
 
-type GlbModule = typeof import("../../glbModels");
-/** The KayKit model module, once loaded (never in the default build path). */
-let glb: GlbModule | null = null;
-
 /**
- * Fetch the KayKit glTF code and models only for players who opted in with
- * `?models=kaykit` (remembered), and never in the Arabic edition: the loader
- * stays out of the main bundle. Units built before the models arrive use
- * the hand-built rigs, exactly as when the preload was still in flight.
+ * Start loading the modelled cast (both editions; the loader code and the
+ * pack stay out of the main bundle). Card art drawn before it arrived is
+ * redrawn on next use. Kept under its old name: the scene calls it at boot.
  */
 export function loadGlbModels(): void {
-  const optIn = kaykitOptIn(); // always: it also remembers ?models=...
-  if (ARABIC || !optIn || glb) return;
-  import("../../glbModels")
-    .then((m) => {
-      glb = m;
-      m.preloadGlbModels();
-    })
-    .catch(() => {}); // offline / chunk missing: keep the rig roster
+  void loadKitTroops().then((ok) => {
+    if (ok) for (const id of kitTroopCards()) invalidatePortrait(id as CardId);
+  });
 }
 
-/** The loaded glTF module; only views that carry a `glb` unit need it. */
-export function glbModels(): GlbModule | null {
-  return glb;
+/** Whether a card's units in this battle are cast characters. */
+function castFor(cardId: CardId): boolean {
+  return castActiveForBattle() && hasKitTroop(cardId);
 }
 
 /**
@@ -76,11 +70,12 @@ function pruneTeamLive(): void {
 
 /** Repaint every live unit, label and level shield for a palette. */
 function repaintTeams(palette: TeamPalette): void {
+  setCastPalette(palette); // every cast unit's cloth, live
   pruneTeamLive();
   for (const t of teamLive) {
     applyTeam(t.root, t.side, palette);
     if (t.disc) refreshTeamDisc(t.disc, palette);
-    if (t.hpFill) setHpFillColor(t.hpFill, unitHpColor(t.side, palette));
+    if (t.hpFill) setHpFillColor(t.hpFill, t.hpFill.userData.troopBar ? troopHpColor(t.side, palette) : unitHpColor(t.side, palette));
   }
   for (const b of levelBadges.values()) drawLevelBadge(b, palette);
   for (const l of nameLabels.values()) drawNameLabel(l, palette);
@@ -520,10 +515,6 @@ export function buildTombstoneMesh(e: Entity): EntityView {
   const team = teamSide(e.side);
   const bar = makeHpBar(1.4, unitHpColor(team), 1.6);
   root.add(bar.group);
-  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, team));
-  label.scale.set(2.0, 0.5, 1);
-  label.position.y = 1.95;
-  root.add(label);
   trackTeam({ root, side: team, hpFill: bar.fill });
   return {
     root,
@@ -575,10 +566,6 @@ export function buildCollectorMesh(e: Entity): EntityView {
   const team = teamSide(e.side);
   const bar = makeHpBar(1.4, unitHpColor(team), 1.7);
   root.add(bar.group);
-  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, team));
-  label.scale.set(2.0, 0.5, 1);
-  label.position.y = 2.05;
-  root.add(label);
   trackTeam({ root, side: team, hpFill: bar.fill });
   return {
     root,
@@ -624,10 +611,6 @@ export function buildBuildingMesh(e: Entity): EntityView {
   const team = teamSide(e.side);
   const bar = makeHpBar(1.4, unitHpColor(team), 1.15);
   root.add(bar.group);
-  const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, team));
-  label.scale.set(2.0, 0.5, 1);
-  label.position.y = 1.5;
-  root.add(label);
   trackTeam({ root, side: team, hpFill: bar.fill });
   return {
     root,
@@ -646,17 +629,93 @@ export function buildBuildingMesh(e: Entity): EntityView {
 /** Every troop stands this much larger than its old size, so faces and weapons read on a phone. */
 const TROOP_POP = 1.14;
 
-export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
+/** Troop HP bar size (world units): wide and tall enough for a 2 px outline at phone size. */
+export const TROOP_BAR_W = 1.0;
+export const TROOP_BAR_H = 0.3;
+
+/**
+ * The troop HP fill: the team colour, lifted a little so it reads on the
+ * dark trough (blue yours, red or orange theirs).
+ */
+export function troopHpColor(side: Side, palette: TeamPalette = teamPalette()): number {
+  return new THREE.Color().setHex(teamColor(side, "main", palette)).lerp(WHITE, 0.12).getHex();
+}
+const WHITE = new THREE.Color(0xffffff);
+
+/** Shared troop-bar trough: a 2 px dark outline round a dark well (the fill sits inside the outline). */
+let troopPillTexture: THREE.CanvasTexture | null = null;
+function troopPillTex(): THREE.CanvasTexture {
+  if (!troopPillTexture) {
+    const c = document.createElement("canvas");
+    c.width = 128;
+    c.height = 40;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#1d1630";
+    ctx.beginPath();
+    ctx.roundRect(1, 1, 126, 38, 12);
+    ctx.fill();
+    ctx.fillStyle = "#3a3450";
+    ctx.beginPath();
+    ctx.roundRect(9, 9, 110, 22, 6);
+    ctx.fill();
+    troopPillTexture = new THREE.CanvasTexture(c);
+    troopPillTexture.colorSpace = THREE.SRGBColorSpace;
+    troopPillTexture.userData.shared = true;
+  }
+  return troopPillTexture;
+}
+
+/** A troop's HP bar: one draw, outlined trough, team fill (shown only once the unit is hurt). */
+function makeTroopHpBar(side: Side, y: number): { group: THREE.Group; fill: THREE.Mesh } {
+  const bar = makeFlatHpBar(TROOP_BAR_W, troopHpColor(side), y, TROOP_BAR_H);
+  const u = bar.fill.userData.hpBar as HpBarUniforms;
+  u.uMap.value = troopPillTex();
+  u.uPad.value.set(9 / 128, 9 / 40);
+  bar.fill.userData.troopBar = true;
+  // Always readable: drawn over every body (a neighbour's head must never hide it).
+  (bar.fill.material as THREE.ShaderMaterial).depthTest = false;
+  bar.fill.renderOrder = 10;
+  return bar;
+}
+
+/**
+ * The node a troop body hangs under, tipped toward the camera each frame
+ * (animate.ts). A flyer pivots at its hover height, so it never slides
+ * away from its shadow.
+ */
+function leanNode(root: THREE.Object3D, body: THREE.Object3D, pivotY: number): THREE.Group {
+  const lean = new THREE.Group();
+  lean.name = "lean";
+  lean.position.y = pivotY;
+  root.add(lean);
+  if (pivotY !== 0) {
+    const back = new THREE.Group();
+    back.position.y = -pivotY;
+    back.add(body);
+    lean.add(back);
+  } else {
+    lean.add(body);
+  }
+  return lean;
+}
+
+/**
+ * A troop view. `withLabel` is kept for the scene's call but no name tag
+ * is drawn any more (the art bible: no floating name tags).
+ */
+export function buildTroopMesh(e: Entity, withLabel = false): EntityView {
+  void withLabel;
   const root = new THREE.Group();
   const team = teamSide(e.side);
 
-  // Real glTF model (KayKit) when this card has one; else the primitive rig.
-  const glbUnit = glb?.hasGlbModel(e.cardId!) ? glb.makeGlbUnit(e.cardId!) : null;
+  // A modelled cast character when the battle fields the cast; else the procedural rig.
+  const kitUnit = castFor(e.cardId!) ? makeKitTroop(e.cardId!, team) : null;
   let rig: TroopRig | null = null;
   let lift: number;
-  if (glbUnit) {
-    root.add(glbUnit.group);
-    lift = glbUnit.height;
+  let lean: THREE.Group;
+  if (kitUnit) {
+    lean = leanNode(root, kitUnit.group, 0);
+    lift = kitUnit.height;
   } else {
     rig = buildTroop(e.cardId!, team);
     bakeRig(rig, `${e.cardId}:${team}:${ARABIC ? "arabic" : "normal"}:${teamPalette()}`);
@@ -670,7 +729,7 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
       : e.radius <= 0.32 ? 1.08 // skeletons, bats, minions — spindly packs
       : 1.25) * TROOP_POP;
     rig.group.scale.setScalar(scale);
-    root.add(rig.group);
+    lean = leanNode(root, rig.group, rig.hover ?? 0);
     lift = (rig.hover ?? 0) + rig.height * scale;
   }
 
@@ -679,16 +738,6 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
   // discs are notched, so the side also reads by shape.
   const disc = makeTeamDisc(team, e.radius);
   root.add(disc);
-
-  // Name chip so cards are tellable apart mid-fight. The caller labels
-  // only one unit per deployed group — a flock gets one label, not three.
-  if (withLabel) {
-    const label = new THREE.Sprite(nameSpriteMaterial(e.cardId!, team));
-    label.name = "unitLabel";
-    label.scale.set(1.7, 0.42, 1);
-    label.position.y = lift + 0.62;
-    root.add(label);
-  }
 
   // Soft contact shadow under every unit (CR grounds everything with one);
   // flyers' shadow also shrinks with altitude (see the render loop).
@@ -700,12 +749,12 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
         map: contactShadowTex(),
         transparent: true,
         depthWrite: false,
-        opacity: rig?.hover ? 0.5 : 0.65,
+        opacity: rig?.hover ? 0.5 : kitUnit ? 0.8 : 0.65,
       }),
     );
     contact.rotation.x = -Math.PI / 2;
     contact.position.y = 0.02;
-    const d = Math.max(0.8, e.radius * 2.6);
+    const d = Math.max(0.8, e.radius * 2.6) * (kitUnit ? 1.2 : 1);
     contact.scale.set(d, d, 1);
     contact.renderOrder = -1;
     root.add(contact);
@@ -719,7 +768,10 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
   // or a rig's biggest chunk.
   const dyn = troopShadowLevel(currentQuality());
   root.traverse((o) => (o.castShadow = false));
-  if (rig) {
+  if (kitUnit) {
+    kitUnit.caster.userData.troopCaster = true;
+    kitUnit.caster.castShadow = dyn;
+  } else if (rig) {
     rig.group.updateMatrixWorld(true);
     const box = new THREE.Box3();
     const size = new THREE.Vector3();
@@ -739,8 +791,10 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
     }
   }
 
-  const bar = makeHpBar(0.9, unitHpColor(team), lift + 0.25, 0.2, false);
-  bar.group.visible = team === "enemy" && !isSwarmSized(e); // opponents always (swarms once hurt); yours once damaged
+  // HP bar clear of the head (the lean tips the head toward the camera, away from the bar).
+  const bar = makeTroopHpBar(team, lift + 0.42);
+  bar.group.userData.lift = lift; // animate.ts keeps it above the LEANED head
+  bar.group.visible = false; // only once hurt (hpBarVisible)
   root.add(bar.group);
   trackTeam({ root, side: team, disc, hpFill: bar.fill });
 
@@ -759,22 +813,18 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
     spawnStyle: deploy.kind,
     spawnColor: deploy.color,
     spawnBurst: deploy.burst,
-    glb: glbUnit ? { ...glbUnit, current: "idle" } : undefined,
+    kit: kitUnit ?? undefined,
+    lean,
   };
 }
 
 /**
- * Troop HP bars: the opponent's troops always show a compact bar (their
- * health is what you plan around); your own appear once hurt, and stay.
- * "Opponent" is relative to the viewpoint, so an online guest sees the
- * host's units barred.
+ * Troop HP bars appear only once a unit is hurt (either side), and stay;
+ * buildings and towers keep theirs.
  */
 export function hpBarVisible(view: EntityView, e: Entity): boolean {
   if (e.burrowTimer > 0) return (view.root.visible = false); // per frame: a tunnelling Digger stays hidden until it surfaces
-  return (
-    view.hpGroup.visible ||
-    (e.kind === "troop" && ((teamSide(e.side) === "enemy" && !isSwarmSized(e)) || e.hp < e.maxHp))
-  );
+  return view.hpGroup.visible || (e.kind === "troop" && e.hp < e.maxHp);
 }
 
 /** Swarm-sized bodies (skeletons, bats) show a bar once hurt, whichever side they fight for. */
@@ -785,6 +835,9 @@ const SWARM_RADIUS = 0.3;
 
 /** Translucent preview rig of a troop card for the deploy cursor (always yours). */
 export function buildGhost(cardId: CardId): TroopRig {
+  // The preview is the modelled character the card will field.
+  const kitGhost = castFor(cardId) ? makeKitGhost(cardId) : null;
+  if (kitGhost) return { group: kitGhost.group, height: kitGhost.height } as unknown as TroopRig;
   const rig = buildTroop(cardId, "player");
   rig.group.traverse((o) => {
     const mesh = o as THREE.Mesh;

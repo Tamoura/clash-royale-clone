@@ -8,7 +8,7 @@ import { ARENA_HEIGHT, ARENA_WIDTH, type Side } from "../../game/arena";
 import type { Entity } from "../../game/battle";
 import type { TroopRig } from "../characters3d";
 import type { Battle3D } from "../scene3d";
-import type { GlbUnit } from "../glbModels";
+import { disposeKitTroop, type KitUnit } from "../cast/index";
 import type { InterpTrack } from "../anim/interp";
 import type { DeathAnim } from "../anim/deaths";
 import type { TroopAnim } from "./views/animate";
@@ -71,7 +71,7 @@ export const TROOP_DEATH_TIME = 0.5;
 export const TOWER_DEATH_TIME = 0.8;
 export const SPAWN_POP_TIME = 0.35;
 export const HOP_TIME = 0.34; // Mega Knight leap arc duration
-export const FLASH_TIME = 0.12;
+export const FLASH_TIME = 0.08;
 /** Duration of the squash-and-stretch jiggle when a unit takes a hit. */
 export const HIT_JIGGLE_TIME = 0.2;
 
@@ -130,8 +130,12 @@ export interface EntityView extends InterpTrack {
   /** World position the current leap launched from. */
   hopFromX?: number;
   hopFromZ?: number;
-  /** Real glTF model (KayKit) + animation mixer, when this card uses one. */
-  glb?: GlbUnit & { current?: string };
+  /** The modelled cast character (one skinned draw) when this troop is one. */
+  kit?: KitUnit;
+  /** The modelled tower crew standing in for `defender` (kept for the prototype's towers). */
+  kitCrew?: KitUnit;
+  /** The node a troop body hangs under, tipped toward the camera each frame (render-only lean). */
+  lean?: THREE.Object3D;
   /** Deploy name tag: shown briefly, then shrinks away (CR shows none). */
   label?: THREE.Object3D;
   labelAge?: number;
@@ -178,9 +182,13 @@ export function easeOutBack(t: number): number {
  */
 export function disposeDeep(root: THREE.Object3D): void {
   root.traverse((o) => {
+    // A cast unit leaves its swarm and frees its skeleton (and so its bone texture).
+    const unit = o.userData.kitUnit as KitUnit | undefined;
+    if (unit) disposeKitTroop(unit);
     const mesh = o as THREE.Mesh;
     const isSprite = (o as THREE.Sprite).isSprite === true;
     if (!mesh.isMesh && !isSprite) return;
+    if ((mesh as THREE.SkinnedMesh).isSkinnedMesh) (mesh as THREE.SkinnedMesh).skeleton.dispose();
     if (!isSprite) {
       // Sprites share one global plane geometry — never dispose it.
       const geo = mesh.geometry as THREE.BufferGeometry;

@@ -1,0 +1,21 @@
+Characters and animations in this folder:
+
+  KayKit Adventurers Character Pack 1.0, by Kay Lousberg (www.kaylousberg.com)
+    https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0 (commit 672074b73ba276876a19e8816ecdc5241817ab47)
+  KayKit Skeletons Character Pack 1.0, by Kay Lousberg (www.kaylousberg.com)
+    https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0 (commit 15b62b9bad122f72926c10fb14d622c73819fa54)
+
+  Licence: Creative Commons Zero, CC0 1.0 Universal (public domain dedication).
+  https://creativecommons.org/publicdomain/zero/1.0/
+
+Packed by tools/troop-pack.mjs (meshes, props and clips the game uses), compressed with
+gltfpack 0.22 (MIT, meshoptimizer by Arseny Kapoulkine). SHA-256 of every source file read:
+
+  cefc311a0e10c7858b6141f5ada7e33268727564fb8ac1347aab97d000669cc6  adventurers/addons/kaykit_character_pack_adventures/Characters/gltf/Barbarian.glb
+  60428e3abc09ba83e595d256e3af8c5c976b46cdae599f0802fc82b4a3445168  adventurers/addons/kaykit_character_pack_adventures/Characters/gltf/Knight.glb
+  cf898585da33fab50c724d31605fb931eb2912e6d2280092141e98ca81ad507d  adventurers/addons/kaykit_character_pack_adventures/Characters/gltf/Mage.glb
+  e825437cd4d2ee9c1960b517a74a69101e33eb409ae7fa8cedc7134a998fbb7d  adventurers/addons/kaykit_character_pack_adventures/Characters/gltf/Rogue.glb
+  93e6e25213009952276d9cf34f5d96a243767334c66f280db0433ddfabb91545  adventurers/addons/kaykit_character_pack_adventures/Characters/gltf/Rogue_Hooded.glb
+  ccf4f6642130d11650400fa649669ccdb784280eef235fac3a12a197cbc7debe  skeletons/addons/kaykit_character_pack_skeletons/Assets/gltf/Skeleton_Blade.bin
+  682a1df2eecb93dea35de628d6b93ca40d1b83586422356f3c1956741f2abf76  skeletons/addons/kaykit_character_pack_skeletons/Assets/gltf/Skeleton_Blade.gltf
+  6ffc003f895bed0b074791e0e490846210a2e2f8fc7da300aba53cc185f95968  skeletons/addons/kaykit_character_pack_skeletons/Characters/gltf/Skeleton_Minion.glb

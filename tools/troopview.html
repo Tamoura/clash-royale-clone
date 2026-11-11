@@ -1,0 +1,228 @@
+<!doctype html>
+<!-- Dev-only contact sheet of the CAST (src/render3d/cast/), through the battle camera's angle WITH the lean:
+     open /tools/troopview.html on the dev server. Rows: yours from behind (how you see them in battle), yours from
+     the front, theirs from the front, theirs from behind, mid-attack; then a strip at phone size (40 px).
+     ?edition=golden for the Golden Age, ?cards=knight,giant to narrow it, ?palette=cb for the colour-blind pair,
+     ?zoom=1.5 to enlarge. -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Cast contact sheet</title>
+    <style>
+      html, body { margin: 0; background: #86b85a; overflow: hidden; }
+      .tag { position: absolute; font: 11px/1 monospace; color: #fff; background: rgba(0, 0, 0, 0.62); padding: 2px 3px; transform: translate(-50%, 0); white-space: nowrap; }
+      .row { position: absolute; left: 4px; font: bold 11px/1 monospace; color: #fff; background: rgba(0, 0, 0, 0.62); padding: 2px 4px; }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from "three";
+      import { loadKitTroops, makeKitTroop, animateKitTroop, kitTroopCards, leanQuaternion, setCastPalette, variantOf, bakedOf } from "/src/render3d/cast/index.ts";
+      const bakedSize = (c) => { const b = bakedOf(c, edition); const v = variantOf(c, edition); return b && v ? (b.halfWidth * 2 * v.scale).toFixed(2) : "?"; };
+      const q = new URLSearchParams(location.search);
+      const edition = q.get("edition") === "golden" ? "golden" : "classic";
+      if (q.get("palette") === "cb") setCastPalette("cb");
+      await loadKitTroops();
+      // ?probe=3,0 paints that palette swatch magenta on every variant (to find what a swatch is).
+      const probe = q.get("probe");
+      if (probe) for (const c of kitTroopCards(edition)) { const v = variantOf(c, edition); if (v) v.paint = { ...v.paint, [probe]: 0xff00ff }; }
+      const cards = (q.get("cards") || kitTroopCards(edition).filter((c) => c !== "skeleton-army").join(",")).split(",");
+      const zoom = Number(q.get("zoom") || 1);
+      const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(1);
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
+      document.body.appendChild(renderer.domElement);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x86b85a);
+      // The battle's light: warm sun from the player's upper-left, cool sky, a cool back rim and a camera-side fill.
+      scene.add(new THREE.HemisphereLight(0xcfe2ff, 0x7d9a5c, 0.8));
+      const sun = new THREE.DirectionalLight(0xffedc8, 1.7);
+      sun.position.set(-10, 18, 8);
+      scene.add(sun);
+      const rim = new THREE.DirectionalLight(0x9fc4ff, 0.55);
+      rim.position.set(-8, 10, -14);
+      scene.add(rim);
+      const fill = new THREE.DirectionalLight(0xa9c8ff, 0.3);
+      fill.position.set(9, 9, 12);
+      scene.add(fill);
+
+      // The battle camera's direction (CAM_HOME 0,30,26 looking at the origin), orthographic.
+      const DIR = new THREE.Vector3(0, -30, -26).normalize();
+      const rows = [
+        ["yours, behind", "player", Math.PI, "walk"],
+        ["yours, front", "player", 0, "idle"],
+        ["theirs, front", "enemy", 0, "idle"],
+        ["theirs, behind", "enemy", Math.PI, "walk"],
+        ["attack (yours 3/4)", "player", Math.PI * 0.75, "attack"],
+      ];
+      const cell = 3.3;
+      // ?bands=2 wraps the roster into blocks stacked down the sheet.
+      const bands = Math.max(1, Number(q.get("bands") || 1));
+      const perBand = Math.ceil(cards.length / bands);
+      const W = perBand * cell;
+      const bandZ = (5 * cell * 1.15 + 1.6);
+      const rowZ = (r) => r * cell * 1.15;
+      const aspect = innerWidth / innerHeight;
+      // Frame every row: the board's depth shrinks by the camera pitch, the bodies stand ~3.5 tall.
+      const pitch = Math.asin(-DIR.y);
+      const needH = ((rowZ(rows.length - 1) + bandZ * (bands - 1)) * Math.sin(pitch) + 3.5 * Math.cos(pitch) + 2.2) / 2;
+      const needW = W / 2 + 0.6;
+      const halfH = Math.max(needH, needW / aspect) / zoom;
+      const halfW = halfH * aspect;
+      const cam = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, -100, 200);
+      const midZ = (rowZ(rows.length - 1) + bandZ * (bands - 1)) / 2 - 0.9;
+      cam.position.set(0, 1.6, midZ).addScaledVector(DIR, -60);
+      cam.lookAt(0, 1.6, midZ);
+      const tags = [];
+      const units = [];
+      cards.forEach((card, i) => {
+        const band = Math.floor(i / perBand);
+        const x = ((i % perBand) - (perBand - 1) / 2) * cell;
+        rows.forEach(([, team, yaw, pose], r) => {
+          const u = makeKitTroop(card, team, edition, false);
+          if (!u) return;
+          const z = rowZ(r) + band * bandZ;
+          const root = new THREE.Group();
+          root.position.set(x, 0, z);
+          root.rotation.y = yaw;
+          const lean = new THREE.Group();
+          leanQuaternion(DIR.x, DIR.z, yaw, lean.quaternion);
+          lean.add(u.group);
+          root.add(lean);
+          // A team disc stand-in, so the side also reads by the ring.
+          const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.62, 24), new THREE.MeshBasicMaterial({ color: team === "player" ? 0x3b82f6 : 0xe53935 }));
+          ring.rotation.x = -Math.PI / 2;
+          ring.position.y = 0.02;
+          root.add(ring);
+          scene.add(root);
+          units.push([u, pose]);
+          if (r === 0) tags.push({ name: `${card} h${u.height.toFixed(2)}`, p: new THREE.Vector3(x, 0, band * bandZ - 1.7) });
+        });
+      });
+      for (const [u, pose] of units) {
+        const s = { moving: pose === "walk", attacking: pose === "attack", cooldown: 0.02, hitSpeed: 1.2, rate: 1, frozen: false };
+        for (let k = 0; k < 24; k++) animateKitTroop(u, s, 0.033);
+      }
+      renderer.render(scene, cam);
+      // The phone strip: every card (yours, behind; theirs, front) drawn about 40 px tall, as on a 390 px phone.
+      const strip = document.createElement("canvas");
+      const sw = 44 * cards.length * 2;
+      strip.width = sw;
+      strip.height = 64;
+      const sctx = strip.getContext("2d");
+      sctx.fillStyle = "#86b85a";
+      sctx.fillRect(0, 0, sw, 64);
+      const small = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      small.setPixelRatio(1);
+      small.setSize(44, 64);
+      small.outputColorSpace = THREE.SRGBColorSpace;
+      small.toneMapping = THREE.ACESFilmicToneMapping;
+      for (let i = 0; i < cards.length; i++) {
+        for (const [k, r] of [[0, 0], [1, 2]]) {
+          const [, team, yaw, pose] = rows[r];
+          const u = makeKitTroop(cards[i], team, edition, false);
+          if (!u) continue;
+          const one = new THREE.Scene();
+          one.background = scene.background;
+          for (const l of scene.children) if (l.isLight) one.add(l.clone());
+          const root = new THREE.Group();
+          root.rotation.y = yaw;
+          const lean = new THREE.Group();
+          leanQuaternion(DIR.x, DIR.z, yaw, lean.quaternion);
+          lean.add(u.group);
+          root.add(lean);
+          one.add(root);
+          for (let f = 0; f < 12; f++) animateKitTroop(u, { moving: pose === "walk", attacking: false, cooldown: 1, hitSpeed: 1.2, rate: 1, frozen: false }, 0.033);
+          // A 390 px phone shows the 18-tile board about 21.7 px per tile.
+          const half = 22 / 21.7;
+          // Tall enough for the big ones (a Giant's head, a rider's helm).
+          const c2 = new THREE.OrthographicCamera(-half, half, (64 / 44) * half, -(64 / 44) * half, -100, 200);
+          const mid = new THREE.Vector3(0, 1.55, 0);
+          c2.position.copy(mid).addScaledVector(DIR, -60);
+          c2.lookAt(mid);
+          small.render(one, c2);
+          sctx.drawImage(small.domElement, (i * 2 + k) * 44, 0);
+        }
+      }
+      const img = document.createElement("img");
+      img.src = strip.toDataURL();
+      img.style.cssText = `position:absolute;right:6px;top:6px;image-rendering:pixelated;border:2px solid #222`;
+      document.body.appendChild(img);
+      for (const t of tags) {
+        const v = t.p.clone().project(cam);
+        const el = document.createElement("div");
+        el.className = "tag";
+        el.textContent = t.name;
+        el.style.left = `${((v.x + 1) / 2) * innerWidth}px`;
+        el.style.top = `${((1 - v.y) / 2) * innerHeight}px`;
+        document.body.appendChild(el);
+      }
+      for (let band = 0; band < bands; band++) rows.forEach(([name], r) => {
+        const v = new THREE.Vector3(-W / 2, 0, rowZ(r) + band * bandZ).project(cam);
+        const el = document.createElement("div");
+        el.className = "row";
+        el.textContent = name;
+        el.style.top = `${((1 - v.y) / 2) * innerHeight - 30}px`;
+        document.body.appendChild(el);
+      });
+      window.__cards = cards.map((c) => ({ id: c, back: variantOf(c, edition)?.back }));
+      // ?measure=1: how much of each unit's body wears its side, front and back, through the battle camera with the
+      // lean (no disc): the share of the unit's pixels in its team's hue family (signature colours never are).
+      if (q.get("measure")) {
+        const MW = 120, MH = 150;
+        const mr = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
+        mr.setPixelRatio(1);
+        mr.setSize(MW, MH);
+        mr.outputColorSpace = THREE.SRGBColorSpace;
+        mr.toneMapping = THREE.ACESFilmicToneMapping;
+        const gl = mr.getContext();
+        const px = new Uint8Array(MW * MH * 4);
+        const bg = new THREE.Color(0x86b85a);
+        const hue = { player: 217, enemy: 1 };
+        const out = {};
+        for (const card of cards) {
+          const row = (out[card] = {});
+          for (const [label, team, yaw] of [["theirs front", "enemy", 0], ["yours front", "player", 0], ["theirs behind", "enemy", Math.PI], ["yours behind", "player", Math.PI]]) {
+            const u = makeKitTroop(card, team, edition, false);
+            if (!u) continue;
+            const one = new THREE.Scene();
+            one.background = bg;
+            for (const l of scene.children) if (l.isLight) one.add(l.clone());
+            const root = new THREE.Group();
+            root.rotation.y = yaw;
+            const lean = new THREE.Group();
+            leanQuaternion(DIR.x, DIR.z, yaw, lean.quaternion);
+            lean.add(u.group);
+            root.add(lean);
+            one.add(root);
+            for (let f = 0; f < 12; f++) animateKitTroop(u, { moving: false, attacking: false, cooldown: 1, hitSpeed: 1.2, rate: 1, frozen: false }, 0.033);
+            const half = 2.4;
+            const c3 = new THREE.OrthographicCamera(-half, half, (MH / MW) * half, -(MH / MW) * half, -100, 200);
+            const mid = new THREE.Vector3(0, 1.7, 0);
+            c3.position.copy(mid).addScaledVector(DIR, -60);
+            c3.lookAt(mid);
+            mr.render(one, c3);
+            gl.readPixels(0, 0, MW, MH, gl.RGBA, gl.UNSIGNED_BYTE, px);
+            let body = 0, tm = 0;
+            const hsl = { h: 0, s: 0, l: 0 };
+            const c = new THREE.Color();
+            for (let i = 0; i < px.length; i += 4) {
+              const r = px[i], g = px[i + 1], b = px[i + 2];
+              if (Math.abs(r - 0x86) + Math.abs(g - 0xb8) + Math.abs(b - 0x5a) < 18) continue;
+              body++;
+              c.setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace).getHSL(hsl, THREE.SRGBColorSpace);
+              const d = Math.abs(hsl.h * 360 - hue[team]) % 360;
+              if (Math.min(d, 360 - d) <= 14 && hsl.s > 0.4 && hsl.l > 0.22 && hsl.l < 0.85) tm++;
+            }
+            row[label] = body ? Math.round((tm / body) * 1000) / 10 : 0;
+          }
+        }
+        window.__measure = out;
+      }
+      window.__done = true;
+    </script>
+  </body>
+</html>
