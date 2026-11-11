@@ -3,26 +3,121 @@
 Spec: notes/features/art-direction-2026-11.md, "### stage". Branch art/stage from art/base (b7ae4ce),
 worktree /home/user/wt-art-stage, dev server port 3204.
 
-## Perf at start (art/base b7ae4ce, ?quality=high, first arena)
+## Perf
 
-| View | Edition | Empty calls / tris | Fight calls / tris |
-|---|---|---|---|
-| 390x844@2 | Classic | 178 / 266,074 | 435 / 769,710 |
-| 390x844@2 | Golden Age | 167 / 137,566 | 402 / 509,438 |
-| 1440x900@1 | Classic | 176 / 266,048 | 433 / 769,692 |
-| 1440x900@1 | Golden Age | 167 / 137,566 | 399 / 509,382 |
+perf-budget, `?quality=high`, first arena (training-camp: meadow / courtyard).
 
-Golden Age at start has no dynamic troop shadows (C's `!ARABIC` gate).
+| View | Edition | Start empty calls / tris | Start fight calls / tris | End empty | End fight |
+|---|---|---|---|---|---|
+| 390x844@2 | Classic | 178 / 266,074 | 435 / 769,710 | see below | see below |
+| 390x844@2 | Golden Age | 167 / 137,566 | 402 / 509,438 (no troop shadows) | | |
+| 1440x900@1 | Classic | 176 / 266,048 | 433 / 769,692 | | |
+| 1440x900@1 | Golden Age | 167 / 137,566 | 399 / 509,382 (no troop shadows) | | |
 
-Start shots: /tmp/claude-0/art/stage/start/.
+End numbers: filled in by the final quality-bar run (section "Final numbers").
+
+Golden Age now casts dynamic troop shadows at L0 too (C's `!ARABIC` gate is gone); its fight stays
+under 450 because the lit toon props are tint-batched (one vertex-coloured mesh per shadow setting):
+the per-frame shadow pass draws ~30 static casters instead of 50.
 
 ## Decisions
 
-(filled in as work lands)
+- **Ground (groundPaint.ts).** No checker anywhere. Classic floors are recipes per look
+  (`FLOOR_RECIPES`): lawn (meadow), moss with puddles (swamp), sand with bones (bone), snow drifts with
+  sparkle (snow), basalt plates with ember seams (forge), violet moss with crystal flecks (mystic),
+  packed earth with plank inlays (workshop), pale lawn with gold-edged paths (royal, whose floor
+  palette changed from cream to a pale green), ice sheet with cracks (ice), deep green with leaf
+  litter (jungle), pale 2x2 tiles with neutral glow seams (neon; no team colour on the floor).
+  Grass gets 2-tile mow stripes at +-3%; every floor an 8-tile value noise at +-4%. Lanes are packed
+  dirt with a lighter crown, darker worn shoulders, faint ruts and a pebble kerb (gold edge on royal).
+  Flagstone aprons (`APRON` = 0.62 tiles past the platform) sit under every tower. Banks are painted
+  per band kind (sand, snow for winter water, basalt with a glowing seam, a rocky drop, chrome).
+  Golden Age: flagstones in a running bond, zellige border bands round the court and the canal,
+  ochre sand lanes with pebble edging, aprons; the 3D crescents are 62% size at 25% contrast.
+- **Tufts** (tufts.ts): one instanced draw of grass fans on grassy floors, L0-L2.
+- **Light (sky.ts `LIGHT_RIG`).** The sun stands at (-12.6, 15.2, -1.2): from the upper left at
+  ~50 degrees, intensity 1.7, warm. Shadows fall to the right and slightly down. I tried the full
+  "lower-right" (z -4.4) first: it put every camera-facing tower wall into the darkest toon band and
+  the board read gloomy next to C, so the sun keeps a small negative z (front faces sit in the mid
+  band). Rim 0.45, fill 0.3 from the camera side. `SUN_DIRECTION` and `SHADOW_SLOPE` are exported
+  for blob offsets.
+- **Grade and bloom (post.ts).** `DEFAULT_GRADE` 1.12 / 1.06 / vignette 0.2, every look clamped by
+  `GRADE_LIMITS` (vignette <= 0.24); the bible's split tone; `BLOOM` 0.92 / 0.32 / 0.3; `setFlash`
+  capped at `MAX_FLASH` 0.25; the edge shade is lighter (0.24) because the sides are dressed now.
+- **The milky midfield wash in B.** Measured on this base with bloom on/off diffs: lit albedo does
+  not cross 0.9 here (toon diffuse divides by pi: a white surface under the full rig is ~0.8 linear),
+  so the stage's bloom only catches emissive cores. B's wash came from its kit troop material: the
+  "brighter palette" plus its own rim/emissive term and the hit flash pushed pale troops (skeletons,
+  the witch, bones) over the 0.9 threshold, and the 0.38 bloom with radius 0.34 spread those halos
+  over the midfield where they cluster; B's +8 fog push and 1.2/1.1 grade made it read milky. Fixed
+  here by the contract (threshold 0.92, strength 0.32, radius 0.3, grade 1.12/1.06, no fog over the
+  court); the cast must keep albedo + rim + flash under the threshold (request below).
+- **Fog (fogfit.ts).** `FAR_BAND` = 7: the fitted box covers the far band, so the gate, terrace and
+  pennants above the enemy king are crisp; only the silhouettes and beyond fade. `applyFogRange` is
+  untouched (it calls fitFog).
+- **Shadows.** `troopShadowLevel(level = currentQuality())` reads the live level by default and
+  honours `level.troopShadows`; `registerTroopCaster(mesh)` flags one caster; post.ts re-syncs
+  every `userData.troopCaster` mesh every frame (one boolean compare) and re-renders the map once
+  when the answer changes, so a step-down never leaves frozen troop shadows. The forest, outer ring,
+  town, river decor and crowd never cast.
+- **Quality ladder (quality.ts).** New fields: troopShadows, dressing ('full' | 'inner' | 'min'),
+  crowdAnim, tufts, mixerHz. L0 all on, 60 Hz; L1 no troop shadows; L2 DPR 1.5 (was 1.75), static
+  crowd, 30 Hz; L3 'inner' (outer ring hidden), no tufts; L4 'min', 20 Hz. The governor is
+  unchanged. `applyArenaQuality` (build.ts) applies tufts, the outer ring and the crowd animation.
+- **Crowd (crowd.ts).** Two instanced draws: a torso with raised arms (one geometry, so everyone
+  cheers with arms up; a second arm pose would cost a third draw), and a head with a baked hair cap.
+  Six skin tones, eight shirts, `crowdTeamShare` (0.42) of each half in its team colour (live
+  palette, colour-blind included). Idle bob (L0-L1), a sway-wave on tower hits (arenaOnEvent:
+  attacks landing within 2.2 tiles of a tower), a jump on crowns (towers.ts sets b.cheer).
+- **Inner ring.** Classic: C's kerb with team pier caps (live team colour), terraces with pennant
+  strings, shrubs along the kerb (now in the casting ring mesh). Far band: castle kit gets striped
+  team awnings, pennant poles and bunting; every other kit gets a two-tier crowd terrace with awning
+  and bunting (`farTerrace`). Near band: a dressed-stone wall with capped piers and flower boxes.
+- **Golden Age surround (golden.ts).** Arcaded sandstone galleries (stepped merlons, zellige band,
+  horseshoe end arcade, team banner) hold two rows of crowd; team-striped souk awnings and stalls;
+  the town edge (domed flat-roof houses) is the outer ring, palms the always-on fallback. The old
+  slab stands, corner tents, fence runs, lone trees and drifts are gone.
+- **Bridges (bridges.ts).** Stone: flagstone deck, ashlar parapets, finialled piers, abutment steps.
+  Ice: thick pale slab, frosted rim, snow lumps, icicles. Gate (neon): two pylons and a high lintel
+  at the far end (clear of troops on the deck), slate deck with the gold buckle. Timber: C's.
+- **River (river.ts).** Lips per band kind; reeds and lily pads on green water looks; snow lumps,
+  basalt or crystal stones on the others.
+- **Outer ring.** Procedural, not KayKit props (picked by eye: it matches the sculpted set and costs
+  no download; nothing pops in). Themes per look (`OUTER_THEMES`): village (cottages, windmill,
+  orchard, market stalls) for the green looks, chalets for snow and ice, rock spires for bone,
+  basalt and forge huts, crystal spires for mystic, lit city blocks for neon. Region-culled every
+  frame against the frame's half-width (a long strip's bounding sphere never leaves the frustum),
+  so a portrait phone draws none of it.
+- **Looks (arenaLooks.ts).** `StagePalette` (kerb, awning stripe, bank colours, crowd team share)
+  on all 22 looks via `stagePalette()`. Every existing field and export is kept.
+- **API.** build.ts keeps onionDome, crescentFinial, makeLantern, archGateway, makeCrescentEmblem,
+  buildArena, finishArena, updateRiver, updateCrowd, applyEndStrings, arenaOnEvent; post.ts keeps
+  markShadowsDirty, troopShadowLevel (now with an optional argument), setFlash, applyQuality and the
+  rest; new exports only.
 
 ## Requests for ship
 
-(none yet)
+1. **src/render3d/scene/views/troops.ts (cast-kit's):** one shadow caster per unit. Replace the
+   "top two meshes" loop with `registerTroopCaster(biggestMesh)` from `../post` (or slice(0, 1)), and
+   read `troopShadowLevel()` with no argument so it follows the live level. Reason: art bible
+   section 11, per-frame shadow pass budget (`TROOP_CASTERS_PER_UNIT` = 1).
+2. **cast-kit mixers:** read `currentQuality().mixerHz` (60/30/20) and share swarm poses at L4.
+3. **cast-kit blob shadows (L1-L3):** offset the contact blob by `SHADOW_SLOPE` (sky.ts) times the
+   unit's height so it falls with the sun (to the right).
+4. **cast-kit/creatures-fx materials:** keep albedo + rim + hit flash under `BLOOM.threshold` (0.92
+   linear); that is what made B's midfield milky. The fireball impact puff currently reads as an
+   opaque white disc in my shots (creatures-fx), against the bible's "never opaque white".
+5. **towers:** the sun moved to the upper left (`LIGHT_RIG.sunPosition`), so the camera-facing walls
+   sit in the toon mid band; if they read dull next to the roofs, brighten the wall albedo rather
+   than moving the sun. Flagstone aprons are painted to `TOWER_FOOTPRINT + APRON` (groundPaint.ts).
+
+## Screenshots
+
+- Start: /tmp/claude-0/art/stage/start/
+- Iterations: /tmp/claude-0/art/stage/it*.png
+- Contact sheet: /tmp/claude-0/art/stage/looks-22.png
+- Ladder sheet: /tmp/claude-0/art/stage/ladder.png
+- Matrix: /tmp/claude-0/art/stage/<edition>-<arena>-<viewport>.png
 
 ## Known gaps
 
@@ -33,11 +128,12 @@ Start shots: /tmp/claude-0/art/stage/start/.
 - Start: worktree created from art/base, perf measured (above), start shots taken.
 - 57e98d8: Classic floors per look (no checker), LIGHT_RIG in sky.ts, bloom/grade/flash contract in
   post.ts, quality ladder fields, live troop shadows (both editions), fog past the far band. Tests updated.
-- (next): instanced chibi crowd (crowd.ts), far-band awnings/pennants (kits.ts castle), forest mesh that
+- instanced chibi crowd (crowd.ts), far-band awnings/pennants (kits.ts castle), forest mesh that
   casts no shadow, tint batching of lit toon props (Golden Age shadow casters 50 -> ~30).
 - b793013: bridges.ts (stone, ice, gatehouse), river reeds/lily pads/bank lips, near-band terrace wall.
 - 15048bb: Golden Age courtyard floor (flagstones, zellige bands, ochre lanes), small faint crescents,
   golden.ts galleries + souk awnings + town edge.
-- Remaining at this point: perf trim (Classic empty tris <= 230k), tufts, outer ring for wide screens
-  (village / themed), remaining-look polish (snow too white?), contact sheet, ladder sheet, matrix,
-  mid-fight wash check, governor test in browser, notes write-up.
+- tufts, outer ring per theme, per-side strips + region culling (7349a45).
+- 42cc97e: StagePalette on all 22 looks; set tests (no checker, all looks build).
+- fbba6f7: far-band crowd terrace on every kit. Full vitest suite green at 42cc97e.
+- Next: contact sheet, ladder sheet, matrix, governor test in the browser, final quality bar.
