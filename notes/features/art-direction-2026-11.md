@@ -145,6 +145,45 @@ Screens (looked at, against /tmp/claude-0/proto/baseline/):
 - Production build: prod-{classic,golden}-{phone,desk}-{home,start,battle}.png and prod-golden-fresh-tutorial.png.
 - No page or console errors, and every troop GLB returned 200.
 
+### 3. creatures-fx
+
+`art/creatures-fx` merged with --no-ff on top of cast-kit. No conflicts: it shares no file with the stage or cast-kit merges, and it brings the new dev-only `tools/creatureview.html` (creatures-fx request 10, accepted as is).
+
+- Seams: nothing new to wire. The crew provider still waits for art/towers (`setTowerCrewProvider` is not on the branch yet), and the `castReady()` battle-start gate went in with cast-kit.
+- Requests applied (troops.ts and animate.ts, one wiring commit):
+  - 1 and 9, the card buildings: `buildBuildingMesh` builds `buildBuildingRig(cardId, teamSide(side))` and bakes it with the troop key `<id>:<team>:<edition>:<palette>`. The HP bar sits at `rig.barY` and the cannon's `rig.barrel` is the node `updateTower` aims. `trackTeam` repaints the team slot on a palette change. The hand-built cannon, `buildTombstoneMesh` and `buildCollectorMesh` are gone. The bake leaves merged meshes non-casting, so the building's opaque meshes are set to cast into the static shadow map, as the old meshes did. Checked by eye in a battle in both editions and both palettes (cannon aims and fires, tombstone spawns, collector, bars, team slots). Two new tests in troops.test.ts cover the bake, the slot colour per viewer team, the bar height, the barrel and the repaint.
+  - 4: the deploy countdown ring wears the unit's team colour (`fxTeamColor`: viewer-relative and colour-blind aware), no longer opaque white.
+  - 5: building and tower damage numbers start at their HP plate (`view.hpGroup.position.y`), not at 2.4 inside the keep. Tower hits still print 1.3x.
+  - 7: `damagePopup(..., e.id)`, so only hits on the same target merge.
+  - Already in from the cast-kit merge: 2 (cardwaveFx checks `troopFlashTint` <= 0.35) and 6 (MAX_FLASH and FX_MAX_FLASH are both 0.25).
+- Review minor (the smoke ribbon read as a dark rope): `ribbon-puff` alpha 0.6 -> 0.4, and the fireball's embers trail is a warm grey 0x8a7a6e instead of 0x6e5a4c. Half-size spacing is unchanged. Burst captures of wizard, baby dragon and firecracker shots on the Golden Age court show no dark rope. The taper (older puffs smaller or faster) and an unoutlined ribbon cell are not done.
+- Size: initial JS `index-*.js` 331.3 KB gz, +8.5 KB over the cast-kit merge and +37.2 KB over art/base (294.1). That leaves about 12.8 KB of the +50 KB budget for art/towers. dist/ is 2.8 MB.
+
+perf-budget after the merge (`?quality=high`, training-camp, dev server, cast measured in every run). Gates: empty <= 220 calls, fight <= 450 calls.
+
+| View | Edition | Empty calls / tris | Fight calls / tris | Fight textures |
+|---|---|---|---|---|
+| 390x844@2 | Classic | 176 / 202,978 | 252 / 577,990 | 65 |
+| 390x844@2 | Golden Age | 170 / 191,770 | 260 / 593,066 | 64 |
+| 1440x900@1 | Classic | 178 / 226,100 | 256 / 601,324 | 65 |
+| 1440x900@1 | Golden Age | 176 / 207,666 | 268 / 609,166 | 64 |
+
+The empty battle is the same as after cast-kit. The fight changes by -3 to -6 calls and +7k to +10k triangles (the modelled projectiles and FX). The perf fight has no card buildings. A cannon, tombstone or collector bakes to at most six meshes plus its ink (the old hand-built ones had five to eight).
+
+Still open for the final integrator:
+- Creatures-fx request 3, one material module: point `cast/bake.ts` and the `RIG_*` constants in characters3d.ts at `look/material.ts` (ramp, rim, ground shading, ink 1.6 px at 0.3 depth, saturation 1.12, mix-only tints), and tie `RIG_RIM_UNIFORM` to the cast's `RIM_UNIFORM`. Unbaked `toon()` (tower bits, arena props, non-humanoid portraits) still uses C's coloured ramp. This goes with the OUTLINE_CSS_PX 1.25 -> 1.6 unification already listed above.
+- Creatures-fx request 8: decide on a colour-blind enemy hue for the Golden Age (about 300 degrees, clear of its gold and sandstone), or accept the orange. teamColors.ts is cast-kit's file.
+- Ribbon polish (review minor, rest): taper the ribbon toward its tail and consider an unoutlined soft cell for ribbon puffs.
+- With art/towers: tower damage numbers read `view.hpGroup.position.y`. If the towers merge moves the plate off the root's y or into a sub-group, pass the tower's top explicitly.
+- The cast-kit lean (troops.ts `leanNode`) now applies to the procedural creatures. Buildings have no lean.
+
+Screens (looked at, against /tmp/claude-0/proto/baseline/), all in /tmp/claude-0/art/ship-creatures-fx/:
+- Dev standard scene: dev-{classic,golden}-{phone,desk}-battle.png.
+- Card buildings in battle: dev-bld-{classic,golden}-phone-battle[2].png (zoomed: zoom-bld-*.png) and the colour-blind palette dev-bld-{classic,golden}-cb-battle[2].png.
+- Fireball ribbon and tower hits: fire-burst-sheet.png, fire-zoom-sheet.png, fire2-burst-sheet.png.
+- Production build: prod-{classic,golden}-{phone,desk}-{home,start,battle}.png.
+- No page or console errors in any capture, and no failed requests in production.
+
 
 ## Art bible
 
