@@ -6,7 +6,7 @@
  * static is batched.
  */
 import * as THREE from "three";
-import { ARENA_HEIGHT, ARENA_WIDTH, BRIDGE_XS, RIVER_Y } from "../../../game/arena";
+import { ARENA_HEIGHT, ARENA_WIDTH, BRIDGE_XS, RIVER_Y, towerSpots } from "../../../game/arena";
 import type { BattleEvent } from "../../../game/battle";
 import { reducedMotion } from "../../../ui/prefs";
 import { toon } from "../../characters3d";
@@ -18,6 +18,7 @@ import { LOOK, arabic, toWorld, unlitGlow, viewSide } from "../common";
 import { skyHorizon } from "../sky";
 import { buildAmbient, disposeAmbient, updateAmbient, type Ambient } from "./ambient";
 import { buildBackdrop, type Backdrop } from "./backdrop";
+import { makeCrowd, poseCrowd, type Crowd, type CrowdSeat } from "./crowd";
 import { groundTexture, hashString } from "./groundPaint";
 import { LightPools, type LightSpot } from "./lightPools";
 import { buildRiver, type RiverHandle } from "./river";
@@ -34,6 +35,13 @@ interface ArenaArt {
   kitSeats: Array<{ x: number; z: number }>;
   /** The quality level the set was last dressed for. */
   level: QualityLevel | null;
+  /** The instanced chibi crowd (null when there are no seats). */
+  crowd: Crowd | null;
+  /** Seconds of tower-hit wave left, and the clock it runs on. */
+  wave: number;
+  waveT: number;
+  /** The crowd stands at its rest pose (nothing to update while still). */
+  posedStill?: boolean;
 }
 const ART = new WeakMap<Battle3D, ArenaArt>();
 
@@ -43,7 +51,6 @@ const STAND_X = 11.25;
 const STAND_INNER_X = STAND_X - 0.8;
 
 // Instanced-pose scratch (no per-frame allocation).
-const CROWD_M = new THREE.Matrix4();
 const SKY_TINT = new THREE.Color();
 const WATER_M = new THREE.Matrix4();
 const WATER_POS = new THREE.Vector3();
@@ -160,65 +167,16 @@ export function archGateway(): THREE.Group {
   return g;
 }
 
-/**
- * Spectators as two instanced meshes (bodies, heads): 2 draw calls. Seats
- * may carry a `lift` (world units) above the side-stand parapet.
- */
-export function buildCrowd(b: Battle3D, seats: Array<{ x: number; z: number; garb: number; skin: number; lift?: number }>): void {
-  if (seats.length === 0) return;
-  const bodies = new THREE.InstancedMesh(
-    new THREE.CylinderGeometry(0.1, 0.13, 0.26, 6),
-    toon(0xffffff),
-    seats.length,
-  );
-  const heads = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 8, 6), toon(0xffffff), seats.length);
-  const col = new THREE.Color();
-  const hsl = { h: 0, s: 0, l: 0 };
-  const vivid = (hex: number): THREE.Color => {
-    col.set(hex).getHSL(hsl);
-    return col.setHSL(hsl.h, Math.min(1, hsl.s * 1.2), hsl.l); // as toon() does
-  };
-  seats.forEach((seat, i) => {
-    bodies.setColorAt(i, vivid(seat.garb));
-    heads.setColorAt(i, vivid(seat.skin));
-  });
-  b.crowd = { bodies, heads, seats: seats.map((s) => new THREE.Vector2(s.x, s.z)) };
-  lifts = new Float32Array(seats.map((s) => s.lift ?? 0));
-  poseCrowd(b, -1);
-  b.arenaGroup.add(bodies, heads);
+/** Hand the crowd to the scene (2 draws) and keep its posing state. */
+function installCrowd(b: Battle3D, seats: CrowdSeat[]): Crowd | null {
+  const crowd = makeCrowd(seats);
+  if (!crowd) return null;
+  b.crowd = { bodies: crowd.bodies, heads: crowd.heads, seats: seats.map((s) => new THREE.Vector2(s.x, s.z)) };
+  b.arenaGroup.add(crowd.bodies, crowd.heads);
+  return crowd;
 }
 
-/** Classic spectators stand this much larger, so the terraces read as people, not beads. */
-const CROWD_SCALE = 1.75;
-
-/** Seat lifts of the crowd being posed (set by buildCrowd). */
-let lifts = new Float32Array(0);
-
-/**
- * Place spectators; `t >= 0` makes them hop (cheering). Only the first
- * `count` seats move (the rest keep their pose), so off-screen stands
- * cost nothing.
- */
-export function poseCrowd(b: Battle3D, t: number, count = Infinity): void {
-  const c = b.crowd!;
-  const n = Math.min(count, c.seats.length);
-  for (let i = 0; i < n; i++) {
-    const seat = c.seats[i];
-    const hop = t >= 0 ? Math.abs(Math.sin(t * 11 + i * 2.6)) * 0.16 : 0;
-    const lift = lifts[i] ?? 0;
-    const k = arabic ? 1 : CROWD_SCALE;
-    CROWD_M.makeScale(k, k, k).setPosition(seat.x, 0.93 + 0.13 * k + lift + hop, seat.y);
-    c.bodies.setMatrixAt(i, CROWD_M);
-    CROWD_M.makeScale(k, k, k).setPosition(seat.x, 0.93 + 0.35 * k + lift + hop, seat.y);
-    c.heads.setMatrixAt(i, CROWD_M);
-  }
-  c.bodies.instanceMatrix.needsUpdate = true;
-  c.heads.instanceMatrix.needsUpdate = true;
-  c.bodies.computeBoundingSphere();
-  c.heads.computeBoundingSphere();
-}
-
-type Seat = { x: number; z: number; garb: number; skin: number; lift?: number };
+type Seat = CrowdSeat;
 
 /**
  * Set dressing around the court. Returns the side-stand crowd seats and
@@ -288,16 +246,15 @@ export function decorate(b: Battle3D, lights: LightSpot[]): Seat[] {
     // A crowd of spectators leaning over the field-side parapet
     // (collected here, drawn below as two instanced meshes).
     const innerX = -Math.sign(x) * 0.92;
-    const CROWD_SKIN = [0xf6c9a0, 0x9c6644, 0xcfa07a] as const;
-    const CROWD_GARB = [0xe53935, 0x3b82f6, 0xf2c14e, 0x66bb6a, 0xab47bc] as const;
     const seats = Math.floor(len / 1.1);
     for (let i = 0; i < seats; i++) {
       const z = -len / 2 + 0.7 + i * 1.1 + ((i * 7) % 3) * 0.12;
       crowdSeats.push({
         x: x + innerX,
         z: zCenter + z,
-        garb: CROWD_GARB[(i * 3 + Math.round(x)) % CROWD_GARB.length],
-        skin: CROWD_SKIN[(i + Math.abs(Math.round(zCenter))) % CROWD_SKIN.length],
+        y: 1.1,
+        face: x > 0 ? -Math.PI / 2 : Math.PI / 2,
+        side: zCenter < 0 ? "enemy" : "player",
       });
     }
 
@@ -706,16 +663,8 @@ export function buildArena(b: Battle3D): void {
   // (seated first, so cheering can skip the off-screen side stands).
   const backdrop = buildBackdrop(LOOK, (c) => b.glow(c));
   b.arenaGroup.add(backdrop.group);
-  const CROWD_SKIN = [0xf6c9a0, 0x9c6644, 0xcfa07a] as const;
-  const CROWD_GARB = [0xe53935, 0xf2c14e, 0xab47bc, 0x66bb6a, 0xff8a3a] as const;
-  const kitSeats = backdrop.seats.map((st, i) => ({
-    x: st.x,
-    z: st.z,
-    garb: CROWD_GARB[(i * 3 + 1) % CROWD_GARB.length],
-    skin: CROWD_SKIN[(i * 7) % CROWD_SKIN.length],
-    lift: st.y - 0.93,
-  }));
-  buildCrowd(b, [...kitSeats, ...seats]);
+  const kitSeats: CrowdSeat[] = backdrop.seats.map((st) => ({ x: st.x, z: st.z, y: st.y, face: 0, side: "enemy" }));
+  const crowd = installCrowd(b, [...kitSeats, ...seats]);
   for (const l of backdrop.lights) lights.push({ ...l, backdrop: true });
 
   // The Islamic lane strips are baked into the floor paint now.
@@ -732,10 +681,21 @@ export function buildArena(b: Battle3D): void {
     ambient,
     kitSeats: kitSeats.map((st) => ({ x: st.x, z: st.z })),
     level: null,
+    crowd,
+    wave: 0,
+    waveT: 0,
   });
   applyArenaQuality(b, b.quality.level);
   applyEndStrings(b);
-  // Hundreds of static props -> one draw call per look.
+  // Hundreds of static props -> a handful of draws: every lit toon prop
+  // merges into one vertex-coloured mesh per shadow setting (the colour moves
+  // to the vertices), so the per-frame shadow pass draws a few casters, not
+  // dozens. The dimmable glow materials (the living sky retints them) stay
+  // out of it and merge per colour in the second pass.
+  const notToon = (o: THREE.Object3D): boolean =>
+    o.userData.noBatch === true ||
+    ((o as THREE.Mesh).isMesh === true && !((o as THREE.Mesh).material as THREE.Material & { isMeshToonMaterial?: boolean }).isMeshToonMaterial);
+  batchStatic(b.arenaGroup, notToon, { tint: true });
   batchStatic(b.arenaGroup, (o) => o.userData.noBatch === true);
   // Warm every shader now (during the versus splash), not on the first frame.
   try {
@@ -952,10 +912,17 @@ export function applyEndStrings(b: Battle3D): void {
     player: !b.endStringPlayer || b.endStringPlayer.visible,
     enemy: !b.endStringEnemy || b.endStringEnemy.visible,
   });
-  if (b.crowd) {
+  if (art.crowd) {
+    // The far-band crowd turns with the backdrop to face the court.
     const flip = viewSide === "player" ? 1 : -1;
-    art.kitSeats.forEach((st, i) => b.crowd!.seats[i].set(st.x * flip, st.z * flip));
-    poseCrowd(b, -1);
+    art.kitSeats.forEach((st, i) => {
+      const seat = art.crowd!.seats[i];
+      seat.x = st.x * flip;
+      seat.z = st.z * flip;
+      seat.face = flip > 0 ? 0 : Math.PI;
+      b.crowd?.seats[i]?.set(seat.x, seat.z);
+    });
+    poseCrowd(art.crowd, -1, 0, 0);
   }
 }
 
@@ -1005,17 +972,51 @@ export function updateRiver(b: Battle3D, dt: number): void {
  * only join in when the frame is wide enough to show them.
  */
 export function updateCrowd(b: Battle3D, dt: number): void {
-  if (b.cheer > 0) {
-    b.cheer = Math.max(0, b.cheer - dt);
-    if (!b.crowd) return;
-    const sidesOnScreen = b.showcase || Math.max(-b.camera.left, b.camera.right) > STAND_INNER_X;
-    const n = sidesOnScreen ? Infinity : (ART.get(b)?.kitSeats.length ?? Infinity);
-    poseCrowd(b, b.cheer > 0 ? b.waterTime : -1, n);
+  const art = ART.get(b);
+  const crowd = art?.crowd;
+  const live = art?.level?.crowdAnim ?? false;
+  const cheering = b.cheer > 0;
+  if (cheering) b.cheer = Math.max(0, b.cheer - dt);
+  if (art && art.wave > 0) art.wave = Math.max(0, art.wave - dt);
+  if (!crowd || !art) return;
+  // A crown always gets its jump; the idle bob and the tower-hit wave only
+  // animate on the levels that keep the crowd alive.
+  const wave = live ? Math.min(1, art.wave / 0.4) : 0;
+  const jump = cheering ? Math.min(1, b.cheer / 0.3) : 0;
+  if (!live && !cheering && !art.posedStill) {
+    poseCrowd(crowd, -1, 0, 0);
+    art.posedStill = true;
+    return;
   }
+  if (!live && !cheering) return;
+  art.posedStill = false;
+  const sidesOnScreen = b.showcase || Math.max(-b.camera.left, b.camera.right) > STAND_INNER_X;
+  const n = sidesOnScreen ? Infinity : art.kitSeats.length;
+  poseCrowd(crowd, b.waterTime, jump, wave, live ? 1 : 0, n);
 }
 
-/** Arena reactions to battle events (none yet; arena work hooks in here). */
-export function arenaOnEvent(_b: Battle3D, _ev: BattleEvent): void {}
+/** Squared distance (tiles) within which an attack counts as a tower hit. */
+const TOWER_HIT_R2 = 2.2 * 2.2;
+
+/**
+ * Arena reactions to battle events: the crowd waves when a tower is hit
+ * (crowns make it jump: towers.ts sets b.cheer).
+ */
+export function arenaOnEvent(b: Battle3D, ev: BattleEvent): void {
+  if (ev.type !== "attack") return;
+  const art = ART.get(b);
+  if (!art || art.wave > 0.3) return;
+  for (const side of ["player", "enemy"] as const) {
+    for (const t of towerSpots(side)) {
+      const dx = ev.targetX - t.x;
+      const dy = ev.targetY - t.y;
+      if (dx * dx + dy * dy < TOWER_HIT_R2) {
+        art.wave = 0.9;
+        return;
+      }
+    }
+  }
+}
 
 /**
  * Apply a quality level to the set: the dressing tier, tufts and whether the

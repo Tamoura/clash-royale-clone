@@ -18,7 +18,8 @@ import * as THREE from "three";
 import type { Side } from "../../../game/arena";
 import type { ArenaLook, BackdropKind } from "../../arenaLooks";
 import { toon } from "../../characters3d";
-import { CAM_HOME, SIDE_COLOR } from "../common";
+import { CAM_HOME } from "../common";
+import { teamColor as liveTeamColor } from "../../teamColors";
 import { hashString } from "./groundPaint";
 import { GROUND_EDGE_Z, buildKit, type Kit, type KitLight, type KitSeat } from "./kits";
 import { makeWaterfall, type WaterfallHandle } from "./river";
@@ -271,7 +272,7 @@ export function buildBackdrop(look: ArenaLook, glow: (color: number) => THREE.Me
       group.rotation.y = view === "player" ? 0 : Math.PI;
       // The banners belong to whoever owns the far king.
       if (!teamColor) return;
-      TMP.set(SIDE_COLOR[view === "player" ? "enemy" : "player"]).getHSL(HSL);
+      TMP.set(liveTeamColor(view === "player" ? "enemy" : "player")).getHSL(HSL);
       TMP.setHSL(HSL.h, Math.min(1, HSL.s * 1.2), HSL.l);
       for (const [start, count] of kit.team) {
         // Team parts hang high, above the baked ground shading.

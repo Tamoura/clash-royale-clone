@@ -17,14 +17,22 @@
 import * as THREE from "three";
 import { ARENA_HEIGHT, ARENA_WIDTH, RIVER_HALF_WIDTH } from "../../../game/arena";
 import type { ArenaLook } from "../../arenaLooks";
+import { teamColor } from "../../teamColors";
 import { Sculpt, frustum, sculptMaterial, tone } from "../views/towerCraft";
+import type { CrowdSeat } from "./crowd";
 
+/** @deprecated The crowd now takes CrowdSeat (crowd.ts). */
 export interface ScenerySeat {
   x: number;
   z: number;
   garb: number;
   skin: number;
   lift?: number;
+}
+
+/** Team cloth for the stands: the live team colour, a touch deeper on the set. */
+export function setTeam(side: "player" | "enemy"): number {
+  return tone(teamColor(side), 0.92, 0.95);
 }
 
 function smooth(e0: number, e1: number, x: number): number {
@@ -42,9 +50,47 @@ function mulberry(seed: number): () => number {
   };
 }
 
-const CROWD_SKIN = [0xf6c9a0, 0x9c6644, 0xcfa07a, 0xe0ac7e] as const;
-const CROWD_GARB = [0xe53935, 0x3b82f6, 0xf2c14e, 0x66bb6a, 0xab47bc, 0xff8a3a, 0xf5f0e6] as const;
 const GOLD = 0xf2c14e;
+
+/**
+ * A string of pennants from (x0, y0, z0) to (x1, y1, z1), sagging in the
+ * middle: little triangular flags alternating `a` and `b`, facing +z.
+ */
+export function bunting(s: Sculpt, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, a: number, b: number, sag = 0.35): void {
+  const len = Math.hypot(x1 - x0, y1 - y0, z1 - z0);
+  const n = Math.max(3, Math.round(len / 0.42));
+  const rope = new THREE.CylinderGeometry(0.012, 0.012, 1, 3, 1);
+  for (let i = 0; i < n; i++) {
+    const t0 = i / n;
+    const t1 = (i + 1) / n;
+    const at = (t: number): [number, number, number] => [
+      x0 + (x1 - x0) * t,
+      y0 + (y1 - y0) * t - sag * 4 * t * (1 - t),
+      z0 + (z1 - z0) * t,
+    ];
+    const p0 = at(t0);
+    const p1 = at(t1);
+    const seg = rope.clone();
+    const dx = p1[0] - p0[0];
+    const dy = p1[1] - p0[1];
+    const dz = p1[2] - p0[2];
+    const l = Math.hypot(dx, dy, dz);
+    seg.scale(1, l, 1);
+    const dir = new THREE.Vector3(dx, dy, dz).normalize();
+    seg.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir));
+    s.add(seg, 0x5a4632, (p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2, (p0[2] + p1[2]) / 2, 0, () => 1);
+    // The pennant hangs from the middle of the segment.
+    const m = at((t0 + t1) / 2);
+    const flag = new THREE.BufferGeometry();
+    const w = 0.15;
+    const h = 0.26;
+    flag.setAttribute("position", new THREE.Float32BufferAttribute([-w, 0, 0, w, 0, 0, 0, -h, 0, w, 0, 0, -w, 0, 0, 0, -h, 0], 3));
+    flag.setAttribute("normal", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1], 3));
+    flag.rotateY(Math.atan2(-(z1 - z0), x1 - x0));
+    s.add(flag, i % 2 ? b : a, m[0], m[1] - 0.01, m[2], 0, () => 1);
+  }
+  rope.dispose();
+}
 
 /** Top faces a touch lighter, undersides darker. */
 const lit = (_x: number, _y: number, _z: number, ny: number): number => (ny > 0.7 ? 1.06 : ny < -0.4 ? 0.7 : 1);
@@ -188,12 +234,12 @@ function kerb(s: Sculpt, look: ArenaLook): void {
     if (team !== null) s.add(new THREE.SphereGeometry(0.08, 8, 6), GOLD, x, 1.1, z);
   };
   for (const sx of [-1, 1]) {
-    for (const z of [-hd, -8.2, 8.2, hd]) pier(sx * hw, z, z < 0 ? look.standRoofEnemy : look.standRoofPlayer);
+    for (const z of [-hd, -8.2, 8.2, hd]) pier(sx * hw, z, z < 0 ? setTeam("enemy") : setTeam("player"));
   }
 }
 
 /** One spectator terrace: three rising rows, faced ends, pavilions and banners behind. */
-function terrace(s: Sculpt, sx: number, zc: number, len: number, cloth: number, look: ArenaLook, seats: ScenerySeat[], rand: () => number): void {
+function terrace(s: Sculpt, sx: number, zc: number, len: number, cloth: number, look: ArenaLook, seats: CrowdSeat[], rand: () => number): void {
   const stone = tone(look.standWall, 1.12, 0.6);
   const x0 = ARENA_WIDTH / 2 + 2.3;
   const rows = 3;
@@ -211,9 +257,9 @@ function terrace(s: Sculpt, sx: number, zc: number, len: number, cloth: number, 
       seats.push({
         x: x - sx * 0.12,
         z: zc - len / 2 + 0.5 + i * 0.72 + (rand() - 0.5) * 0.2,
-        garb: CROWD_GARB[Math.floor(rand() * CROWD_GARB.length)],
-        skin: CROWD_SKIN[Math.floor(rand() * CROWD_SKIN.length)],
-        lift: h - 0.06 - 0.93,
+        y: h - 0.06,
+        face: sx > 0 ? -Math.PI / 2 : Math.PI / 2,
+        side: zc < 0 ? "enemy" : "player",
       });
     }
   }
@@ -239,6 +285,8 @@ function terrace(s: Sculpt, sx: number, zc: number, len: number, cloth: number, 
       s.add(gem, GOLD, cx, backH * 0.52, z + 0.2, 0, lit);
     }
   }
+  // Pennant strings along the front, between the rail's end posts.
+  bunting(s, railX, 1.25, zc - len / 2, railX, 1.25, zc + len / 2, cloth, GOLD, 0.25);
   // Behind the top row: banners between striped pavilions.
   const bx = sx * (x0 + rows * depth + 1.5);
   const spots = Math.max(2, Math.round(len / 4.2));
@@ -256,10 +304,12 @@ function terrace(s: Sculpt, sx: number, zc: number, len: number, cloth: number, 
  * Build the classic surround into `parent`; returns the terrace crowd seats.
  * `phoneReach` is how far past the court a portrait phone sees (bushes there).
  */
-export function buildClassicScenery(parent: THREE.Object3D, look: ArenaLook): ScenerySeat[] {
+export function buildClassicScenery(parent: THREE.Object3D, look: ArenaLook): CrowdSeat[] {
   const s = new Sculpt(lit);
+  /** The forest, bushes, boulders and patches: a separate mesh that casts no shadow. */
+  const f = new Sculpt(lit);
   const rand = mulberry(20261111);
-  const seats: ScenerySeat[] = [];
+  const seats: CrowdSeat[] = [];
   const hw = ARENA_WIDTH / 2;
   const hd = ARENA_HEIGHT / 2;
 
@@ -268,8 +318,8 @@ export function buildClassicScenery(parent: THREE.Object3D, look: ArenaLook): Sc
   // Terraces: red on the enemy half, blue on the player's, both long sides.
   const tLen = hd - 4.2;
   for (const sx of [-1, 1]) {
-    terrace(s, sx, -hd / 2 - 0.9, tLen, look.standRoofEnemy, look, seats, rand);
-    terrace(s, sx, hd / 2 + 0.9, tLen, look.standRoofPlayer, look, seats, rand);
+    terrace(s, sx, -hd / 2 - 0.9, tLen, setTeam("enemy"), look, seats, rand);
+    terrace(s, sx, hd / 2 + 0.9, tLen, setTeam("player"), look, seats, rand);
   }
 
   // Ground patches on the apron: worn earth by the terraces, lighter and
@@ -278,7 +328,7 @@ export function buildClassicScenery(parent: THREE.Object3D, look: ArenaLook): Sc
   const patch = (x: number, z: number, rx: number, rz: number, c: number): void => {
     const g = new THREE.CylinderGeometry(1, 1, 0.012, 18);
     g.scale(rx, 1, rz);
-    s.add(g, c, x, -0.052, z, rand() * 3, () => 1);
+    f.add(g, c, x, -0.052, z, rand() * 3, () => 1);
   };
   for (const sx of [-1, 1]) {
     for (let i = 0; i < 14; i++) {
@@ -293,17 +343,17 @@ export function buildClassicScenery(parent: THREE.Object3D, look: ArenaLook): Sc
       if (Math.abs(z) < 1.9) continue; // keep the river mouth clear
       const x = sx * (hw + 1.02 + rand() * 0.2);
       const roll = rand();
-      if (roll < 0.55) bush(s, x, z, 0.7 + rand() * 0.45, look, rand);
-      else if (roll < 0.8) boulder(s, x, z, 0.7 + rand() * 0.5, look, rand);
+      if (roll < 0.55) bush(f, x, z, 0.7 + rand() * 0.45, look, rand);
+      else if (roll < 0.8) boulder(f, x, z, 0.7 + rand() * 0.5, look, rand);
       else {
         for (let k = 0; k < 4; k++) {
-          s.add(new THREE.SphereGeometry(0.09, 6, 5), [0xffffff, 0xfff176, 0xf48fb1][k % 3], x + (rand() - 0.5) * 0.5, 0.05, z + (rand() - 0.5) * 0.7, 0, () => 1);
+          f.add(new THREE.SphereGeometry(0.09, 6, 5), [0xffffff, 0xfff176, 0xf48fb1][k % 3], x + (rand() - 0.5) * 0.5, 0.05, z + (rand() - 0.5) * 0.7, 0, () => 1);
         }
       }
     }
     // Reeds and a boulder where the river leaves the court.
-    boulder(s, sx * (hw + 1.2), -1.7, 1.0, look, rand);
-    boulder(s, sx * (hw + 1.5), 1.75, 0.8, look, rand);
+    boulder(f, sx * (hw + 1.2), -1.7, 1.0, look, rand);
+    boulder(f, sx * (hw + 1.5), 1.75, 0.8, look, rand);
   }
 
   // The forest edge: clusters that thicken away from the court. Kept clear
@@ -317,18 +367,26 @@ export function buildClassicScenery(parent: THREE.Object3D, look: ArenaLook): Sc
       const z = (rand() - 0.5) * 46;
       if (Math.abs(z) < 2.4) continue; // the river runs on through the trees
       const k = 0.95 + rand() * 0.75 + band * 0.3;
-      if (pine && rand() < 0.45) pineTree(s, x, z, k * 1.15, look);
-      else roundTree(s, x, z, k, look, rand);
-      if (rand() < 0.5) bush(s, x + (rand() - 0.5) * 2.2, z + 1.0 + rand(), 0.8 + rand() * 0.5, look, rand);
-      if (rand() < 0.22) boulder(s, x + (rand() - 0.5) * 2.4, z + 1.2, 0.9 + rand() * 0.8, look, rand);
+      if (pine && rand() < 0.45) pineTree(f, x, z, k * 1.15, look);
+      else roundTree(f, x, z, k, look, rand);
+      if (rand() < 0.5) bush(f, x + (rand() - 0.5) * 2.2, z + 1.0 + rand(), 0.8 + rand() * 0.5, look, rand);
+      if (rand() < 0.22) boulder(f, x + (rand() - 0.5) * 2.4, z + 1.2, 0.9 + rand() * 0.8, look, rand);
     }
     // A few trees by the corners, in front of and behind the terraces' ends.
     for (const [dx, z, k] of [[5.4, -hd - 2.2, 1.2], [6.2, hd + 1.6, 1.1], [5.2, -3.4, 1.0], [6.4, 3.6, 1.25]] as const) {
-      roundTree(s, sx * (hw + dx), z, k, look, rand);
+      roundTree(f, sx * (hw + dx), z, k, look, rand);
     }
   }
 
   const mesh = s.mesh(sculptMaterial(), "classic-scenery");
   if (mesh) parent.add(mesh);
+  // The forest's shadows would fall off the court: it receives, never casts,
+  // so the per-frame shadow pass (troop shadows) never redraws it.
+  const forest = f.mesh(sculptMaterial(), "classic-forest");
+  if (forest) {
+    forest.castShadow = false;
+    forest.userData.dressing = "forest";
+    parent.add(forest);
+  }
   return seats;
 }
