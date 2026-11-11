@@ -61,7 +61,8 @@ import {
 import { addShake } from "../camera";
 import { contactRing, damagePopup, emitSparks, megaSlam } from "../fx/effects";
 import { hpBarVisible, makeStunSprite, setHpFill } from "./troops";
-import { animateKitTroop, leanQuaternion, setLeanCamera, startKitDeath, stepKitDeath, VIEW_DIR } from "../../cast/index";
+import { animateKitTroop, LEAN, leanQuaternion, RIM_UNIFORM, setLeanCamera, startKitDeath, stepKitDeath, VIEW_DIR } from "../../cast/index";
+import { currentQuality } from "../../quality";
 
 /** A troop view's animation state (created on its first frame). */
 export interface TroopAnim {
@@ -477,6 +478,7 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
   const w = toWorld(e.x, e.y);
   VIEW_OF.set(e, view);
   setLeanCamera(b.camera);
+  RIM_UNIFORM.value = currentQuality().rimLight ? 1 : 0; // the cast's cool rim follows the live quality level
 
   if (view.isTroop && !view.anim) view.anim = initTroopAnim(b, view, e);
   const anim = view.anim;
@@ -665,9 +667,11 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
     if (label) {
       const lift = view.rig
         ? (view.rig.hover ?? 0) + view.rig.height
-        : e.kind === "building"
-          ? 1.2
-          : 2.4;
+        : view.kit
+          ? view.kit.height + 0.8 // above the HP bar, which rides above the head
+          : e.kind === "building"
+            ? 1.2
+            : 2.4;
       damagePopup(b, w.x, lift, w.z, label);
     }
   }
@@ -712,7 +716,7 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
   if (stunned && !frozen) {
     if (!view.stunStars) {
       view.stunStars = makeStunSprite();
-      const lift = view.rig ? (view.rig.hover ?? 0) + view.rig.height : 1.4;
+      const lift = view.rig ? (view.rig.hover ?? 0) + view.rig.height : view.kit ? view.kit.height : 1.4;
       view.stunStars.position.y = lift + 0.35;
       view.root.add(view.stunStars);
     }
@@ -726,9 +730,21 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
     e.kind === "troop" ? 0.9 : e.kind === "building" ? 1.4 : e.kind === "king-tower" ? 2.2 : 1.8;
   setHpFill(view, e.hp / e.maxHp, barWidth);
   view.hpGroup.visible = hpBarVisible(view, e);
-  // Troop bars stay square to the camera whichever way the body turns.
+  // Troop bars stay square to the camera whichever way the body turns, and ride above the
+  // leaned head (the lean tips it back along the view): never over the face or hat.
   if (view.isTroop && view.hpGroup.visible) {
-    view.hpGroup.rotation.set(view.hpGroup.rotation.x, (viewSide === "enemy" ? Math.PI : 0) - view.root.rotation.y, 0, "YXZ");
+    const yaw = view.root.rotation.y;
+    view.hpGroup.rotation.set(view.hpGroup.rotation.x, (viewSide === "enemy" ? Math.PI : 0) - yaw, 0, "YXZ");
+    const lift = view.hpGroup.userData.lift as number | undefined;
+    if (lift !== undefined) {
+      const len = Math.hypot(VIEW_DIR.x, VIEW_DIR.z) || 1;
+      const back = lift * Math.sin(LEAN);
+      const wx = (VIEW_DIR.x / len) * back;
+      const wz = (VIEW_DIR.z / len) * back;
+      const c = Math.cos(yaw);
+      const sn = Math.sin(yaw);
+      view.hpGroup.position.set(wx * c - wz * sn, lift * Math.cos(LEAN) + 0.42, wx * sn + wz * c);
+    }
   }
 
   if (view.rig && anim) {

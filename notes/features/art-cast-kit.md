@@ -9,6 +9,15 @@ Branch art/cast-kit from art/base (b7ae4ce). Worktree /home/user/wt-art-cast-kit
 |---|---|---|---|---|
 | Start (art/base) | Classic | 178 / 266,074 | 431 / 769,750 | 49 |
 | Start (art/base) | Golden Age | 167 / 137,566 | 399 / 509,370 | 49 |
+| Cast in (b72599d) | Classic | 178 / 266,074 | 259 / 617,388 | 65 |
+| Cast in (b72599d) | Golden Age | 167 / 137,566 | 248 / 353,084 | 64 |
+
+Acceptance ceiling for this branch: fight at most 330 calls, empty at most 200: met in both editions.
+Downloads: public/models/troops 808 KB on disk (7 GLBs + CREDITS, budget 1.0 MB). Initial JS bundle
+311.7 KB gz vs 294.1 KB gz on art/base: +17.6 KB gz (budget +50); GLTFLoader (13.2 KB gz) and the
+meshopt decoder (7.3 KB gz) are lazy chunks loaded with the pack at boot. Pack ready 5-9 s after boot
+under SwiftShader with 2 agents on 4 CPUs (dev server, uncached); always before the first battle in
+the matrix runs (the home screen and the bot battle start take longer).
 
 ## Decisions
 
@@ -25,15 +34,84 @@ Branch art/cast-kit from art/base (b7ae4ce). Worktree /home/user/wt-art-cast-kit
   orphan dev page viewer.html + src/viewer.ts (it only loaded public/models/kaykit). Not in the
   package's owned list, but it imported the deleted glbModels.ts and nobody else touches it.
 - Troop pack: gltfpack -cc -kn -km -vpf -vtf (float positions and UVs, the bake reads them raw).
+- Riders are TWO draws (rider + mount, sharing one material): the mount is a small skinned mesh on six
+  procedural bones (body, head, four legs) so it gallops; the rider's legs keep Sit_Chair_Idle while
+  idle / walk / attack drive only the upper body (clips split per bone set in loader.bodyClip). The
+  mount casts the unit's one shadow.
+- Hit flash: the cast's shader MIXES toward the tint (amount = the tint's magnitude, capped 0.6 for
+  statuses); troops flash at 0.35 toward #FFF4E0 for 80 ms (troopFlashTint), towers 0.25.
+- The team rule is enforced at bake time, not just tested: gradeHsl caps an unrepainted swatch's
+  saturation at 0.44 when the boost would push it into a team hue family (leather browns near red).
+  A Studio champion's colours go through signatureSafe (hue pushed past the family edge).
+- Head x1.12 is baked into the geometry about the neck (no bone scale), so swarms can share poses and
+  the HP bar height is exact. Giants use `stretch` (taller body, head carried up) and a smaller head so
+  they tower instead of reading as orange balls.
+- Swarm pose sharing: units of one card and side (6 or more) copy the leader's 23 bone transforms
+  instead of running their own mixer. disposeDeep frees a unit's skeleton and swarm slot
+  (group.userData.kitUnit).
+- castActiveForBattle() reads a latch set by beginCastBattle(); until ship calls that at battle start
+  it follows the pack's state (see Requests for ship).
+- Flying Studio champions keep the procedural rig (explicit fallback: the cast has no wings).
 
 ## Variant table
+
+Heights are head-top (world units, rider heights include the mount). Every variant lists its
+back-visible features in `back` (cast.test.ts checks at least two).
+
+| Card | Classic (body: look; back features) | Golden Age |
+|---|---|---|
+| knight | knight 2.73: plumed helm, sword, shield, team cape+tabard | spiked steel turban helmet, scimitar, round shield, beard |
+| archers | rogue 2.36: pink hair + ponytail, quiver, bow arc, team cape | sand headscarf, pink ponytail, quiver, bow |
+| giant | barbarian 3.31 (stretch 1.16, head 0.94): bald + ginger fringe, beard under chin, team mantle, belt | war elephant (creature, not cast) |
+| valkyrie | rogue 2.66: two orange braids, winged steel cap, 2H axe | sand headscarf, braids, axe |
+| wizard | mage 2.98 (hat): crooked teal hat, flame-orb staff, white beard | ALCHEMIST: emerald turban, alembic staff, green flask |
+| musketeer | rogue 2.62: steel morion + finial, musket, purple ponytail | JANISSARY: tall white bork, matchlock, beard |
+| mini-pekka | knight 2.53: gunmetal helm + pale horns, cyan visor, 2H sword | DUELIST: spiked steel helm, twin scimitars |
+| skeletons / army | skeleton 1.87: skull, bone blade, team cloak | MILITIA 2.02: white turban, tall spear |
+| witch | mage 2.66: tall purple hat, pink-gem staff | WAR DRUMMER: plum turban, copper drum, mallet |
+| pekka | knight 3.63: long horns, pauldrons, 2H sword, magenta visor | CATAPHRACT: nasal helm, kontos lance, steel-barded horse |
+| mega-knight | knight 3.62 (girth 1.15): spiked crest, spiked pauldrons | MAMLUK AMIR 3.72: gold fluted helm, teal-gold plate, mace fists |
+| royal-giant | barbarian 3.74: crown on bald head, beard, cannon | BOMBARDIER 3.66: white turban, bronze bombard |
+| prince | knight on a white horse 3.67: white-plumed gold helm, lance + pennant | gold turban + aigrette, lance, cream horse |
+| hog-rider | barbarian on a hog 3.15: tall mohawk, war hammer | CAMEL RAIDER 3.61: brown turban, scimitar, camel |
+| digger | barbarian 2.55: yellow mining helmet + lamp, shovel, pack | TREASURE DIGGER: sand turban, coin sack, shovel, brass lamp |
+| princess | rogue 2.61: gold crown, blonde plait, bow | gold circlet, cream veil, bow |
+| executioner | barbarian 3.26: tall peaked leather hood, double axe | dark keffiyeh-style hood, double axe |
+| electro-wizard | mage 2.75: spiky pale hair, orb in each hand | crest swept back, orbs, gold sash |
+| ice-wizard | mage 2.95: frosty hat + icicle, white beard | frosty white turban, white beard |
+| magic-archer | hooded rogue 2.37: teal hood, glowing quiver, crossbow | turquoise hood + gold band, quiver |
+| firecracker | rogue 2.22: launcher over the shoulder, goggles, amber ponytail | plum rocket tube, sand headscarf |
+| champion | from the Studio look (6 headgears x 7 weapons), team cape | same, turbans for none / crown / helmet |
+| tower-princess | hooded rogue 2.25 (x0.72 crew): team hood, crossbow | team hood + gold band |
+| tower-king | knight 2.87 (x0.72 crew): five-point band crown, white beard, long team cape | crown over a white turban, scimitar |
+| cannoneer | barbarian (crew): iron cap, beard, team mantle | sand turban |
+| duchess | mage (crew): small crown, hair bun, team cape | circlet, cream veil |
+
+Team colour lands only on capes/cloaks (whole meshes), the knight's tabard swatch, the rogues'
+hood-and-cape swatch, the mage's cape swatch, and the discs.
 
 ## Screenshots
 
 ## Known gaps
 
+- The tower crews come from the cast only once ship wires the provider; until then towers keep the
+  hand-built crew (the crews are on the contact sheets).
+- The Studio screen's own 3D preview (src/ui/screens/studio.ts, frozen) still uses buildChampionRig;
+  the champion's card portrait and its units on the field use the cast.
+- Mounts gallop procedurally (no authored clips); their heads are blocky from the front.
+- Ink on the cast is opaque (#1C1730-ish via the shared INK colour), not 85% alpha: the shell shares the
+  body's opaque draw. OUTLINE_CSS_PX stays 1.25 globally; the cast's shell is drawn at 1.6 px.
+
 ## Requests for ship
 
+0. Wiring (shared rules 4 and the cast gate):
+   - scene3d.ts: `setTowerCrewProvider(towerCrewProvider)` from `src/render3d/cast/crew.ts` (make() takes the
+     VIEWER-relative team, i.e. towers.ts's `teamSide(e.side)`, and "classic" | "golden" from `ARABIC`).
+   - main.ts battle start: `await Promise.race([castReady(), sleep(3000)])`, then `beginCastBattle()` before the
+     scene resets for the battle (both from `src/render3d/cast/index.ts`). Without it the battle follows the
+     pack's state (the pack loads at boot and is in long before the first battle in practice).
+   - scene3d.ts (or post.ts) per frame: `RIM_UNIFORM.value = currentQuality().rimLight ? 1 : 0` if the rim must
+     follow L4 from somewhere other than updateTroop (cast-kit sets it in updateTroop already).
 1. src/render3d/scene/fx/cardwaveFx.test.ts (creatures-fx owns it): the test "troops keep their one-frame
    white snap and warm fade" pins the old white hit flash the art bible forbids. The game no longer uses it:
    troops flash through `troopFlashTint` (animate.ts, peak 0.35 toward #FFF4E0, 80 ms). Replace that test with

@@ -672,6 +672,9 @@ function makeTroopHpBar(side: Side, y: number): { group: THREE.Group; fill: THRE
   u.uMap.value = troopPillTex();
   u.uPad.value.set(9 / 128, 9 / 40);
   bar.fill.userData.troopBar = true;
+  // Always readable: drawn over every body (a neighbour's head must never hide it).
+  (bar.fill.material as THREE.ShaderMaterial).depthTest = false;
+  bar.fill.renderOrder = 10;
   return bar;
 }
 
@@ -790,6 +793,7 @@ export function buildTroopMesh(e: Entity, withLabel = false): EntityView {
 
   // HP bar clear of the head (the lean tips the head toward the camera, away from the bar).
   const bar = makeTroopHpBar(team, lift + 0.42);
+  bar.group.userData.lift = lift; // animate.ts keeps it above the LEANED head
   bar.group.visible = false; // only once hurt (hpBarVisible)
   root.add(bar.group);
   trackTeam({ root, side: team, disc, hpFill: bar.fill });
