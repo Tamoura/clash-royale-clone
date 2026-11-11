@@ -64,6 +64,7 @@ import { onionDome } from "../arena/build";
 import { addShake, startKoZoom } from "../camera";
 import { markShadowsDirty, registerTroopCaster } from "../post";
 import { contactRing, crownPop, emitSparks, kingWakeBurst, puff } from "../fx/effects";
+import { floorDust } from "../fx/pool";
 import { attackSwing, isFrozen } from "./animate";
 import {
   collectFlashMats,
@@ -707,7 +708,7 @@ export function updateTowerDeath(d: DyingView, f: number): void {
       if (b) {
         const ax = root.position.x + ARENA_WIDTH / 2 + p.x * TOWER_SCALE;
         const ay = root.position.z + ARENA_HEIGHT / 2 + p.z * TOWER_SCALE;
-        b.fx.emit("dust", ax, ay, { radius: 0.9, color: LOOK.tower.plinth });
+        b.fx.emit("dust", ax, ay, { radius: 0.9, color: collapseDust() });
       }
     }
   }
@@ -749,6 +750,18 @@ export function dropRubble(b: Battle3D, ax: number, ay: number, king: boolean, s
   return pile;
 }
 
+/**
+ * Collapse dust: the floor's own dust lifted about 20% toward white, so a
+ * falling keep raises the court's dust and never a near-black cloud (it took
+ * the plinth colour: on the dark looks a black smoke wall).
+ */
+export function collapseDust(): number {
+  return new THREE.Color(floorDust(LOOK)).lerp(new THREE.Color(0xfff6e6), 0.2).getHex();
+}
+
+/** A ruin's scorched ground: a soft decal tinted toward the floor, at most 0.6 opaque. */
+export const RUIN_SCORCH_ALPHA = 0.55;
+
 /** A tower or building destroyed, or a king woken. */
 export function towersOnEvent(b: Battle3D, ev: BattleEvent): void {
   switch (ev.type) {
@@ -759,10 +772,11 @@ export function towersOnEvent(b: Battle3D, ev: BattleEvent): void {
       const king = ev.kind === "king-tower";
       crownPop(b, ev.x, ev.y);
       b.cheer = 1.8; // the stands go wild
-      // Dust billows up as the keep comes apart; a scorched crater stays.
-      const craterR = king ? 2.2 : 1.7;
-      b.fx.emit("smoke-column", ev.x, ev.y, { radius: king ? 1.6 : 1.2, color: LOOK.tower.plinth });
-      b.fx.decal("crater", ev.x, ev.y, craterR, { life: 600 });
+      // Dust billows up as the keep comes apart; a soft scorch stays (the
+      // scorch decal's colour leans toward the floor's dust: no black pit).
+      const craterR = king ? 2.4 : 1.9;
+      b.fx.emit("smoke-column", ev.x, ev.y, { radius: king ? 1.6 : 1.2, color: collapseDust() });
+      b.fx.decal("scorch", ev.x, ev.y, craterR, { life: 600, alpha: RUIN_SCORCH_ALPHA });
       const pile = dropRubble(b, ev.x, ev.y, king, ev.side);
       // The heap rises while the chunks rain down (the stump is there at once).
       const heap = pile.children[1];

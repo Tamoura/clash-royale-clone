@@ -4036,16 +4036,21 @@ function buildMamlukAmir(): TroopRig {
  * Islamic baby-dragon → ROC HATCHLING: cream-and-gold mythical chick with
  * hooked beak and broad feathered wings — Arabian Nights flyer.
  */
+/** The Golden Age baby dragon's (roc hatchling's) plumage. */
+export const ROC_PLUME = 0x2f9a62;
+
 function buildRocHatchling(): TroopRig {
   const g = new THREE.Group();
-  const CREAM = THEME.cream, GOLD = THEME.goldLight, SAND = THEME.sand;
-  const body = sphere(0.48, CREAM, 0, 0.52, 0);
+  // An emerald roc with gold wings and a sand belly: a white bird sank into
+  // the pale courts (critic review), and emerald sits far from both team hues.
+  const PLUME = ROC_PLUME, GOLD = THEME.goldLight, SAND = THEME.sand;
+  const body = sphere(0.48, PLUME, 0, 0.52, 0);
   body.scale.set(0.95, 0.9, 1.05);
   g.add(body);
   const belly = sphere(0.36, SAND, 0, 0.44, 0.18);
   belly.scale.set(0.8, 0.75, 0.55);
   g.add(belly);
-  const head = sphere(0.36, CREAM, 0, 1.05, 0.2);
+  const head = sphere(0.36, PLUME, 0, 1.05, 0.2);
   g.add(head);
   const beak = cone(0.12, 0.32, GOLD, 0, 0.96, 0.52);
   beak.name = "beak";

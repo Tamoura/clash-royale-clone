@@ -124,6 +124,11 @@ const MIX_A = new THREE.Color();
 const MIX_B = new THREE.Color();
 const mixHex = (a: number, b: number, t: number): number => MIX_A.set(a).lerp(MIX_B.set(b), t).getHex();
 
+/** How far the town's limewash lifts the court plaster toward cream. */
+const TOWN_LIFT = 0.65;
+/** Night sets: walls sit back in the dark (lamp-lit windows carry them). */
+const NIGHT_WALL = 0.56;
+
 /** Kasbah earth for the snowbound Atlas: whitewash would vanish into the snow. */
 const KASBAH = [0xc98a5c, 0xb87a52, 0xd59c6e];
 
@@ -140,8 +145,12 @@ export function townPalette(look: ArenaLook): TownPalette {
   const wear = t ? paletteHex(t.laneWear) : 0xa07c3a;
   const snow = look.ambient === "snow";
   const night = look.nightPools;
-  let walls = snow ? KASBAH : [0.12, 0.3, 0.5].map((k) => mixHex(plaster, lane, k));
-  if (night) walls = walls.map((c) => tone(c, 0.45, 0.8));
+  // The court's plaster is a mid value now (calm floor, loud actors); the
+  // town's limewash lifts it back toward cream, in four tints toward the
+  // lane sand, so the houses stand off the apron and differ from each other.
+  const limewash = mixHex(plaster, 0xf2e8d4, TOWN_LIFT);
+  let walls = snow ? KASBAH : [0.04, 0.14, 0.24, 0.34].map((k) => mixHex(limewash, lane, k));
+  if (night) walls = walls.map((c) => tone(c, NIGHT_WALL, 0.8));
   const trim = tone(mixHex(wear, plaster, snow ? 0.1 : 0.35), night ? 0.5 : 1);
   return {
     walls,

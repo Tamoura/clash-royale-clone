@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ARENA_HEIGHT, ARENA_WIDTH, towerSpots } from "../../../game/arena";
-import { BACKDROP_KINDS, ISLAMIC_LOOKS, LOOKS, type ArenaLook } from "../../arenaLooks";
+import { BACKDROP_KINDS, ISLAMIC_LOOKS, LOOKS, stagePalette, type ArenaLook } from "../../arenaLooks";
 import { AMBIENT_COUNT, buildAmbient, updateAmbient } from "./ambient";
 import { buildBackdrop, farGroundMaterial, screenU, yForScreen } from "./backdrop";
 import {
@@ -216,6 +216,42 @@ describe("toy tournament stage (all 22 looks)", () => {
     expect(new Set(classic.map((l) => floorRecipe(l))).size).toBe(11);
   });
 
+  /** Mean painted luma (sRGB) over 0.5-tile patches at fixed points. */
+  function patchLuma(img: ReturnType<typeof groundPainter.paint>, pts: readonly (readonly [number, number])[]): number {
+    let sum = 0;
+    for (const [x, y] of pts) {
+      for (let k = 0; k < 25; k++) sum += luminanceAt(img, x - 0.25 + (k % 5) * 0.125, y - 0.25 + Math.floor(k / 5) * 0.125);
+    }
+    return sum / (pts.length * 25);
+  }
+  const FIELD_PTS = [[9, 10.5], [9, 21.5], [6.5, 11.5], [11.5, 20.5], [7, 22], [11, 10]] as const;
+  const LANE_PTS = [[3.5, 10.5], [14.5, 21.5], [3.5, 21], [14.5, 11]] as const;
+
+  it.each(ALL.map((l) => [`${l.islamic ? "golden" : "classic"} ${l.id}`, l] as const))(
+    "%s keeps a mid-value court with lanes that read",
+    (_id, look) => {
+      // Calm floor, loud actors: a near-white court sinks white and cream
+      // units and erases the lanes (snow, neon and the Golden Age courts
+      // painted 0.83-0.93). The court stays at or under 0.72 painted luma
+      // and the lanes sit at least 0.06 away from it, darker or lighter.
+      const img = groundPainter.paint(look, !!look.islamic);
+      const field = patchLuma(img, FIELD_PTS);
+      const lane = patchLuma(img, LANE_PTS);
+      expect(field).toBeLessThanOrEqual(0.72);
+      expect(Math.abs(field - lane)).toBeGreaterThanOrEqual(0.06);
+    },
+  );
+
+  it("gives each Golden Age court its own floor, the night courts about 30% darker", () => {
+    expect(new Set(golden.map((l) => l.islamic!.plaster)).size).toBe(golden.length);
+    const fieldOf = (l: ArenaLook): number => patchLuma(groundPainter.paint(l, true), FIELD_PTS);
+    const night = golden.filter((l) => l.nightPools).map(fieldOf);
+    const day = golden.filter((l) => !l.nightPools).map(fieldOf);
+    expect(night.length).toBe(3);
+    // The court shares the night town's exposure instead of a noon grade.
+    expect(Math.max(...night)).toBeLessThan(Math.min(...day) * 0.85);
+  });
+
   it.each(classic.map((l) => [l.id, l] as const))("%s builds its surround, bridges, river and crowd", (_id, look) => {
     const parent = new THREE.Group();
     const seats = buildClassicScenery(parent, look);
@@ -310,9 +346,10 @@ describe("toy tournament stage (all 22 looks)", () => {
 
   it("builds ice bridges that read on white: a blue deck and blue-grey kerbs and posts", () => {
     const hsl = { h: 0, s: 0, l: 0 };
-    const snowFloor = new THREE.Color(LOOKS.snow.floor.b).getHSL(hsl).l;
+    // The snow court is packed blue-grey snow now; the bridge lands on the white banks.
+    const snowBank = new THREE.Color(stagePalette(LOOKS.snow).bankNear).getHSL(hsl).l;
     const deck = new THREE.Color(ICE_BRIDGE.deck);
-    expect(deck.getHSL(hsl).l).toBeLessThan(snowFloor - 0.2);
+    expect(deck.getHSL(hsl).l).toBeLessThan(snowBank - 0.2);
     expect(deck.b).toBeGreaterThan(deck.r * 1.4);
     for (const c of [ICE_BRIDGE.kerb, ICE_BRIDGE.post, ICE_BRIDGE.body]) expect(new THREE.Color(c).getHSL(hsl).l).toBeLessThan(0.3);
     const parent = new THREE.Group();

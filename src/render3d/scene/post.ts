@@ -301,8 +301,8 @@ const dioramaMode = new WeakSet<Battle3D>();
 
 /**
  * The home screen's live arena is a small framed window behind the menus:
- * it renders at most at 1.25x without bloom (lifecycle.ts also halves its
- * frame rate). Off restores the quality level's own settings.
+ * it renders without bloom at up to the battle's own resolution (lifecycle.ts
+ * also halves its frame rate). Off restores the quality level's own settings.
  *
  * Called on every screen change, so off also re-arms the governor: a new
  * battle's start-up hitches (a rematch never passes the diorama) aren't
@@ -317,8 +317,13 @@ export function setDioramaQuality(b: Battle3D, on: boolean): void {
   b.resize();
 }
 
-/** The resolution cap for the diorama window. */
-export const DIORAMA_DPR = 1.25;
+/**
+ * The resolution cap for the diorama window: the battle's 2x, so the first
+ * screen a parent sees is as sharp as the game (at 1.25x the keeps were mush
+ * and the court's borders jagged on a 2x phone). It still runs at half the
+ * frame rate and without bloom, so it costs less than a battle frame.
+ */
+export const DIORAMA_DPR = 2;
 
 /**
  * The pixel ratio to render a w x h (CSS px) canvas at. A full-screen
