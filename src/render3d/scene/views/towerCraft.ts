@@ -590,9 +590,9 @@ export function crackTexture(seed = 17): THREE.CanvasTexture {
       ctx.stroke();
     }
   };
-  // Bold splits from the top of the sheet most of the way down: walls are
-  // seen small and at a slant, so hairlines would vanish.
-  for (let i = 0; i < 2; i++) crack(S * (0.3 + i * 0.4) + (rand() - 0.5) * 14, 2, Math.PI / 2 + (rand() - 0.5) * 0.6, 6, 13);
+  // Bold splits from the top of the sheet all the way down: walls are seen
+  // small and at a slant, so hairlines would vanish.
+  for (let i = 0; i < 2; i++) crack(S * (0.3 + i * 0.4) + (rand() - 0.5) * 14, 2, Math.PI / 2 + (rand() - 0.5) * 0.6, 8, 17);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   // Alpha-tested: mipmaps would average the thin splits away at battle zoom.
@@ -1128,8 +1128,10 @@ function buildBattlement(c: Ctx): { out: number; pTop: number; chips: THREE.Vect
     s.box(out * 2 - 0.5, pTop - H, 0.16, stone, 0, (pTop + H) / 2, sd * (out - 0.08), 0, null, { ink: true });
     s.box(0.16, pTop - H, out * 2 - 0.5, stone, sd * (out - 0.08), (pTop + H) / 2, 0, 0, null, { ink: true });
   }
-  // Merlons: three a side, plain stone, gilded caps from flair 1. The camera
-  // side's middle one chips at stage 1; its neighbour and a side one fall at stage 2.
+  // Merlons: three a side, plain stone, gilded caps from flair 1. Stage 1
+  // knocks out the camera row's middle one (a clear missing tooth over the
+  // banner, not hidden by a roof); stage 2 its left neighbour and the
+  // back row's middle one, both in view.
   const mW = R * 0.3;
   const mH = golden ? 0.34 : 0.3;
   const step = R * 0.46;
@@ -1151,9 +1153,9 @@ function buildBattlement(c: Ctx): { out: number; pTop: number; chips: THREE.Vect
     if (!broken) s.box(w + (along ? 0.05 : 0.05), 0.06, d + 0.05, cap, x, pTop + h + 0.03, z, 0, null, o);
   };
   const breakable = [
-    { row: "a" as const, side: camSide, i: -1, lost: 1 },
-    { row: "a" as const, side: camSide, i: 1, lost: 2 },
-    { row: "b" as const, side: 1, i: camSide, lost: 2 },
+    { row: "a" as const, side: camSide, i: 0, lost: 1 },
+    { row: "a" as const, side: camSide, i: -camSide, lost: 2 },
+    { row: "a" as const, side: -camSide, i: 0, lost: 2 },
   ];
   const chips: THREE.Vector3[][] = [[], [], []];
   for (const side of [-1, 1]) {
@@ -1226,41 +1228,52 @@ function facePlaneBox(w: number, h: number, d: number, face: number, along: numb
   return g;
 }
 
-/** Crack decals: two at stage 1 (camera face, a side), three more at stage 2. */
+/**
+ * Crack decals. Stage 1: big splits on the camera face either side of the
+ * gate, where the wall is in view under the turrets (low and tall, so they
+ * read at phone size), and one on a side face; stage 2: the far side and
+ * the deck. They split the stump-and-upper wall, so they ride whichever
+ * chunk they start in (the upper keep).
+ */
 function buildCracks(c: Ctx, deckY: number): void {
   const { s, R, overhangY, hwAt, camSide } = c;
   s.chunk = "upper";
   const lean = Math.atan((R - c.wallTop) / overhangY);
-  const cy = (STUMP_Y + overhangY) / 2 + 0.05;
-  const h = (overhangY - STUMP_Y) * 0.95;
-  const out = hwAt(cy) + 0.03;
   const cam = zFace(camSide);
   const sideA = camSide > 0 ? 1 : 3;
   const sideB = camSide > 0 ? 3 : 1;
-  const decal = (face: number, along: number, w: number, from: number, flip: boolean): void => {
-    const g = facePlane(w, h, face, along, cy, out, lean);
+  const decal = (face: number, along: number, w: number, y0: number, y1: number, from: number, flip: boolean): void => {
+    const cy = (y0 + y1) / 2;
+    const g = facePlane(w, y1 - y0, face, along, cy, hwAt(cy) + 0.03, lean);
     if (flip) {
       const uv = g.getAttribute("uv") as THREE.BufferAttribute;
       for (let i = 0; i < uv.count; i++) uv.setX(i, 1 - uv.getX(i));
     }
     s.add(g, 0xffffff, 0, 0, 0, 0, () => 1, { tex: KEEP_TEX.crack, from });
   };
-  // Stage 1: a big split on the camera face beside the gate, one on a side;
-  // stage 2: the other side of the gate and the far side.
-  decal(cam, -R * 0.5, R * 0.95, 1, false);
-  decal(sideA, R * 0.1, R * 1.0, 1, true);
-  decal(cam, R * 0.52, R * 0.9, 2, true);
-  decal(sideB, -R * 0.15, R * 1.0, 2, false);
+  const low = 0.66;
+  const high = overhangY - 0.12;
+  // The gate and its frame take the middle third of the face: one split each side.
+  decal(cam, -camSide * R * 0.62, R * 0.72, low, high, 1, false);
+  decal(cam, camSide * R * 0.62, R * 0.72, low + 0.12, high, 1, true);
+  decal(sideA, R * 0.1, R * 1.0, (STUMP_Y + overhangY) / 2 - 0.4, overhangY - 0.05, 1, true);
+  decal(sideB, -R * 0.15, R * 1.0, (STUMP_Y + overhangY) / 2 - 0.4, overhangY - 0.05, 2, false);
   // A split across the deck.
   const deck = new THREE.PlaneGeometry(R * 1.1, R * 1.1);
   deck.rotateX(-Math.PI / 2);
   s.add(deck, 0xffffff, R * 0.2, deckY + 0.045, -camSide * R * 0.15, 0, () => 1, { tex: KEEP_TEX.crack, from: 2 });
 }
 
-/** The team flag on a back turret: upright, leaning at stage 1, torn and hanging at stage 2. */
-function buildFlag(c: Ctx, foot: THREE.Vector3): void {
+/**
+ * The team flag on a camera-side turret, flying outward (away from the
+ * keep): upright, leaning at stage 1, torn and hanging at stage 2. On the
+ * camera side it stands lower on screen than the back roofs, so a far
+ * tower's HP plate (over the back roofs) never meets it. Returns its tip.
+ */
+function buildFlag(c: Ctx, foot: THREE.Vector3): YZ {
   const { s, lit } = c;
-  s.chunk = "back";
+  s.chunk = "front";
+  const out = Math.sign(foot.x) || 1;
   const poses: { tilt: number; from: number; to: number; cloth: number; torn: boolean }[] = [
     { tilt: 0, from: 0, to: 1, cloth: 1, torn: false },
     { tilt: 0.32, from: 1, to: 2, cloth: 1, torn: false },
@@ -1269,14 +1282,15 @@ function buildFlag(c: Ctx, foot: THREE.Vector3): void {
   for (const p of poses) {
     const pole = new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6);
     pole.translate(0, 0.4, 0);
-    pole.rotateZ(p.tilt);
+    pole.rotateZ(-out * p.tilt);
     s.add(pole, 0x5a4632, foot.x, foot.y, foot.z, 0, lit, { from: p.from, to: p.to });
     const cloth = new THREE.BoxGeometry(p.torn ? 0.32 : 0.55, p.torn ? 0.26 : 0.32, 0.02);
-    cloth.translate(p.torn ? 0.19 : 0.3, p.torn ? 0.58 : 0.62, 0);
-    if (p.torn) cloth.rotateZ(-0.5);
-    cloth.rotateZ(p.tilt);
+    cloth.translate(out * (p.torn ? 0.19 : 0.3), p.torn ? 0.58 : 0.62, 0);
+    if (p.torn) cloth.rotateZ(out * -0.5);
+    cloth.rotateZ(-out * p.tilt);
     s.add(cloth, 0xffffff, foot.x, foot.y, foot.z, 0, lit, { team: p.cloth, from: p.from, to: p.to });
   }
+  return { y: foot.y + 0.82, z: foot.z };
 }
 
 // ---- Classic keep ---------------------------------------------------------------------
@@ -1416,7 +1430,7 @@ function craftClassic(spec: KeepSpec2): KeepBuild {
       }
     }
   }
-  buildFlag(c, new THREE.Vector3(-tx * camSide, turretTop + 0.06 + coneH - 0.05, -camSide * tx));
+  tops.push(buildFlag(c, new THREE.Vector3(tx * camSide, turretTop + 0.06 + coneH - 0.05, camSide * tx)));
 
   // Royal dais and canopy (king): the king stands on the dais under a team canopy.
   let crew = new THREE.Vector3(0, deckY + 0.03, 0);
@@ -1435,29 +1449,46 @@ function craftClassic(spec: KeepSpec2): KeepBuild {
   return finish(c, spec, { crew, tops, chips, smoke });
 }
 
+/** The qubba's crescent finial, scaled down from onionDome's (the turret domes keep theirs whole). */
+const QUBBA_FINIAL = 0.55;
+
+/**
+ * Height of an onionDome(r) placed at (dome base - r/2), in r above the
+ * base, to the top of its crescent: the finial group sits at 2.45 r and its
+ * crescent reaches 1.575 r above that (times the finial's scale).
+ */
+function domeTop(finial = 1): number {
+  return 1.95 + 1.575 * finial;
+}
+
 /** The king's canopy (chunk "canopy"): gold posts, a team roof with a scalloped valance. Returns its tops. */
 function buildCanopy(c: Ctx, at: THREE.Vector3, golden: boolean): YZ[] {
   const { s, lit, R, flair } = c;
   s.chunk = "canopy";
   const eave = at.y + c.crewH + 0.28;
-  const pr = R * 0.4;
+  const pr = R * (golden ? 0.34 : 0.4);
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
       s.add(new THREE.CylinderGeometry(0.035, 0.045, eave - at.y, 8), golden ? 0xf0e4c8 : GOLD, at.x + sx * pr, (eave + at.y) / 2, at.z + sz * pr, 0, lit, { ink: true });
     }
   }
   if (golden) {
-    // A domed qubba: a zellige drum on the posts under a team onion dome.
-    s.add(frustum(pr + 0.1, pr + 0.1, eave, eave + 0.16, 0, true), 0xffffff, at.x, 0, at.z, 0, () => 1, { tex: KEEP_TEX.band, uv: [3, 1] });
-    const dr = pr + 0.08;
-    const domeY = eave + 0.16;
-    addObject(s, c.dome(dr, 0xffffff), at.x, domeY - dr * 0.5, at.z, 1, (i) => (i === 1 || i === 2 ? { color: 0xffffff, opts: { team: 1, tex: KEEP_TEX.roof, ink: true, uv: [6, 3] } } : i === 0 ? null : { color: GOLD, opts: {}, shade: lit }));
+    // A domed qubba, kept low so the far king's HP plate fits over it on a
+    // phone: a short zellige drum on the posts under a team onion dome with
+    // a smaller crescent than the turrets'.
+    const drumH = 0.1;
+    s.add(frustum(pr + 0.06, pr + 0.06, eave, eave + drumH, 0, true), 0xffffff, at.x, 0, at.z, 0, () => 1, { tex: KEEP_TEX.band, uv: [3, 1] });
+    const dr = pr + 0.03;
+    const domeY = eave + drumH;
+    const dome = c.dome(dr, 0xffffff);
+    dome.children[3]?.scale.setScalar(QUBBA_FINIAL);
+    addObject(s, dome, at.x, domeY - dr * 0.5, at.z, 1, (i) => (i === 1 || i === 2 ? { color: 0xffffff, opts: { team: 1, tex: KEEP_TEX.roof, ink: true, uv: [6, 3] } } : i === 0 ? null : { color: GOLD, opts: {}, shade: lit }));
     if (flair.goldRoofBands) {
       const ring = new THREE.TorusGeometry(dr * 0.98, 0.03, 4, 16);
       ring.rotateX(Math.PI / 2);
       s.add(ring, GOLD, at.x, domeY + dr * 0.72, at.z, 0, lit);
     }
-    return [{ y: domeY + dr * 3.4, z: at.z }];
+    return [{ y: domeY + dr * domeTop(QUBBA_FINIAL), z: at.z }];
   }
   // A round pavilion: a scalloped team valance with a gold hem under a smooth tiled bell roof.
   const vr = pr + 0.16;
@@ -1759,7 +1790,7 @@ function craftGolden(spec: KeepSpec2): KeepBuild {
         snow.scale(1, 1.3, 1);
         s.add(snow, SNOW, x, domeY + dr * 0.72, z, 0, lit);
       }
-      tops.push({ y: domeY + dr * 3.4, z });
+      tops.push({ y: domeY + dr * domeTop(), z });
       if (sz === camSide && sx === -camSide) {
         // Stage 2: glaze torn off the camera-side dome.
         const phiC = camSide > 0 ? Math.PI / 2 + 0.35 * sx : (3 * Math.PI) / 2 - 0.35 * sx; // sphere phi pi/2 points +z
@@ -1779,7 +1810,8 @@ function craftGolden(spec: KeepSpec2): KeepBuild {
     s.cyl(R * 0.52, R * 0.52, 0.035, GOLD, 0, deckY + 0.18, dz, 18);
     s.cyl(R * 0.42, R * 0.42, 0.02, 0xffffff, 0, deckY + 0.205, dz, 18, lit, TEAM);
     crew = new THREE.Vector3(0, deckY + 0.215, dz);
-    tops.push(...buildCanopy(c, new THREE.Vector3(0, crew.y, dz - camSide * 0.22), true));
+    // Set back less than the Classic pavilion: the qubba is narrower.
+    tops.push(...buildCanopy(c, new THREE.Vector3(0, crew.y, dz - camSide * 0.12), true));
   }
   if (spec.gun) buildGun(c, spec, deckY, CEDAR, 0xb8862e, [GOLD, GOLD, GOLD], false);
   buildExtras(c, out);
@@ -1787,6 +1819,35 @@ function craftGolden(spec: KeepSpec2): KeepBuild {
 }
 
 // ---- Ruin ---------------------------------------------------------------------------
+
+/**
+ * A flat ring (facing up) from `r0` to `r1` whose edges are torn: each
+ * spoke's inner radius shrinks by up to `j0`, its outer grows by up to `j1`
+ * (shares of the radius), from the ruin's seeded `rand`.
+ */
+function raggedRing(r0: number, r1: number, j0: number, j1: number, n: number, rand: () => number): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const spoke: [number, number, number, number][] = [];
+  for (let k = 0; k < n; k++) {
+    const a = (k / n) * Math.PI * 2;
+    const ri = r0 * (1 - j0 * rand());
+    const ro = r1 * (1 + j1 * (rand() - 0.35));
+    spoke.push([Math.cos(a) * ri, Math.sin(a) * ri, Math.cos(a) * ro, Math.sin(a) * ro]);
+  }
+  for (let k = 0; k < n; k++) {
+    const [ax, az, bx, bz] = spoke[k];
+    const [cx, cz, dx, dz] = spoke[(k + 1) % n];
+    // Wound to face up (+y).
+    pos.push(ax, 0, az, cx, 0, cz, bx, 0, bz);
+    pos.push(bx, 0, bz, cx, 0, cz, dx, 0, dz);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pos), 3));
+  const nor = new Float32Array(pos.length);
+  for (let i = 1; i < nor.length; i += 3) nor[i] = 1;
+  g.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+  return g;
+}
 
 export interface RuinSpec {
   king: boolean;
@@ -1824,13 +1885,14 @@ export function craftRuin(spec: RuinSpec): { stump: THREE.Mesh; heap: THREE.Mesh
     st = (st * 1664525 + 1013904223) >>> 0;
     return st / 4294967296;
   };
-  // Scorched paving: the plinth and paving as they stood, darkened.
+  // The plinth and paving as they stood, then a scorched ring: soot over
+  // the paving round the stump, and burnt ground spreading past the paving
+  // with a ragged edge (the team inlay stays on top).
   buildBase(c);
-  // A dark scorch ring on the paving round the stump.
-  const ring = new THREE.RingGeometry(R * 1.05, R * 1.42, 24);
-  ring.rotateX(-Math.PI / 2);
   s.chunk = "base";
-  s.add(ring, 0x2a2018, 0, 0.172, 0, 0, () => 1);
+  s.add(raggedRing(R * 1.0, R * 1.46, 0.0, 0.08, 28, rand), 0x3a2e24, 0, 0.163, 0, 0, () => 1);
+  s.add(raggedRing(R * 1.3, R * 2.05, 0.08, 0.3, 32, rand), 0x4a3b2c, 0, 0.012, 0, 0, () => 1);
+  s.add(raggedRing(R * 1.3, R * 1.75, 0.04, 0.24, 32, rand), 0x241c15, 0, 0.018, 0, 0, () => 1);
   // Jagged top: broken ashlar blocks of uneven height along each face.
   const TILE = R * 2.02;
   for (let face = 0; face < 4; face++) {
