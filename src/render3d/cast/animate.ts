@@ -10,7 +10,7 @@
 import * as THREE from "three";
 import { QUALITY_LEVELS, currentQuality } from "../quality";
 import type { KitUnit } from "./unit";
-import { animateMount } from "./mounts";
+import { castRoster } from "./loader";
 
 /** Characters lean this far toward the camera (render-only, pivot at the feet). */
 export const LEAN_DEG = 14;
@@ -135,7 +135,7 @@ export function animateKitTroop(u: KitUnit, s: KitPose, dt: number): void {
   if (s.hit) u.hitT = HIT_REACT_TIME;
   if (s.frozen) return; // frozen or stunned: the whole body holds its pose
   u.clock += dt;
-  if (u.mount) animateMount(u.mount, s.moving, s.speed ?? 1.2, dt, u.clock);
+  if (u.mount) castRoster()?.animateMount(u.mount, s.moving, s.speed ?? 1.2, dt, u.clock); // a mount exists only once the roster is in
 
   const leader = swarmLeader(u);
   if (leader) {

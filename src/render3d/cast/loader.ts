@@ -42,6 +42,13 @@ export let sitHipY = 0.6;
 
 let loading: Promise<boolean> | null = null;
 let ready = false;
+/** The heavy half of the cast (roster.ts), a lazy chunk fetched with the pack. */
+let roster: typeof import("./roster") | null = null;
+
+/** The loaded roster module, or null until the pack (and it) are in. */
+export function castRoster(): typeof import("./roster") | null {
+  return ready ? roster : null;
+}
 /** Whether the battle in progress uses the cast (latched by beginCastBattle). */
 let battleCast: boolean | null = null;
 
@@ -66,10 +73,13 @@ export function loadKitTroops(): Promise<boolean> {
   if (!kitTroopsWanted()) return Promise.resolve(false);
   loading ??= (async () => {
     const t0 = performance.now();
-    const [{ GLTFLoader }, { MeshoptDecoder }] = await Promise.all([
+    const [{ GLTFLoader }, { MeshoptDecoder }, rosterModule] = await Promise.all([
       import("three/examples/jsm/loaders/GLTFLoader.js"),
       import("three/examples/jsm/libs/meshopt_decoder.module.js"),
+      // The variant tables, props, mounts and bake ride in with the pack, off the first download.
+      import("./roster"),
     ]);
+    roster = rosterModule;
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
     const base = `${import.meta.env.BASE_URL}models/troops/`;

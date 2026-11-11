@@ -170,10 +170,10 @@ describe("service worker offline shell", () => {
 
 describe("service worker: the modelled cast is precached per build", () => {
   it("lists exactly the pack the loader fetches and public/models/troops holds", async () => {
-    const { readdirSync } = await import("node:fs");
     const { FILES } = await import("../render3d/cast/types");
     const cast = /const CAST = \[([^\]]+)\]/.exec(sw)![1].match(/[a-z_]+/g)!;
-    const onDisk = readdirSync("public/models/troops").filter((f) => f.endsWith(".glb")).map((f) => f.replace(/\.glb$/, ""));
+    // The files themselves are never loaded here: only the glob's keys are read.
+    const onDisk = Object.keys(import.meta.glob("../../public/models/troops/*.glb")).map((f) => /([a-z_]+)\.glb$/.exec(f)![1]);
     expect([...cast].sort()).toEqual([...onDisk].sort());
     expect([...cast].sort()).toEqual(["anims", ...FILES].sort());
   });
