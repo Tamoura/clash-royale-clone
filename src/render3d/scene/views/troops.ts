@@ -12,7 +12,7 @@ import type { Side } from "../../../game/arena";
 import type { Entity } from "../../../game/battle";
 import type { CardId } from "../../../game/cards";
 import { cardDisplayName } from "../../../render/cardNames";
-import { buildTroop, toon, type TroopRig } from "../../characters3d";
+import { buildBuildingRig, buildTroop, type TroopRig } from "../../characters3d";
 import { bakeRig } from "../../rigBake";
 import { spawnRecipe } from "../../spawnfx";
 import { makeTeamDisc, refreshTeamDisc } from "../../teamBase";
@@ -26,7 +26,6 @@ import {
   BAR_TILT,
   GAME_FONT,
   HP_COLOR,
-  unlitGlow,
   viewSide,
   type EntityView,
   type HpText,
@@ -479,136 +478,35 @@ export function collectFlashMats(root: THREE.Object3D): EntityView["flashMats"] 
   return out;
 }
 
-/** Gravestone for the Tombstone spawner: slab, mound, tiny skull. */
-export function buildTombstoneMesh(e: Entity): EntityView {
-  const root = new THREE.Group();
-  const mound = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.72, 0.22, 10), toon(0x6b5b45));
-  mound.position.y = 0.11;
-  mound.castShadow = true;
-  mound.receiveShadow = true;
-  root.add(mound);
-  const slab = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.85, 0.2), toon(0x9aa3ad));
-  slab.position.set(0, 0.6, -0.12);
-  slab.castShadow = true;
-  root.add(slab);
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.2, 12, 1, false, 0, Math.PI), toon(0x9aa3ad));
-  cap.rotation.z = Math.PI / 2;
-  cap.rotation.y = Math.PI / 2;
-  cap.position.set(0, 1.02, -0.12);
-  cap.castShadow = true;
-  root.add(cap);
-  // Carved "RIP" plate on the headstone (replaces the old cross bar).
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.26, 0.04), toon(0x78909c));
-  plate.position.set(0, 0.74, 0.01);
-  root.add(plate);
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), toon(0xf5f2ea));
-  skull.position.set(0.32, 0.12, 0.32);
-  root.add(skull);
-  const glowOrb = new THREE.Mesh(
-    new THREE.SphereGeometry(0.07, 8, 6),
-    unlitGlow(0x76ff03),
-  );
-  glowOrb.position.set(0, 1.02, 0.02);
-  root.add(glowOrb);
-
-  const team = teamSide(e.side);
-  const bar = makeHpBar(1.4, unitHpColor(team), 1.6);
-  root.add(bar.group);
-  trackTeam({ root, side: team, hpFill: bar.fill });
-  return {
-    root,
-    rig: null,
-    hpGroup: bar.group,
-    hpFill: bar.fill,
-    flashMats: collectFlashMats(root),
-    lastHp: e.hp,
-    flashT: 0,
-    spawnT: 0,
-    isTroop: false,
-  };
-}
-
-/** Elixir collector: a wooden vat brimming with glowing elixir. */
-export function buildCollectorMesh(e: Entity): EntityView {
-  const root = new THREE.Group();
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.8, 0.3, 10), toon(0x8d6e63));
-  base.position.y = 0.15;
-  base.castShadow = true;
-  base.receiveShadow = true;
-  root.add(base);
-  const vat = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.62, 0.65, 12), toon(0x6d4c41));
-  vat.position.y = 0.62;
-  vat.castShadow = true;
-  root.add(vat);
-  for (const a of [0, 1, 2, 3]) {
-    const hoop = new THREE.Mesh(
-      new THREE.TorusGeometry(0.59 - a * 0.015, 0.025, 6, 14),
-      toon(0x4e342e),
-    );
-    hoop.rotation.x = Math.PI / 2;
-    hoop.position.y = 0.38 + a * 0.16;
-    root.add(hoop);
-  }
-  const brew = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.5, 0.5, 0.08, 12),
-    unlitGlow(0xd946ef),
-  );
-  brew.position.y = 0.96;
-  root.add(brew);
-  const drop = new THREE.Mesh(
-    new THREE.SphereGeometry(0.14, 10, 8),
-    unlitGlow(0xe879f9),
-  );
-  drop.position.y = 1.25;
-  root.add(drop);
-
-  const team = teamSide(e.side);
-  const bar = makeHpBar(1.4, unitHpColor(team), 1.7);
-  root.add(bar.group);
-  trackTeam({ root, side: team, hpFill: bar.fill });
-  return {
-    root,
-    rig: null,
-    hpGroup: bar.group,
-    hpFill: bar.fill,
-    flashMats: collectFlashMats(root),
-    lastHp: e.hp,
-    flashT: 0,
-    spawnT: 0,
-    isTroop: false,
-  };
-}
-
+/**
+ * A card building (cannon, tombstone, elixir collector): the baked
+ * creatures-fx rig in the cast's material language, wearing its team on one
+ * slot. The cannon's barrel is an animated node updateTower aims at the
+ * target; the HP bar sits at the rig's barY. trackTeam re-runs applyTeam on
+ * the rig when the palette changes, as for troops.
+ */
 export function buildBuildingMesh(e: Entity): EntityView {
-  if (e.cardId === "tombstone") return buildTombstoneMesh(e);
-  if (e.cardId === "elixir-collector") return buildCollectorMesh(e);
   const root = new THREE.Group();
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.78, 0.25, 10), toon(0x8d6e63));
-  base.position.y = 0.12;
-  base.castShadow = true;
-  base.receiveShadow = true;
-  root.add(base);
-  for (const side of [-1, 1]) {
-    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.1, 12), toon(0x4e342e));
-    wheel.rotation.z = Math.PI / 2;
-    wheel.position.set(side * 0.62, 0.22, 0);
-    wheel.castShadow = true;
-    root.add(wheel);
-  }
-  const barrel = new THREE.Group();
-  barrel.position.y = 0.5;
-  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.9, 12), toon(0x37474f));
-  tube.rotation.x = Math.PI / 2 - 0.18;
-  tube.position.z = 0.25;
-  tube.castShadow = true;
-  barrel.add(tube);
-  const breech = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), toon(0x263238));
-  breech.castShadow = true;
-  barrel.add(breech);
-  root.add(barrel);
-
   const team = teamSide(e.side);
-  const bar = makeHpBar(1.4, unitHpColor(team), 1.15);
+  const rig = buildBuildingRig(e.cardId!, team);
+  let barY = 1.6;
+  let barrel: THREE.Group | undefined;
+  if (rig) {
+    bakeRig(rig, `${e.cardId}:${team}:${ARABIC ? "arabic" : "normal"}:${teamPalette()}`);
+    root.add(rig.group);
+    barY = rig.barY;
+    barrel = rig.barrel;
+    // Static buildings keep casting into the sun's shadow map like the old
+    // hand-built ones did (the bake leaves its merged meshes non-casting).
+    rig.group.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || mesh.name === "outline" || mesh.name === "baked-glow") return;
+      const mat = mesh.material as THREE.Material;
+      if (Array.isArray(mat) || mat.transparent) return;
+      mesh.castShadow = true;
+    });
+  }
+  const bar = makeHpBar(1.4, unitHpColor(team), barY);
   root.add(bar.group);
   trackTeam({ root, side: team, hpFill: bar.fill });
   return {

@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import { setPrefs } from "../../../ui/prefs";
 import * as THREE from "three";
 import type { Entity } from "../../../game/battle";
 import { TEAM, isTeamPart } from "../../teamColors";
 import { HP_COLOR, setViewSide, type EntityView } from "../common";
-import { buildTroopMesh, hpBarVisible, makeHpBar, setHpFill, setHpFillColor, teamSide, unitHpColor } from "./troops";
+import { buildBuildingMesh, buildTroopMesh, hpBarVisible, makeHpBar, setHpFill, setHpFillColor, teamSide, unitHpColor } from "./troops";
 
 function view(visible = false): EntityView {
   const hpGroup = new THREE.Group();
@@ -104,5 +105,76 @@ describe("swarm HP bars and the single-draw bar", () => {
     expect(u.uFrac.value).toBeCloseTo(0.4);
     setHpFillColor(bar.fill, 0x00ff00);
     expect(u.uColor.value.getHex()).toBe(0x00ff00);
+  });
+});
+
+describe("card buildings (creatures-fx rigs)", () => {
+  it("cannon, tombstone and collector are baked rigs: one team slot, the bar at the rig's barY, the cannon's barrel aimable", () => {
+    // Node test env: a no-op 2D canvas for the shared HP-bar trough texture.
+    const ctx = new Proxy({}, { get: () => () => ({ addColorStop() {} }), set: () => true });
+    vi.stubGlobal("document", {
+      createElement: () => ({ width: 0, height: 0, getContext: () => ctx }),
+    });
+    try {
+      for (const cardId of ["cannon", "tombstone", "elixir-collector"] as const) {
+        for (const side of ["player", "enemy"] as const) {
+          const e = { ...troop(side, 100, "building"), cardId, radius: 0.6 } as Entity;
+          const v = buildBuildingMesh(e);
+          expect(v.isTroop, cardId).toBe(false);
+          const rig = v.root.children.find((o) => o.userData.baked);
+          expect(rig, `${cardId} is baked`).toBeDefined();
+          // The bar rides above the model, not inside it.
+          expect(v.hpGroup.position.y, cardId).toBeGreaterThan(1.4);
+          // Team colour only on the building's slot, in its viewer-relative team.
+          const colours = new Set<number>();
+          // (A baked team mesh holding a main and a dark part is tagged "both"; its colour is the main.)
+          v.root.traverse((o) => {
+            if (isTeamPart(o) && o.userData.team !== "dark") {
+              colours.add(((o as THREE.Mesh).material as THREE.MeshToonMaterial).color.getHex());
+            }
+          });
+          expect(colours, cardId).toEqual(new Set([TEAM.default[side].main]));
+          if (cardId === "cannon") {
+            expect(v.barrel, "barrel").toBeDefined();
+            let inTree = false;
+            v.root.traverse((o) => (inTree ||= o === v.barrel));
+            expect(inTree).toBe(true);
+          } else {
+            expect(v.barrel).toBeUndefined();
+          }
+          expect(v.flashMats.length, `${cardId} flashes`).toBeGreaterThan(0);
+        }
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("a palette change repaints a live building's team slot", () => {
+    const ctx = new Proxy({}, { get: () => () => ({ addColorStop() {} }), set: () => true });
+    vi.stubGlobal("document", {
+      createElement: () => ({ width: 0, height: 0, getContext: () => ctx }),
+    });
+    const stage = new THREE.Group();
+    try {
+      setPrefs({ teamPalette: "default" });
+      const e = { ...troop("enemy", 100, "building"), cardId: "cannon", radius: 0.6 } as Entity;
+      const v = buildBuildingMesh(e);
+      stage.add(v.root); // on stage: the repaint skips views that left the scene
+      const slot = () => {
+        let hex = -1;
+        v.root.traverse((o) => {
+          if (isTeamPart(o)) hex = ((o as THREE.Mesh).material as THREE.MeshToonMaterial).color.getHex();
+        });
+        return hex;
+      };
+      expect(slot()).toBe(TEAM.default.enemy.main);
+      setPrefs({ teamPalette: "cb" });
+      expect(slot()).toBe(TEAM.cb.enemy.main);
+    } finally {
+      setPrefs({ teamPalette: "default" });
+      stage.clear();
+      vi.unstubAllGlobals();
+    }
   });
 });

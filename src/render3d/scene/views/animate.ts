@@ -60,6 +60,7 @@ import {
 } from "../common";
 import { addShake } from "../camera";
 import { contactRing, damagePopup, emitSparks, megaSlam } from "../fx/effects";
+import { fxTeamColor } from "../fx/spells";
 import { hpBarVisible, makeStunSprite, setHpFill } from "./troops";
 import { animateKitTroop, LEAN, leanQuaternion, RIM_UNIFORM, setLeanCamera, startKitDeath, stepKitDeath, VIEW_DIR } from "../../cast/index";
 import { currentQuality } from "../../quality";
@@ -617,15 +618,16 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
   const jig = hitK > 0 ? Math.sin(hitK * Math.PI) : 0;
   const recoil = hitK * hitK * (3 - 2 * hitK);
 
-  // Deploy freeze countdown: a white ring shrinking around the unit's
-  // feet so the "why isn't it moving yet" second reads as a timer.
+  // Deploy freeze countdown: a ring in the unit's team colour (viewer-relative,
+  // colour-blind aware, like the deploy telegraph ring) shrinking around its
+  // feet so the "why isn't it moving yet" second reads as a timer. Never white.
   if (e.kind === "troop") {
     if (e.deployTimer > 0) {
       if (!view.deployRing) {
         view.deployRing = new THREE.Mesh(
           new THREE.RingGeometry(0.78, 0.92, 28),
           new THREE.MeshBasicMaterial({
-            color: 0xffffff,
+            color: fxTeamColor(e.side),
             transparent: true,
             opacity: 0.75,
             side: THREE.DoubleSide,
@@ -657,10 +659,8 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
         ? (view.rig.hover ?? 0) + view.rig.height
         : view.kit
           ? view.kit.height + 0.8 // above the HP bar, which rides above the head
-          : e.kind === "building"
-            ? 1.2
-            : 2.4;
-      damagePopup(b, w.x, lift, w.z, label);
+          : view.hpGroup.position.y; // a building's or tower's HP plate: its top, not inside the keep
+      damagePopup(b, w.x, lift, w.z, label, e.id);
     }
   }
 
