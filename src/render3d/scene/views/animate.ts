@@ -659,7 +659,9 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
         ? (view.rig.hover ?? 0) + view.rig.height
         : view.kit
           ? view.kit.height + 0.8 // above the HP bar, which rides above the head
-          : view.hpGroup.position.y; // a building's or tower's HP plate: its top, not inside the keep
+          : // A building's or tower's HP plate: its top, not inside the keep (a
+            // tower floats its plate toward the camera and says where it shows).
+            ((view.hpGroup.userData.popupY as number | undefined) ?? view.hpGroup.position.y);
       damagePopup(b, w.x, lift, w.z, label, e.id);
     }
   }

@@ -62,7 +62,7 @@ import {
 } from "./towerStyles";
 import { onionDome } from "../arena/build";
 import { addShake, startKoZoom } from "../camera";
-import { markShadowsDirty } from "../post";
+import { markShadowsDirty, registerTroopCaster } from "../post";
 import { contactRing, crownPop, emitSparks, kingWakeBurst, puff } from "../fx/effects";
 import { attackSwing, isFrozen } from "./animate";
 import {
@@ -347,9 +347,13 @@ export function buildTowerMesh(e: Entity): EntityView {
     mount.add(crew.rig.group);
     view.defender = crew.rig;
   }
-  // A provider's crew is one skinned draw: it casts like a field troop. The
-  // hand-built crew is many limbs: tiny on the roof, not worth a shadow pass.
-  mount.traverse((o) => (o.castShadow = crew.kind === "provider"));
+  // A provider's crew is one skinned draw: it casts like a field troop, one
+  // registered caster that follows the live level (post.ts), so the static
+  // map of the lower levels never freezes a crew's pose. The hand-built crew
+  // is many limbs: tiny on the roof, not worth a shadow pass.
+  mount.traverse((o) => (o.castShadow = false));
+  const caster = crew.kind === "provider" ? crew.unit.group.getObjectByProperty("isMesh", true) : undefined;
+  if (caster) registerTroopCaster(caster);
   view.defenderMount = mount;
 
   const plate: THREE.Object3D[] = [];
@@ -441,6 +445,9 @@ function placePlate(rig: TowerRig, spot: PlateSpot): void {
   const y = y0 + PLATE_LIFT * UP_Z;
   const z = PLATE_LIFT * UP_Y * rig.camSide;
   rig.bar.position.set(0, y, z);
+  // Damage numbers start at the plate (animate.ts): the height over the
+  // tower's foot at which the floated plate shows on screen, world units.
+  rig.bar.userData.popupY = y0 * TOWER_SCALE;
   // The number sits just in front of the bar as the camera sees it.
   rig.text.position.set(0, y + 0.2 * UP_Z, z + 0.2 * UP_Y * rig.camSide);
 }
