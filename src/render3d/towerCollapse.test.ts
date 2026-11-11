@@ -15,11 +15,11 @@ import {
 
 /** Chunk centres roughly as a king tower lays them out (local units). */
 const KING: ChunkStart[] = [
-  { name: "wall", x: 0, y: 1.2, z: 0, restY: 0.6 },
-  { name: "battlement", x: 0, y: 2.55, z: 0, restY: 0.2 },
-  { name: "roof", x: 0, y: 2.9, z: -0.3, restY: 0.3 },
-  { name: "flag", x: -0.77, y: 2.85, z: 0, restY: 0.05 },
-  { name: "defenderMount", x: 0, y: 3.2, z: 0, restY: 0.4 },
+  { name: "upper", x: 0, y: 2.1, z: 0, restY: 0.6 },
+  { name: "front", x: 0, y: 3.4, z: 1.1, restY: 0.3 },
+  { name: "back", x: 0, y: 3.4, z: -1.1, restY: 0.3 },
+  { name: "canopy", x: 0, y: 5.1, z: -0.45, restY: 0.3 },
+  { name: "crew", x: 0, y: 3.6, z: -0.23, restY: 0.4 },
 ];
 
 describe("tower collapse plan", () => {
@@ -28,11 +28,17 @@ describe("tower collapse plan", () => {
     expect(planCollapse(7, KING)).not.toEqual(planCollapse(8, KING));
   });
 
-  it("launches battlements first and the roof last, 60 ms apart", () => {
+  it("splits a tower into at most four keep chunks plus its crew; the base never flies", () => {
+    expect(CHUNK_ORDER.filter((n) => n !== "crew")).toHaveLength(4);
+    expect(CHUNK_ORDER).not.toContain("base" as never);
+    expect(planCollapse(1, KING.filter((c) => c.name !== "canopy"))).toHaveLength(4); // a princess: 3 chunks + crew
+  });
+
+  it("launches the canopy first and the upper keep last, 60 ms apart", () => {
     const plan = planCollapse(3, KING);
     const launch = (n: string) => plan.find((m) => m.name === n)!.launch;
-    expect(launch("battlement")).toBe(0);
-    expect(launch("roof")).toBeCloseTo((CHUNK_ORDER.length - 1) * COLLAPSE_STAGGER);
+    expect(launch("canopy")).toBe(0);
+    expect(launch("upper")).toBeCloseTo((CHUNK_ORDER.length - 1) * COLLAPSE_STAGGER);
     expect(COLLAPSE_STAGGER).toBeCloseTo(0.06);
     const sorted = [...plan].sort((a, b) => a.launch - b.launch).map((m) => m.name);
     expect(sorted).toEqual([...CHUNK_ORDER]);
@@ -61,12 +67,12 @@ describe("tower collapse plan", () => {
 
 describe("chunk motion", () => {
   it("holds still until its launch", () => {
-    const m = planCollapse(5, KING).find((c) => c.name === "roof")!;
+    const m = planCollapse(5, KING).find((c) => c.name === "front")!;
     expect(chunkPose(m, m.launch - 0.01)).toMatchObject({ x: m.x, y: m.y, z: m.z, rx: 0, landed: false });
   });
 
   it("is airborne shortly after launch and follows gravity 18", () => {
-    const m = planCollapse(9, KING).find((c) => c.name === "battlement")!;
+    const m = planCollapse(9, KING).find((c) => c.name === "front")!;
     const t = 0.1;
     const p = chunkPose(m, m.launch + t);
     expect(p.landed).toBe(false);
