@@ -27,9 +27,11 @@ and the zellige band.
 Acceptance ceilings: empty calls at most start + 6 (classic 184, golden 173, and golden at most 200);
 all six towers at most 60k triangles at L0.
 
-Tower triangles at L0 (all six, ink included, measured in the battle): classic ~34k, golden ~49k. The
-test `towerStyles.test.ts` builds all 22 looks x both viewpoints at flair 2 (the heaviest dressing) and
-holds every set of six at or under 60k.
+Tower triangles at L0 (all six, ink included): see "Review fixes" below for the current figures (heaviest:
+Golden Age atlas at flair 2, 47.7k; Classic snow/ice at flair 2, 48.5k). The test `towerStyles.test.ts`
+builds all 22 looks x both viewpoints at flair 2 (the heaviest dressing) WITH the real `onionDome` (the
+first version of the test built Golden Age keeps without domes and missed ~28k triangles) and holds every
+set of six at or under 60k.
 
 ## Decisions
 
@@ -51,11 +53,15 @@ holds every set of six at or under 60k.
   the fixed SIDE_COLOR), so roofs and domes are the teamColors blue/red, or blue/orange under the
   colour-blind palette. `repaintTowers(palette)` runs on `onPrefs` and repaints standing towers AND
   ruins (keep uniforms + HP fill) without a rebuild.
-- **Ink:** silhouette-only, inside the same draw: hull vertices (smoothed normals, wound inside out)
-  are pushed 1.6 CSS px in clip space and 0.45 world units away from the camera, so only the outer
-  outline survives; no fins, no lines on bricks or windows. Hulls sit after the surfaces in the
-  vertex buffer (`geometry.userData.bodyCount`), so the shadow pass never draws them, nor does the main
-  pass when quality turns ink off (`INK.uInkOn`, L4).
+- **Ink:** silhouette-only, inside the same draw: hull vertices (smoothed normals) grow along the
+  normal in VIEW space by 1.6 CSS px (converted to view units at that depth) and are pushed 0.45 world
+  units away from the camera, so only the outer outline survives; no fins, no lines on bricks, windows
+  or merlons (merlons carry no ink: their hulls drew ticks in the gaps). The keep material draws BOTH
+  faces (`side: DoubleSide`, `shadowSide: BackSide`): with back faces culled, a roof cone's grazing back
+  faces flipped under the push and were culled, so the cones showed ink only near the tip, as
+  "whiskers". Cones close to one tip vertex (smoothed normal straight up). Hulls sit after the surfaces
+  in the vertex buffer (`geometry.userData.bodyCount`), so the shadow pass never draws them, nor does
+  the main pass when quality turns ink off (`INK.uInkOn`, L4).
 - **Massing:** both editions use the Classic heights (princess 2.15, king 2.7; radius 0.95 / 1.28, scale
   1.1, so `groundPaint.TOWER_FOOTPRINT` is unchanged). The gate is on the camera face; the team banner
   drapes over the parapet on the camera face, clear above the gate. All four faces are modelled
@@ -69,8 +75,11 @@ holds every set of six at or under 60k.
 - **Golden Age:** the same massing in the look's ashlar; horseshoe gate with striped voussoirs and a gold
   alfiz; stepped Moorish merlons with pointed caps; a zellige band at the parapet and on the turret drums;
   team onion domes (arena/build.ts `onionDome` geometry, read only, passed in as a factory to avoid an
-  import cycle) with gold crescent finials; a domed qubba on four posts over the king; crescent (princess)
-  or eight-point star (king) on the banner; a tiled star on the deck.
+  import cycle, re-tessellated on bake by `lighten`: bulbs 12 x 10, crescents 5 x 12) with gold crescent
+  finials; a low domed qubba over the king (narrower posts than the Classic pavilion, a short zellige
+  drum, a dome of radius R*0.34+0.03 with its crescent at 0.55 scale, set back 0.12), so the far king's
+  plate fits over him on a 390x844 phone; crescent (princess) or eight-point star (king) on the banner;
+  a tiled star on the deck.
 - **Per look** (`towerStyles.ts`): stone, plinth, battlement and platform from `ArenaLook.tower`; extras
   from `LOOK_EXTRAS`: snow caps + icicles + drifts (snow, ice, atlas), glowing ember seams (forge, copper),
   ivy (jungle, ghouta), pale team-tint neon strips (neon), bone lintels (bone); lit slits on night-native
@@ -83,23 +92,34 @@ holds every set of six at or under 60k.
   provider's group is mounted at the deck (or the king's dais) and scaled by 1/TOWER_SCALE, so provider
   sizes are world sizes; the king canopy's height follows the crew's height. Without a provider (or
   when `make` returns null) the hand-built crew shows, with the king's crown opened into a band with
-  five short points (no more "sunflower" disc from above). Idle, the king faces the camera.
+  five short points (no more "sunflower" disc from above). Idle, the king faces the camera; asleep he
+  nods toward the camera side (`kingSlumpTilt`: the tilt is about the tower's X axis after the yaw, so
+  its sign follows `camSide`), so the guest sees his face and crown too, not his robe under the canopy.
 - **HP plates:** placed every frame in screen space (`towerStyles.ts` maths): far towers above the
   tallest roof tip, near towers under the gate foot, at least 4 CSS px (we keep 6) clear; when the
   preferred side would leave the screen or slide under the HUD insets (`b.framing.insets`), the plate
-  flips to the other side (the Golden Age far king, whose qubba is tall, flips under his gate on the
-  phone). The plate floats toward the camera so the keep never hides it.
-- **Damage:** stage 1 below 70% HP (two crack decals: the camera face and a side; the camera-side left
-  merlon chipped to a stub, the flag leans); stage 2 below 40% (two more cracks and one on the deck; two
-  more merlons down to stubs; a patch of tiles torn off the camera-side cone or dome showing rafters; the
-  banner torn short and darker; the flag torn and hanging; one smoke wisp from the roof patch every
-  0.75 s). Chips burst from each merlon that breaks; `markShadowsDirty` on every stage.
+  flips to the other side. On 390x844 no plate flips (both editions); at 1440x900 the far king's
+  top is above the frame (see Requests for ship 4), so his plate flips under his gate there. `tops`
+  hold every high point: roof tips, finials, true dome heights (`domeTop`), canopy, and the flag tip
+  (a test checks the whole keep stays under them on screen). The plate floats toward the camera so the
+  keep never hides it.
+- **Damage:** stage 1 below 70% HP (tall, bold crack decals either side of the gate on the camera face,
+  where the wall is in view under the turrets, and one on a side face; the camera row's MIDDLE merlon
+  knocked to a stub, a clear gap over the banner; the flag leans); stage 2 below 40% (a crack on the far
+  side and one on the deck; the camera row's left merlon and the back row's middle one down to stubs,
+  both in view; a patch of tiles torn off the camera-side cone or dome showing rafters; the banner torn
+  short and darker; the flag torn and hanging; one smoke wisp from the roof patch every 0.75 s). Chips
+  burst from each merlon that breaks; `markShadowsDirty` on every stage.
+- **Flag (Classic):** flies outward from the camera-side right turret (it was on a back turret, where it
+  ran into a far tower's plate); a camera-side turret stands lower on screen than the back roofs, so a
+  far plate never meets it, and its tip is in `tops` all the same.
 - **Collapse and ruin:** the keep splits by draw range into rigid chunks (front turret pair with roofs,
   back pair, upper keep with banner and cannon, and the king's canopy) plus the crew; they topple
   (`towerCollapse.ts` CHUNK_ORDER canopy, crew, front, back, upper) with dust where each lands. The base
-  hides at once: the ruin (`craftRuin`) stands in its place: the scorched paving and plinth, a jagged
-  broken stump with a dark hollow and a broken gate, a rubble mound spilling out of the gate, rubble on
-  the heap inside, team roof shards and the fallen team banner. The stump is there at once; the heap
+  hides at once: the ruin (`craftRuin`) stands in its place: the paving and plinth with soot over the
+  paving, a ragged scorched ring on the ground round it (two tones, seeded), a jagged broken stump with a
+  dark hollow and a broken gate, a rubble mound spilling out of the gate, rubble on the heap inside, team
+  roof shards and the fallen team banner. The stump is there at once; the heap
   rises while the chunks rain down. The FX crater decal stays. No grey disc, no mud.
 
 ## Requests for ship
@@ -112,6 +132,24 @@ holds every set of six at or under 60k.
    renders on demand" policy removes that; towers already call `markShadowsDirty` on every damage stage,
    collapse and ruin.
 3. The fallback (hand-built) crew casts no shadow, as before; a provider's crew casts (one caster per unit).
+4. **Far king at landscape sizes (compact-hand / ship, framing is frozen for towers):** at 1440x900 the
+   far king's top is above the frame (Golden Age about 29 CSS px, Classic about 21 px; on art/base the
+   old, flat Golden Age king fit), so his roofs are cut and his plate flips under his gate, where flying
+   units pass. Shortening the keeps cannot win back that much. Ask: in wide mode, frame a box with about
+   2.6 camera-up units more at the top, e.g. in `src/render3d/scene/fit.ts`
+   `export const WIDE_BOX: ContentBox = { ...BATTLE_BOX, height: BATTLE_BOX.height + 2.6, mid: BATTLE_BOX.mid + 1.3 };`
+   and use it for `lay.box` in `src/ui/layout.ts` wide mode, so the far king and his plate (about 0.9 +
+   1.7 units) fit; the bottom edge stays where it is.
+5. **Guest view in a bot battle:** `?viewpoint=enemy` does nothing there, because `src/main.ts` calls
+   `scene.setViewpoint("player")` at match start. To check the online guest's view, patch the scene
+   before the battle starts (the towers fix shots did): `const s = __cr.scene(); const o =
+   s.setViewpoint.bind(s); s.setViewpoint = () => o("enemy");`. If ship wants `?viewpoint=enemy` to work
+   in bot battles, main.ts should honour it at match start.
+6. **Provider crew and the far Golden Age king's plate:** with the hand-built crew the far king's plate
+   clears the HUD band on 390x844 by about 12 CSS px; cast-kit's taller king (2.07 world units) lifts
+   the canopy by about 8.5 px, leaving about 3.5 px. Ship: re-check the far king's plate on 390x844 in
+   both editions once the provider is wired; if it flips, the cheapest fix is letting far plates rise
+   into the gap between the scoreboard chips and the clock (layoutWire could pass that smaller inset).
 
 ## Screenshots and checks
 

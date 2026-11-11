@@ -1450,7 +1450,7 @@ function craftClassic(spec: KeepSpec2): KeepBuild {
 }
 
 /** The qubba's crescent finial, scaled down from onionDome's (the turret domes keep theirs whole). */
-const QUBBA_FINIAL = 0.55;
+const QUBBA_FINIAL = 0.45;
 
 /**
  * Height of an onionDome(r) placed at (dome base - r/2), in r above the
@@ -1478,7 +1478,7 @@ function buildCanopy(c: Ctx, at: THREE.Vector3, golden: boolean): YZ[] {
     // a smaller crescent than the turrets'.
     const drumH = 0.1;
     s.add(frustum(pr + 0.06, pr + 0.06, eave, eave + drumH, 0, true), 0xffffff, at.x, 0, at.z, 0, () => 1, { tex: KEEP_TEX.band, uv: [3, 1] });
-    const dr = pr + 0.03;
+    const dr = pr + 0.01;
     const domeY = eave + drumH;
     const dome = c.dome(dr, 0xffffff);
     dome.children[3]?.scale.setScalar(QUBBA_FINIAL);
