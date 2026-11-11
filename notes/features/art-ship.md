@@ -38,7 +38,35 @@ None (this is the ship package).
 - Owner sheets: `/tmp/claude-0/art/ship/before-after-phone.png` and `before-after-desk.png` (built by `tools/sheets.sh`).
 - Notes: the art-direction ship log section "5. ship" (eb3a16a).
 - Final quality bar on `eb3a16a`: `npx tsc --noEmit` clean; `npx vitest run` 140 files / 1,732 tests pass (golden.test.ts and bot.test.ts identical to `0a8c97d`, `git diff 0a8c97d -- src/game` empty); `npm run build:all` succeeds; `npm run perf:budget` (its own dev server) passes every gate in both editions at both views (fight 180-206 calls, 628k-670k triangles, 75-76 textures; empty 100-114 calls, 251k-274k triangles).
-- Cleanup: dev server on 3205 stopped by PID; the throwaway baseline worktree removed. Not pushed: the publish step belongs to the workflow's shipper (the computed task says not to push).
+- Cleanup: dev server on 3205 stopped by PID; the throwaway baseline worktree removed.
+- Polish round start (`d9e4ead`): critics' issues deduplicated (table above). Renders come from a snapshot copy of the worktree (`/home/user/wt-art-ship-snap`, its own Vite on 3205 with HMR off and its own cache dir) so edits never reload a capture; drivers in `/tmp/claude-0/art/ship/polish/tools/`, shots in `/tmp/claude-0/art/ship/polish/it*/`.
+- Polish commits: d838882 (floors, night grade, emote, diorama, ruin, roc, numbers), f4e30c0 (outer ring, contact shadows, flyer discs, bridges, aprons, far band), 5080d91 (floors to a 0.70 screen value, dark ashlar, HP numerals, crowd, tray gap, elephant). Not pushed: the publish step belongs to the workflow's shipper (the computed task says not to push).
+
+## Polish round (after the three critics' review of the final build)
+
+Deduplicated issues (critics 1-3), and what this round does with each:
+
+| Issue | Severity | Status |
+|---|---|---|
+| Near-white courts (snow, neon, every Golden Age court) sink white and cream units and erase the lanes | major | fixed: every court paints at most 0.65 luma (reads about 0.70 lit), lanes at least 0.06 apart; per-look Golden Age hues; `arena.test.ts` pins it for all 22 looks |
+| Golden Age night courts lit like noon inside a dark town | major | fixed: night courts paint about 30% darker than day ones (tested) and the sun and hemisphere start toward moonlight (`NIGHT_NATIVE_LIGHT` in sky.ts); the existing lantern pools now read |
+| Emote bubble: a white, bloomed disc over the enemy king's face | major | fixed: off-white #F2EBDD with the ink rim, hung beside the king (x +2.9), 0.7 size |
+| Home diorama blurry on a 2x phone | major | fixed: `DIORAMA_DPR` 1.25 -> 2 (still half frame rate, no bloom) |
+| Dark looks (forge, copper) crush the keeps to black boxes | major | improved: the dark ashlar, battlements and plinths are lifted and the hemisphere ground is a warm ember bounce; forge floor lifted to 0.32 paint |
+| A fallen tower leaves a black, hard-edged pit; near-black collapse dust | major | fixed: soot on the paving in the paving's own tone, a soft floor-tinted scorch decal (alpha 0.55) instead of opaque rings and the dark crater; dust is the floor's dust lifted 20% |
+| Golden Age troops are cream blobs on a cream court | major | improved through the floor (the courts are now mid sand, terracotta, ochre and lilac) and an emerald roc; headgear left cream (team colour on hats would break the team rule) |
+| Wide-screen outer ring is placeholder art (Golden Age worst) | major | improved: Golden Age street, alleys and ground patches, painted contact shadows under every house, palm and stall (Classic cottages, stalls, windmill and trees too), door awnings and roof clutter, limewash in four tints; galleries without arcades remain (see Known gaps) |
+| Laptop framing: far king cut at the top, his plate under his gate | major | not fixed: `WIDE_BOX` in scene/fit.ts and ui/layout.ts is the compact-hand framing, frozen for art (request below) |
+| Damage numbers oversized on phones, dark drop-shadow smudge | minor | fixed: 0.75 size under 500 px wide, lighter tighter shadow |
+| Flyer ground marker reads as a splat | minor | fixed: the same disc at 0.6 opacity and 0.85 size |
+| Grey tower aprons are heavy cold slabs | minor | fixed: 20% smaller and leaning 40% toward the lane dirt |
+| Golden Age bridges are flat yellow slabs | minor | fixed: the gold "rim" covered the whole deck; now a laid sandstone deck with joints under a brass lip |
+| Golden Age far band: a dome behind the clock; forge far band a black slab | minor | fixed: two smaller domes either side of the gate; the forge furnace lower and its wall lifted |
+| HP plate numbers soft and haloed | minor | fixed: painted at 2x, cream #F4EAD6 with the shared ink |
+| Crowd stands read as barcode noise | minor | improved: non-team shirts at 0.75 saturation in a narrow value band |
+| War elephant reads as a boulder | minor | improved: warmer grey, big flared ears with pink insides, a tail tuft |
+| Player king plate under the tray on 360x640 | minor | improved: near plates keep 8 px over the tray when the tray sits under the board |
+| Damage numbers from different targets overlap; tower fall payoff; lava "giraffe print"; archers' back cloth; cast ink at 85% alpha; Golden Age gallery arcades | minor | not done (Known gaps) |
 
 ## Requests for the publish step
 
