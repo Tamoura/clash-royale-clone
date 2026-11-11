@@ -19,6 +19,11 @@ Acceptance: empty <= 185 calls and <= 230k triangles, fight <= 450 calls: all fo
 --max-empty-calls 185`, exit 0). Textures 49 in the fight. The Golden Age triangle rise is the
 per-frame troop-shadow pass it now has.
 
+After the review fixes (fc02817 + the town tweaks): 390x844@2 Classic empty 176 / 202,978, fight
+433 / 706,614; Golden Age empty 170 / 191,770, fight 432 / 702,318; 1440x900@1 Classic empty 178 /
+226,100, fight 431 / 729,780; Golden Age empty 176 / 207,666, fight 438 / 718,214 (the town's lamp
+glow mesh is one draw per side, wide screens only). All pass.
+
 Golden Age now casts dynamic troop shadows at L0 too (C's `!ARABIC` gate is gone); its fight stays
 under 450 because the lit toon props are tint-batched (one vertex-coloured mesh per shadow setting):
 the per-frame shadow pass draws ~30 static casters instead of 50.
@@ -182,6 +187,14 @@ fill at runtime and shoot), pct.sh (box luma against a base shot).
   @fontsource woff files, because this worktree's node_modules is a symlink outside Vite's allowed
   fs root (a worktree artefact; the production build bundles the fonts).
 
+- Review-fix matrix (fight, 6 s after the standard spawns): /tmp/claude-0/art/stage-fix/matrix/
+  (<edition>-<arena>-390x844@2.png for all four arenas, -1440x900.png for snow, courtyard and souk,
+  -390x844-low.png for training-camp); sheets sheet-normal-phone.png, sheet-arabic-phone.png,
+  sheet-low.png; art/base vs before vs after: cmp3-normal-barbarian-bowl-390x844@2.png,
+  cmp3-arabic-barbarian-bowl-390x844@2.png; the ice bridge zoom zoom-snow-bridge.png (deck
+  149,199,227 against snow 225,229,235, kerbs 83,116,164). Golden Age town: v1/arabic-*-desk-final.png
+  (courtyard, medina at night, Atlas); home diorama v1/home-arabic-desk.png (no green corners).
+
 ## Known gaps
 
 - The crowd shares one body: everyone cheers with raised arms (a second arm pose is a third draw).
@@ -210,3 +223,13 @@ fill at runtime and shoot), pct.sh (box luma against a base shot).
   calmer forge seams. Contact sheet, matrix, ladder sheet, governor and wash checks done.
 - Final quality bar at 194e933: tsc clean, vitest 136 files / 1609 tests pass, npm run build ok,
   perf-budget passes in all four configurations (table above). Package complete.
+- Review round (fixer): four findings, all reproduced and fixed.
+  - a902fab: light rig (sun z +3.5, fill 0.5 from (2, 4, 14)); walls 77-88% of art/base (were
+    45-52%), table in "Light rig fix"; the bloom bound test searches every normal and look; rig and
+    shadow-direction tests. Ice bridge, Golden Age town (palette, lots, doors, windows, lanterns) and
+    the Golden Age far ground on the apron colour, each with tests in arena.test.ts.
+  - 99ebf5b: ice kerb tops dark from above (the first frost rim and big snow caps made them read
+    white), painted doors, larger windows and lanterns.
+  - Quality bar after the fixes: tsc clean, vitest 136 files / 1626 tests pass (golden and bot
+    unchanged), npm run build ok, perf-budget passes in all four configurations (numbers under Perf),
+    no console errors besides the known @fontsource 403s of the worktree symlink.
