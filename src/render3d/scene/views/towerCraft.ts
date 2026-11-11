@@ -1890,7 +1890,7 @@ export function craftRuin(spec: RuinSpec): { stump: THREE.Mesh; heap: THREE.Mesh
   // with a ragged edge (the team inlay stays on top).
   buildBase(c);
   s.chunk = "base";
-  s.add(raggedRing(R * 1.0, R * 1.46, 0.0, 0.08, 28, rand), 0x3a2e24, 0, 0.163, 0, 0, () => 1);
+  s.add(raggedRing(R * 1.0, R * 1.36, 0.0, 0.02, 28, rand), 0x3a2e24, 0, 0.163, 0, 0, () => 1);
   s.add(raggedRing(R * 1.3, R * 2.05, 0.08, 0.3, 32, rand), 0x4a3b2c, 0, 0.012, 0, 0, () => 1);
   s.add(raggedRing(R * 1.3, R * 1.75, 0.04, 0.24, 32, rand), 0x241c15, 0, 0.018, 0, 0, () => 1);
   // Jagged top: broken ashlar blocks of uneven height along each face.
