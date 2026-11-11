@@ -1,9 +1,12 @@
 /**
  * The Golden Age surround (art bible section 4): arcaded sandstone galleries
  * hold the crowd down both long sides (instead of bleachers), team-striped
- * souk awnings replace the pavilions, and behind them domed flat-roof houses
- * and palms make a town edge. Sculpted into one vertex-coloured mesh (one
- * draw); the crowd seats are returned for crowd.ts.
+ * souk awnings replace the pavilions, and behind them a town edge: flat-roof
+ * houses in the look's own plaster (parapets, arched doors and windows, some
+ * domes or upper storeys, never overlapping), street lanterns and palms.
+ * Sculpted into vertex-coloured meshes (the galleries one draw; the town,
+ * its lamps and the palms one each per side); the crowd seats are returned
+ * for crowd.ts.
  *
  * The camera looks from the south at ~49 degrees: the galleries' tops, their
  * south end faces (a horseshoe arcade) and the awnings carry the detail.
@@ -94,22 +97,159 @@ function gallery(s: Sculpt, sx: number, zc: number, len: number, side: "player" 
   bunting(s, sx * (GAL_X + 0.1), GAL_H + 0.95, zc - len / 2, sx * (GAL_X + 0.1), GAL_H + 0.95, zc + len / 2, team, gold, 0.22);
 }
 
-/** A whitewashed flat-roof house, sometimes domed, with an arched door on its south face. */
-function house(s: Sculpt, x: number, z: number, k: number, look: ArenaLook, rand: () => number): void {
-  const wall = tone(look.islamic ? 0xf0e6d0 : 0xe8dcc0, 0.94 + rand() * 0.08, 0.6);
-  const w = (1.2 + rand() * 0.8) * k;
-  const h = (1.0 + rand() * 0.9) * k;
-  const d = (1.1 + rand() * 0.6) * k;
-  s.box(w, h, d, wall, x, h / 2 - 0.05, z, 0, ao);
-  s.box(w + 0.1, 0.1, d + 0.1, tone(wall, 0.9), x, h, z, 0, lit);
-  s.box(0.3 * k, 0.5 * k, 0.03, 0x5a3a24, x + (rand() - 0.5) * w * 0.4, 0.22 * k, z + d / 2 + 0.01, 0, () => 1);
-  s.box(0.22 * k, 0.22 * k, 0.03, 0x2a3a5a, x + w * 0.25, h * 0.65, z + d / 2 + 0.01, 0, () => 1);
-  if (rand() < 0.45) {
-    const r = Math.min(w, d) * 0.32;
-    const dome = new THREE.SphereGeometry(r, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-    s.add(dome, rand() < 0.5 ? THEME.turquoise : tone(look.islamic?.dome ?? THEME.teal, 1.05), x, h + 0.04, z, 0, lit);
-    s.add(new THREE.SphereGeometry(0.06 * k, 6, 4), THEME.gold, x, h + r + 0.06, z);
+/** The town's tones for one look (see townPalette). */
+export interface TownPalette {
+  /** Wall plasters, picked per house. */
+  walls: number[];
+  /** Roof lips, door and window frames. */
+  trim: number;
+  /** The flat roof deck inside the parapet. */
+  roof: number;
+  door: number;
+  /** Window glass: dark by day, lamp-lit on the night sets. */
+  glass: number;
+  /** Night-native set: windows glow and the walls sit back in the dark. */
+  night: boolean;
+}
+
+/** "#rrggbb" or "r,g,b" (the IslamicTiles formats) as a hex number. */
+function paletteHex(c: string): number {
+  if (c.startsWith("#")) return parseInt(c.slice(1), 16);
+  const [r, g, b] = c.split(",").map((v) => Math.round(+v) & 255);
+  return (r << 16) | (g << 8) | b;
+}
+
+const MIX_A = new THREE.Color();
+const MIX_B = new THREE.Color();
+const mixHex = (a: number, b: number, t: number): number => MIX_A.set(a).lerp(MIX_B.set(b), t).getHex();
+
+/** Kasbah earth for the snowbound Atlas: whitewash would vanish into the snow. */
+const KASBAH = [0xc98a5c, 0xb87a52, 0xd59c6e];
+
+/**
+ * The town's palette for `look`: walls from the look's court plaster warmed
+ * toward its lane sand (three tones), trim from its worn lane, and on the
+ * night sets dimmed walls with lamp-lit windows, so no house reads as a
+ * bright placeholder cube on a dark apron.
+ */
+export function townPalette(look: ArenaLook): TownPalette {
+  const t = look.islamic;
+  const plaster = t ? paletteHex(t.plaster) : 0xf0e6d0;
+  const lane = t ? paletteHex(t.lane) : 0xd6b25e;
+  const wear = t ? paletteHex(t.laneWear) : 0xa07c3a;
+  const snow = look.ambient === "snow";
+  const night = look.nightPools;
+  let walls = snow ? KASBAH : [0.12, 0.3, 0.5].map((k) => mixHex(plaster, lane, k));
+  if (night) walls = walls.map((c) => tone(c, 0.45, 0.8));
+  const trim = tone(mixHex(wear, plaster, snow ? 0.1 : 0.35), night ? 0.5 : 1);
+  return {
+    walls,
+    trim,
+    roof: snow ? 0xf4f8fc : tone(walls[1], 0.88),
+    door: night ? 0x3a2618 : 0x5a3a24,
+    glass: night ? 0xffc46b : 0x2a3a5a,
+    night,
+  };
+}
+
+/** A house footprint in the town (centre and half extents, world units). */
+export interface TownLot {
+  x: number;
+  z: number;
+  hw: number;
+  hd: number;
+}
+
+/** Gap kept between neighbouring houses. */
+export const LOT_GAP = 0.3;
+
+/**
+ * Lay out one side's town (sx = -1 left, 1 right): up to `count` house lots
+ * between the lantern street outside the galleries and the far edge, none
+ * overlapping another, none on the canal that runs through.
+ */
+export function townLots(sx: number, rand: () => number, count = 15): TownLot[] {
+  const lots: TownLot[] = [];
+  for (let tries = 0; tries < 80 && lots.length < count; tries++) {
+    const k = 0.9 + rand() * 0.5;
+    const hw = (0.6 + rand() * 0.4) * k;
+    const hd = (0.55 + rand() * 0.3) * k;
+    const lot = { x: sx * (GAL_X + GAL_DEPTH + 1.9 + hw + rand() * 6.5), z: (rand() - 0.5) * 38, hw, hd };
+    if (Math.abs(lot.z) < 1.8 + hd) continue;
+    const clear = lots.every(
+      (o) => Math.abs(o.x - lot.x) >= o.hw + lot.hw + LOT_GAP || Math.abs(o.z - lot.z) >= o.hd + lot.hd + LOT_GAP,
+    );
+    if (clear) lots.push(lot);
   }
+  return lots;
+}
+
+/** A small arched window on a south face, with a sill. */
+function archWindow(s: Sculpt, trim: Sculpt, x: number, y: number, z: number, w: number, h: number, glass: number, sill: number): void {
+  s.box(w, h, 0.02, glass, x, y, z, 0, () => 1);
+  s.add(new THREE.CircleGeometry(w / 2, 8, 0, Math.PI), glass, x, y + h / 2, z, 0, () => 1);
+  trim.box(w + 0.07, 0.035, 0.05, sill, x, y - h / 2 - 0.01, z + 0.01, 0, lit);
+}
+
+/**
+ * A flat-roof house in the look's plaster: a roof lip and a low parapet round
+ * the deck, sometimes a set-back upper storey or a dome, an arched door and a
+ * pair of arched windows on its south face (lamp-lit on the night sets).
+ */
+function house(s: Sculpt, glow: Sculpt, lot: TownLot, pal: TownPalette, look: ArenaLook, rand: () => number): void {
+  const { x, z } = lot;
+  const w = lot.hw * 2;
+  const d = lot.hd * 2;
+  const k = Math.min(w / 1.6, 1.4);
+  const h = (0.95 + rand() * 0.8) * k;
+  const wall = pal.walls[Math.floor(rand() * pal.walls.length)];
+  const wallLt = tone(wall, 1.05);
+  s.box(w, h, d, wall, x, h / 2 - 0.05, z, 0, ao);
+  // The roof: a projecting lip, then a low parapet round a sunken deck.
+  s.box(w + 0.12, 0.08, d + 0.12, pal.trim, x, h, z, 0, lit);
+  const ph = 0.15;
+  const pt = 0.09;
+  for (const sz of [-1, 1]) s.box(w + 0.04, ph, pt, wallLt, x, h + 0.04 + ph / 2, z + sz * (d / 2 - pt / 2 + 0.02), 0, lit);
+  for (const sxx of [-1, 1]) s.box(pt, ph, d - 0.14, wallLt, x + sxx * (w / 2 - pt / 2 + 0.02), h + 0.04 + ph / 2, z, 0, lit);
+  s.box(w - 0.14, 0.02, d - 0.14, pal.roof, x, h + 0.06, z, 0, lit);
+  const roll = rand();
+  if (w > 1.5 && roll < 0.35) {
+    // A set-back upper storey with its own lip.
+    const uw = w * 0.48;
+    const ud = d * 0.5;
+    const uh = h * 0.45;
+    const ux = x + (rand() < 0.5 ? -1 : 1) * (w - uw) * 0.3;
+    const uz = z - d * 0.2;
+    s.box(uw, uh, ud, wall, ux, h + uh / 2, uz, 0, lit);
+    s.box(uw + 0.1, 0.07, ud + 0.1, pal.trim, ux, h + uh, uz, 0, lit);
+    archWindow(pal.night ? glow : s, s, ux, h + uh * 0.5, uz + ud / 2 + 0.012, 0.11 * k, 0.14 * k, pal.glass, pal.trim);
+  } else if (roll < 0.75) {
+    const r = Math.min(w, d) * 0.3;
+    const dome = new THREE.SphereGeometry(r, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    s.add(dome, rand() < 0.5 ? THEME.turquoise : tone(look.islamic?.dome ?? THEME.teal, 1.05), x, h + 0.06, z, 0, lit);
+    s.add(new THREE.SphereGeometry(0.06 * k, 6, 4), THEME.gold, x, h + r + 0.08, z);
+  }
+  // An arched door, framed in trim, and a pair of arched windows beside it.
+  const south = z + d / 2;
+  const doorX = x + (rand() < 0.5 ? -1 : 1) * w * 0.18;
+  horseshoe(s, doorX, 0.34 * k, south, 0.14 * k, pal.trim, pal.door);
+  const wx = x + (doorX < x ? 1 : -1) * w * 0.2;
+  const wy = Math.max(0.5 * k, h * 0.62);
+  for (const dx of [-0.13, 0.13]) {
+    archWindow(pal.night ? glow : s, s, wx + dx * k, wy, south + 0.012, 0.11 * k, 0.17 * k, pal.glass, pal.trim);
+  }
+}
+
+/** A street lantern: a bronze post with a bracket and a hanging lamp (its core in the glow mesh). */
+function streetLantern(s: Sculpt, glow: Sculpt, x: number, z: number, toward: number, color: number): void {
+  const bronze = 0x3a2a1c;
+  s.cyl(0.045, 0.065, 1.55, bronze, x, 0.72, z, 6);
+  s.box(0.08, 0.06, 0.08, THEME.gold, x, 1.5, z, 0, lit);
+  s.box(0.34, 0.035, 0.035, bronze, x + toward * 0.16, 1.46, z, 0, lit);
+  const lx = x + toward * 0.3;
+  s.add(new THREE.ConeGeometry(0.12, 0.13, 6), THEME.gold, lx, 1.36, z, 0, lit);
+  glow.add(new THREE.CylinderGeometry(0.085, 0.07, 0.2, 6), color, lx, 1.2, z);
+  s.add(new THREE.ConeGeometry(0.08, 0.08, 6).rotateX(Math.PI), THEME.gold, lx, 1.06, z, 0, lit);
 }
 
 /** A palm: a leaning ringed trunk and a crown of drooping fronds. */
@@ -156,36 +296,47 @@ function stall(s: Sculpt, x: number, z: number, side: "player" | "enemy", rand: 
   }
 }
 
-/** Build the Golden Age surround into `parent`; returns the gallery crowd seats. */
-export function buildGoldenSurround(parent: THREE.Object3D, look: ArenaLook): CrowdSeat[] {
+/**
+ * Build the Golden Age surround into `parent`; returns the gallery crowd
+ * seats. `glow` makes the dimmable glow material for the lantern cores and
+ * the lamp-lit windows (without it they are sculpted lit).
+ */
+export function buildGoldenSurround(parent: THREE.Object3D, look: ArenaLook, glow?: (color: number) => THREE.Material): CrowdSeat[] {
   const s = new Sculpt(lit);
-  // Per side, so a portrait phone culls them whole: the houses are the outer
-  // ring (hidden below L2), the palms the fallback that always stays.
+  // Per side, so a portrait phone culls them whole: the houses and street
+  // lanterns are the outer ring (hidden below L2), the palms the fallback
+  // that always stays.
   const town = { [-1]: new Sculpt(lit), [1]: new Sculpt(lit) } as Record<number, Sculpt>;
+  const lamps = { [-1]: new Sculpt(() => 1), [1]: new Sculpt(() => 1) } as Record<number, Sculpt>;
   const palms = { [-1]: new Sculpt(lit), [1]: new Sculpt(lit) } as Record<number, Sculpt>;
   const rand = mulberry(31337);
   const seats: CrowdSeat[] = [];
   const hd = ARENA_HEIGHT / 2;
   const len = hd - 4.6;
+  const pal = townPalette(look);
+  const lampColors = look.lanterns ?? [0xffc46b];
   for (const sx of [-1, 1]) {
     gallery(s, sx, -hd / 2 - 1.1, len, "enemy", look, seats, rand);
     gallery(s, sx, hd / 2 + 1.1, len, "player", look, seats, rand);
     // Souk stalls by the gallery ends, near the river.
     stall(s, sx * (GAL_X + 1), -2.6, "enemy", rand);
     stall(s, sx * (GAL_X + 1), 2.6, "player", rand);
-    // The town edge beyond: houses, domes and palms, thicker further out.
-    for (let i = 0; i < 16; i++) {
-      const x = sx * (GAL_X + GAL_DEPTH + 1.6 + rand() * 7);
-      const z = (rand() - 0.5) * 38;
-      if (Math.abs(z) < 1.8) continue;
-      house(town[sx], x, z, 0.9 + rand() * 0.5, look, rand);
-    }
+    // The town edge beyond: houses that never overlap, then palms between them.
+    const glowTo = glow ? lamps[sx] : town[sx];
+    const lots = townLots(sx, mulberry(7919 + sx));
+    for (const lot of lots) house(town[sx], glowTo, lot, pal, look, rand);
+    // Street lanterns along the lane between the galleries and the houses.
+    const streetX = sx * (GAL_X + GAL_DEPTH + 0.95);
+    [-15.5, -10, -4.6, 4.6, 10, 15.5].forEach((z, i) => streetLantern(town[sx], glowTo, streetX, z, -sx, lampColors[i % lampColors.length]));
     for (let i = 0; i < 12; i++) {
       const x = sx * (GAL_X + GAL_DEPTH + 0.8 + rand() * 7.5);
       const z = (rand() - 0.5) * 38;
+      const k = 0.9 + rand() * 0.5;
       if (Math.abs(z) < 1.6) continue;
-      if (look.tree.kind === "palm") palm(palms[sx], x, z, 0.9 + rand() * 0.5, look, rand);
-      else cypress(palms[sx], x, z, 0.9 + rand() * 0.5, look);
+      if (Math.abs(x - streetX) < 0.5) continue;
+      if (lots.some((o) => Math.abs(o.x - x) < o.hw + 0.3 && Math.abs(o.z - z) < o.hd + 0.3)) continue;
+      if (look.tree.kind === "palm") palm(palms[sx], x, z, k, look, rand);
+      else cypress(palms[sx], x, z, k, look);
     }
   }
   const mesh = s.mesh(sculptMaterial(), "golden-galleries");
@@ -197,6 +348,16 @@ export function buildGoldenSurround(parent: THREE.Object3D, look: ArenaLook): Cr
       m.castShadow = false;
       m.userData.dressing = tier;
       parent.add(m);
+    }
+    if (glow) {
+      const mat = glow(0xffffff);
+      (mat as THREE.MeshBasicMaterial).vertexColors = true;
+      const m = lamps[sx].mesh(mat, "golden-town-lamps");
+      if (m) {
+        m.castShadow = m.receiveShadow = false;
+        m.userData.dressing = "outer";
+        parent.add(m);
+      }
     }
   }
   return seats;

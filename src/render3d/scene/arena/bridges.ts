@@ -7,8 +7,9 @@
  *  - stone:  a flagstone deck between low ashlar parapets with capstones,
  *            four end piers with ball finials, and an arch ring on the
  *            camera-facing (south) end;
- *  - ice:    one thick pale slab with a frosted rim, snow lumps on the
- *            corners and short icicles down the camera face;
+ *  - ice:    one thick glacier-blue slab (bluer and darker than snow, so it
+ *            reads as a crossing on white) between blue-grey kerbs with a
+ *            frost rim, low snow-capped posts, icicles down the camera face;
  *  - gate:   a small gatehouse: two pylons with a high lintel (clear of the
  *            troops crossing under it) on a slate deck with the gold buckle.
  *
@@ -71,33 +72,51 @@ function stoneBridge(s: Sculpt, x: number, look: ArenaLook, rand: () => number):
   for (const ez of [-1, 1]) s.box(HALF_W * 2 + 0.5, 0.16, 0.3, tone(stone, 0.9), x, 0.06, ez * (HALF_LEN + 0.12), 0, lit);
 }
 
+/**
+ * Glacier-ice colours. The deck and body are clearly bluer and darker than
+ * any snow or ice floor, and blue-grey kerbs and posts outline the long
+ * edges, so the crossing reads on white.
+ */
+export const ICE_BRIDGE = {
+  body: 0x4a80b4,
+  deck: 0x86bfe4,
+  crack: 0x5f9cc8,
+  kerb: 0x435d7c,
+  post: 0x3a5270,
+  frost: 0xf4fbff,
+  icicle: 0xcfe8f6,
+} as const;
+
 function iceBridge(s: Sculpt, x: number, rand: () => number): void {
-  const ice = 0xcfe8f6;
-  const frost = 0xf4fbff;
-  const deep = 0x9ccbe6;
-  // One thick slab, a touch domed, with a frosted rim.
-  s.box(HALF_W * 2 + 0.2, 0.3, HALF_LEN * 2 + 0.1, deep, x, 0.07, 0, 0, lit);
-  s.box(HALF_W * 2, 0.08, HALF_LEN * 2 - 0.1, ice, x, 0.25, 0, 0, lit);
+  const C = ICE_BRIDGE;
+  // One thick slab of glacier ice: a deep-blue body under a clear-blue deck.
+  s.box(HALF_W * 2 + 0.2, 0.3, HALF_LEN * 2 + 0.1, C.body, x, 0.07, 0, 0, lit);
+  s.box(HALF_W * 2 - 0.1, 0.08, HALF_LEN * 2 - 0.1, C.deck, x, 0.25, 0, 0, lit);
   for (const side of [-1, 1]) {
-    s.box(0.18, 0.12, HALF_LEN * 2 + 0.1, frost, x + side * (HALF_W + 0.02), 0.27, 0, 0, lit);
-    // Snow lumps on the corners.
-    for (const ez of [-1, 1]) {
-      const g = new THREE.SphereGeometry(0.26, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
-      g.scale(1, 0.6, 1);
-      s.add(g, frost, x + side * 0.9, 0.3, ez * (HALF_LEN - 0.05), 0, lit);
+    const kx = x + side * (HALF_W - 0.02);
+    // A blue-grey kerb along each long edge with a frost rim on top.
+    s.box(0.22, 0.16, HALF_LEN * 2 + 0.1, C.kerb, kx, 0.3, 0, 0, lit);
+    s.box(0.14, 0.035, HALF_LEN * 2 + 0.04, C.frost, kx, 0.395, 0, 0, lit);
+    // Low posts at the ends and the middle, each under a snow cap.
+    for (const pz of [-(HALF_LEN - 0.02), 0, HALF_LEN - 0.02]) {
+      s.box(0.26, 0.44, 0.26, C.post, kx, 0.4, pz, 0, lit);
+      const cap = new THREE.SphereGeometry(0.17, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+      cap.scale(1, 0.55, 1);
+      s.add(cap, C.frost, kx, 0.62, pz, 0, lit);
     }
   }
-  s.box(HALF_W * 2 + 0.2, 0.1, 0.16, frost, x, 0.27, HALF_LEN + 0.02, 0, lit);
-  // Icicles down the camera face.
+  // The camera face: a frosted lip with icicles hanging off it.
+  s.box(HALF_W * 2 + 0.2, 0.08, 0.14, C.frost, x, 0.24, HALF_LEN + 0.03, 0, lit);
   for (let i = 0; i < 9; i++) {
     const h = 0.16 + rand() * 0.2;
     const g = new THREE.ConeGeometry(0.05, h, 5);
     g.rotateX(Math.PI);
-    s.add(g, i % 2 ? ice : frost, x - 0.9 + i * 0.225, 0.2 - h / 2, HALF_LEN + 0.08, 0, lit);
+    s.add(g, i % 2 ? C.icicle : C.frost, x - 0.9 + i * 0.225, 0.2 - h / 2, HALF_LEN + 0.08, 0, lit);
   }
-  // Frost crazing on the deck: a few pale chips.
+  // Cracks and frost chips on the deck.
   for (let i = 0; i < 10; i++) {
-    s.box(0.18 + rand() * 0.2, 0.012, 0.03, frost, x + (rand() - 0.5) * 1.5, 0.295, (rand() - 0.5) * 2.2, rand() * 3, () => 1);
+    const c = i % 2 ? C.crack : C.frost;
+    s.box(0.18 + rand() * 0.2, 0.012, 0.03, c, x + (rand() - 0.5) * 1.4, 0.295, (rand() - 0.5) * 2.2, rand() * 3, () => 1);
   }
 }
 

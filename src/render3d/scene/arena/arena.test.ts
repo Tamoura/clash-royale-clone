@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ARENA_HEIGHT, ARENA_WIDTH, towerSpots } from "../../../game/arena";
 import { BACKDROP_KINDS, ISLAMIC_LOOKS, LOOKS, type ArenaLook } from "../../arenaLooks";
 import { AMBIENT_COUNT, buildAmbient, updateAmbient } from "./ambient";
-import { buildBackdrop, screenU, yForScreen } from "./backdrop";
+import { buildBackdrop, farGroundMaterial, screenU, yForScreen } from "./backdrop";
 import {
   clearGroundCache,
   groundImage,
@@ -14,12 +14,13 @@ import {
 import { KIT_TRIANGLE_BUDGET, buildKit } from "./kits";
 import { FLOOR_RECIPES, floorRecipe } from "./groundPaint";
 import { buildClassicScenery, OUTER_THEMES } from "./scenery";
-import { buildGoldenSurround } from "./golden";
-import { buildClassicBridges } from "./bridges";
+import { LOT_GAP, buildGoldenSurround, townLots, townPalette } from "./golden";
+import { ICE_BRIDGE, buildClassicBridges } from "./bridges";
 import { buildRiver } from "./river";
 import { buildTufts } from "./tufts";
 import { makeCrowd, poseCrowd } from "./crowd";
 import { LightPools, NIGHT_NATIVE_FLOOR, poolIntensity } from "./lightPools";
+import { toon } from "../../characters3d";
 
 const ALL: ArenaLook[] = [...Object.values(LOOKS), ...Object.values(ISLAMIC_LOOKS)];
 const lookWith = (kind: string): ArenaLook => ALL.find((l) => l.backdrop === kind)!;
@@ -247,6 +248,76 @@ describe("toy tournament stage (all 22 looks)", () => {
     expect(buildTufts(look)).toBeNull();
     const img = groundPainter.paint(look, true);
     expect(img.width).toBe(ARENA_WIDTH * img.pxPerUnit);
+  });
+
+  it.each(golden.map((l) => [l.id, l] as const))("%s lamps its town when given the glow material", (_id, look) => {
+    const parent = new THREE.Group();
+    buildGoldenSurround(parent, look, glow);
+    const lamps = parent.children.filter((c) => c.name === "golden-town-lamps") as THREE.Mesh[];
+    expect(lamps).toHaveLength(2);
+    for (const m of lamps) {
+      expect(m.userData.dressing).toBe("outer");
+      expect(m.castShadow).toBe(false);
+    }
+  });
+
+  it("lays the Golden Age town out with no overlapping houses and none on the canal", () => {
+    for (const seed of [1, 7, 7918, 7920, 31337]) {
+      for (const sx of [-1, 1]) {
+        let a = seed >>> 0;
+        const rand = (): number => {
+          a = (Math.imul(a, 1664525) + 1013904223) >>> 0;
+          return a / 4294967296;
+        };
+        const lots = townLots(sx, rand);
+        expect(lots.length).toBeGreaterThanOrEqual(10);
+        for (const [i, p] of lots.entries()) {
+          expect(Math.sign(p.x)).toBe(sx);
+          expect(Math.abs(p.z) - p.hd).toBeGreaterThan(1.7);
+          for (const q of lots.slice(i + 1)) {
+            const apart = Math.abs(p.x - q.x) >= p.hw + q.hw + LOT_GAP || Math.abs(p.z - q.z) >= p.hd + q.hd + LOT_GAP;
+            expect(apart, `lots at (${p.x.toFixed(2)}, ${p.z.toFixed(2)}) and (${q.x.toFixed(2)}, ${q.z.toFixed(2)})`).toBe(true);
+          }
+        }
+      }
+    }
+  });
+
+  it("tints the town per look, and never paints bright cubes on the night sets or white walls on snow", () => {
+    const hsl = { h: 0, s: 0, l: 0 };
+    const light = (c: number): number => new THREE.Color(c).getHSL(hsl).l;
+    const firstWalls = new Set(golden.map((l) => townPalette(l).walls[0]));
+    expect(firstWalls.size).toBeGreaterThanOrEqual(10);
+    for (const look of golden) {
+      const pal = townPalette(look);
+      expect(pal.walls.length).toBeGreaterThanOrEqual(3);
+      for (const w of pal.walls) {
+        // Walls stand apart from the apron they sit on.
+        expect(Math.abs(light(w) - light(look.apron)), look.id).toBeGreaterThan(0.08);
+        if (look.nightPools) expect(light(w), look.id).toBeLessThan(0.35); // the old whitewash: 0.75
+      }
+      expect(pal.glass).toBe(look.nightPools ? 0xffc46b : 0x2a3a5a);
+    }
+  });
+
+  it("continues the sand apron into the far ground in the Golden Age (no green lawn corners)", () => {
+    for (const look of golden) {
+      const far = farGroundMaterial(look);
+      expect(far.color.getHex(), look.id).toBe(toon(look.apron).color.getHex());
+    }
+    for (const look of classic) expect(farGroundMaterial(look).color.getHex()).toBe(new THREE.Color(look.far).getHex());
+  });
+
+  it("builds ice bridges that read on white: a blue deck and blue-grey kerbs and posts", () => {
+    const hsl = { h: 0, s: 0, l: 0 };
+    const snowFloor = new THREE.Color(LOOKS.snow.floor.b).getHSL(hsl).l;
+    const deck = new THREE.Color(ICE_BRIDGE.deck);
+    expect(deck.getHSL(hsl).l).toBeLessThan(snowFloor - 0.2);
+    expect(deck.b).toBeGreaterThan(deck.r * 1.4);
+    for (const c of [ICE_BRIDGE.kerb, ICE_BRIDGE.post, ICE_BRIDGE.body]) expect(new THREE.Color(c).getHSL(hsl).l).toBeLessThan(0.3);
+    const parent = new THREE.Group();
+    const meshes = buildClassicBridges(parent, LOOKS.snow, glow);
+    expect(meshes.map((m) => m.name)).toEqual(["ice-bridges"]);
   });
 
   it("grows tufts on the grassy floors only", () => {

@@ -18,7 +18,9 @@ import {
   setFlash,
   troopShadowLevel,
 } from "./post";
-import { LIGHT_RIG } from "./sky";
+import { LIGHT_RIG, SHADOW_SLOPE, SUN_DIRECTION } from "./sky";
+import { CAM_HOME } from "./common";
+import { toon } from "../characters3d";
 import { ISLAMIC_LOOKS, LOOKS } from "../arenaLooks";
 import type { Battle3D } from "../scene3d";
 import hudCss from "../../ui/styles/hud.css?raw";
@@ -171,10 +173,68 @@ describe("art bible contract (stage)", () => {
   });
 
   it("keeps a white toon surface under the full daylight rig below the bloom threshold", () => {
-    // Toon diffuse = albedo * irradiance / pi; the brightest lit band is 1.0.
+    // Toon diffuse = albedo * irradiance / pi, where each directional light
+    // passes through the shared painted ramp (characters3d) and the
+    // hemisphere adds mix(ground, sky, n.y). Search every normal of the upper
+    // hemisphere and every look for the brightest linear luminance.
     const white = 0.9; // linear albedo of a near-white paint
-    const irradiance = LIGHT_RIG.sunIntensity + 1.05 /* brightest hemisphere */ + LIGHT_RIG.fillIntensity;
-    expect((white * irradiance) / Math.PI).toBeLessThan(BLOOM.threshold);
+    const data = (toon(0xffffff).gradientMap as THREE.DataTexture).image.data as Uint8Array;
+    const N = data.length / 4;
+    const ramp = (d: number, out: THREE.Color): THREE.Color => {
+      const i = Math.min(N - 1, Math.max(0, Math.floor((d * 0.5 + 0.5) * N)));
+      return out.setRGB(data[i * 4] / 255, data[i * 4 + 1] / 255, data[i * 4 + 2] / 255, THREE.LinearSRGBColorSpace);
+    };
+    const sun = LIGHT_RIG.sunPosition.clone().normalize();
+    const fill = LIGHT_RIG.fillPosition.clone().normalize();
+    const rim = LIGHT_RIG.rimPosition.clone().normalize();
+    const n = new THREE.Vector3();
+    const acc = new THREE.Color();
+    const band = new THREE.Color();
+    const tint = new THREE.Color();
+    let worst = 0;
+    for (const look of [...Object.values(LOOKS), ...Object.values(ISLAMIC_LOOKS)]) {
+      for (let i = 0; i <= 45; i++) {
+        for (let j = 0; j < 90; j++) {
+          const th = (i / 45) * (Math.PI / 2);
+          const ph = (j / 90) * Math.PI * 2;
+          n.set(Math.sin(th) * Math.cos(ph), Math.cos(th), Math.sin(th) * Math.sin(ph));
+          acc.setRGB(0, 0, 0);
+          acc.add(ramp(n.dot(sun), band).multiply(tint.set(look.sun)).multiplyScalar(LIGHT_RIG.sunIntensity));
+          acc.add(ramp(n.dot(fill), band).multiply(tint.set(look.fill)).multiplyScalar(LIGHT_RIG.fillIntensity));
+          acc.add(ramp(n.dot(rim), band).multiply(tint.set(LIGHT_RIG.rimColor)).multiplyScalar(LIGHT_RIG.rimIntensity));
+          acc.add(tint.set(look.hemiGround).lerp(band.set(look.hemiSky), 0.5 * n.y + 0.5).multiplyScalar(look.hemiIntensity));
+          const lum = 0.2126 * acc.r + 0.7152 * acc.g + 0.0722 * acc.b;
+          worst = Math.max(worst, (white * lum) / Math.PI);
+        }
+      }
+    }
+    expect(worst).toBeGreaterThan(0.7); // the search did find the lit side
+    expect(worst).toBeLessThan(BLOOM.threshold);
+  });
+
+  it("lights the faces the camera sees: the sun from the left at about 50 degrees, a little toward the camera", () => {
+    const sun = SUN_DIRECTION;
+    expect(sun.x).toBeLessThan(-0.5); // from the left: left faces lit, shadows fall right
+    const elevation = (Math.asin(sun.y) * 180) / Math.PI;
+    expect(elevation).toBeGreaterThan(45);
+    expect(elevation).toBeLessThan(55);
+    // A wall facing the camera (+z) takes the sun in the ramp's middle band,
+    // clear of its own shadow: behind the board (z < 0) the measured tower
+    // fronts fell to 45-52% of their art/base brightness.
+    expect(sun.z).toBeGreaterThan(0.12);
+    expect(sun.z).toBeLessThan(0.3);
+    // The fill sits low on the camera side: more on walls than on the floor.
+    const fill = LIGHT_RIG.fillPosition.clone().normalize();
+    expect(fill.z).toBeGreaterThan(0.9);
+    expect(fill.z).toBeGreaterThan(fill.y);
+  });
+
+  it("throws shadows to the right on screen, within 15 degrees of level", () => {
+    expect(SHADOW_SLOPE.x).toBeGreaterThan(0.6);
+    // Screen y moves sin(pitch) per world z for the orthographic camera.
+    const pitch = Math.atan2(CAM_HOME.y, CAM_HOME.z);
+    const screenAngle = (Math.atan2(Math.abs(SHADOW_SLOPE.y) * Math.sin(pitch), SHADOW_SLOPE.x) * 180) / Math.PI;
+    expect(screenAngle).toBeLessThan(15);
   });
 
   it("caps the screen flash at 0.25", () => {

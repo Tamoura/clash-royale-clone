@@ -224,6 +224,16 @@ function addLip(k: Kit): void {
   }
 }
 
+/**
+ * The far ground's material. The Golden Age town stands on the apron's sand,
+ * so there the far ground continues the apron (its colour through the same
+ * toon material, so no straight edge shows where the apron box ends on a
+ * wide screen); Classic keeps its look's far ground.
+ */
+export function farGroundMaterial(look: ArenaLook): THREE.MeshToonMaterial {
+  return look.islamic ? toon(look.apron) : new THREE.MeshToonMaterial({ color: look.far });
+}
+
 /** Build the backdrop for the current look; `glow` makes the dimmable glow material. */
 export function buildBackdrop(look: ArenaLook, glow: (color: number) => THREE.MeshBasicMaterial): Backdrop {
   const group = new THREE.Group();
@@ -234,7 +244,7 @@ export function buildBackdrop(look: ArenaLook, glow: (color: number) => THREE.Me
   const farGeo = new THREE.PlaneGeometry(160, 100);
   farGeo.rotateX(-Math.PI / 2);
   farGeo.translate(0, -0.45, GROUND_EDGE_Z + 50);
-  const far = new THREE.Mesh(farGeo, new THREE.MeshToonMaterial({ color: look.far }));
+  const far = new THREE.Mesh(farGeo, farGroundMaterial(look));
   far.name = "far ground";
   group.add(far);
 

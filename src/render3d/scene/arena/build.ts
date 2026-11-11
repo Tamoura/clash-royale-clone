@@ -198,7 +198,7 @@ export function decorate(b: Battle3D, lights: LightSpot[]): Seat[] {
   apron.receiveShadow = true;
   b.arenaGroup.add(apron);
 
-  const seats: Seat[] = arabic ? buildGoldenSurround(b.arenaGroup, LOOK) : buildClassicScenery(b.arenaGroup, LOOK);
+  const seats: Seat[] = arabic ? buildGoldenSurround(b.arenaGroup, LOOK, (c) => b.glow(c)) : buildClassicScenery(b.arenaGroup, LOOK);
 
   // Strings of glowing lanterns flanking the field (look-dependent).
   // Unlit glow material, so the bloom pass makes them softly radiate;

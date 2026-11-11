@@ -41,14 +41,20 @@ const UPV = new THREE.Vector3();
  * THE light rig (art bible section 5). Every package reads light from here;
  * nobody hard-codes a light direction.
  *
- * The sun comes from the player's upper left at about 50 degrees, warm, so
- * every shadow falls to the lower right of the screen. A hemisphere (cool
- * sky, look-tinted ground) fills, a cool back rim separates troops from the
- * floor, and a soft 0.3 fill comes from the camera side.
+ * The sun comes from the player's left at about 50 degrees, warm, and stands
+ * a little toward the camera (z > 0): the faces the camera sees (tower
+ * walls, troop fronts) take the sun in the ramp's middle band instead of
+ * falling into their own shadow, and shadows fall to the right, slightly up
+ * the screen. The bible's "lower right" needs the sun behind the board,
+ * which put every camera-facing wall in shade (measured at 45-52% of its
+ * art/base brightness; notes/features/art-stage.md has the numbers).
+ * A hemisphere (cool sky, look-tinted ground) fills, a cool back rim
+ * separates troops from the floor, and a low fill from the camera side
+ * lifts the camera-facing faces more than the floor.
  */
 export const LIGHT_RIG = {
   /** Where the sun stands (world units from the origin; only the direction matters). */
-  sunPosition: new THREE.Vector3(-12.6, 15.2, -1.2),
+  sunPosition: new THREE.Vector3(-12.6, 15.2, 3.5),
   /** Daylight sun strength (the living sky dims it toward night). */
   sunIntensity: 1.7,
   /** The warm daylight colour looks default to. */
@@ -56,8 +62,9 @@ export const LIGHT_RIG = {
   rimColor: 0x9fc4ff,
   rimIntensity: 0.45,
   rimPosition: new THREE.Vector3(8, 10, -14),
-  fillIntensity: 0.3,
-  fillPosition: new THREE.Vector3(2, 8, 14),
+  fillIntensity: 0.5,
+  /** Low over the camera's shoulder: lights walls and fronts, grazes the floor. */
+  fillPosition: new THREE.Vector3(2, 4, 14),
 } as const;
 
 /** Unit vector toward the sun (for blob-shadow offsets and painted shading). */
@@ -254,9 +261,9 @@ export function buildLights(b: Battle3D): void {
   b.lightGroup.add(b.hemi);
   const sun = new THREE.DirectionalLight(LOOK.sun, SUN_INTENSITY);
   b.sun = sun;
-  // The sun over the board's upper left: tops and left faces lit, right-hand
-  // faces in cool shade, and every tower and troop throws a soft shadow to
-  // the lower right.
+  // The sun over the board's left, a little toward the camera: tops and left
+  // faces lit, camera-facing faces in the middle band, right-hand faces in
+  // cool shade, and every tower and troop throws a soft shadow to the right.
   sun.position.copy(LIGHT_RIG.sunPosition);
   sun.castShadow = true;
   const mobile =
@@ -281,7 +288,7 @@ export function buildLights(b: Battle3D): void {
   const backRim = new THREE.DirectionalLight(LIGHT_RIG.rimColor, LIGHT_RIG.rimIntensity);
   backRim.position.copy(LIGHT_RIG.rimPosition);
   b.lightGroup.add(backRim);
-  // Soft fill from the player's side so shadowed faces keep color.
+  // Low fill from the player's side: camera-facing faces keep their colour.
   const fill = new THREE.DirectionalLight(LOOK.fill, LIGHT_RIG.fillIntensity);
   fill.position.copy(LIGHT_RIG.fillPosition);
   b.fillLight = fill;
