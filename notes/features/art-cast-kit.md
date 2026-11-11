@@ -14,6 +14,8 @@ Branch art/cast-kit from art/base (b7ae4ce). Worktree /home/user/wt-art-cast-kit
 | End (fe867fe) | Classic | 178 / 266,074 | 259 / 617,388 | 65 |
 | End (fe867fe) | Golden Age | 167 / 137,566 | 244 / 353,144 | 64 |
 | End (fe867fe), 1440x900@1 | Classic | 176 / 266,048 | 256 / 617,466 | 65 |
+| Review fix (e22315b) | Classic | 178 / 266,074 | 262 / 631,184 | 65 |
+| Review fix (e22315b) | Golden Age | 165 / 137,542 | 245 / 359,160 | 64 |
 
 Acceptance ceiling for this branch: fight at most 330 calls, empty at most 200: met in both editions.
 Downloads: public/models/troops 808 KB on disk (7 GLBs + CREDITS, budget 1.0 MB). Initial JS bundle
@@ -21,6 +23,9 @@ Downloads: public/models/troops 808 KB on disk (7 GLBs + CREDITS, budget 1.0 MB)
 meshopt decoder (7.3 KB gz) are lazy chunks loaded with the pack at boot. Pack ready 5-9 s after boot
 under SwiftShader with 2 agents on 4 CPUs (dev server, uncached); always before the first battle in
 the matrix runs (the home screen and the bot battle start take longer).
+Review fix: the front team cloth adds about 14k triangles to the 12-card fight (drapes are 100-400
+vertices each, every variant still under the 9,000-vertex bake cap); the initial JS is 313.0 KB gz
+(+1.3 KB for props.drape and the garments).
 
 ## Decisions
 
@@ -135,7 +140,9 @@ All under /tmp/claude-0/art/cast-kit/ (iteration shots in it/).
   classic-training-camp-390x844-viewpoint-enemy.png (guest camera set after the battle starts),
   golden-courtyard-extras-390x844.png (janissary, duelist, alchemist, militia on both sides).
 - Colour-blind palette switched mid-battle: classic-cb-before.png / classic-cb-after.png (the enemy's
-  capes, cloaks and discs go from red to orange on units already on the field).
+  capes, cloaks, tabards and discs go from red to orange on units already on the field).
+- Team share table: tools/troopview.html?measure=1 (script /tmp/claude-0/cast-kit-tools/fix/teamshare.cjs,
+  output fix/teamshare-final.txt).
 - Walk strip: walk-knight-{0,1,2}.png (the walk clip runs at speed / (clip ground speed x scale), the
   clip ground speed measured from the planted foot at load: loader.measureWalks).
 - HP bars mid-fight: it/bars-dbg6.png (outlined pill, team fill, level pip, numbers above).
@@ -218,4 +225,67 @@ Vite's fs allow list), so text uses a fallback face; the production build bundle
   drapes, no flat boards, colour cap, lean camera). Requests for ship #0 (setLeanCamera per frame), #2
   (viewer deletion), #3 (hat exception) added. troopview: ?measure=1 team-share table, taller strip cells.
   Next: full quality bar (tsc, vitest, build, perf both editions), regenerate sheets, matrix by eye.
+- Review fix verified: tsc clean; vitest 137 files / 1569 tests green; npm run build ok; perf-budget passes
+  --max-calls 330 --max-empty-calls 200 (Classic 178 / 262, Golden Age 165 / 245). Contact sheets
+  regenerated at /tmp/claude-0/art/cast-kit/sheet-{classic,golden}.png: every "theirs, front" cell shows
+  team cloth on the body. Matrix re-shot: classic/golden training-camp phone + low, guest viewpoint,
+  Golden Age extras (janissary hat now peaks at #F9EEDA, was #FFFEED, no halo), colour-blind before/after.
+  Team share after the fix (% of each unit's pixels in its team hue; theirs front / yours front / theirs
+  behind / yours behind; blue reads a little lower than red under the warm sun):
+
+```
+== classic: % of unit pixels in its team hue (theirs front / yours front / theirs behind / yours behind)
+knight               8   8.8  15.5  14.4
+archers           16.5  12.4  17.5  14.9
+giant             21.9  13.8  28.6  21.8
+valkyrie           9.6   7.1  11.9  10.8
+wizard            11.7   8.5   9.1   6.5
+musketeer         12.7    10  13.9  12.7
+mini-pekka         6.8   5.7  15.5  15.5
+skeletons         13.1  10.7  13.9  11.2
+witch             11.5   8.4   8.5   5.9
+pekka              7.9   6.8  16.7  16.7
+ice-wizard        10.4   7.5   8.3     6
+electro-wizard    14.4  10.8    17  13.4
+magic-archer       9.4   7.9  20.9  19.2
+princess          15.8    12    16  13.7
+firecracker       13.4    10  14.1  12.4
+executioner        8.1   5.2  24.7  23.8
+royal-giant       14.4  13.2    24  21.5
+prince            11.3    11  10.6  10.5
+hog-rider         18.6  17.1  14.2  13.4
+mega-knight          9     9  17.2  17.3
+digger              14  10.8  13.1  10.5
+tower-princess    50.5  49.3  67.4  65.4
+tower-king         9.2   8.8  22.5  22.3
+cannoneer         13.5  10.4  20.6  18.5
+duchess           13.7  10.3  15.6  12.4
+champion            14  11.1  16.7    15
+== golden: % of unit pixels in its team hue (theirs front / yours front / theirs behind / yours behind)
+knight             9.6   9.3  14.3  13.8
+archers           15.3  11.7  15.7  13.3
+valkyrie           9.1   6.6  10.1   9.1
+prince            11.8  11.4  10.2  10.1
+princess            15  11.5  14.6  12.6
+executioner        8.2   5.3  13.9    13
+electro-wizard    11.8   8.3  16.6    13
+ice-wizard        10.7   7.6  13.2  12.2
+magic-archer         9   7.8  19.8  18.1
+firecracker       12.6   9.5  11.8  10.5
+musketeer         10.3     8  12.1  11.1
+mini-pekka        12.1   8.5  11.9  11.8
+witch                8   7.2  16.5  13.9
+wizard            10.7   7.7  12.5   9.8
+pekka             11.2  11.1  10.5  11.2
+mega-knight       10.4  10.4  20.4  20.4
+skeletons         12.9   9.9  13.2  11.3
+royal-giant       12.5  11.4  21.5  19.4
+digger            12.1   9.3  11.7   9.4
+hog-rider         13.6  11.6   8.2   7.4
+tower-princess    43.1    42  59.6  57.6
+tower-king         9.3   8.9  22.1  21.8
+cannoneer         12.1   9.3  18.5  16.7
+duchess           13.3    10  10.4   7.3
+champion            14    11  16.7  14.9
+```
 
