@@ -12,6 +12,20 @@ Branch art/cast-kit from art/base (b7ae4ce). Worktree /home/user/wt-art-cast-kit
 
 ## Decisions
 
+- Lean: the body tips about its feet so its front/back turns toward the camera (head away from the
+  viewer, a partial billboard): the opposite sign shows MORE hat-top, which is what the critics hated.
+- Team colour is two shared uniforms per side (TEAM_UNIFORMS), not baked into atlases: one atlas and
+  one geometry per card and edition serve both teams, and a palette switch repaints live units.
+- Ink on the cast is silhouette-only: the shell sits 0.3 world units behind the body along the view,
+  so hat folds and hood seams no longer draw "V" marks. 1.6 CSS px.
+- Team rule test runs on the DEFAULT palette's two hues (blue ~217 deg, red ~1 deg). The colour-blind
+  orange (32 deg) would forbid every gold, wood and skin tone; colour-blind players read the side
+  from the notched disc and the cloth, as before.
+- The old opt-in path is gone: public/models/kaykit (11 MB), glbModels.ts, modelsOptIn.ts and the
+  orphan dev page viewer.html + src/viewer.ts (it only loaded public/models/kaykit). Not in the
+  package's owned list, but it imported the deleted glbModels.ts and nobody else touches it.
+- Troop pack: gltfpack -cc -kn -km -vpf -vtf (float positions and UVs, the bake reads them raw).
+
 ## Variant table
 
 ## Screenshots
