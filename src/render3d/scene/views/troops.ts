@@ -714,10 +714,9 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
 
   // Units are grounded by the contact shadow above; on the top quality
   // levels their bodies also cast into the sun's shadow map (post.ts flips
-  // the troopCaster meshes when the level changes). Only the unit's biggest
-  // chunks cast (body and head; one for a swarm unit): at battle zoom and
-  // with a soft penumbra that is the whole silhouette, and every caster is
-  // one more draw per frame in the shadow pass.
+  // the troopCaster meshes when the level changes, so it follows the LIVE
+  // level). ONE caster per unit: a cast character's single skinned mesh,
+  // or a rig's biggest chunk.
   const dyn = troopShadowLevel(currentQuality());
   root.traverse((o) => (o.castShadow = false));
   if (rig) {
@@ -734,7 +733,7 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
       ranked.push({ mesh, extent: size.x + size.y + size.z });
     });
     ranked.sort((a, b) => b.extent - a.extent);
-    for (const { mesh } of ranked.slice(0, e.radius <= 0.32 ? 1 : 2)) {
+    for (const { mesh } of ranked.slice(0, 1)) {
       mesh.userData.troopCaster = true;
       mesh.castShadow = dyn;
     }
