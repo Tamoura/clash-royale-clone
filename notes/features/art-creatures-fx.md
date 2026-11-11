@@ -18,3 +18,7 @@ Package ceiling: fight calls <= base + 10 (classic 445, golden 409); fight trian
 ## Progress log
 
 - Worktree created from art/base; perf base recorded (table above).
+- 5d19b43 Damage numbers: gold #FFD23F fill, 3 px #1D1630 stroke, soft drop shadow (three-mask glyph atlas), crits and tower hits 1.3x, same-target hits within 150 ms merge, overlapping numbers stack (stackLift).
+- 33d366d FX: presets re-authored for the bloom contract (only cores/sparks above hdr 1; rings, puffs, flames in the alpha pool), outlined toon smoke tinted by floor (floorDust from LOOK) or effect colour, 4-6 inked star sparks, 3-tone toon flames, fireball = hot core + 3 petals + smoke ribbon (spell and projectile, no cone), fletched arrows (mesh and volley sprite), musket tracer, electric bolt, ice shard; two-tone team ring decal at every spell's true radius (spellRing), team deploy burst, tinted deaths, screen flash capped 0.25 (FX_MAX_FLASH). Rig material language on baked rigs (ramp/rim/AO/silhouette ink 1.6 px/mix tints), glow parts under luminance 0.8.
+- 7da480f + 6fb5376 Creatures: one team slot each (both editions), bake-time albedo grade, golem rune glows, card buildings as bakeable rigs (buildBuildingRig), slimmer war elephant (ELEPHANT_SCALE), feathered/membrane wings, tools/creatureview.html sheet; tests for slots, palette, glow, buildings.
+- NEXT: in-battle looks (phone), FX sheet + creature sheet files in /tmp/claude-0/art/creatures-fx/, hitstop/shake retune, perf, matrix, Requests for ship.
