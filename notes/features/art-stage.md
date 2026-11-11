@@ -38,12 +38,18 @@ the per-frame shadow pass draws ~30 static casters instead of 50.
   Golden Age: flagstones in a running bond, zellige border bands round the court and the canal,
   ochre sand lanes with pebble edging, aprons; the 3D crescents are 62% size at 25% contrast.
 - **Tufts** (tufts.ts): one instanced draw of grass fans on grassy floors, L0-L2.
-- **Light (sky.ts `LIGHT_RIG`).** The sun stands at (-12.6, 15.2, -1.2): from the upper left at
-  ~50 degrees, intensity 1.7, warm. Shadows fall to the right and slightly down. I tried the full
-  "lower-right" (z -4.4) first: it put every camera-facing tower wall into the darkest toon band and
-  the board read gloomy next to C, so the sun keeps a small negative z (front faces sit in the mid
-  band). Rim 0.45, fill 0.3 from the camera side. `SUN_DIRECTION` and `SHADOW_SLOPE` are exported
-  for blob offsets.
+- **Light (sky.ts `LIGHT_RIG`).** The sun stands at (-12.6, 15.2, 3.5): from the left at ~49
+  degrees, intensity 1.7, warm, a little toward the camera. The fill is 0.5 from (2, 4, 14), low over
+  the camera's shoulder, so it lights walls and fronts more than the floor. Rim 0.45. Shadows fall to
+  the right, about 10 degrees up the screen. `SUN_DIRECTION` and `SHADOW_SLOPE` are exported for blob
+  offsets. History: the builder first tried the bible's "lower right" (z -4.4), then compromised at
+  z -1.2 with a 0.3 fill from (2, 8, 14). Review found that rig put every camera-facing tower wall and
+  troop front in its own shadow (the sun behind the board): walls fell to 45-52% of their art/base
+  brightness. The ramp (characters3d) gives a face the middle band once n.l > ~0.06, and the shadow
+  test needs a margin, so z +3.5 (n.l 0.17 on a +z wall) is the smallest sun that lights the fronts
+  cleanly. The bible's "shadows fall lower right" and "camera-facing walls lit" cannot both hold with
+  one sun under this camera; the fronts won (pillar 4, loud actors). See "Light rig fix" below for the
+  numbers.
 - **Grade and bloom (post.ts).** `DEFAULT_GRADE` 1.12 / 1.06 / vignette 0.2, every look clamped by
   `GRADE_LIMITS` (vignette <= 0.24); the bible's split tone; `BLOOM` 0.92 / 0.32 / 0.3; `setFlash`
   capped at `MAX_FLASH` 0.25; the edge shade is lighter (0.24) because the sides are dressed now.
@@ -78,10 +84,21 @@ the per-frame shadow pass draws ~30 static casters instead of 50.
   and bunting (`farTerrace`). Near band: a dressed-stone wall with capped piers and flower boxes.
 - **Golden Age surround (golden.ts).** Arcaded sandstone galleries (stepped merlons, zellige band,
   horseshoe end arcade, team banner) hold two rows of crowd; team-striped souk awnings and stalls;
-  the town edge (domed flat-roof houses) is the outer ring, palms the always-on fallback. The old
-  slab stands, corner tents, fence runs, lone trees and drifts are gone.
+  the town edge is the outer ring, palms the always-on fallback. The old slab stands, corner tents,
+  fence runs, lone trees and drifts are gone. Town (`townPalette`, `townLots`): walls in three tones
+  of the look's court plaster warmed toward its lane sand (kasbah earth in the snowy Atlas), dimmed on
+  the night sets (souk, medina, copper) where the windows glow instead; roof lips and a parapet round
+  a sunken deck; some domes, some set-back upper storeys; painted arched doors (souk blue, teal,
+  green, oxblood, wood) and pairs of arched windows on the south face; lots never overlap and keep off
+  the canal; six street lanterns per side along the lane outside the galleries (their cores and the
+  night windows are one glow mesh per side, culled with the town). The far ground continues the sand
+  apron in every Golden Age look (`farGroundMaterial`): the home diorama no longer shows green lawn
+  corners under the sand at 1440x900.
 - **Bridges (bridges.ts).** Stone: flagstone deck, ashlar parapets, finialled piers, abutment steps.
-  Ice: thick pale slab, frosted rim, snow lumps, icicles. Gate (neon): two pylons and a high lintel
+  Ice (`ICE_BRIDGE`): a glacier-blue body and deck (clearly bluer and darker than the snow floor),
+  blue-grey kerbs along the long edges with a thin frost line on the outer edge, six low posts with
+  small snow caps (the dark post tops show round them), a frosted lip and icicles on the camera face.
+  The first pale slab (0xcfe8f6 deck, white frost rim) sampled the same value as the snow floor. Gate (neon): two pylons and a high lintel
   at the far end (clear of troops on the deck), slate deck with the gold buckle. Timber: C's.
 - **River (river.ts).** Lips per band kind; reeds and lily pads on green water looks; snow lumps,
   basalt or crystal stones on the others.
@@ -98,6 +115,31 @@ the per-frame shadow pass draws ~30 static casters instead of 50.
   markShadowsDirty, troopShadowLevel (now with an optional argument), setFlash, applyQuality and the
   rest; new exports only.
 
+## Light rig fix (review round)
+
+Camera-facing wall brightness, Rec.601 luma of the mean colour in fixed boxes (king front
+36x14+178+638, left princess 30x12+65+568, right princess 30x12+295+568), 390x844@1,
+`?quality=high`, empty bot battle 5 s after the start, art/base served from a `git archive` copy.
+Percentages are of art/base. "Before" is art/stage at 46e6a46 (sun z -1.2, fill 0.3 from (2, 8, 14));
+medina's "before" is the old rig replayed at runtime (light.cjs), the others are the real build.
+
+| Look (arena) | art/base king / L / R | before | after (sun z +3.5, fill 0.5 low) |
+|---|---|---|---|
+| meadow (training-camp) | 121 / 131 / 129 | 54 (45%) / 60 (46%) / 61 (47%) | 105 (87%) / 101 (77%) / 99 (77%) |
+| souk (barbarian-bowl) | 162 / 177 / 171 | 74 (46%) / 91 (51%) / 89 (52%) | 143 (88%) / 152 (86%) / 146 (85%) |
+| medina (legendary-peak) | 142 / 157 / 156 | 61 (43%) / 78 (50%) / 78 (50%) | 120 (84%) / 131 (83%) / 127 (81%) |
+
+Target was 65% or more: all nine walls are at 77-88%. The floor did not move: meadow grass beside
+the king samples (109,185,41) before and (111,186,42) after. Tried and dropped: z +1.5 (the right half
+of the king wall still self-shadowed), z +5 (2-3% brighter walls, shadows tilt further up), a 0.6
+fill (a white surface under the andalus rig reaches 0.926 linear luminance, over the 0.92 bloom
+threshold). post.test.ts pins the rig (sun from the left at 45-55 degrees, 0.12 < sun.z < 0.3, low
+camera-side fill, shadows within 15 degrees of level on screen) and the bloom bound now searches every
+normal and all 22 looks through the real ramp and light colours (worst 0.899 < 0.92).
+Shots: /tmp/claude-0/art/stage-fix/v1/cmp-rig.png (rows meadow, souk, medina; columns art/base,
+old rig, final), v1/zoom-towers.png; tools /tmp/claude-0/art/stage-fix/light.cjs (set the sun and
+fill at runtime and shoot), pct.sh (box luma against a base shot).
+
 ## Requests for ship
 
 1. **src/render3d/scene/views/troops.ts (cast-kit's):** one shadow caster per unit. Replace the
@@ -110,9 +152,12 @@ the per-frame shadow pass draws ~30 static casters instead of 50.
 4. **cast-kit/creatures-fx materials:** keep albedo + rim + hit flash under `BLOOM.threshold` (0.92
    linear); that is what made B's midfield milky. The fireball impact puff currently reads as an
    opaque white disc in my shots (creatures-fx), against the bible's "never opaque white".
-5. **towers:** the sun moved to the upper left (`LIGHT_RIG.sunPosition`), so the camera-facing walls
-   sit in the toon mid band; if they read dull next to the roofs, brighten the wall albedo rather
-   than moving the sun. Flagstone aprons are painted to `TOWER_FOOTPRINT + APRON` (groundPaint.ts).
+5. **towers:** the final rig (sun (-12.6, 15.2, 3.5), fill 0.5 from (2, 4, 14)) lights camera-facing
+   walls in the toon middle band, no longer in their own shadow. The towers branch was tuned under
+   art/base's sun (-9, 17, 11); after the merge, measure its walls under this rig the way the "Light rig
+   fix" table does (same boxes, same scene) and expect about 80-90% of their art/base value. Only if a
+   wall reads dull next to its roof, lift that wall's albedo; do not move the sun (sky.ts owns it and
+   post.test.ts pins it). Flagstone aprons are painted to `TOWER_FOOTPRINT + APRON` (groundPaint.ts).
 
 ## Screenshots and checks
 
@@ -140,11 +185,13 @@ the per-frame shadow pass draws ~30 static casters instead of 50.
 ## Known gaps
 
 - The crowd shares one body: everyone cheers with raised arms (a second arm pose is a third draw).
-- Golden Age outer ring is one town for all eleven looks (palette, palms or cypresses vary);
-  domed houses are simple boxes. Snow-capped cypresses only in the Atlas.
+- Golden Age outer ring: one town layout for all eleven looks (palette, doors, palms or cypresses
+  vary); houses are boxes with parapets, doors and windows, no courtyards or stairs. Snow-capped
+  cypresses only in the Atlas.
 - The one-caster-per-unit rule and the mixer rates need cast-kit's side (requests 1-3).
 - Classic outer ring is procedural; KayKit hexagon props were not used.
-- Sun direction is a compromise (see Decisions): shadows fall right and only slightly down.
+- Sun direction: shadows fall right and slightly up, not the bible's lower right (see Decisions:
+  the lower right puts every camera-facing wall in shade).
 
 ## Progress log
 
