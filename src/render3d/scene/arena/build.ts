@@ -40,6 +40,8 @@ interface ArenaArt {
   level: QualityLevel | null;
   /** The instanced chibi crowd (null when there are no seats). */
   crowd: Crowd | null;
+  /** Side strips (forest, outer ring) and where their inner edge sits. */
+  sides: Array<{ obj: THREE.Object3D; innerX: number; allowed: boolean }>;
   /** Seconds of tower-hit wave left, and the clock it runs on. */
   wave: number;
   waveT: number;
@@ -462,6 +464,7 @@ export function buildArena(b: Battle3D): void {
     kitSeats: kitSeats.map((st) => ({ x: st.x, z: st.z })),
     level: null,
     crowd,
+    sides: [],
     wave: 0,
     waveT: 0,
   });
@@ -639,6 +642,7 @@ export function updateRiver(b: Battle3D, dt: number): void {
   b.waterTime += dt;
   const art = ART.get(b);
   if (art) {
+    regionCull(b);
     const t = b.waterTime;
     const u = art.river.material.uniforms;
     u["uTime"].value = t;
@@ -734,8 +738,27 @@ export function applyArenaQuality(b: Battle3D, level: QualityLevel): void {
   // Tufts on the top three levels; the outer dressing (forest, town) from
   // 'full' and 'inner' down to nothing at 'min' is kept: L4 must still look
   // finished, and those meshes cast no shadow.
+  art.sides = [];
   b.arenaGroup.traverse((o) => {
     if (o.userData.dressing === "tufts") o.visible = level.tufts;
-    else if (o.userData.dressing === "outer") o.visible = level.dressing === "full";
+    const mesh = o as THREE.Mesh;
+    if ((o.userData.dressing === "outer" || o.userData.dressing === "forest") && mesh.isMesh) {
+      // Region culling: a long strip's bounding sphere reaches the middle of
+      // the court, so the frustum never culls it; the frame's half-width
+      // against the strip's inner edge does (a portrait phone sees neither).
+      mesh.geometry.computeBoundingBox();
+      const box = mesh.geometry.boundingBox!;
+      const innerX = box.min.x > 0 ? box.min.x : box.max.x < 0 ? -box.max.x : 0;
+      art.sides.push({ obj: o, innerX, allowed: o.userData.dressing === "forest" || level.dressing === "full" });
+    }
   });
+  regionCull(b);
+}
+
+/** Show each side strip only while the frame is wide enough to reach it. */
+function regionCull(b: Battle3D): void {
+  const art = ART.get(b);
+  if (!art) return;
+  const half = b.showcase ? Infinity : Math.max(-b.camera.left, b.camera.right);
+  for (const s of art.sides) s.obj.visible = s.allowed && half > s.innerX;
 }
