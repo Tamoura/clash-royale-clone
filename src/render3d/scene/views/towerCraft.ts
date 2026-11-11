@@ -581,9 +581,12 @@ export function crackTexture(seed = 17): THREE.CanvasTexture {
   };
   // Bold splits from the top of the sheet most of the way down: walls are
   // seen small and at a slant, so hairlines would vanish.
-  for (let i = 0; i < 2; i++) crack(S * (0.3 + i * 0.4) + (rand() - 0.5) * 14, 2, Math.PI / 2 + (rand() - 0.5) * 0.6, 6, 8);
+  for (let i = 0; i < 2; i++) crack(S * (0.3 + i * 0.4) + (rand() - 0.5) * 14, 2, Math.PI / 2 + (rand() - 0.5) * 0.6, 6, 13);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  // Alpha-tested: mipmaps would average the thin splits away at battle zoom.
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
   tex.userData.shared = true;
   crackCache.set(seed, tex);
   return tex;
@@ -680,7 +683,7 @@ export function keepMaterial(map: THREE.Texture, team: number): { material: THRE
            vec4 tRoof = texture2D( uRoofTex, vMapUv );
            vec4 tBand = texture2D( uBandTex, vMapUv );
            float code = floor( vKeep.y + 0.5 );
-           if ( code == 2.0 && tCrack.a < 0.5 ) discard;
+           if ( code == 2.0 && tCrack.a < 0.4 ) discard;
            vec3 t = vec3( 1.0 );
            t = mix( t, tAsh.rgb, float( code == 1.0 ) );
            t = mix( t, tCrack.rgb, float( code == 2.0 ) );
@@ -1181,10 +1184,12 @@ function buildCracks(c: Ctx, deckY: number): void {
     }
     s.add(g, 0xffffff, 0, 0, 0, 0, () => 1, { tex: KEEP_TEX.crack, from });
   };
-  decal(cam, -R * 0.42, R * 0.8, 1, false);
-  decal(sideA, R * 0.1, R * 0.9, 1, true);
-  decal(cam, R * 0.46, R * 0.7, 2, true);
-  decal(sideB, -R * 0.15, R * 0.9, 2, false);
+  // Stage 1: a big split on the camera face beside the gate, one on a side;
+  // stage 2: the other side of the gate and the far side.
+  decal(cam, -R * 0.5, R * 0.95, 1, false);
+  decal(sideA, R * 0.1, R * 1.0, 1, true);
+  decal(cam, R * 0.52, R * 0.9, 2, true);
+  decal(sideB, -R * 0.15, R * 1.0, 2, false);
   // A split across the deck.
   const deck = new THREE.PlaneGeometry(R * 1.1, R * 1.1);
   deck.rotateX(-Math.PI / 2);
@@ -1773,10 +1778,13 @@ export function craftRuin(spec: RuinSpec): { stump: THREE.Mesh; heap: THREE.Mesh
       const hw = hwAt(STUMP_Y);
       const w = (hw * 2) / n;
       const along = -hw + w * (k + 0.5);
-      const h = 0.08 + rand() * 0.32;
+      // Broken courses: some stand tall, some are knocked down to the stump line.
+      const h = rand() < 0.3 ? 0.04 : 0.12 + rand() * 0.5;
       if (face === zFace(camSide) && Math.abs(along) < R * 0.32) continue; // the broken gate
       const [x, z] = onFace(face, along, hw - 0.08);
-      s.add(new THREE.BoxGeometry(w * 0.96, h, 0.18), 0xffffff, x, STUMP_Y + h / 2 - 0.02, z, (face * Math.PI) / 2 + (rand() - 0.5) * 0.2, () => 0.95, { tex: KEEP_TEX.ashlar, uv: [w / TILE, h / TILE], ink: true });
+      const block = new THREE.BoxGeometry(w * 0.96, h, 0.18);
+      block.rotateZ((rand() - 0.5) * 0.35);
+      s.add(block, 0xffffff, x, STUMP_Y + h / 2 - 0.02, z, (face * Math.PI) / 2 + (rand() - 0.5) * 0.2, () => 0.95, { tex: KEEP_TEX.ashlar, uv: [w / TILE, h / TILE], ink: true });
     }
   }
   // The keep's hollow: dark rubble fill inside the stump.
@@ -1792,16 +1800,41 @@ export function craftRuin(spec: RuinSpec): { stump: THREE.Mesh; heap: THREE.Mesh
   // The heap: tumbled blocks round the stump, a few roof shards, the fallen banner.
   const h = new KeepSculpt((_x, y) => 0.7 + 0.3 * Math.min(1, y / 0.6));
   h.chunk = "base";
-  const n = spec.king ? 22 : 16;
+  const n = spec.king ? 30 : 22;
   const colors = [stone, stoneLt, tone(spec.style.plinth, 1.05, 0.7), c.plat];
+  // A mound spilling out of the broken gate toward the camera, and a heap inside the stump.
+  const mound = new THREE.SphereGeometry(R * 0.62, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+  mound.scale(1.25, 0.55, 0.9);
+  h.add(mound, tone(stone, 0.9), 0, 0.12, camSide * R * 0.95, 0, null, { ink: true });
+  const inner = new THREE.SphereGeometry(R * 0.7, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+  inner.scale(1, 0.5, 1);
+  h.add(inner, tone(stone, 0.75), 0, STUMP_Y - 0.08, 0);
   for (let i = 0; i < n; i++) {
-    const a = rand() * Math.PI * 2;
-    const r = R * (0.95 + rand() * 0.75);
     const size = 0.14 + rand() * 0.22;
     const g = rand() < 0.5 ? new THREE.BoxGeometry(size * 1.4, size * 0.8, size) : new THREE.DodecahedronGeometry(size * 0.6, 0);
     g.rotateY(rand() * Math.PI);
     g.rotateZ((rand() - 0.5) * 0.6);
-    h.add(g, colors[i % colors.length], Math.cos(a) * r, size * 0.35 + (r < R * 1.25 ? 0.18 : 0.02), Math.sin(a) * r, 0, null, rand() < 0.4 ? { ink: true } : {});
+    let x: number;
+    let y: number;
+    let z: number;
+    if (i % 3 === 0) {
+      // On the mound by the gate.
+      x = (rand() - 0.5) * R * 1.4;
+      z = camSide * R * (0.7 + rand() * 0.6);
+      y = 0.12 + R * 0.3 * (1 - Math.abs(x) / (R * 0.9)) + size * 0.3;
+    } else if (i % 3 === 1) {
+      // On the heap inside the stump, poking over the broken courses.
+      x = (rand() - 0.5) * R * 1.1;
+      z = (rand() - 0.5) * R * 1.1;
+      y = STUMP_Y + 0.1 + rand() * 0.2;
+    } else {
+      const a = rand() * Math.PI * 2;
+      const r = R * (1.05 + rand() * 0.65);
+      x = Math.cos(a) * r;
+      z = Math.sin(a) * r;
+      y = size * 0.35 + (r < R * 1.3 ? 0.18 : 0.02);
+    }
+    h.add(g, colors[i % colors.length], x, Math.max(0.02, y), z, 0, null, rand() < 0.4 ? { ink: true } : {});
   }
   // Roof shards in the team colour (cones broken into wedges).
   for (let i = 0; i < 3; i++) {
