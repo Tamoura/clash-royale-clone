@@ -714,17 +714,31 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
 
   // Units are grounded by the contact shadow above; on the top quality
   // levels their bodies also cast into the sun's shadow map (post.ts flips
-  // the troopCaster meshes when the level changes).
+  // the troopCaster meshes when the level changes). Only the unit's biggest
+  // chunks cast (body and head; one for a swarm unit): at battle zoom and
+  // with a soft penumbra that is the whole silhouette, and every caster is
+  // one more draw per frame in the shadow pass.
   const dyn = troopShadowLevel(currentQuality());
   root.traverse((o) => (o.castShadow = false));
-  rig?.group.traverse((o) => {
-    const mesh = o as THREE.Mesh;
-    if (!mesh.isMesh || mesh.name === "outline") return;
-    const mat = mesh.material as THREE.Material;
-    if (Array.isArray(mat) || mat.transparent) return;
-    mesh.userData.troopCaster = true;
-    mesh.castShadow = dyn;
-  });
+  if (rig) {
+    rig.group.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    const size = new THREE.Vector3();
+    const ranked: Array<{ mesh: THREE.Mesh; extent: number }> = [];
+    rig.group.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || mesh.name === "outline" || !mesh.visible) return;
+      const mat = mesh.material as THREE.Material;
+      if (Array.isArray(mat) || mat.transparent) return;
+      box.setFromObject(mesh).getSize(size);
+      ranked.push({ mesh, extent: size.x + size.y + size.z });
+    });
+    ranked.sort((a, b) => b.extent - a.extent);
+    for (const { mesh } of ranked.slice(0, e.radius <= 0.32 ? 1 : 2)) {
+      mesh.userData.troopCaster = true;
+      mesh.castShadow = dyn;
+    }
+  }
 
   const bar = makeHpBar(0.9, unitHpColor(team), lift + 0.25, 0.2, false);
   bar.group.visible = team === "enemy" && !isSwarmSized(e); // opponents always (swarms once hurt); yours once damaged

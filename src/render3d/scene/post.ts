@@ -15,6 +15,7 @@ import { getPrefs, onPrefs } from "../../ui/prefs";
 import { LOOK } from "./common";
 import { setOutlinesVisible } from "../outlineMaterial";
 import { outlinesEnabled, type QualityLevel } from "../quality";
+import { ARABIC } from "../theme";
 
 /** Display-space colour grade defaults: saturation, contrast, tint, vignette. */
 const DEFAULT_GRADE = { saturation: 1.1, contrast: 1.05, tint: [1, 1, 1] as [number, number, number], vignette: 0.3 };
@@ -398,9 +399,14 @@ export function dynamicShadows(b: Battle3D): boolean {
   return troopShadowLevel(b.quality.level);
 }
 
-/** The level test behind dynamicShadows, for code that has no scene at hand. */
+/**
+ * The level test behind dynamicShadows, for code that has no scene at hand.
+ * Classic edition only for now: its set was rebuilt to fit the per-frame
+ * shadow pass in the draw-call budget; the Golden Age set has ~50 more
+ * static casters, which would take its 12-card fight past the budget.
+ */
 export function troopShadowLevel(level: Pick<QualityLevel, "shadowSize" | "bloom">): boolean {
-  return level.shadowSize >= 2048 && level.bloom >= 1;
+  return !ARABIC && level.shadowSize >= 2048 && level.bloom >= 1;
 }
 
 /** True for one more frame after a tower stops sinking, to drop its shadow. */
