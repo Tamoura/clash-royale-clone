@@ -84,11 +84,13 @@ export function makeUnit(cardId: string, v: Variant, b: Baked, src: Source, side
 
   // A rider sits on its mount: the body moves up to the seat, the mount (in world units) goes under it.
   let mount: Mount | undefined;
+  let seatY = 0;
   if (v.mount) {
     const seat = new THREE.Group();
     seat.name = "seat";
     const size = v.mount.size ?? 1;
-    seat.position.set(0, (v.mount.seat * size) / v.scale - sitHipY, ((v.mount.seatZ ?? 0) * size) / v.scale);
+    seatY = (v.mount.seat * size) / v.scale - sitHipY;
+    seat.position.set(0, seatY, ((v.mount.seatZ ?? 0) * size) / v.scale);
     for (const o of [...group.children]) seat.add(o);
     group.add(seat);
     const tiles = atlasFiles(v).length + 2;
@@ -131,7 +133,7 @@ export function makeUnit(cardId: string, v: Variant, b: Baked, src: Source, side
     mixer,
     actions,
     weights: [1, 0, 0],
-    height: b.top * v.scale,
+    height: (b.top + seatY) * v.scale,
     strike: v.strike,
     pace: 1,
     scale: v.scale,

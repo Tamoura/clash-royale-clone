@@ -5,7 +5,8 @@
  *   hood or tabard), plus the team disc;
  * - signature colours are fixed per card and never change with the team;
  * - no signature colour falls in either team's hue family: within 25° of a
- *   team hue at saturation above 0.45 and lightness 0.25-0.75.
+ *   team hue at saturation above 0.45 and lightness 0.25-0.75. Skin tones
+ *   are not signature colours (warm skin sits near red's hue by nature).
  */
 import * as THREE from "three";
 import { TEAM } from "../teamColors";
@@ -91,7 +92,6 @@ export function teamRuleViolations(id: string, v: Variant): string[] {
     if (isTeam(x.color) && !x.cloth) out.push(`${id}: extra #${i} on ${x.bone} is team-painted but not cloth`);
     if (typeof x.color === "number" && inTeamFamily(x.color, hues)) out.push(`${id}: extra #${i} ${hex(x.color)} is a team colour`);
   });
-  if (v.skin !== undefined && inTeamFamily(v.skin, hues)) out.push(`${id}: skin ${hex(v.skin)} is a team colour`);
   return out;
 }
 

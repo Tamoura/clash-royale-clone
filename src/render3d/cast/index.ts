@@ -22,6 +22,8 @@ import { joinSwarm, leaveSwarm } from "./animate";
 import { makeUnit, type KitUnit } from "./unit";
 import { CLASSIC } from "./variants.classic";
 import { GOLDEN } from "./variants.golden";
+import { championKey, championVariant } from "./champion";
+import { loadChampion } from "../../game/customcard";
 import type { Edition, Variant } from "./types";
 
 export type { KitUnit } from "./unit";
@@ -47,7 +49,13 @@ export function currentEdition(): Edition {
 
 /** A card's variant in an edition, or undefined (not humanoid / not modelled there). */
 export function variantOf(cardId: string, edition: Edition = currentEdition()): Variant | undefined {
+  if (cardId === "champion") return championVariant(loadChampion(), edition) ?? undefined;
   return edition === "golden" ? GOLDEN[cardId] : CLASSIC[cardId];
+}
+
+/** The bake cache key of a card (the champion bakes once per look). */
+function bakeKey(cardId: string, edition: Edition): string {
+  return cardId === "champion" ? championKey(loadChampion(), edition) : `${edition}:${cardId}`;
 }
 
 /** True when this card has a modelled character in the edition and the pack is in. */
@@ -59,7 +67,7 @@ export function hasKitTroop(cardId: string, edition: Edition = currentEdition())
 export function bakedOf(cardId: string, edition: Edition = currentEdition()): Baked | null {
   const v = variantOf(cardId, edition);
   if (!castLoaded() || !v) return null;
-  return bakeVariant(`${edition}:${cardId}`, v);
+  return bakeVariant(bakeKey(cardId, edition), v);
 }
 
 /**
@@ -71,7 +79,7 @@ export function bakedOf(cardId: string, edition: Edition = currentEdition()): Ba
 export function makeKitTroop(cardId: string, team: Side, edition: Edition = currentEdition(), swarm = true): KitUnit | null {
   const v = variantOf(cardId, edition);
   if (!castLoaded() || !v) return null;
-  const b = bakeVariant(`${edition}:${cardId}`, v);
+  const b = bakeVariant(bakeKey(cardId, edition), v);
   const u = makeUnit(cardId, v, b, sources.get(v.file)!, team, swarm ? `${edition}:${cardId}:${team}` : "");
   joinSwarm(u);
   return u;
@@ -109,6 +117,7 @@ export function disposeKitTroop(u: KitUnit): void {
 
 /** The cards (and crews) with a modelled character in an edition. */
 export function kitTroopCards(edition: Edition = currentEdition()): string[] {
-  return Object.keys(edition === "golden" ? GOLDEN : CLASSIC);
+  const ids = Object.keys(edition === "golden" ? GOLDEN : CLASSIC);
+  return variantOf("champion", edition) ? [...ids, "champion"] : ids;
 }
 
