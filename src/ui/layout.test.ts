@@ -1,33 +1,59 @@
 import { describe, expect, it } from "vitest";
 import { BATTLE_BOX, TALL_BOX, ZERO_INSETS, fitBattleFrustum, type Insets } from "../render3d/scene/fit";
 import {
+  CARD_ASPECT,
+  CARD_TOUCH_MIN,
   SIDE_GAP,
-  SIDE_MAX,
   SIDE_MIN,
   SIDE_ROOMY,
   TALL_CARD_H_FRAC,
+  TALL_CARD_MAX,
+  TALL_CARD_MIN,
+  TRAY_GAP,
+  TRAY_GUTTER,
   battleLayout,
   cardHeight,
+  handGridW,
   handPanelBudget,
   handPanelHeight,
   handPanelInnerW,
+  sideMax,
   tallLayout,
+  trayHeight,
+  wideCardCap,
   wideLayout,
 } from "./layout";
 
 /**
- * The board's scale (CSS px per tile) in the old phone-shaped column
- * (`#app { width: min(100vw, 52vh) }`, tray under the stage, ~95px band,
- * frameOrtho's top-inset fit). Reproduces the measured values within 1%:
- * 568x320 5.69, 800x600 12.61, 850x700 15.67, 1000x750 17.24, 360x640 13.83.
+ * The layout before the compact hand, verbatim (its tray: 3:4 cards filling
+ * the width, at most 16% of the height tall, over a full-width elixir bar,
+ * 82px of chrome; its side panels: 176 to 320px), so the sweeps below can
+ * hold the new one against it screen by screen.
  */
-function oldColumnTile(w: number, h: number): number {
-  const col = Math.min(w, 0.52 * h);
-  const tray = cardHeight((col - 56) / 4) + 82;
-  const stage = h - tray;
-  const f = Math.min(0.25, 95 / stage);
-  return Math.min(col / (2 * BATTLE_BOX.halfW), (stage * (1 - f)) / BATTLE_BOX.height);
-}
+const before = {
+  cardHeight: (cw: number): number => ((cw - 6) * 4) / 3 + 6,
+  cardForHeight: (ch: number): number => ((ch - 6) * 3) / 4 + 6,
+  tall(w: number, h: number, safe: Insets = ZERO_INSETS): { tile: number; tray: number; cardW: number } {
+    const availW = Math.max(1, w - safe.left - safe.right);
+    const capByHeight = 4 * before.cardForHeight(0.16 * h) + 56;
+    const handW = Math.max(60, Math.floor(Math.min(availW, 560, capByHeight)));
+    const cardW = (handW - 56) / 4;
+    const tray = before.cardHeight(cardW) + 82 + Math.max(0, safe.bottom - 8);
+    const band = (w >= 600 || w / h >= 0.47 ? 58 : 83) + safe.top;
+    return { tile: Math.max(0, Math.min(w / (2 * TALL_BOX.halfW), (h - tray - band) / TALL_BOX.height)), tray, cardW };
+  },
+  wide(w: number, h: number, safe: Insets = ZERO_INSETS): { tile: number; side: number } {
+    const availW = w - safe.left - safe.right;
+    const availH = Math.max(1, h - safe.top - safe.bottom);
+    const fieldCol = ((2 * BATTLE_BOX.halfW) / BATTLE_BOX.height) * availH;
+    const side = Math.floor(Math.max(176, Math.min(320, (availW - fieldCol) / 2 - 8)));
+    const fieldW = Math.min(fieldCol, availW - 2 * (side + 8));
+    return { tile: fieldW > 0 ? fieldW / (2 * BATTLE_BOX.halfW) : 0, side };
+  },
+  tile(w: number, h: number, safe: Insets = ZERO_INSETS): number {
+    return Math.max(before.tall(w, h, safe).tile, before.wide(w, h, safe).tile);
+  },
+};
 
 /** The board's real scale for a layout: fit its box between its insets (tall: under the band, over the tray). */
 function realTile(w: number, h: number, safe: Insets = ZERO_INSETS): number {
@@ -39,76 +65,156 @@ function realTile(w: number, h: number, safe: Insets = ZERO_INSETS): number {
   return lay.tile;
 }
 
+/** The screens the family plays on, and the ones the acceptance table lists. */
+const PHONES: [number, number][] = [
+  [360, 640],
+  [360, 740],
+  [375, 667],
+  [390, 844],
+  [393, 852],
+  [412, 915],
+  [430, 932],
+];
+const TABLETS: [number, number][] = [
+  [768, 1024],
+  [820, 1180],
+  [800, 1280],
+  [1024, 1366],
+];
+const LANDSCAPE: [number, number][] = [
+  [667, 375],
+  [844, 390],
+  [932, 430],
+  [1024, 768],
+  [1180, 820],
+  [1366, 768],
+  [1440, 900],
+  [1920, 1080],
+];
+const SAFES: Insets[] = [ZERO_INSETS, { top: 0, left: 47, right: 47, bottom: 21 }, { top: 47, left: 0, right: 0, bottom: 34 }];
+
 describe("battleLayout", () => {
   it("keeps phones and portrait tablets tall", () => {
-    for (const [w, h] of [
-      [320, 568],
-      [390, 844],
-      [360, 740],
-      [375, 667],
-      [768, 1024],
-      [820, 1180],
-      [800, 1000],
-    ]) {
+    for (const [w, h] of [[320, 568], ...PHONES, ...TABLETS, [800, 1000]]) {
       const lay = battleLayout(w, h);
       expect(lay.mode, `${w}x${h}`).toBe("tall");
       expect(lay.box).toBe(TALL_BOX);
       expect(lay.side).toBe(0);
+      expect(lay.handCols).toBe(4);
     }
   });
 
-  it("leaves portrait phones' trays exactly as wide as the screen", () => {
-    for (const [w, h] of [
-      [320, 568],
-      [360, 640],
-      [375, 667],
-      [390, 844],
-      [430, 932],
-    ]) {
-      expect(tallLayout(w, h).handW, `${w}x${h}`).toBe(w);
+  it("keeps the tall tray a thin strip: at most a sixth of a phone, a seventh of a tablet", () => {
+    for (const [w, h] of PHONES) {
+      const t = tallLayout(w, h);
+      // 360x640 is the squattest phone in use: its cards stop at the 56px floor.
+      expect(t.tray / h, `${w}x${h}`).toBeLessThanOrEqual(w / h > 0.55 ? 0.175 : 0.16);
+      expect(t.tray, `${w}x${h}`).toBe(trayHeight(t.cardW));
     }
+    expect(tallLayout(390, 844).tray).toBeLessThanOrEqual(135);
+    for (const [w, h] of TABLETS) expect(tallLayout(w, h).tray / h, `${w}x${h}`).toBeLessThanOrEqual(0.145);
+    // The home indicator only adds what it needs under the cards.
+    expect(tallLayout(390, 844, { top: 47, left: 0, right: 0, bottom: 34 }).tray).toBe(tallLayout(390, 844).tray + 24);
   });
 
-  it("caps the tall tray's cards by the screen's height and gives tablets big cards", () => {
-    for (let w = 300; w <= 2000; w += 53) {
+  it("never makes a tall card smaller than a fingertip, and at least 56px wide on real phones", () => {
+    // From 280px: a foldable's cover screen (the original Galaxy Fold's is 280x653).
+    for (let w = 280; w <= 2000; w += 7) {
       for (let h = 300; h <= 1600; h += 47) {
         const t = tallLayout(w, h);
-        expect(cardHeight(t.cardW), `${w}x${h}`).toBeLessThanOrEqual(TALL_CARD_H_FRAC * h + 1);
-        expect(t.handW).toBeLessThanOrEqual(w);
+        const at = `${w}x${h}`;
+        expect(t.cardW, at).toBeGreaterThanOrEqual(CARD_TOUCH_MIN - 1e-9);
+        expect(t.cardH, at).toBeGreaterThanOrEqual(CARD_TOUCH_MIN);
+        if (w >= 360) expect(t.cardW, at).toBeGreaterThanOrEqual(TALL_CARD_MIN);
+        expect(t.cardW, at).toBeLessThanOrEqual(TALL_CARD_MAX);
+        expect(t.cardH, at).toBeCloseTo(cardHeight(t.cardW), 9);
+        // 4:5 art inside the 3px border.
+        expect((t.cardH - 6) / (t.cardW - 6), at).toBeCloseTo(CARD_ASPECT, 9);
       }
     }
-    // An iPad Air in portrait keeps cards close to its old 136px.
-    expect(tallLayout(820, 1180).cardW).toBeGreaterThanOrEqual(120);
+    // Under 299px the tray's gutters and gaps give way first, only as far as
+    // the cards need; wider screens keep the stylesheet's own.
+    const fold = tallLayout(280, 653);
+    expect(fold.cardW).toBeCloseTo(CARD_TOUCH_MIN, 9);
+    expect(fold.handW).toBeCloseTo(280, 9);
+    expect(fold.gutter).toBeLessThan(TRAY_GUTTER);
+    expect(fold.gutter).toBeGreaterThanOrEqual(0.4 * TRAY_GUTTER);
+    expect(fold.gap / fold.gutter).toBeCloseTo(TRAY_GAP / TRAY_GUTTER, 9);
+    for (const w of [299, 300, 320, 360, 390]) {
+      expect(tallLayout(w, 700).gutter, `${w}`).toBe(TRAY_GUTTER);
+      expect(tallLayout(w, 700).gap, `${w}`).toBe(TRAY_GAP);
+    }
+    // No cliff where the squeeze starts: one pixel narrower, never a jump.
+    for (let w = 270; w < 330; w++) {
+      expect(Math.abs(tallLayout(w + 1, 700).cardW - tallLayout(w, 700).cardW), `${w}`).toBeLessThanOrEqual(0.26);
+    }
+  });
+
+  it("caps tall cards by the screen's height (down to the 56px floor) and fits the tray's row in the width", () => {
+    for (const safe of SAFES) {
+      for (let w = 280; w <= 2000; w += 53) {
+        for (let h = 300; h <= 1600; h += 47) {
+          const t = tallLayout(w, h, safe);
+          const at = `${w}x${h} ${JSON.stringify(safe)}`;
+          expect(t.cardH, at).toBeLessThanOrEqual(Math.max(cardHeight(TALL_CARD_MIN), TALL_CARD_H_FRAC * h) + 1e-9);
+          // Next, four cards, KING, five gaps and the gutters: inside the safe width.
+          expect(t.handW, at).toBeLessThanOrEqual(w - safe.left - safe.right + 1e-9);
+          expect(t.handW, at).toBeCloseTo(2 * t.gutter + 5 * t.gap + 4 * t.cardW + t.nextW + t.kingW, 9);
+          if (w - safe.left - safe.right >= 299) expect(2 * t.gutter + 5 * t.gap, at).toBe(16 + 25);
+          // Next shows a mini card and KING stays a full finger target.
+          expect(t.nextW, at).toBeGreaterThanOrEqual(36);
+          expect(t.kingW, at).toBeGreaterThanOrEqual(46);
+          if (w - safe.left - safe.right >= 320) expect(t.nextW, at).toBeLessThan(t.cardW);
+        }
+      }
+    }
+    // Phones spend their whole width on the row; tablets keep a centred hand.
+    for (const [w, h] of [[390, 844], [412, 915], [430, 932]]) expect(tallLayout(w, h).handW, `${w}x${h}`).toBeCloseTo(w, 9);
+    for (const [w, h] of TABLETS) expect(tallLayout(w, h).handW, `${w}x${h}`).toBeLessThan(w * 0.75);
+    // Next and KING grow with the cards where there is width to spare.
+    expect(tallLayout(820, 1180).kingW).toBeGreaterThan(tallLayout(390, 844).kingW + 8);
   });
 
   it("puts landscape screens in wide mode with full-height boards between side panels", () => {
-    const cases: [number, number, number][] = [
-      [844, 390, 269],
-      [667, 375, 186],
-      [1180, 820, 277],
-      [1024, 768, 218],
-      [1366, 768, 320],
-      [1440, 900, 320],
-      [1920, 1080, 320],
-    ];
-    for (const [w, h, side] of cases) {
+    for (const [w, h] of LANDSCAPE) {
       const lay = battleLayout(w, h);
       expect(lay.mode, `${w}x${h}`).toBe("wide");
-      expect(lay.side, `${w}x${h}`).toBe(side);
       expect(lay.box).toBe(BATTLE_BOX);
-      expect(lay.insets).toEqual({ top: 0, bottom: 0, left: side + SIDE_GAP, right: side + SIDE_GAP });
+      expect(lay.insets).toEqual({ top: 0, bottom: 0, left: lay.side + SIDE_GAP, right: lay.side + SIDE_GAP });
       expect(lay.tile, `${w}x${h}`).toBeCloseTo(h / BATTLE_BOX.height, 6);
+      // A 2x2 block of cards, never the old screen-high column.
+      expect(lay.handCols, `${w}x${h}`).toBe(2);
+      expect(handPanelHeight(lay.cardW, lay.handCols, lay.stacked), `${w}x${h}`).toBeLessThanOrEqual(0.62 * h + 110);
     }
+  });
+
+  it("shrinks the wide hand: smaller cards in a narrower panel than before", () => {
+    const cases: [number, number, number, number][] = [
+      // w, h, the old card width, the old side column
+      [844, 390, 85, 269],
+      [1024, 768, 99, 218],
+      [1366, 768, 131, 320],
+      [1440, 900, 131, 320],
+      [1920, 1080, 131, 320],
+    ];
+    for (const [w, h, oldCard, oldSide] of cases) {
+      const lay = battleLayout(w, h);
+      const at = `${w}x${h}`;
+      expect(before.wide(w, h).side, at).toBe(oldSide);
+      expect(lay.cardW, at).toBeLessThan(oldCard);
+      expect(lay.cardW, at).toBeLessThanOrEqual(wideCardCap(h));
+      expect(lay.side, at).toBeLessThanOrEqual(oldSide);
+      expect(lay.side, at).toBeLessThanOrEqual(sideMax(h));
+    }
+    expect(battleLayout(1440, 900).cardW).toBeLessThanOrEqual(104);
+    expect(battleLayout(1920, 1080).cardW).toBeLessThanOrEqual(112);
   });
 
   it("keeps near-square and small landscape windows wide: the board gives up height, not the panels", () => {
     for (const [w, h] of [
-      [568, 320],
       [600, 400],
       [640, 480],
-      [700, 500],
-      [800, 600],
-      [850, 700],
+      [700, 560],
       [900, 900],
       [1000, 1000],
     ]) {
@@ -120,6 +226,15 @@ describe("battleLayout", () => {
       const f = fitBattleFrustum(w, h, lay.insets, lay.box);
       expect(w / (f.right - f.left), `${w}x${h}`).toBeCloseTo(lay.fieldW / (2 * BATTLE_BOX.halfW), 6);
       expect(lay.fieldW / (2 * BATTLE_BOX.halfW)).toBeLessThanOrEqual(h / BATTLE_BOX.height);
+      // The slimmer panels (144px, were 176px) hand their width to the board.
+      expect(lay.tile, `${w}x${h}`).toBeGreaterThan(before.tile(w, h) * 1.1);
+    }
+    // 568x320, 800x600 and an unfolded foldable in landscape now fit a
+    // full-height board between the panels.
+    for (const [w, h] of [[568, 320], [800, 600], [884, 768]]) {
+      const lay = battleLayout(w, h);
+      expect(lay.tile, `${w}x${h}`).toBeCloseTo(h / BATTLE_BOX.height, 6);
+      expect(lay.tile, `${w}x${h}`).toBeGreaterThan(before.tile(w, h) * 1.02);
     }
   });
 
@@ -133,25 +248,30 @@ describe("battleLayout", () => {
     // The hand panel clears the home indicator and the top edge.
     expect(handPanelHeight(lay.cardW, lay.handCols, lay.stacked)).toBeLessThanOrEqual(390 - 12 - 21);
     expect(handPanelBudget(390, safe)).toBe(390 - 12 - 21);
+    // Portrait: the notch pushes the band down, the home indicator the cards up.
+    const tall = battleLayout(390, 844, { top: 47, left: 0, right: 0, bottom: 34 });
+    expect(tall.mode).toBe("tall");
+    expect(tall.tile).toBeCloseTo(390 / (2 * TALL_BOX.halfW), 9); // still width-bound
   });
 
   it("never squeezes the panels, the hand or the board", () => {
-    const safes: Insets[] = [ZERO_INSETS, { top: 0, left: 47, right: 47, bottom: 21 }, { top: 47, left: 0, right: 0, bottom: 34 }];
-    for (const safe of safes) {
+    for (const safe of SAFES) {
       for (let w = 300; w <= 3000; w += 37) {
         for (let h = 300; h <= 1600; h += 41) {
           const lay = battleLayout(w, h, safe);
           if (lay.mode !== "wide") continue;
           const at = `${w}x${h} ${JSON.stringify(safe)}`;
           expect(lay.side, at).toBeGreaterThanOrEqual(SIDE_MIN);
-          expect(lay.side, at).toBeLessThanOrEqual(SIDE_MAX);
+          expect(lay.side, at).toBeLessThanOrEqual(Math.max(SIDE_MIN, sideMax(h)));
           expect(lay.fieldW + 2 * (lay.side + SIDE_GAP), at).toBeLessThanOrEqual(w - safe.left - safe.right + 1);
           // The hand fits its panel both ways, and is a usable size.
-          expect(lay.handCols * lay.cardW + (lay.handCols - 1) * 12, at).toBeLessThanOrEqual(handPanelInnerW(lay.side));
+          expect(handGridW(lay.cardW, lay.handCols), at).toBeLessThanOrEqual(handPanelInnerW(lay.side));
           expect(handPanelHeight(lay.cardW, lay.handCols, lay.stacked), at).toBeLessThanOrEqual(handPanelBudget(h, safe));
+          expect(lay.cardW, at).toBeLessThanOrEqual(wideCardCap(h));
+          expect(lay.cardH, at).toBeCloseTo(cardHeight(lay.cardW), 9);
           // Fingertip-sized cards on any real landscape screen (a portrait
           // notch's insets on a 300px-tall window are not one).
-          if (h >= 320 && safe.top + safe.bottom <= 21) expect(lay.cardW, at).toBeGreaterThanOrEqual(44);
+          if (h >= 320 && safe.top + safe.bottom <= 21) expect(lay.cardW, at).toBeGreaterThanOrEqual(CARD_TOUCH_MIN);
           if (lay.side >= SIDE_ROOMY) {
             expect(lay.handCols, at).toBe(2);
             expect(lay.stacked, at).toBe(false);
@@ -174,25 +294,49 @@ describe("battleLayout", () => {
     }
   });
 
-  it("never draws a smaller board than the old phone column", () => {
-    // Every screen at least 568px on its long side (the smallest phone in
-    // use, an iPhone SE, is 320x568); tinier windows are cramped either way.
-    for (let w = 320; w <= 2000; w += 23) {
-      for (let h = 320; h <= 1400; h += 19) {
-        if (Math.max(w, h) < 568) continue;
-        expect(realTile(w, h), `${w}x${h}`).toBeGreaterThanOrEqual(oldColumnTile(w, h) * 0.99);
+  it("never draws a smaller board than the layout before it, on any screen", () => {
+    for (const safe of SAFES) {
+      for (let w = 320; w <= 2000; w += 23) {
+        for (let h = 320; h <= 1400; h += 19) {
+          expect(realTile(w, h, safe), `${w}x${h} ${JSON.stringify(safe)}`).toBeGreaterThanOrEqual(before.tile(w, h, safe) - 1e-9);
+        }
       }
     }
-    // The landscape windows that used to fall back to a cramped tall layout.
-    for (const [w, h, atLeast] of [
-      [568, 320, 1.7],
-      [600, 400, 1.5],
-      [640, 480, 1.4],
-      [700, 500, 1.6],
-      [800, 600, 1.7],
-      [850, 700, 1.5],
-    ]) {
-      expect(realTile(w, h) / oldColumnTile(w, h), `${w}x${h}`).toBeGreaterThanOrEqual(atLeast);
+  });
+
+  it("gives the hand's room to the board: the acceptance screens", () => {
+    // w, h, the least the board must grow (1 = the same size: it already
+    // spanned the screen's width or height before).
+    const cases: [number, number, number][] = [
+      [360, 640, 1.15],
+      [375, 667, 1.14],
+      [390, 844, 1],
+      [412, 915, 1],
+      [768, 1024, 1.13],
+      [820, 1180, 1.09],
+      [844, 390, 1],
+      [1024, 768, 1],
+      [1366, 768, 1],
+      [1440, 900, 1],
+      [1920, 1080, 1],
+    ];
+    for (const [w, h, gain] of cases) {
+      const at = `${w}x${h}`;
+      expect(realTile(w, h) / before.tile(w, h), at).toBeGreaterThanOrEqual(gain - 1e-9);
+      const lay = battleLayout(w, h);
+      // The hand itself is smaller on every one of them.
+      if (lay.mode === "tall") {
+        expect(lay.tray, at).toBeLessThan(before.tall(w, h).tray * 0.68);
+        expect(lay.cardW, at).toBeLessThan(before.tall(w, h).cardW);
+      }
+    }
+    // Width-bound phones cannot grow the board: the slimmer tray leaves
+    // height over instead, which the frame spends around the board.
+    for (const [w, h] of [[390, 844], [412, 915]]) {
+      const lay = battleLayout(w, h);
+      expect(lay.tile, `${w}x${h}`).toBeCloseTo(w / (2 * TALL_BOX.halfW), 9);
+      const slack = h - lay.tray - 83 - TALL_BOX.height * lay.tile;
+      expect(slack, `${w}x${h}`).toBeGreaterThan(50);
     }
   });
 

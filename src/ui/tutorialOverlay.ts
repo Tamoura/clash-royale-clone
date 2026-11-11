@@ -559,9 +559,10 @@ function drawCoach(s: Session, b: BattleState, step: TutorialStep, holding: bool
 }
 
 /**
- * The HUD controls a docked bubble must stay above: the tray (#hud), the
- * KING button, the emote bubble and the Next preview, which float above
- * the tray on phones.
+ * The HUD controls a docked bubble must stay above: the tray (#hud) with
+ * the KING button, the emote bubble and the Next preview inside it (the
+ * tall layout), or wherever a layout puts them (the wide one keeps KING
+ * and the bubble in the left panel, beside the docked bubble's columns).
  */
 const HUD_CONTROLS = ["#hud", "#hud .hud-ability", "#hud .hud-next", "#emotes .emote-toggle", "#emotes"];
 
@@ -586,9 +587,10 @@ export function controlsTop(
 }
 
 /**
- * Keep the bubble clear of the top bar and the HUD's action row (KING,
- * Next, emote and the hand). In the wide layout both sit in side panels,
- * so the bubble docks at the screen's own top or bottom, over the board.
+ * Keep the bubble clear of the top bar and the tray (the elixir rail, Next,
+ * the emote bubble, the hand and KING). In the wide layout both sit in side
+ * panels, so the bubble docks at the screen's own top or bottom, over the
+ * board.
  */
 function placeCoach(s: Session): void {
   const wide = document.documentElement.dataset.layout === "wide";

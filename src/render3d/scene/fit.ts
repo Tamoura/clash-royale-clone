@@ -53,20 +53,32 @@ export const TALL_BOX: ContentBox = { ...BATTLE_BOX, halfW: 9.25 };
 export const MAX_TOP_FRAC = 0.25;
 
 /**
- * Fit `box` into the canvas (w × h CSS px) minus `ins`, as large as it
- * goes, centred in the free rectangle. The frustum covers the whole canvas
- * at that scale (it always matches the canvas aspect, so nothing stretches).
+ * Where the board sits when the free rectangle is taller than it (portrait
+ * phones are width-bound, so a slimmer tray leaves height over): this share
+ * of the slack goes above it. A little over half: the far towers stand
+ * clear of the scoreboard and the far stands show, while the player's own
+ * half stays close to the hand.
  */
-export function fitBattleFrustum(w: number, h: number, ins: Insets, box: ContentBox = BATTLE_BOX): Frustum {
+export const TALL_ALIGN_Y = 0.6;
+
+/**
+ * Fit `box` into the canvas (w × h CSS px) minus `ins`, as large as it
+ * goes. It is centred in the free rectangle; `alignY` moves it along a
+ * free rectangle taller than the box (0 = against the top inset, 1 =
+ * against the bottom one). The frustum covers the whole canvas at that
+ * scale (it always matches the canvas aspect, so nothing stretches).
+ */
+export function fitBattleFrustum(w: number, h: number, ins: Insets, box: ContentBox = BATTLE_BOX, alignY = 0.5): Frustum {
   w = Math.max(1, w);
   h = Math.max(1, h);
   const top = Math.min(Math.max(0, ins.top), MAX_TOP_FRAC * h);
   const aw = Math.max(1, w - ins.left - ins.right);
   const ah = Math.max(1, h - top - ins.bottom);
   const s = Math.min(aw / (2 * box.halfW), ah / box.height); // px per world unit
-  // The box centre goes to the middle of the free rectangle.
+  // The box centre goes to the middle of the free rectangle, then along its slack.
+  const slack = Math.max(0, ah - box.height * s);
   const cx = ins.left + aw / 2;
-  const cy = top + ah / 2;
+  const cy = top + ah / 2 + (Math.min(1, Math.max(0, alignY)) - 0.5) * slack;
   const left = -cx / s;
   const t = box.mid + cy / s;
   return { left, right: left + w / s, top: t, bottom: t - h / s };
