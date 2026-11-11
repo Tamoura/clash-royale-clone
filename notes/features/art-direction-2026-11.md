@@ -91,6 +91,60 @@ perf-budget after the merge (`?quality=high`, training-camp, dev server). Gates:
 
 One caster per unit cut the fight by 12 to 16 calls compared with the stage's own end numbers (431 to 438).
 
+### 2. cast-kit
+
+`art/cast-kit` merged with --no-ff on top of the stage. No conflicts: troops.ts auto-merged (the stage's one-caster line matched cast-kit's own). The merge takes cast-kit's deletion of `viewer.html`, `src/viewer.ts`, `glbModels.ts` and `public/models/kaykit` (cast-kit request 2: an orphan dev page that only loaded the deleted pack).
+
+- Wired (main.ts, battle-start cast gate only):
+  - Every solo start (ladder, daily, draft, challenge and the tutorial, replay, Play again, sandbox reset) goes through `afterCastGate`. If the pack has settled (loaded or failed), the start runs at once, so nothing changes in the usual case. Otherwise it waits for `castReady()` or 3 s, with the solo sim held, and the latest request wins.
+  - `beginCastBattle()` runs just before each `scene.reset()`, so a battle fields the cast or the procedural roster for its whole length.
+  - Online matches (match/online.ts, outside ship's main.ts exception) cannot wait on the lockstep peer. They latch what is loaded at `matchStart`, which comes right after their reset and before any unit is built.
+- Wired (scene3d.ts): `setLeanCamera(this.camera)` at the top of `sync()`, before any unit or crew is built or posed (cast-kit request 0).
+- Not wired yet: `setTowerCrewProvider(towerCrewProvider)`. towers.ts has no provider seam until art/towers lands, so the towers keep the hand-built crew.
+- Requests applied:
+  - Stage 1 (rest): troops.ts registers its one caster per unit through `registerTroopCaster()`.
+  - Stage 2: the cast's mixers step at `currentQuality().mixerHz`, and `mixerHz(i)` reads `QualityLevel.mixerHz`. The rates are the same as before (60/60/30/30/20). Swarm pose sharing was already in at every level (`SWARM_SHARE` 6).
+  - Cast-kit 1: the cardwaveFx test that pinned the white troop snap is now a cap check on `troopFlashTint`: at most 0.35, warm, and gone at the end. `hitFlashTint`'s legacy troop branch now defers to `troopFlashTint`.
+- tools/perf-budget.mjs: it now starts the battle only once the DEV log says "cast: pack ready" (or "failed"), and prints `cast` with the counters. With the gate latching per battle, a slow software-GL boot would otherwise measure the procedural roster.
+- Gate checks (dev server, phone):
+  - Pack in before the tap: every humanoid is cast, and so is a second wave.
+  - Tap at the moment the pack lands: cast.
+  - Pack held back 15 s by request interception: the battle starts 3 s after the tap with the procedural roster, and a second wave spawned after the pack arrived is still procedural. No mixing.
+  - Fresh Golden Age profile (production build): the tutorial starts through the gate at boot.
+- Size: initial JS `index-*.js` 322.8 KB gz (art/base 294.1 per the cast-kit notes, so +28.7). GLTFLoader (13.2 KB gz) and meshopt (7.3 KB gz) are lazy chunks. dist/ is 2.8 MB.
+
+perf-budget after the merge (`?quality=high`, training-camp, dev server, cast measured in every run). Gates: empty <= 220 calls, fight <= 450 calls.
+
+| View | Edition | Empty calls / tris | Fight calls / tris | Fight textures |
+|---|---|---|---|---|
+| 390x844@2 | Classic | 176 / 202,978 | 256 / 568,128 | 65 |
+| 390x844@2 | Golden Age | 170 / 191,770 | 264 / 585,808 | 64 |
+| 1440x900@1 | Classic | 178 / 226,100 | 259 / 591,134 | 65 |
+| 1440x900@1 | Golden Age | 176 / 207,666 | 274 / 601,652 | 64 |
+
+The cast takes the 12-card fight from 415-426 calls down to 256-274 and cuts about 100k triangles. Textures rise from 49 to 64-65: the per-variant atlases and bone textures.
+
+Still open for the final integrator:
+- With art/towers: `setTowerCrewProvider(towerCrewProvider)` in scene3d.ts. make() takes the viewer-relative team (towers.ts `teamSide(e.side)`) and "classic" | "golden" from `ARABIC`; crews are 0.72 of field size. The per-frame lean camera is already in.
+- Stage request 3: offset the cast's blob shadow by `SHADOW_SLOPE` times the unit's height on L1 to L3 (not done; needs a by-eye check).
+- Stage request 4 and cast-kit review (minor):
+  - The Golden Age janissary's CREAM bork still peaks over the 0.9 bloom threshold in some frames (luminance 0.94-0.96).
+  - The Golden Age tower-king turban (0xf2f0ea) reaches #FFFFFF on the contact sheet; it will show in battle once the crew provider is wired.
+  - Fix options: darken CREAM toward 0xe2d4b6, cap sun-facing extras near 0.78, or clamp the lit colour in the cast shader under about 0.85. Then add a troopview probe at several yaws.
+- Cast-kit review (minor): the Golden Age valkyrie's keffiyeh drape hides her braids from behind (spec 5c). Either end her drape near y 1.55 or hang the braids past the hem (0.6 or more from the centre). Then re-shoot the 'behind' cells.
+- Constants: OUTLINE_CSS_PX is still 1.25 globally, while the cast's shell is drawn at 1.6 px (CAST_INK_PX). Unify on 1.6 and #1F1A2E in look/material.ts once creatures and towers land. The cast's ink is opaque, because it shares the body's draw.
+- Sign off the hat-height exception (wizard 2.98, ice-wizard 2.95, executioner 3.05, janissary 3.04, duelist 2.91) or ask for shorter hats.
+- Known gaps:
+  - The Studio preview (src/ui, frozen) still uses the procedural champion rig.
+  - Mounts gallop procedurally, and their heads are blocky from the front.
+  - views/animate.ts still calls `setLeanCamera` per entity. That call is now redundant and harmless.
+
+Screens (looked at, against /tmp/claude-0/proto/baseline/):
+- Dev standard scene: /tmp/claude-0/art/ship-cast-kit/dev-{classic,golden}-{phone,desk}.png.
+- Gate checks: dev-early-classic-phone.png and dev-slowpack-classic-phone.png.
+- Production build: prod-{classic,golden}-{phone,desk}-{home,start,battle}.png and prod-golden-fresh-tutorial.png.
+- No page or console errors, and every troop GLB returned 200.
+
 
 ## Art bible
 
