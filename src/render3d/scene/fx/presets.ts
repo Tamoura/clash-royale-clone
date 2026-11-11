@@ -142,18 +142,18 @@ export const PRESETS: Record<string, readonly Layer[]> = {
   // The team-colour landing burst: a ring snapping out and a few stars popping up.
   deployBurst: [
     { pool: "alpha", cell: CELL.RING, count: 1, life: 0.32, dir: "none", speed: 0, height: 0.05, size0: 0.6, size1: 2, ground: true, color0: 0x3b82f6, alpha0: 0.85, alpha1: 0 },
-    { pool: "alpha", cell: CELL.STAR5, count: 5, min: 3, life: [0.4, 0.55], dir: "up", spread: 0.9, speed: [2.2, 3.4], area: 0.25, edge: true, height: 0.2, drag: 2.5, gravity: 5, size0: [0.26, 0.34], size1: 0.1, spin: [-8, 8], color0: 0x3b82f6, alpha0: 1, alpha1: 0.2, push: 0.6, scales: false },
+    { pool: "alpha", cell: CELL.STAR5, count: 5, min: 3, life: [0.42, 0.58], dir: "up", spread: 0.9, speed: [2.2, 3.4], area: 0.25, edge: true, height: 0.2, drag: 2.5, gravity: 5, size0: [0.42, 0.5], size1: 0.18, spin: [-8, 8], color0: 0x3b82f6, alpha0: 1, alpha1: 0.2, push: 0.6, scales: false },
   ],
   // Contact: 4-6 inked star sprites flying off the struck target, plus a small hot core.
   hitSpark: [
-    { pool: "alpha", cell: CELL.STAR5, count: 5, min: 4, life: [0.26, 0.38], dir: "sphere", speed: [2.4, 4.2], height: 0, drag: 3, gravity: 7, size0: [0.24, 0.32], size1: 0.08, spin: [-11, 11], color0: CREAM, alpha0: 1, alpha1: 0.3, push: 0.8, scales: false },
+    { pool: "alpha", cell: CELL.STAR5, count: 5, min: 4, life: [0.3, 0.42], dir: "sphere", speed: [2.4, 4.2], height: 0, drag: 3.5, gravity: 6, size0: [0.46, 0.56], size1: 0.22, spin: [-11, 11], color0: CREAM, alpha0: 1, alpha1: 0.3, push: 0.8, scales: false },
     { pool: "add", cell: CELL.SOFT, count: 1, life: 0.1, dir: "none", speed: 0, size0: 0.55, size1: 0.25, color0: 0xfff1c4, hdr0: 1.3, hdr1: 0.6, alpha0: 0.9, alpha1: 0, push: 1, tint: false, scales: false },
   ],
   // A huge hit: gold stars, a small hot core and a gold ring.
   crit: [
     { pool: "add", cell: CELL.SOFT, count: 1, life: 0.14, dir: "none", speed: 0, size0: 1.0, size1: 0.4, color0: 0xffe7a0, hdr0: 1.6, hdr1: 0.8, alpha0: 1, alpha1: 0, push: 1 },
     { pool: "alpha", cell: CELL.STAR5, count: 1, life: 0.3, dir: "none", speed: 0, size0: 0.9, size1: 0.35, spin: [-5, 5], color0: 0xffd23f, alpha0: 1, alpha1: 0, push: 1.2, tint: false },
-    { pool: "alpha", cell: CELL.STAR5, count: 8, min: 5, life: [0.3, 0.45], dir: "sphere", speed: [4.5, 7], drag: 3, gravity: 8, size0: [0.26, 0.34], size1: 0.1, spin: [-10, 10], color0: 0xffd23f, alpha0: 1, alpha1: 0.2, push: 0.8 },
+    { pool: "alpha", cell: CELL.STAR5, count: 8, min: 5, life: [0.34, 0.5], dir: "sphere", speed: [4.5, 7], drag: 3.5, gravity: 7, size0: [0.46, 0.56], size1: 0.2, spin: [-10, 10], color0: 0xffd23f, alpha0: 1, alpha1: 0.2, push: 0.8 },
     { pool: "alpha", cell: CELL.RING, count: 1, life: 0.3, dir: "none", speed: 0, height: 0.06, size0: 0.4, size1: 2.2, ground: true, color0: 0xffd23f, alpha0: 0.8, alpha1: 0 },
   ],
   // Ranged shot leaving the barrel: a small hot core and three embers.
@@ -222,11 +222,11 @@ export const PRESETS: Record<string, readonly Layer[]> = {
   ],
   // Fireball billows: warm soot (the effect colour), outlined.
   "fire-billow": [
-    { pool: "alpha", cell: SMOKE, count: 7, life: [1, 1.4], dir: "out", speed: [1.6, 2.6], vy: [0.9, 1.7], area: 0.5, height: 0.4, drag: 2, gravity: -0.6, size0: [0.8, 1.0], size1: [1.8, 2.3], spin: [-0.7, 0.7], color0: 0xb0794a, color1: 0x5e5550, alpha0: 1, alpha1: 0, push: 0.45 },
+    { pool: "alpha", cell: SMOKE, count: 7, life: [1, 1.4], dir: "out", speed: [1.6, 2.6], vy: [0.9, 1.7], area: 0.5, height: 0.4, drag: 2, gravity: -0.6, size0: [0.8, 1.0], size1: [1.8, 2.3], spin: [-0.7, 0.7], color0: 0xe39a52, color1: 0x5e5550, alpha0: 1, alpha1: 0, push: 0.45 },
   ],
   // Fire of the blast: three-tone toon flame tongues, then a small hot core.
   "fire-core": [
-    { pool: "alpha", cell: CELL.FLAME3, count: 8, life: [0.3, 0.45], dir: "up", spread: 0.9, speed: [1.5, 3], area: 0.35, height: 0.3, drag: 2.5, size0: [0.8, 1.0], size1: [0.3, 0.4], spin: [-1.5, 1.5], color0: 0xffffff, alpha0: 1, alpha1: 0, push: 0.6, tint: false },
+    { pool: "alpha", cell: CELL.FLAME3, count: 9, min: 5, life: [0.35, 0.55], dir: "up", spread: 0.9, speed: [1.5, 3], area: 0.45, height: 0.3, drag: 2.5, size0: [1.0, 1.3], size1: [0.35, 0.5], spin: [-1.5, 1.5], color0: 0xffffff, alpha0: 1, alpha1: 0, push: 0.6, tint: false },
     { pool: "add", cell: CELL.SOFT, count: 1, life: 0.16, dir: "none", speed: 0, height: 0.4, size0: 1.0, size1: 0.5, color0: 0xffd36b, hdr0: 1.8, hdr1: 0.9, alpha0: 1, alpha1: 0, push: 1, tint: false },
   ],
   // Small toon flames licking along a trail.

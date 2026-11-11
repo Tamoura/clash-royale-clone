@@ -328,14 +328,14 @@ export function cssHex(css: string, fallback: number): number {
 const DUST_HSL = { h: 0, s: 0, l: 0 };
 
 /**
- * Dust for a look: 70% lane, 30% floor, held to a mid lightness and a
+ * Dust for a look: 90% lane, 10% floor, held to a mid lightness and a
  * muted saturation, so footsteps and landings read as the floor stirred up
  * and never as white blobs (a snow look's dust is a soft blue-grey).
  */
 export function floorDust(look: ArenaLook): number {
   const base = look.islamic ? cssHex(look.islamic.plaster, 0xd8c8a0) : cssHex(look.floor.a, 0x9a8a6a);
   const lane = cssHex(look.floor.lane, 0xc9b99c);
-  const c = new THREE.Color(base).lerp(new THREE.Color(lane), 0.7);
+  const c = new THREE.Color(base).lerp(new THREE.Color(lane), 0.9);
   c.getHSL(DUST_HSL);
   c.setHSL(DUST_HSL.h, Math.min(DUST_HSL.s, 0.42), Math.min(0.66, Math.max(0.36, DUST_HSL.l * 0.92)));
   return c.getHex();
@@ -440,7 +440,7 @@ export class VfxPool implements FxApi, Spawner {
   private dustLook: ArenaLook | null = null;
   private dust = 0xc9b99c;
 
-  /** The current arena's floor dust colour (mostly the lane, a little floor). */
+  /** The current arena's floor dust colour (the lanes' dirt, a touch of the floor). */
   floorColor(): number {
     if (this.dustLook !== LOOK) {
       this.dustLook = LOOK;

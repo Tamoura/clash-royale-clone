@@ -152,10 +152,11 @@ export function fireball(v: VfxPool, x: number, y: number, r: number): void {
   }
   // Impact.
   const d = FIREBALL_FALL;
-  v.emitWorld("fire-core", w.x, 0, w.z, { delay: d, radius: Math.max(0.6, k) });
+  // Billows and chips first, so the toon flames draw over them.
   v.emitWorld("shockwave", w.x, 0, w.z, { delay: d, radius: r, color: 0xffa04a });
   v.emitWorld("fire-billow", w.x, 0, w.z, { delay: d, radius: Math.max(0.6, k) });
-  v.emitWorld("debris", w.x, 0, w.z, { delay: d, radius: Math.max(0.5, k * 0.8), color: 0x6b5a48, count: 6 });
+  v.emitWorld("debris", w.x, 0, w.z, { delay: d, radius: Math.max(0.45, k * 0.6), color: 0x6b5a48, count: 4 });
+  v.emitWorld("fire-core", w.x, 0, w.z, { delay: d, radius: Math.max(0.6, k) });
   v.emitWorld("embers", w.x, 0, w.z, { delay: d, radius: Math.max(0.6, k) });
   v.decal("scorch", x, y, r * 0.9, { delay: d, life: 7 });
   v.shake(k >= 0.9 ? 0.45 : 0.22, d);
@@ -197,8 +198,8 @@ function bolt(
         continue;
       }
       // A white-hot core in a saturated blue halo, so it reads on pale sand too.
-      if (layer === 0) color(s, 0xf4fdff, 1.8, 1, 0xbfe9ff, 1.2, 0);
-      else color(s, 0x2f8dff, 0.6, 0.35, 0x2f8dff, 0.45, 0);
+      if (layer === 0) color(s, 0xeefaff, 1.3, 1, 0xbfe9ff, 1, 0);
+      else color(s, 0x2f8dff, 0.4, 0.3, 0x2f8dff, 0.3, 0);
       v.spawn("add", s);
     }
   };
@@ -254,7 +255,7 @@ export function zap(v: VfxPool, x: number, y: number, r: number): void {
   const w = toWorld(x, y);
   const rnd = makeRng(seedFrom(x, y));
   // Core ribbon: the bolt cell's hot band is ~45% of the quad.
-  const width = Math.max(0.28, 11 * v.worldPerPixel());
+  const width = Math.max(0.24, 9 * v.worldPerPixel());
   const bolts = r >= 2 ? 3 : 2;
   for (let i = 0; i < bolts; i++) {
     const a = rnd() * Math.PI * 2;

@@ -266,6 +266,9 @@ function coreColor(hex: number, out: THREE.Color): THREE.Color {
   return out.multiplyScalar(2.3);
 }
 
+/** A fireball's petals and core are drawn this much larger than the style's orb size. */
+export const FIREBALL_SCALE = 1.4;
+
 /** Three-tone toon flame petals (red-orange shell, orange body) round a core, pointing back. */
 function fireballGeometry(size: number): THREE.BufferGeometry {
   return merged(`fireball-petals|${size}`, () => {
@@ -370,12 +373,14 @@ function buildProjectile(style: ProjectileStyle): THREE.Object3D {
     }
     case "fireball": {
       const g = new THREE.Group();
+      // Shots read at phone size: the fireball flies a size up from the old orb.
+      const size = style.size * FIREBALL_SCALE;
       const core = new THREE.Mesh(
-        sharedGeo(`core|${style.size}`, () => new THREE.SphereGeometry(style.size * 0.5, 12, 9)),
+        sharedGeo(`core|${size}`, () => new THREE.SphereGeometry(size * 0.5, 12, 9)),
         sharedMat(`fire-core|${style.color}`, () => new THREE.MeshBasicMaterial({ color: coreColor(0xffc04a, new THREE.Color()), toneMapped: false })),
       );
       core.name = "core";
-      const petals = new THREE.Mesh(fireballGeometry(style.size), vcMat("plain", false));
+      const petals = new THREE.Mesh(fireballGeometry(size), vcMat("plain", false));
       petals.name = "petals";
       g.add(petals, core);
       g.userData.spin = petals;
@@ -394,11 +399,8 @@ function buildProjectile(style: ProjectileStyle): THREE.Object3D {
       return m;
     }
     default: {
-      const mat = sharedMat(`${style.glow ? "glow" : "basic"}|${style.color}`, () => {
-        const m = new THREE.MeshBasicMaterial({ color: style.glow ? coreColor(style.color, new THREE.Color()).multiplyScalar(0.7) : style.color });
-        if (style.glow) m.toneMapped = false;
-        return m;
-      });
+      // A magic orb keeps its hue (never a white blob): under the bloom threshold, lit only by its trail.
+      const mat = sharedMat(`basic|${style.color}`, () => new THREE.MeshBasicMaterial({ color: style.color }));
       return new THREE.Mesh(sharedGeo(`orb|${style.size}`, () => new THREE.SphereGeometry(style.size, 10, 8)), mat);
     }
   }
@@ -493,6 +495,16 @@ function shedTrail(v: VfxPool, style: ProjectileStyle, x: number, y: number, z: 
     default:
       return;
   }
+}
+
+/** A projectile's view for `style` (tools and tests; the battle pools them in syncProjectiles). */
+export function buildProjectileView(style: ProjectileStyle): THREE.Object3D {
+  return buildProjectile(style);
+}
+
+/** What a shot of `style` sheds at world (x, y, z), having come from `prev` (tools and tests). */
+export function shedProjectileTrail(b: Battle3D, style: ProjectileStyle, x: number, y: number, z: number, prev: THREE.Vector3): void {
+  shedTrail(V(b), style, x, y, z, prev);
 }
 
 const TRAIL_PREV = new THREE.Vector3();

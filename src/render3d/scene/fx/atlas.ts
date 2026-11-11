@@ -363,9 +363,21 @@ function roundRect(ctx: Ctx, x: number, y: number, w: number, h: number, r: numb
   ctx.closePath();
 }
 
+/** Both arms of a plus in ONE path (roundRect starts a new path, which dropped the vertical arm). */
 function plusPath(ctx: Ctx, cx: number, cy: number, arm: number, thick: number): void {
-  roundRect(ctx, cx - thick / 2, cy - arm, thick, arm * 2, thick * 0.3);
-  roundRect(ctx, cx - arm, cy - thick / 2, arm * 2, thick, thick * 0.3);
+  const r = thick * 0.3;
+  ctx.beginPath();
+  for (const [x, y, w, h] of [
+    [cx - thick / 2, cy - arm, thick, arm * 2],
+    [cx - arm, cy - thick / 2, arm * 2, thick],
+  ] as const) {
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
 }
 
 function paintPlus(ctx: Ctx, cx: number, cy: number, s: number): void {

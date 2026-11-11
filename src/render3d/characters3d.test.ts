@@ -410,7 +410,8 @@ describe("islamic reskins (ARABIC mode)", () => {
       expect(rig.hover).toBeGreaterThan(0);
       expect(rig.wings?.length).toBe(2);
       const names = new Set<string>();
-      rig.group.traverse((o) => names.add(o.name));
+      // The hood is the falcon's team slot: its name lives on in userData.part.
+      rig.group.traverse((o) => names.add(o.userData.part ?? o.name));
       expect(names.has("falcon-hood")).toBe(true);
       expect(names.has("beak")).toBe(true);
     }
