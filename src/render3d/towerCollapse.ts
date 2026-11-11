@@ -1,7 +1,8 @@
 /**
- * A fallen crown tower comes apart: its chunks (battlements, flag, crew,
- * walls, roof) are flung off one after another and tumble ballistically to
- * the ground, bounce once or twice, and settle before the remains sink.
+ * A fallen crown tower comes apart in a few rigid chunks (the front and back
+ * turret pairs with their roofs, the upper keep, the king's canopy) plus its
+ * crew: flung off one after another, they tumble ballistically to the
+ * ground, bounce once or twice, and settle before the remains sink.
  *
  * Pure and render-only: the plan is seeded from the tower's entity id with
  * its own small RNG (never the sim's), and a chunk's pose is a closed-form
@@ -18,8 +19,12 @@ export const COLLAPSE_STAGGER = 0.06;
 export const COLLAPSE_TIME = 1.2;
 export const SINK_TIME = 0.6;
 
-/** Launch order: the battlements go first, the roof last. */
-export const CHUNK_ORDER = ["battlement", "flag", "defenderMount", "wall", "roof"] as const;
+/**
+ * Launch order: the king's canopy and the crew go first, then the turret
+ * pairs (front and back, each with its roofs) and the upper keep last. The
+ * keep's base never flies: the ruin's stump stands in its place.
+ */
+export const CHUNK_ORDER = ["canopy", "crew", "front", "back", "upper"] as const;
 export type ChunkName = (typeof CHUNK_ORDER)[number];
 
 /** Bounces slower than this (units/s) just stop. */
@@ -77,11 +82,11 @@ export function seededRandom(seed: number): () => number {
 
 /** How hard each kind of chunk is thrown: [upward min, max], [outward min, max], max spin. */
 const THROW: Record<ChunkName, { up: [number, number]; out: [number, number]; spin: number }> = {
-  battlement: { up: [2.5, 4], out: [1.8, 3.2], spin: 6 },
-  flag: { up: [3.5, 5], out: [1.5, 2.5], spin: 9 },
-  defenderMount: { up: [4.5, 5.5], out: [1, 2], spin: 7 },
-  wall: { up: [0.5, 1.2], out: [0.6, 1.2], spin: 1.4 },
-  roof: { up: [1, 2], out: [1.6, 2.6], spin: 4 },
+  canopy: { up: [3, 4.2], out: [1.2, 2], spin: 5 },
+  crew: { up: [4.5, 5.5], out: [1, 2], spin: 7 },
+  front: { up: [1.2, 2.2], out: [1.6, 2.4], spin: 3.2 },
+  back: { up: [1.2, 2.2], out: [1.6, 2.4], spin: 3.2 },
+  upper: { up: [0.4, 1], out: [0.5, 1], spin: 1.2 },
 };
 
 /**

@@ -1,19 +1,23 @@
 /**
- * Crown towers: the keep with its crew, HP plate and edition dressing, built
- * as named chunks (base, wall, battlement, roof, flag, crew mount) that are
- * each merged into a few draw calls; per-frame aiming; damage stages that
- * knock off crenels, tilt then tear the flag and crack the walls; and the
- * collapse when one falls: chunks tumble off (towerCollapse.ts), dust rises,
- * rubble and a crater stay behind, and a king's fall stops time and pulls
- * the camera in.
+ * Crown towers: the keep (towerCraft.ts: one mesh, one draw, both
+ * editions), its crew, HP plate and per-look dressing (towerStyles.ts);
+ * per-frame aiming; damage stages (cracks and a chipped merlon below 70%
+ * HP; more merlons, a hole in the roof, a torn banner and a smoke wisp
+ * below 40%); and the fall: the keep splits into a few chunks that topple
+ * with dust (towerCollapse.ts) and leaves a ruin (a jagged stump, a rubble
+ * heap, a scorched ring and the fallen banner). A king's fall stops time
+ * and pulls the camera in.
  *
- * Team colours (roof caps, banner, flag, platform, HP bar, level shield)
+ * Team colours (roofs, domes, trim, banner, flag, HP bar, level shield)
  * follow the team the viewer sees, teamSide() from troops.ts, so an online
- * guest's own towers wear the player colours like their troops do. Where
+ * guest's own towers wear the player colours like their troops do, and
+ * they repaint live when the colour-blind palette pref changes. Where
  * things sit and which way they face stays on the sim side.
+ *
+ * The crew comes from a provider when one is registered
+ * (setTowerCrewProvider, shared rules 4), else the hand-built crew.
  */
 import * as THREE from "three";
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { BattleEvent, Entity } from "../../../game/battle";
 import { ARENA_HEIGHT, ARENA_WIDTH } from "../../../game/arena";
 import {
@@ -23,12 +27,10 @@ import {
   buildTowerDuchess,
   buildTowerKing,
   buildTowerPrincess,
-  paintedToon,
-  toon,
+  type TroopRig,
 } from "../../characters3d";
-import { batchStatic } from "../../staticBatch";
-import { teamPalette } from "../../teamColors";
-import type { TeamPalette } from "../../../ui/prefs";
+import { teamColor, teamPalette } from "../../teamColors";
+import { onPrefs, type TeamPalette } from "../../../ui/prefs";
 import { bakeRig } from "../../rigBake";
 import {
   CHUNK_ORDER,
@@ -36,39 +38,40 @@ import {
   SINK_TIME,
   chunkPose,
   planCollapse,
-  seededRandom,
   type ChunkMotion,
   type ChunkName,
   type ChunkStart,
 } from "../../towerCollapse";
-import { ARABIC, THEME } from "../../theme";
+import { ARABIC } from "../../theme";
 import type { Battle3D } from "../../scene3d";
 import type { Side } from "../../../game/arena";
+import { LOOK, SPAWN_POP_TIME, arabic, targetOf, toWorld, viewSide, type DyingView, type EntityView } from "../common";
+import { craftKeep, craftRuin, keepUniformsOf, type KeepBuild, type KeepChunk, type KeepUniforms } from "./towerCraft";
 import {
-  LOOK,
-  SIDE_COLOR,
-  SPAWN_POP_TIME,
-  arabic,
-  targetOf,
-  toWorld,
-  viewSide,
-  type DyingView,
-  type EntityView,
-} from "../common";
-import { brickTex } from "../arena/textures";
-import { craftClassicKeep, type KeepResult } from "./towerCraft";
-import { crescentFinial, onionDome } from "../arena/build";
+  PLATE_CLEAR_PX,
+  clampPlate,
+  platePlacement,
+  screenUp,
+  towerDamageStage,
+  towerFlair,
+  towerStyle,
+  UP_Y,
+  UP_Z,
+  type PlateSpot,
+  type TowerEdition,
+} from "./towerStyles";
+import { onionDome } from "../arena/build";
 import { addShake, startKoZoom } from "../camera";
 import { markShadowsDirty } from "../post";
 import { contactRing, crownPop, emitSparks, kingWakeBurst, puff } from "../fx/effects";
-import { LegacyFx } from "../fx/api";
-import { attackSwing } from "./animate";
+import { attackSwing, isFrozen } from "./animate";
 import {
   collectFlashMats,
   makeHpBar,
   makeHpText,
   makeLevelBadge,
   makeZzzSprite,
+  setHpFillColor,
   teamSide,
   unitHpColor,
   updateHpText,
@@ -78,25 +81,25 @@ import {
 export interface TowerTeamColors {
   /** Viewer-relative team: "player" is always yours. */
   team: Side;
-  /** Roof caps, banner, banner tip and flag cloth. */
+  /** Roofs, domes, trim, banner and flag cloth: the live team colour (colour-blind pair included). */
   cloth: number;
   /** HP bar fill (green/red, or the colour-blind pair). */
   hp: number;
 }
 
 /**
- * Team colours for a tower of sim side `side` under the current viewpoint;
- * the HP bar follows the team palette pref (colour-blind pair included).
+ * Team colours for a tower of sim side `side` under the current viewpoint,
+ * in the team palette pref (colour-blind pair included).
  */
 export function towerTeamColors(side: Side, palette: TeamPalette = teamPalette()): TowerTeamColors {
   const team = teamSide(side);
-  return { team, cloth: SIDE_COLOR[team], hp: unitHpColor(team, palette) };
+  return { team, cloth: teamColor(team, "main", palette), hp: unitHpColor(team, palette) };
 }
 
 /**
  * Cosmetic tower flair tier, set from the player's trophy road: 0 = plain,
- * 1 (600+) = gilded merlon caps, 2 (1200+) = jeweled crest too. Applies at
- * tower build time (each battle rebuilds its towers).
+ * 1 (600+) = gilded trim and finials, 2 (1200+) = a jeweled crest and gold
+ * roof bands too. Applies at tower build time (each battle rebuilds its towers).
  */
 let TOWER_FLAIR = 0;
 export function setTowerFlair(tier: number): void {
@@ -104,27 +107,174 @@ export function setTowerFlair(tier: number): void {
 }
 
 /** Towers stand 1.1x (CR's true 3x3 / 4x4 footprints with a landmark bump). */
-const TOWER_SCALE = 1.1;
-/** Crenels a wounded tower loses: the first at 2/3 HP, all three by 1/3. */
-const CRENELS_LOST = [0, 1, 3];
+export const TOWER_SCALE = 1.1;
 
-/** Everything about a crown tower's mesh the damage and collapse code needs. */
+// ---- Crew seam (shared rules 4) ---------------------------------------------------------
+
+export type TowerCrewKind = "tower-princess" | "tower-king" | "cannoneer" | "duchess";
+
+/** What the crew is doing this frame. */
+export interface TowerCrewState {
+  attacking: boolean;
+  /** The tower's attack cooldown (seconds until the next shot) and its hit speed. */
+  cooldown: number;
+  hitSpeed: number;
+  /** A king that has not woken yet. */
+  asleep: boolean;
+  frozen: boolean;
+}
+
+/** A crew a provider made: the group to mount (feet at its origin) and its head-top height, world units. */
+export interface TowerCrewUnit {
+  group: THREE.Group;
+  height: number;
+}
+
+/**
+ * Supplies tower crews (cast-kit's towerCrewProvider). `side` is the
+ * VIEWER-relative team the crew wears; `make` may return null for a kind it
+ * cannot build, and the tower then keeps the hand-built crew.
+ */
+export interface TowerCrewProvider {
+  make(kind: TowerCrewKind, side: Side, edition: TowerEdition): TowerCrewUnit | null;
+  animate(unit: TowerCrewUnit, s: TowerCrewState, dt: number): void;
+  dispose(unit: TowerCrewUnit): void;
+}
+
+let crewProvider: TowerCrewProvider | null = null;
+
+/** Register (or clear, with null) the tower crew provider. Towers built afterwards use it. */
+export function setTowerCrewProvider(p: TowerCrewProvider | null): void {
+  crewProvider = p;
+}
+
+/** The registered crew provider, if any. */
+export function towerCrewProvider(): TowerCrewProvider | null {
+  return crewProvider;
+}
+
+/** The crew kind for a tower entity. */
+export function crewKindOf(e: Pick<Entity, "kind" | "towerTroop">): TowerCrewKind {
+  if (e.kind === "king-tower") return "tower-king";
+  if (e.towerTroop === "cannoneer") return "cannoneer";
+  if (e.towerTroop === "duchess") return "duchess";
+  return "tower-princess";
+}
+
+/** Hand-built crew scale: about 0.75 of a field archer, inside the parapet. */
+const FALLBACK_CREW_SCALE = { king: 0.85, crew: 0.8 };
+
+type Crew =
+  | { kind: "provider"; unit: TowerCrewUnit; provider: TowerCrewProvider; height: number }
+  | { kind: "fallback"; rig: TroopRig; height: number };
+
+/** Build the crew for a tower: the provider's, else the hand-built one (baked like a field troop). */
+function buildCrew(e: Entity, team: Side): Crew {
+  const kind = crewKindOf(e);
+  const p = crewProvider;
+  if (p) {
+    const unit = p.make(kind, team, ARABIC ? "golden" : "classic");
+    if (unit) return { kind: "provider", unit, provider: p, height: unit.height / TOWER_SCALE };
+  }
+  const king = kind === "tower-king";
+  const rig =
+    kind === "tower-king"
+      ? buildTowerKing()
+      : kind === "cannoneer"
+        ? buildTowerCannoneer()
+        : kind === "duchess"
+          ? buildTowerDuchess()
+          : buildTowerPrincess();
+  if (king) shortenCrownPoints(rig);
+  articulate(rig);
+  const scale = king ? FALLBACK_CREW_SCALE.king : FALLBACK_CREW_SCALE.crew;
+  rig.group.scale.setScalar(scale);
+  if (rig.arm) rig.arm.rotation.x = rig.armRest;
+  // Bake the crew like a field troop: one mesh and one ink hull per limb.
+  bakeRig(rig, `tower-${king ? "king" : (e.towerTroop ?? "princess")}:${team}:${ARABIC ? "arabic" : "normal"}:default`);
+  return { kind: "fallback", rig, height: rig.height * scale };
+}
+
+/**
+ * The hand-built king's five crown points stand straight up round his
+ * crown: from the steep camera they splay out like petals. Pull them in and
+ * shorten them so the crown reads as a band with five short points.
+ */
+function shortenCrownPoints(rig: TroopRig): void {
+  for (const o of rig.group.children) {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || !(m.geometry instanceof THREE.ConeGeometry)) continue;
+    if (Math.abs(m.position.y - 1.52) > 0.05) continue;
+    m.scale.set(1, 0.7, 1);
+    m.position.set(m.position.x * 0.9, 1.49, m.position.z * 0.9);
+  }
+}
+
+// ---- Live team repaint -------------------------------------------------------------------
+
+interface TeamLive {
+  root: THREE.Object3D;
+  team: Side;
+  uniforms: KeepUniforms[];
+  hpFill?: THREE.Mesh;
+}
+const teamLive = new Set<TeamLive>();
+let livePalette: TeamPalette | null = null;
+
+/** The keep roof colour for a viewer team in a palette. */
+function roofColor(team: Side, palette: TeamPalette): number {
+  return teamColor(team, "main", palette);
+}
+
+/** Repaint every live tower and ruin for a palette (roofs, trim, banner, flag, HP fill). */
+export function repaintTowers(palette: TeamPalette): void {
+  for (const t of teamLive) {
+    if (!t.root.parent) {
+      teamLive.delete(t);
+      continue;
+    }
+    for (const u of t.uniforms) u.uTeam.value.setHex(roofColor(t.team, palette));
+    if (t.hpFill) setHpFillColor(t.hpFill, unitHpColor(t.team, palette));
+  }
+}
+
+function trackTeam(entry: TeamLive): void {
+  if (livePalette === null) {
+    livePalette = teamPalette();
+    onPrefs((p) => {
+      if (p.teamPalette === livePalette) return;
+      livePalette = p.teamPalette;
+      repaintTowers(p.teamPalette);
+    });
+  }
+  for (const t of teamLive) if (!t.root.parent && t.root !== entry.root) teamLive.delete(t);
+  teamLive.add(entry);
+}
+
+// ---- Tower rig -----------------------------------------------------------------------
+
+/** Everything about a crown tower's mesh the damage, plate and collapse code needs. */
 interface TowerRig {
   id: number;
   king: boolean;
-  height: number;
-  /** The keep's chunks by name; "base" stays put when the rest flies. */
-  chunks: Map<ChunkName | "base", THREE.Object3D>;
-  /**
-   * The battlement mesh, whose last vertices are the three crenels that
-   * break off (unitVerts each, first-lost last), and where they stood.
-   */
-  crenels: { mesh: THREE.Mesh | null; totalVerts: number; unitVerts: number; spots: THREE.Vector3[] };
-  cracks: THREE.Mesh;
-  flag: THREE.Group;
-  cloth: THREE.Mesh;
+  keep: KeepBuild;
+  /** The cannon's own mesh (aims at the target; rises when a king wakes). */
+  gun: THREE.Object3D | null;
+  crew: Crew;
+  mount: THREE.Group;
+  camSide: number;
+  /** Sim side "player" towers sit at the bottom for the host. */
+  far: boolean;
   /** HP plate, number and sleep bubble: hidden once the tower falls. */
   plate: THREE.Object3D[];
+  bar: THREE.Group;
+  text: THREE.Sprite;
+  /** Silhouette extremes (screen-up, local units) for the plate maths. */
+  top: number;
+  foot: number;
+  spot: PlateSpot | null;
+  /** The king's slump (1 asleep, eases to 0 when he wakes). */
+  slump: number;
   /** The scene this tower lives in (set every frame it stands). */
   b: Battle3D | null;
   collapse: Collapse | null;
@@ -141,656 +291,300 @@ interface Collapse {
 
 const rigs = new WeakMap<THREE.Object3D, TowerRig>();
 
-/** A named chunk of the keep; static ones are merged on their own. */
-function chunkGroup(root: THREE.Group, name: ChunkName | "base", animated = false): THREE.Group {
-  const g = new THREE.Group();
-  g.name = name;
-  if (animated) g.userData.noBatch = true;
-  else g.userData.batchRoot = true;
-  root.add(g);
-  return g;
-}
+/** Plate half-height (local units): the level shield is its tallest part. */
+const PLATE_HALF = 0.3;
+/** How far in front of the tower (toward the camera) the plate floats, local units. */
+const PLATE_LIFT = 6;
 
 export function buildTowerMesh(e: Entity): EntityView {
   const root = new THREE.Group();
   const king = e.kind === "king-tower";
   const radius = king ? 1.28 : 0.95;
   const height = arabic ? (king ? 2.35 : 1.85) : king ? 2.7 : 2.15;
-  const base = chunkGroup(root, "base");
-  const wall = chunkGroup(root, "wall");
-  const battlement = chunkGroup(root, "battlement");
-  const roof = chunkGroup(root, "roof");
-  const flagGroup = chunkGroup(root, "flag", true);
-
   const colors = towerTeamColors(e.side);
-  const enemySide = colors.team === "enemy";
   const camSide = viewSide === "player" ? 1 : -1;
-  // Door + team banner face the enemy.
+  // The cannon aims toward the opposing side.
   const facing = e.side === "player" ? -1 : 1;
-  let spots: THREE.Vector3[] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
-  const vertsOf = (m: THREE.Mesh): number => m.geometry.index?.count ?? m.geometry.getAttribute("position").count;
-  let unitVerts = 0;
-  let crafted: KeepResult | null = null;
-  if (!arabic) {
-    // Classic edition: the hand-sculpted keep (towerCraft.ts).
-    crafted = craftClassicKeep({
-      king,
-      radius,
-      height,
-      cloth: colors.cloth,
-      enemyTeam: enemySide,
-      facing,
-      camSide,
-      gun: king || e.towerTroop === "cannoneer",
-      flair: TOWER_FLAIR,
-      look: LOOK,
-      chunks: { base, wall, battlement, roof },
-    });
-    unitVerts = crafted.unitVerts;
-    spots = crafted.spots;
-  } else {
-    // Two-step stone platform under the keep, gold-trimmed like CR.
-    // Neon arena: the whole tower is team-colored (enemy magenta, player
-    // blue) like the reference screenshot; the Arabic edition stays sand.
-    // Colours go by the team the viewer sees; positions by the sim side.
-    const platform = new THREE.Mesh(
-      new THREE.BoxGeometry(radius * 2.9, 0.18, radius * 2.9),
-      toon(enemySide ? LOOK.tower.platformEnemy : LOOK.tower.platformPlayer),
-    );
-    platform.position.y = 0.09;
-    base.add(platform);
-    const platTrim = new THREE.Mesh(
-      new THREE.BoxGeometry(radius * 2.95, 0.06, radius * 2.95),
-      toon(0xd9a93f),
-    );
-    platTrim.position.y = 0.2;
-    base.add(platTrim);
-    const plinth = new THREE.Mesh(
-      new THREE.BoxGeometry(radius * 2.3, 0.3, radius * 2.3),
-      toon(LOOK.tower.plinth),
-    );
-    plinth.position.y = 0.32;
-    base.add(plinth);
+  const edition: TowerEdition = arabic ? "golden" : "classic";
+  const style = towerStyle(LOOK, edition);
+  const crew = buildCrew(e, colors.team);
 
-    const wallMat = paintedToon(
-      new THREE.MeshToonMaterial({
-        map: brickTex(enemySide ? LOOK.tower.enemy : LOOK.tower.player),
-      }),
-    );
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(radius * 2, height, radius * 2),
-      wallMat,
-    );
-    body.position.y = height / 2;
-    wall.add(body);
-
-    // Bevelled corner pillars standing proud of the wall, and a stone base
-    // course: the chunky silhouette CR towers have instead of a bare box.
-    const pillarMat = toon(LOOK.tower.battlement);
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        const pillar = new THREE.Mesh(
-          new THREE.BoxGeometry(radius * 0.32, height + 0.06, radius * 0.32),
-          pillarMat,
-        );
-        pillar.position.set(sx * radius * 0.98, (height + 0.06) / 2, sz * radius * 0.98);
-        wall.add(pillar);
-      }
-    }
-    const baseCourse = new THREE.Mesh(
-      new THREE.BoxGeometry(radius * 2.1, 0.26, radius * 2.1),
-      toon(LOOK.tower.plinth),
-    );
-    baseCourse.position.y = 0.6;
-    base.add(baseCourse);
-
-    // Gold trim band under the battlements (CR's royal touch).
-    const trim = new THREE.Mesh(
-      new THREE.BoxGeometry(radius * 2.15, 0.14, radius * 2.15),
-      toon(0xf2c14e),
-    );
-    trim.position.y = height - 0.16;
-    wall.add(trim);
-
-    // Merlons along the four roof edges — taller CR battlements. The three
-    // facing the camera that break off are added last (last-lost first), so
-    // they end the battlement's merged mesh and damage trims them off its
-    // draw range.
-    const breakable = [
-      { row: "a", side: camSide, i: 1 }, // lost at 2/3 HP
-      { row: "a", side: camSide, i: -1 },
-      { row: "b", side: -1, i: camSide }, // both gone by 1/3 HP
-    ];
-    const crenelUnits: THREE.Mesh[][] = [[], [], []];
-    const merlon = toon(LOOK.tower.battlement);
-    const gildCap = TOWER_FLAIR >= 1 ? toon(0xf2c14e) : null;
-    for (const side of [-1, 1]) {
-      for (let i = -1; i <= 1; i++) {
-        for (const row of ["a", "b"] as const) {
-          const along = row === "a";
-          const x = along ? i * radius * 0.7 : side * radius * 0.92;
-          const z = along ? side * radius * 0.92 : i * radius * 0.7;
-          const m = new THREE.Mesh(
-            along ? new THREE.BoxGeometry(0.34, 0.38, 0.2) : new THREE.BoxGeometry(0.2, 0.38, 0.34),
-            merlon,
-          );
-          m.position.set(x, height + 0.16, z);
-          const parts = [m];
-          if (gildCap) {
-            // Trophy-road flair: gilded caps on every battlement.
-            const cap = new THREE.Mesh(
-              along ? new THREE.BoxGeometry(0.36, 0.06, 0.22) : new THREE.BoxGeometry(0.22, 0.06, 0.36),
-              gildCap,
-            );
-            cap.position.set(x, height + 0.38, z);
-            parts.push(cap);
-          }
-          const k = breakable.findIndex((c) => c.row === row && c.side === side && c.i === i);
-          if (k >= 0) {
-            crenelUnits[k] = parts;
-            spots[k].set(x, height + 0.2, z);
-          } else {
-            battlement.add(...parts);
-          }
-        }
-      }
-    }
-    for (let k = crenelUnits.length - 1; k >= 0; k--) battlement.add(...crenelUnits[k]);
-    unitVerts = crenelUnits[0].reduce((n, m) => n + vertsOf(m), 0);
-
-    if (TOWER_FLAIR >= 2) {
-      // Veteran crest: a ruby set in gold on the tower's river-facing wall.
-      const crestSide = e.side === "player" ? -1 : 1;
-      const setting = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.06, 8), toon(0xf2c14e));
-      setting.rotation.x = Math.PI / 2;
-      setting.position.set(0, height * 0.62, crestSide * (radius + 0.03));
-      wall.add(setting);
-      const ruby = new THREE.Mesh(new THREE.OctahedronGeometry(0.11), toon(0xe0314a));
-      ruby.position.set(0, height * 0.62, crestSide * (radius + 0.08));
-      wall.add(ruby);
-    }
-
-
-    // Arabic theme: crown the tower with onion-dome cupolas at the corners and
-    // a big central dome (king) or crescent spire (princess) toward the rear,
-    // so the tower crew stays visible up front.
-    if (arabic) {
-      const domeColor = king ? (LOOK.islamic?.domeKing ?? THEME.turquoise) : (LOOK.islamic?.dome ?? THEME.teal);
-      for (const sx of [-1, 1]) {
-        for (const sz of [-1, 1]) {
-          const cup = onionDome(radius * 0.26, domeColor);
-          cup.position.set(sx * radius * 0.82, height + 0.02, sz * radius * 0.82);
-          roof.add(cup);
-        }
-      }
-      const rearZ = facing * -radius * 0.5;
-      if (king) {
-        const dome = onionDome(radius * 0.62, domeColor);
-        dome.position.set(0, height + 0.05, rearZ);
-        roof.add(dome);
-      } else {
-        const fin = crescentFinial(0.55);
-        fin.position.set(0, height + 0.2, rearZ);
-        roof.add(fin);
-      }
-    } else {
-      // Classic edition: chunky team-color roof caps and a raised royal crown
-      // platform make princess and king towers identifiable at a glance.
-      const roofColor = colors.cloth;
-      for (const sx of [-1, 1]) {
-        for (const sz of [-1, 1]) {
-          const cap = new THREE.Mesh(
-            new THREE.ConeGeometry(radius * 0.28, radius * 0.52, 4),
-            toon(roofColor),
-          );
-          cap.rotation.y = Math.PI / 4;
-          cap.position.set(sx * radius * 0.78, height + 0.42, sz * radius * 0.78);
-          roof.add(cap);
-          const goldTip = new THREE.Mesh(
-            new THREE.SphereGeometry(radius * 0.07, 8, 6),
-            toon(0xf6c14e),
-          );
-          goldTip.position.set(sx * radius * 0.78, height + 0.72, sz * radius * 0.78);
-          roof.add(goldTip);
-        }
-      }
-      if (king) {
-        const crownDeck = new THREE.Mesh(
-          new THREE.CylinderGeometry(radius * 0.62, radius * 0.72, 0.18, 8),
-          toon(0xf6c14e),
-        );
-        crownDeck.position.set(0, height + 0.2, -facing * radius * 0.4);
-        roof.add(crownDeck);
-      }
-
-      // CR-signature gun platform: a timber deck with a chunky cannon aimed
-      // downlane (offset so the tower crew keeps center stage).
-      const deckPlanks = new THREE.Mesh(
-        new THREE.CylinderGeometry(radius * 0.92, radius * 0.98, 0.1, 10),
-        toon(0x8a5c2e),
-      );
-      deckPlanks.position.y = height + 0.02;
-      roof.add(deckPlanks);
-      const gun = new THREE.Group();
-      gun.position.set(radius * 0.5, height + 0.14, facing * radius * 0.5);
-      const carriage = new THREE.Mesh(
-        new THREE.BoxGeometry(0.3, 0.14, 0.34),
-        toon(0x6e4a26),
-      );
-      carriage.position.y = 0.02;
-      gun.add(carriage);
-      const barrel = new THREE.Mesh(
-        new THREE.CylinderGeometry(king ? 0.16 : 0.12, king ? 0.2 : 0.15, king ? 0.85 : 0.65, 10),
-        toon(0x3a4150),
-      );
-      barrel.rotation.x = facing * 1.35; // aimed downlane with a slight lift
-      barrel.position.set(0, 0.16, facing * 0.12);
-      gun.add(barrel);
-      const band = new THREE.Mesh(
-        new THREE.CylinderGeometry((king ? 0.16 : 0.12) + 0.025, (king ? 0.16 : 0.12) + 0.025, 0.08, 10),
-        toon(0xf6c14e),
-      );
-      band.rotation.x = facing * 1.35;
-      band.position.set(0, 0.16, facing * 0.12);
-      gun.add(band);
-      roof.add(gun);
-    }
-    const door = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.1), toon(0x4a3826));
-    door.position.set(0, 0.62, facing * radius * 1.01);
-    base.add(door);
-
-    // The king's platform bears a golden crown emblem out front.
-    if (king) {
-      const emblem = new THREE.Group();
-      const band = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.07), toon(0xd9a93f));
-      emblem.add(band);
-      for (const dx of [-0.17, 0, 0.17]) {
-        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.18, 4), toon(0xd9a93f));
-        spike.position.set(dx, 0.16, 0);
-        emblem.add(spike);
-      }
-      emblem.position.set(0, 0.34, facing * radius * 1.47);
-      base.add(emblem);
-    }
-    const banner = new THREE.Mesh(
-      new THREE.BoxGeometry(0.44, 0.7, 0.06),
-      toon(colors.cloth),
-    );
-    banner.position.set(0, height - 0.62, facing * radius * 1.03);
-    wall.add(banner);
-    const bannerTip = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.24, 4), toon(colors.cloth));
-    bannerTip.rotation.x = Math.PI;
-    bannerTip.rotation.y = Math.PI / 4;
-    bannerTip.position.set(0, height - 1.05, facing * radius * 1.03);
-    wall.add(bannerTip);
-  }
-
-  // Every static stone part casts and takes shadow, so each chunk merges
-  // into as few meshes as its materials allow.
-  for (const g of [base, wall, battlement, roof]) {
-    g.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh) o.castShadow = o.receiveShadow = true;
-    });
-  }
-
-  // Cracks spread over the walls as the tower is worn down.
-  const cracks = buildCracks(crafted ? crafted.midRadius : radius, height, king);
-  wall.add(cracks);
-
-  // Team flag, planted off-center so the tower crew has the roof. Its
-  // group pivots at the foot of the pole, so damage can tilt it over.
-  if (crafted) flagGroup.position.copy(crafted.flagFoot);
-  else flagGroup.position.set(-radius * 0.6, height + 0.1, 0);
-  const pole = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6),
-    toon(0x5a4632),
-  );
-  pole.position.y = 0.4;
-  flagGroup.add(pole);
-  const cloth = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.55, 0.32),
-    new THREE.MeshToonMaterial({ color: colors.cloth, side: THREE.DoubleSide }),
-  );
-  cloth.position.set(0.3, 0.62, 0);
-  flagGroup.add(cloth);
+  const keep = craftKeep({
+    king,
+    radius,
+    height,
+    team: colors.cloth,
+    enemyTeam: colors.team === "enemy",
+    camSide,
+    facing,
+    gun: king || e.towerTroop === "cannoneer",
+    flair: towerFlair(TOWER_FLAIR),
+    style,
+    dome: onionDome,
+    crewHeight: crew.height,
+  });
+  root.add(keep.mesh);
+  const gun = keep.gunMesh;
+  if (gun) root.add(gun);
 
   const view: Partial<EntityView> & { root: THREE.Group } = { root, rig: null };
 
-  // Tower crew: a princess archer, or the king on his keep. The rig
-  // sits inside a mount group because animateTroop owns the rig's
-  // own transform (hop/breath/lean).
-  const defender = king
-    ? buildTowerKing()
-    : e.towerTroop === "cannoneer"
-      ? buildTowerCannoneer()
-      : e.towerTroop === "duchess"
-        ? buildTowerDuchess()
-        : buildTowerPrincess();
-  articulate(defender);
-  defender.group.scale.setScalar(king ? 0.85 : 0.8);
-  if (defender.arm) defender.arm.rotation.x = defender.armRest;
-  // Bake the crew like a field troop: one mesh and one ink hull per limb.
-  bakeRig(defender, `tower-${king ? "king" : (e.towerTroop ?? "princess")}:${colors.team}:${ARABIC ? "arabic" : "normal"}:default`);
-  const mount = chunkGroup(root, "defenderMount", true);
-  mount.position.y = height + 0.18;
-  mount.add(defender.group);
-  mount.traverse((o) => (o.castShadow = false)); // tiny on the roof; not worth a shadow pass
-  view.defender = defender;
+  // Crew stands on the deck (or the king's dais), inside the crenellations.
+  const mount = new THREE.Group();
+  mount.name = "defenderMount";
+  mount.userData.noBatch = true;
+  mount.position.copy(keep.crew);
+  root.add(mount);
+  if (crew.kind === "provider") {
+    // Provider crews are sized in world units: undo the tower's scale.
+    crew.unit.group.scale.multiplyScalar(1 / TOWER_SCALE);
+    mount.add(crew.unit.group);
+  } else {
+    mount.add(crew.rig.group);
+    view.defender = crew.rig;
+  }
+  mount.traverse((o) => (o.castShadow = true));
   view.defenderMount = mount;
 
   const plate: THREE.Object3D[] = [];
   if (king) {
     const zzz = makeZzzSprite();
-    zzz.position.y = height + 2.0;
+    zzz.position.set(keep.crew.x + 0.55, keep.crew.y + crew.height * 0.95, keep.crew.z);
     root.add(zzz);
     view.zzz = zzz;
     plate.push(zzz);
   }
 
+  // CR plate: a chunky pill with the HP number inside and a level shield
+  // riding its left end. Placed every frame (placePlate).
   const barWidth = king ? 2.8 : 2.3;
-  const barY = height + (king ? 1.55 : 1.25);
-  // Sit the bar behind the tower, on its outer side: above enemy towers
-  // (-z, the top), below the player's (+z, the bottom)... except the FAR
-  // king: it sits so deep that an outer-side plate projects above the top
-  // of the frustum and is never visible. Its plate hangs on the
-  // river-facing front instead (view-aware, so the guest's flipped camera
-  // gets the same fix for the host's king).
-  const outward = e.side === "player" ? 1 : -1;
-  const farSide = e.side !== viewSide;
-  const barZ = king && farSide ? -outward * 1.9 : outward * (king ? 1.7 : 1.4);
-  const bar = makeHpBar(barWidth, colors.hp, barY, 0.36);
-  bar.group.position.z = barZ;
+  const bar = makeHpBar(barWidth, colors.hp, 0, 0.36);
   bar.group.userData.noBatch = true;
   root.add(bar.group);
   view.hpGroup = bar.group;
   view.hpFill = bar.fill;
-
-  // CR plate: a chunky pill with the HP number inside and a level shield
-  // riding its left end (makeLevelBadge takes the sim side and wears the team).
   const badge = makeLevelBadge(e.side);
   badge.scale.set(0.7, 0.7, 1);
   badge.position.set(-barWidth / 2 - 0.12, 0, 0.06);
   bar.group.add(badge);
-  const hpText = makeHpText(barY + 0.02);
+  const hpText = makeHpText(0);
   hpText.sprite.scale.set(1.75, 0.64, 1);
-  // The number sits just in front of the bar as the camera sees it (the
-  // guest's flipped camera looks from -z), or the bar hides it.
-  hpText.sprite.position.z = barZ + 0.2 * camSide;
   root.add(hpText.sprite);
   view.hpText = hpText.text;
   plate.push(bar.group, hpText.sprite);
 
-  // The keep never moves until it falls: each chunk merges by look into
-  // a draw call or two (the flag, crew and HP plate stay live).
-  batchStatic(root, () => false, { tint: true });
-  // Every battlement part shares one look under tinting: one merged mesh.
-  const battlementMeshes = battlement.children.filter((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh[];
-  const battlementMesh = battlementMeshes.length === 1 ? battlementMeshes[0] : null;
   view.flashMats = collectFlashMats(root);
   view.lastHp = e.hp;
   view.flashT = 0;
   view.spawnT = SPAWN_POP_TIME; // towers don't pop in
   view.isTroop = false;
-  // Measured against real CR: at 1.5x a princess tower read 4.1 tiles wide
-  // vs CR's 3.0. 1.1x lands both towers on CR's true 3x3 / 4x4 footprints
-  // while keeping a slight landmark bump.
   view.baseScale = TOWER_SCALE;
   root.scale.setScalar(TOWER_SCALE);
 
-  rigs.set(root, {
+  // Silhouette extremes on screen (local screen-up units from the tower's foot).
+  let top = -Infinity;
+  for (const p of keep.tops) top = Math.max(top, screenUp(p.y, p.z, camSide));
+  top = Math.max(top, screenUp(keep.crew.y + crew.height, keep.crew.z, camSide));
+  let foot = Infinity;
+  for (const p of keep.feet) foot = Math.min(foot, screenUp(p.y, p.z, camSide));
+  const far = e.side !== viewSide;
+
+  const rig: TowerRig = {
     id: e.id,
     king,
-    height,
-    chunks: new Map<ChunkName | "base", THREE.Object3D>([
-      ["base", base],
-      ["wall", wall],
-      ["battlement", battlement],
-      ["roof", roof],
-      ["flag", flagGroup],
-      ["defenderMount", mount],
-    ]),
-    crenels: {
-      mesh: battlementMesh,
-      totalVerts: battlementMesh ? vertsOf(battlementMesh) : 0,
-      unitVerts,
-      spots,
-    },
-    cracks,
-    flag: flagGroup,
-    cloth,
+    keep,
+    gun,
+    crew,
+    mount,
+    camSide,
+    far,
     plate,
+    bar: bar.group,
+    text: hpText.sprite,
+    top,
+    foot,
+    spot: null,
+    slump: king && !e.active ? 1 : 0,
     b: null,
     collapse: null,
-  });
+  };
+  placePlate(rig, platePlacement(top, foot, PLATE_HALF, 0.2, far));
+  rigs.set(root, rig);
+  trackTeam({ root, team: colors.team, uniforms: [keep.uniforms], hpFill: bar.fill });
   return view as EntityView;
 }
 
-// ---- Cracks -----------------------------------------------------------------
-
-/** One painted crack sheet per tower kind, shared by every tower of it. */
-const crackTextures = new Map<string, THREE.CanvasTexture>();
-
-/** A 128px transparent sheet of branching masonry cracks (seeded, so stable). */
-function crackTexture(king: boolean): THREE.CanvasTexture {
-  const key = king ? "king" : "princess";
-  const cached = crackTextures.get(key);
-  if (cached) return cached;
-  const S = 128;
-  const c = document.createElement("canvas");
-  c.width = c.height = S;
-  const ctx = c.getContext("2d")!;
-  const rand = seededRandom(king ? 41 : 17);
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  const crack = (x: number, y: number, angle: number, steps: number, width: number): void => {
-    const pts: [number, number][] = [[x, y]];
-    for (let i = 0; i < steps; i++) {
-      angle += (rand() - 0.5) * 1.1;
-      const len = 10 + rand() * 12;
-      x += Math.cos(angle) * len;
-      y += Math.sin(angle) * len;
-      pts.push([x, y]);
-      if (i > 1 && rand() < 0.35) crack(x, y, angle + (rand() < 0.5 ? -1 : 1) * (0.7 + rand() * 0.5), 2 + Math.floor(rand() * 2), width * 0.6);
-    }
-    // A pale chipped lip under a dark split reads as a crack in any light.
-    for (const [style, w, dx] of [["rgba(255,244,226,0.5)", width + 2.5, 1.8], ["rgba(26,18,12,0.95)", width, 0]] as const) {
-      ctx.strokeStyle = style;
-      ctx.beginPath();
-      pts.forEach(([px, py], i) => {
-        ctx.lineWidth = w * (1 - (i / pts.length) * 0.6);
-        if (i === 0) ctx.moveTo(px + dx, py + dx);
-        else ctx.lineTo(px + dx, py + dx);
-      });
-      ctx.stroke();
-    }
-  };
-  // Bold splits running from the top of the sheet most of the way down:
-  // the walls are seen small and at a slant, so fine hairlines would vanish.
-  const mains = king ? 3 : 2;
-  for (let i = 0; i < mains; i++) {
-    const x0 = (S / (mains + 1)) * (i + 1) + (rand() - 0.5) * 16;
-    crack(x0, 2, Math.PI / 2 + (rand() - 0.5) * 0.6, 6 + Math.floor(rand() * 2), 9);
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.userData.shared = true;
-  crackTextures.set(key, tex);
-  return tex;
+/** Put the plate's centre at screen-up `spot.s`, floated toward the camera so nothing hides it. */
+function placePlate(rig: TowerRig, spot: PlateSpot): void {
+  rig.spot = spot;
+  const y0 = spot.s / UP_Y;
+  const y = y0 + PLATE_LIFT * UP_Z;
+  const z = PLATE_LIFT * UP_Y * rig.camSide;
+  rig.bar.position.set(0, y, z);
+  // The number sits just in front of the bar as the camera sees it.
+  rig.text.position.set(0, y + 0.2 * UP_Z, z + 0.2 * UP_Y * rig.camSide);
 }
 
-/** Quads per stage: one on each of the keep's four faces, one on its roof. */
-const CRACK_QUADS_PER_STAGE = 5;
+const V = new THREE.Vector3();
 
 /**
- * Crack decals on the four wall faces and across the roof (the part the
- * steep camera sees best), one merged mesh: the first five quads show at
- * the first damage stage, all ten at the second (by index draw range).
- * Hidden while the tower is whole.
+ * Keep the plate on screen and clear of the roofs and crew: the clearance is
+ * held in screen px (at least PLATE_CLEAR_PX), and a plate that would leave
+ * the screen, or slide under the HUD, flips to the tower's other side.
  */
-function buildCracks(radius: number, height: number, king: boolean): THREE.Mesh {
-  const quads: THREE.BufferGeometry[] = [];
-  const out = radius + 0.012;
-  const bottom = 0.8;
-  const top = height - 0.3;
-  const span = top - bottom;
-  const stages = [
-    { cx: -0.22, cy: bottom + span * 0.62, w: 1.15, h: span * 0.72, flip: false, roofX: -0.3, roofZ: 0.25 },
-    { cx: 0.28, cy: bottom + span * 0.36, w: 1.05, h: span * 0.68, flip: true, roofX: 0.3, roofZ: -0.2 },
-  ];
-  // The roof deck sits a touch above the wall top (classic timber deck).
-  const roofY = height + (arabic ? 0.01 : 0.08);
-  for (const s of stages) {
-    const roofQuad = new THREE.PlaneGeometry(radius * 1.1, radius * 1.1);
-    roofQuad.rotateX(-Math.PI / 2);
-    roofQuad.rotateY(s.flip ? Math.PI / 2 : 0);
-    roofQuad.translate(s.roofX * radius, roofY, s.roofZ * radius);
-    quads.push(roofQuad);
-    for (let face = 0; face < 4; face++) {
-      const q = new THREE.PlaneGeometry(s.w * radius, s.h);
-      if (s.flip) {
-        // Mirror the sheet so the second stage's cracks don't repeat the first's.
-        const uv = q.getAttribute("uv") as THREE.BufferAttribute;
-        for (let i = 0; i < uv.count; i++) uv.setX(i, 1 - uv.getX(i));
-      }
-      q.translate(s.cx * radius, s.cy, out);
-      q.rotateY((face * Math.PI) / 2);
-      quads.push(q);
-    }
-  }
-  const geo = mergeGeometries(quads, false)!;
-  for (const q of quads) q.dispose();
-  const mat = new THREE.MeshBasicMaterial({
-    map: crackTexture(king),
-    transparent: true,
-    depthWrite: false,
-    polygonOffset: true,
-    polygonOffsetFactor: -1,
-    polygonOffsetUnits: -2,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.name = "cracks";
-  mesh.userData.noBatch = true;
-  mesh.visible = false;
-  return mesh;
-}
-
-// ---- Damage stages ------------------------------------------------------------
-
-/** Show damage stage `stage` (1 below 2/3 HP, 2 below 1/3) on the keep. */
-function showDamage(b: Battle3D, rig: TowerRig, e: Entity, from: number, stage: number): void {
-  // Crenels break off the camera-facing battlements, with a spray of chips.
-  const lost = CRENELS_LOST[stage];
-  const { crenels } = rig;
-  crenels.mesh?.geometry.setDrawRange(0, crenels.totalVerts - lost * crenels.unitVerts);
-  for (let k = CRENELS_LOST[from]; k < lost; k++) {
-    const p = crenels.spots[k];
-    b.fx.emit("chips", e.x + p.x * TOWER_SCALE, e.y + p.z * TOWER_SCALE, { z: p.y * TOWER_SCALE, radius: 0.7 });
-    emitSparks(b, e.x + p.x * TOWER_SCALE, e.y + p.z * TOWER_SCALE, p.y * TOWER_SCALE, 6, 3.5, 1.4, 0xa89880, 0.1, 0.55);
-  }
-  // The flag leans at the first stage and hangs torn at the second.
-  rig.flag.rotation.z = stage === 1 ? 0.32 : 0.62;
-  if (stage === 2) {
-    rig.cloth.scale.set(0.58, 0.85, 1);
-    rig.cloth.position.set(0.03 + 0.55 * 0.58 * 0.5, 0.6, 0);
-    rig.cloth.rotation.z = -0.5;
-    (rig.cloth.material as THREE.MeshToonMaterial).color.multiplyScalar(0.62);
-  }
-  // Cracks run over the walls.
-  rig.cracks.visible = true;
-  rig.cracks.geometry.setDrawRange(0, stage * CRACK_QUADS_PER_STAGE * 6);
-  markShadowsDirty(b);
+function updatePlate(b: Battle3D, rig: TowerRig, root: THREE.Object3D): void {
+  const cam = b.camera;
+  const h = b.renderer.domElement.clientHeight || 1;
+  const viewH = (cam.top - cam.bottom) / cam.zoom;
+  const ppu = (h / viewH) * TOWER_SCALE; // CSS px per local unit
+  const clear = Math.max(0.12, (PLATE_CLEAR_PX + 2) / ppu);
+  const ins = b.framing?.insets;
+  root.getWorldPosition(V);
+  V.applyMatrix4(cam.matrixWorldInverse);
+  const footUp = V.y; // camera-up of the tower's foot
+  const screenTop = (cam.top / cam.zoom - (ins?.top ?? 0) / (ppu / TOWER_SCALE) - footUp) / TOWER_SCALE;
+  const screenBottom = (cam.bottom / cam.zoom + (ins?.bottom ?? 0) / (ppu / TOWER_SCALE) - footUp) / TOWER_SCALE;
+  const want = platePlacement(rig.top, rig.foot, PLATE_HALF, clear, rig.far);
+  const spot = clampPlate(want, rig.top, rig.foot, PLATE_HALF, clear, screenTop, screenBottom);
+  if (!rig.spot || Math.abs(rig.spot.s - spot.s) > 1e-3) placePlate(rig, spot);
 }
 
 /**
  * Per-frame tower and building work after the shared unit update: aim the
- * cannon and the tower crew, refresh the HP number and the king's sleep
- * bubble, and degrade wounded crown towers.
+ * cannon and the tower crew, place the HP plate, refresh the HP number and
+ * the king's sleep bubble, and degrade wounded crown towers.
  */
 export function updateTower(b: Battle3D, view: EntityView, e: Entity, dt: number): void {
   const w = toWorld(e.x, e.y);
-  if (view.barrel) {
-    const target = targetOf(b, e);
-    if (target) {
-      const tw = toWorld(target.x, target.y);
-      view.barrel.rotation.y = Math.atan2(tw.x - w.x, tw.z - w.z);
-    }
-  }
   // A new tower or building changes what casts shadows.
   if (!view.root.userData.shadowsMarked) {
     view.root.userData.shadowsMarked = true;
     markShadowsDirty(b);
   }
-
-  // Tower crew: aim at the target, swing on attack, and let the
-  // sleeping king slump over his battlements.
-  if (view.defender && view.defenderMount) {
+  const rig = rigs.get(view.root);
+  if (rig) {
+    rig.b = b;
     const target = targetOf(b, e);
-    const swing = attackSwing(e, target !== undefined);
-    animateTroop(view.defender, {
-      moving: false,
-      swing,
-      time: b.syncState.time,
-      phase: e.id * 1.7,
-    });
+    const asleep = e.kind === "king-tower" && !e.active;
+    // The cannon swings to its target; a sleeping king's lies low and rises as he wakes.
+    rig.slump = asleep ? 1 : Math.max(0, rig.slump - dt / 0.35);
+    if (rig.gun) {
+      const rest = e.side === "player" ? Math.PI : 0;
+      let yaw = rest;
+      if (target) {
+        const tw = toWorld(target.x, target.y);
+        yaw = Math.atan2(tw.x - w.x, tw.z - w.z);
+      }
+      rig.gun.rotation.y = yaw;
+      const k = rig.king ? rig.slump * rig.slump * (3 - 2 * rig.slump) : 0;
+      rig.gun.position.y = rig.keep.gunAt.y - 0.3 * k;
+      rig.gun.rotation.x = 0.35 * k;
+    }
+    // Crew: aim at the target, fire on the tower's attack beat; the
+    // sleeping king slumps over his dais and stands when he wakes. Idle,
+    // the king faces the camera, the others the opposing side.
+    const mount = rig.mount;
     if (target) {
       const tw = toWorld(target.x, target.y);
-      view.defenderMount.rotation.y = Math.atan2(tw.x - w.x, tw.z - w.z);
+      mount.rotation.y = Math.atan2(tw.x - w.x, tw.z - w.z);
     } else {
-      view.defenderMount.rotation.y = e.side === "player" ? Math.PI : 0;
+      mount.rotation.y = rig.king ? (rig.camSide > 0 ? 0 : Math.PI) : e.side === "player" ? Math.PI : 0;
     }
-    const asleep = e.kind === "king-tower" && !e.active;
-    view.defenderMount.rotation.x = asleep ? 0.45 : 0;
+    const slump = rig.slump * rig.slump * (3 - 2 * rig.slump);
+    if (rig.crew.kind === "fallback") {
+      const swing = attackSwing(e, target !== undefined);
+      animateTroop(rig.crew.rig, { moving: false, swing, time: b.syncState.time, phase: e.id * 1.7 });
+      mount.rotation.x = 0.45 * slump;
+    } else {
+      rig.crew.provider.animate(
+        rig.crew.unit,
+        { attacking: target !== undefined && !asleep, cooldown: e.cooldown, hitSpeed: e.hitSpeed, asleep, frozen: isFrozen(b, e) },
+        dt,
+      );
+      mount.rotation.x = 0.3 * slump;
+    }
+    updatePlate(b, rig, view.root);
   }
 
   if (view.hpText) updateHpText(view.hpText, e.hp);
   if (view.zzz) view.zzz.visible = !e.active;
 
-  // Wounded crown towers visibly degrade: masonry bursts off as each
-  // damage threshold is crossed (crenels, flag, cracks), then the tower
-  // smoulders — light smoke below 2/3 HP, thick black smoke and embers
-  // below 1/3.
-  if (e.kind === "princess-tower" || e.kind === "king-tower") {
-    const rig = rigs.get(view.root);
-    if (rig) rig.b = b;
-    const frac = e.hp / e.maxHp;
-    const stage = frac < 1 / 3 ? 2 : frac < 2 / 3 ? 1 : 0;
-    const towerTop = e.kind === "king-tower" ? 3.4 : 2.7;
+  // Wounded crown towers visibly degrade (see the file header); masonry
+  // bursts off as each threshold is crossed, and a single wisp of smoke
+  // rises from the broken roof once it is badly hurt.
+  if (rig && (e.kind === "princess-tower" || e.kind === "king-tower")) {
+    const stage = towerDamageStage(e.hp, e.maxHp);
     const was = view.dmgStage ?? 0;
     if (stage > was) {
       view.dmgStage = stage;
-      b.fx.emit("chips", e.x, e.y, { z: towerTop * 0.4 });
-      emitSparks(b, e.x, e.y, towerTop * 0.6, 10, 4.5, 1.5, stage === 2 ? 0xff8c42 : 0xa89880, 0.11, 0.6);
-      addShake(b, 0.22);
-      if (rig) showDamage(b, rig, e, was, stage);
+      showDamage(b, rig, e, was, stage);
     }
-    if ((view.dmgStage ?? 0) > 0) {
+    if (view.dmgStage === 2) {
       view.smokeT = (view.smokeT ?? 0) - dt;
       if (view.smokeT <= 0) {
-        view.smokeT = view.dmgStage === 2 ? 0.4 : 0.9;
-        const ox = e.x + (Math.random() - 0.5) * 0.9;
-        const oy = e.y + (Math.random() - 0.5) * 0.9;
-        b.fx.emit("smoke", ox, oy, { z: towerTop, color: view.dmgStage === 2 ? 0x3a332c : 0x776f64 });
-        if (view.dmgStage === 2) {
-          emitSparks(b, ox, oy, towerTop, 2, 2.5, 1.2, 0xff8c42, 0.07, 0.5);
-        }
+        view.smokeT = 0.75;
+        const p = rig.keep.smoke;
+        b.fx.emit("smoke", e.x + p.x * TOWER_SCALE, e.y + p.z * TOWER_SCALE, { z: p.y * TOWER_SCALE + 0.2, color: 0x6f675e, radius: 0.32 });
       }
     }
   }
 }
 
+/** Show damage stage `stage` (1 below 70% HP, 2 below 40%) on the keep. */
+function showDamage(b: Battle3D, rig: TowerRig, e: Entity, from: number, stage: number): void {
+  rig.keep.uniforms.uStage.value = stage;
+  const top = rig.top * TOWER_SCALE;
+  for (let k = from + 1; k <= stage; k++) {
+    for (const p of rig.keep.chips[k] ?? []) {
+      b.fx.emit("chips", e.x + p.x * TOWER_SCALE, e.y + p.z * TOWER_SCALE, { z: p.y * TOWER_SCALE, radius: 0.6 });
+      emitSparks(b, e.x + p.x * TOWER_SCALE, e.y + p.z * TOWER_SCALE, p.y * TOWER_SCALE, 5, 3.2, 1.3, 0xa89880, 0.09, 0.5);
+    }
+  }
+  b.fx.emit("chips", e.x, e.y, { z: Math.max(1.5, top * 0.45) });
+  addShake(b, 0.22);
+  markShadowsDirty(b);
+}
+
 // ---- Collapse -----------------------------------------------------------------
 
+/** Which keep chunk each collapse piece is (the base stays as the ruin's stump). */
+const CHUNK_OF: Partial<Record<ChunkName, KeepChunk>> = { upper: "upper", front: "front", back: "back", canopy: "canopy" };
+
 const BOX = new THREE.Box3();
-const INV = new THREE.Matrix4();
 const CENTER = new THREE.Vector3();
 const SIZE = new THREE.Vector3();
-const SHIFT = new THREE.Vector3();
-const Q_INV = new THREE.Quaternion();
+const P = new THREE.Vector3();
+
+/** A rigid piece of the keep: the vertices of one chunk range, re-pivoted on their centre. */
+function chunkPiece(keep: KeepBuild, chunk: KeepChunk): THREE.Group | null {
+  const r = keep.ranges.get(chunk);
+  if (!r) return null;
+  const src = keep.mesh.geometry;
+  const pos = src.getAttribute("position");
+  BOX.makeEmpty();
+  for (let i = r.start; i < r.start + r.count; i++) BOX.expandByPoint(P.fromBufferAttribute(pos, i));
+  BOX.getCenter(CENTER);
+  const g = new THREE.BufferGeometry();
+  for (const [name, attr] of Object.entries(src.attributes)) g.setAttribute(name, attr);
+  g.setDrawRange(r.start, r.count);
+  g.boundingSphere = new THREE.Sphere(CENTER.clone(), BOX.getSize(SIZE).length() / 2 + 0.5);
+  g.userData.sharedAttributes = true;
+  const mesh = new THREE.Mesh(g, keep.mesh.material);
+  mesh.customDepthMaterial = keep.mesh.customDepthMaterial;
+  mesh.castShadow = mesh.receiveShadow = true;
+  mesh.onBeforeRender = keep.mesh.onBeforeRender;
+  mesh.position.copy(CENTER).negate();
+  const pivot = new THREE.Group();
+  pivot.name = chunk;
+  pivot.position.copy(CENTER);
+  pivot.add(mesh);
+  return pivot;
+}
 
 /**
- * Turn a fallen tower's chunks into debris: re-pivot each flying chunk on
- * its own centre (so it tumbles about itself), plan the throw, and take
- * over the fade from the generic death so the pieces stay solid in the air.
+ * Turn a fallen tower into falling pieces: the roofs and turrets (front and
+ * back pairs), the upper keep, the king's canopy and the crew each become a
+ * rigid chunk; the base hides (the ruin's stump stands in its place).
  */
 function startCollapse(d: DyingView, rig: TowerRig): Collapse {
   const root = d.view.root;
@@ -799,29 +593,45 @@ function startCollapse(d: DyingView, rig: TowerRig): Collapse {
   d.fadeMats = [];
   for (const m of mats) m.opacity = 1;
   for (const o of rig.plate) o.visible = false;
-  root.updateMatrixWorld(true);
-  INV.copy(root.matrixWorld).invert();
+  rig.keep.mesh.visible = false;
+  if (rig.gun) rig.gun.visible = false;
   const chunks: THREE.Object3D[] = [];
   const starts: ChunkStart[] = [];
   for (const name of CHUNK_ORDER) {
-    const chunk = rig.chunks.get(name);
-    if (!chunk) continue;
-    BOX.setFromObject(chunk).applyMatrix4(INV); // root-local bounds
-    if (BOX.isEmpty()) continue;
-    BOX.getCenter(CENTER);
-    BOX.getSize(SIZE);
-    // Move the pivot to the centre without moving the parts.
-    SHIFT.copy(CENTER).sub(chunk.position).applyQuaternion(Q_INV.copy(chunk.quaternion).invert());
-    for (const child of chunk.children) child.position.sub(SHIFT);
-    chunk.position.copy(CENTER);
-    chunks.push(chunk);
+    let piece: THREE.Object3D | null;
+    if (name === "crew") {
+      piece = rig.mount;
+      BOX.setFromObject(piece);
+      root.updateMatrixWorld(true);
+      if (BOX.isEmpty()) continue;
+      BOX.applyMatrix4(P.set(0, 0, 0) && new THREE.Matrix4().copy(root.matrixWorld).invert());
+      BOX.getCenter(CENTER);
+      BOX.getSize(SIZE);
+    } else {
+      const chunk = CHUNK_OF[name];
+      piece = chunk ? chunkPiece(rig.keep, chunk) : null;
+      if (!piece) continue;
+      if (name === "upper" && rig.gun) {
+        // The cannon rides the upper keep down.
+        rig.gun.visible = true;
+        piece.attach(rig.gun);
+      }
+      root.add(piece);
+      CENTER.copy(piece.position);
+      const m = piece.children[0] as THREE.Mesh;
+      const r = rig.keep.ranges.get(CHUNK_OF[name]!)!;
+      BOX.makeEmpty();
+      const pos = m.geometry.getAttribute("position");
+      for (let i = r.start; i < r.start + r.count; i++) BOX.expandByPoint(P.fromBufferAttribute(pos, i));
+      BOX.getSize(SIZE);
+    }
+    chunks.push(piece);
     starts.push({
       name,
       x: CENTER.x,
       y: CENTER.y,
       z: CENTER.z,
-      // The heavy wall slumps into its own crater; light pieces lie on it.
-      restY: Math.max(0.05, Math.min(SIZE.x, SIZE.y, SIZE.z) * (name === "wall" ? 0.2 : 0.35)),
+      restY: Math.max(0.12, Math.min(SIZE.x, SIZE.y, SIZE.z) * (name === "upper" ? 0.3 : 0.35)),
     });
   }
   return {
@@ -873,124 +683,35 @@ export function updateTowerDeath(d: DyingView, f: number): void {
   }
 }
 
-// ---- Rubble, crater and dust ----------------------------------------------------
-
-/** Shared radial "crater" stain (legacy FX only; the FX layer draws its own). */
-let craterTex: THREE.CanvasTexture | null = null;
-
-function craterTexture(): THREE.CanvasTexture {
-  if (craterTex) return craterTex;
-  const S = 128;
-  const c = document.createElement("canvas");
-  c.width = c.height = S;
-  const ctx = c.getContext("2d")!;
-  const rand = seededRandom(97);
-  // A dusty pale rim, a ragged scorched hollow, and cracks running out of it.
-  const rim = ctx.createRadialGradient(S / 2, S / 2, S * 0.28, S / 2, S / 2, S / 2);
-  rim.addColorStop(0, "rgba(120,98,70,0.55)");
-  rim.addColorStop(0.7, "rgba(150,126,92,0.3)");
-  rim.addColorStop(1, "rgba(150,126,92,0)");
-  ctx.fillStyle = rim;
-  ctx.fillRect(0, 0, S, S);
-  for (let i = 0; i < 9; i++) {
-    const a = rand() * Math.PI * 2;
-    const d = rand() * S * 0.12;
-    const r = S * (0.16 + rand() * 0.12);
-    const blot = ctx.createRadialGradient(S / 2 + Math.cos(a) * d, S / 2 + Math.sin(a) * d, 0, S / 2 + Math.cos(a) * d, S / 2 + Math.sin(a) * d, r);
-    blot.addColorStop(0, "rgba(30,22,15,0.75)");
-    blot.addColorStop(0.7, "rgba(40,30,20,0.45)");
-    blot.addColorStop(1, "rgba(40,30,20,0)");
-    ctx.fillStyle = blot;
-    ctx.fillRect(0, 0, S, S);
-  }
-  ctx.strokeStyle = "rgba(26,18,12,0.85)";
-  ctx.lineCap = "round";
-  for (let i = 0; i < 7; i++) {
-    let a = (i / 7) * Math.PI * 2 + rand() * 0.5;
-    let x = S / 2 + Math.cos(a) * S * 0.2;
-    let y = S / 2 + Math.sin(a) * S * 0.2;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    for (let k = 0; k < 4; k++) {
-      a += (rand() - 0.5) * 0.8;
-      x += Math.cos(a) * 7;
-      y += Math.sin(a) * 7;
-      ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-  }
-  craterTex = new THREE.CanvasTexture(c);
-  craterTex.colorSpace = THREE.SRGBColorSpace;
-  craterTex.userData.shared = true;
-  return craterTex;
-}
-
-/** Rubble shard colours for the current arena's towers. */
-function rubbleColors(): number[] {
-  const t = LOOK.tower;
-  // Islamic towers break into marble and glazed teal tile.
-  if (arabic) return [t.platformPlayer, t.plinth, LOOK.islamic?.dome ?? THEME.teal, t.battlement];
-  return [t.plinth, t.battlement, t.platformPlayer];
-}
+// ---- The ruin -------------------------------------------------------------------------
 
 /**
- * Permanent pile of broken masonry where a tower used to stand, in the
- * arena's own tower stone. It heaps up while the tower comes down.
+ * What a fallen tower leaves where it stood (towerCraft.ts craftRuin): the
+ * stump at once, the rubble heap and fallen banner heaping up while the
+ * chunks rain down. It wears the tower's team colour (repainted live).
  */
-export function dropRubble(b: Battle3D, ax: number, ay: number, king: boolean): THREE.Group {
+export function dropRubble(b: Battle3D, ax: number, ay: number, king: boolean, side: Side = ay < ARENA_HEIGHT / 2 ? "enemy" : "player", seed = Math.round(ax * 31 + ay * 17)): THREE.Group {
   const w = toWorld(ax, ay);
+  const team = teamSide(side);
+  const { stump, heap } = craftRuin({
+    king,
+    radius: king ? 1.28 : 0.95,
+    team: teamColor(team, "main", teamPalette()),
+    enemyTeam: team === "enemy",
+    camSide: viewSide === "player" ? 1 : -1,
+    style: towerStyle(LOOK, arabic ? "golden" : "classic"),
+    seed,
+  });
   const pile = new THREE.Group();
-  const base = king ? 1.7 : 1.4;
-  const stones = king ? 11 : 8;
-  const colors = rubbleColors();
-  for (let i = 0; i < stones; i++) {
-    const a = (i / stones) * Math.PI * 2 + i * 1.7;
-    const r = (i % 3) * 0.3 + 0.2;
-    const s = 0.5 - (i % 3) * 0.13;
-    const stone = new THREE.Mesh(
-      new THREE.BoxGeometry(s * base, s * 0.7, s * base),
-      toon(colors[i % colors.length]),
-    );
-    stone.position.set(Math.cos(a) * r, s * 0.3, Math.sin(a) * r);
-    stone.rotation.set(0, a, (i % 5) * 0.12);
-    stone.castShadow = true;
-    pile.add(stone);
-  }
-  batchStatic(pile, () => false, { tint: true });
+  pile.name = "ruin";
+  pile.add(stump, heap);
   pile.position.set(w.x, 0, w.z);
+  pile.scale.setScalar(TOWER_SCALE);
   b.scene.add(pile);
   b.rubble.push(pile);
+  const uniforms = [stump, heap].map((m) => keepUniformsOf(m)).filter((u): u is KeepUniforms => u !== null);
+  trackTeam({ root: pile, team, uniforms });
   return pile;
-}
-
-/** A dark scorched hollow under a fallen tower (when the FX layer has no decals). */
-function legacyCrater(pile: THREE.Group, radius: number): void {
-  const crater = new THREE.Mesh(
-    new THREE.CircleGeometry(radius, 28),
-    new THREE.MeshBasicMaterial({ map: craterTexture(), transparent: true, depthWrite: false }),
-  );
-  crater.rotation.x = -Math.PI / 2;
-  crater.position.y = 0.06; // above the floor's lane and zone overlays
-  crater.renderOrder = -1;
-  pile.add(crater);
-}
-
-/** A rising column of dust puffs (when the FX layer has no 'smoke-column'). */
-function legacySmokeColumn(b: Battle3D, ax: number, ay: number, king: boolean): void {
-  const driver = new THREE.Group();
-  let next = 0;
-  let n = 0;
-  const color = LOOK.tower.plinth;
-  b.addEffect(driver, 1.3, (frac) => {
-    const t = (1 - frac) * 1.3;
-    while (t >= next && n < 9) {
-      const jitter = ((n * 37) % 10) / 10 - 0.5;
-      puff(b, ax + jitter * 0.8, ay - jitter * 0.6, color, (king ? 1.5 : 1.2) + n * 0.12, 0.3 + n * 0.45);
-      n++;
-      next += 0.13;
-    }
-  });
 }
 
 /** A tower or building destroyed, or a king woken. */
@@ -1003,28 +724,24 @@ export function towersOnEvent(b: Battle3D, ev: BattleEvent): void {
       const king = ev.kind === "king-tower";
       crownPop(b, ev.x, ev.y);
       b.cheer = 1.8; // the stands go wild
-      // Dust billows up as the keep comes apart, and leaves a crater.
-      const legacy = b.fx instanceof LegacyFx;
+      // Dust billows up as the keep comes apart; a scorched crater stays.
       const craterR = king ? 2.2 : 1.7;
       b.fx.emit("smoke-column", ev.x, ev.y, { radius: king ? 1.6 : 1.2, color: LOOK.tower.plinth });
       b.fx.decal("crater", ev.x, ev.y, craterR, { life: 600 });
-      if (legacy) legacySmokeColumn(b, ev.x, ev.y, king);
-      const pile = dropRubble(b, ev.x, ev.y, king);
-      // The rubble heaps up while the chunks rain down.
-      const stones = [...pile.children];
-      for (const s of stones) s.scale.y = 0.05;
-      if (legacy) legacyCrater(pile, craterR);
-      // (The driver outlives the growth, so the heap always finishes.)
+      const pile = dropRubble(b, ev.x, ev.y, king, ev.side);
+      // The heap rises while the chunks rain down (the stump is there at once).
+      const heap = pile.children[1];
+      heap.scale.y = 0.05;
       const growLife = COLLAPSE_TIME + SINK_TIME;
       b.addEffect(new THREE.Group(), growLife, (frac) => {
         const t = (1 - frac) * growLife;
         const k = Math.min(1, Math.max(0, (t - 0.25) / (COLLAPSE_TIME - 0.25)));
-        const y = 0.05 + 0.95 * k * k * (3 - 2 * k);
-        for (const s of stones) s.scale.y = y;
+        heap.scale.y = 0.05 + 0.95 * k * k * (3 - 2 * k);
       });
-      emitSparks(b, ev.x, ev.y, 1.3, king ? 24 : 16, 6, 1.55, 0xf6c14e, 0.14, 0.8);
+      emitSparks(b, ev.x, ev.y, 1.3, king ? 18 : 12, 6, 1.55, 0xf6c14e, 0.12, 0.7);
       contactRing(b, ev.x, ev.y, king ? 2.8 : 2.1, 0xf6c14e);
       addShake(b, king ? 0.9 : 0.55);
+      markShadowsDirty(b);
       if (king) {
         // The match-winning blow: time stops, then the camera leans in.
         b.hitStop.punch(0.25);
