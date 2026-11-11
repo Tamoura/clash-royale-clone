@@ -459,7 +459,7 @@ function paintClassic(look: ArenaLook, p: Paint, P: number, seed: number, rand: 
         voronoi(ax / plateCell, ay / plateCell, seed + 71);
         const seam = 1 - smoothstep(0.03, 0.09, vorEdge);
         if (recipe === "basalt") {
-          f *= (0.95 + vorId * 0.1) * (1 - 0.3 * seam);
+          f *= (0.96 + vorId * 0.08) * (1 - 0.18 * seam);
           // Some plates' seams smoulder (colour only: the floor never blooms).
           const hot = hash2(Math.floor(vorId * 997), 3, seed) < 0.35 ? 1 - smoothstep(0.0, 0.045, vorEdge) : 0;
           if (hot > 0) {
