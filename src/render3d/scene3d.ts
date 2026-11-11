@@ -74,14 +74,36 @@ import {
   isSwarmSized,
   makeLevelBadge,
 } from "./scene/views/troops";
-import { buildTowerMesh, towersOnEvent, updateTower, updateTowerDeath } from "./scene/views/towers";
+import {
+  buildTowerMesh,
+  setTowerCrewProvider,
+  towersOnEvent,
+  updateTower,
+  updateTowerDeath,
+  type TowerCrewProvider,
+} from "./scene/views/towers";
 import { beginDeath, updateTroop, updateTroopDeath, viewsOnEvent } from "./scene/views/animate";
-import { setLeanCamera } from "./cast/index";
+import { castActiveForBattle, setLeanCamera } from "./cast/index";
+import { towerCrewProvider as castCrewProvider } from "./cast/crew";
 
 // The scene's building blocks live in ./scene/ (arena, sky, camera, post,
 // views, fx); Battle3D wires them together behind the same public API.
 export { GAME_FONT, disposeDeep } from "./scene/common";
 export { setTowerFlair } from "./scene/views/towers";
+
+/**
+ * Tower crews from the cast (cast/crew.ts, shared rules 4). Towers build
+ * on the first sync after the battle latched its roster, so `make` asks
+ * castActiveForBattle(): a battle that started on the procedural roster
+ * keeps the hand-built crews too, even if the pack lands a moment later
+ * (no mixing). Each battle rebuilds its towers.
+ */
+const castTowerCrews: TowerCrewProvider = {
+  ...castCrewProvider,
+  make(kind, side, edition) {
+    return castActiveForBattle() ? castCrewProvider.make(kind, side, edition) : null;
+  },
+};
 
 /** CR-readable spell telegraph colours. */
 const SPELL_TINT: Partial<Record<CardId, number>> = {
@@ -224,6 +246,7 @@ export class Battle3D {
   constructor(container: HTMLElement) {
     this.container = container;
     loadGlbModels(); // real character models (KayKit), only when opted in
+    setTowerCrewProvider(castTowerCrews);
     this.renderer = createRenderer(container);
 
     this.scene = new THREE.Scene();
