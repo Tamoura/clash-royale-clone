@@ -50,8 +50,10 @@ describe("service worker versioning", () => {
 /** Runs public/sw.js in a fake service-worker scope with an in-memory Cache API. */
 function bootSw(network: (path: string) => Promise<Response>) {
   const listeners: Record<string, (event: unknown) => void> = {};
+  const fetchStub = (req: { url: string }) => network(new URL(req.url).pathname);
   const stores = new Map<string, Map<string, Response>>();
-  const keyOf = (k: unknown): string => (typeof k === "string" ? k : (k as { url: string }).url);
+  // Like the Cache API, keys resolve against the worker's scope ("./" is the scope's root).
+  const keyOf = (k: unknown): string => new URL(typeof k === "string" ? k : (k as { url: string }).url, "https://game.example/").href;
   const caches = {
     open: async (name: string) => {
       if (!stores.has(name)) stores.set(name, new Map());
@@ -60,6 +62,11 @@ function bootSw(network: (path: string) => Promise<Response>) {
         put: async (k: unknown, r: Response) => void store.set(keyOf(k), r),
         match: async (k: unknown) => store.get(keyOf(k))?.clone(),
         addAll: async () => undefined,
+        add: async (k: unknown) => {
+          const res = await fetchStub({ url: keyOf(k) });
+          if (!res.ok) throw new TypeError("bad status");
+          store.set(keyOf(k), res);
+        },
       };
     },
     match: async (k: unknown) => {
@@ -79,13 +86,31 @@ function bootSw(network: (path: string) => Promise<Response>) {
     skipWaiting: async () => undefined,
     clients: { claim: async () => undefined },
   };
-  const fetchStub = (req: { url: string }) => network(new URL(req.url).pathname);
   new Function("self", "caches", "fetch", sw)(scope, caches, fetchStub);
 
   const settle = async (): Promise<void> => {
     for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
   };
   return {
+    /** Fire the install event and wait for it. */
+    async install(): Promise<void> {
+      let done: Promise<unknown> | undefined;
+      listeners.install({ waitUntil: (p: Promise<unknown>) => void (done = p) });
+      await done;
+    },
+    /** A plain same-origin GET (not a navigation): what the page gets. */
+    async get(path: string): Promise<Response> {
+      let responded: Promise<Response> | undefined;
+      listeners.fetch({
+        request: { method: "GET", url: `https://game.example${path}`, mode: "cors" },
+        respondWith: (p: Promise<Response>) => void (responded = p),
+      });
+      const res = await responded!;
+      await settle();
+      return res;
+    },
+    /** The cached response for `path`, or undefined. */
+    cached: (path: string) => caches.match(path.replace(/^\//, "")),
     /** A browser navigation to `path`: what the page gets. */
     async navigate(path: string): Promise<Response> {
       let responded: Promise<Response> | undefined;
@@ -140,5 +165,39 @@ describe("service worker offline shell", () => {
     const mark = /const SHELL_MARK = "([^"]+)"/.exec(sw)?.[1];
     expect(mark).toBeTruthy();
     expect(indexHtml).toContain(mark!);
+  });
+});
+
+describe("service worker: the modelled cast is precached per build", () => {
+  it("lists exactly the pack the loader fetches and public/models/troops holds", async () => {
+    const { readdirSync } = await import("node:fs");
+    const { FILES } = await import("../render3d/cast/types");
+    const cast = /const CAST = \[([^\]]+)\]/.exec(sw)![1].match(/[a-z_]+/g)!;
+    const onDisk = readdirSync("public/models/troops").filter((f) => f.endsWith(".glb")).map((f) => f.replace(/\.glb$/, ""));
+    expect([...cast].sort()).toEqual([...onDisk].sort());
+    expect([...cast].sort()).toEqual(["anims", ...FILES].sort());
+  });
+
+  it("caches the pack at install, survives a model that fails, and serves models cache-first", async () => {
+    const fetched: string[] = [];
+    let modelsOnline = true;
+    const sw = bootSw(async (path) => {
+      fetched.push(path);
+      if (path.startsWith("/models/")) {
+        if (!modelsOnline) throw new TypeError("offline");
+        if (path.endsWith("/mage.glb")) return new Response("nope", { status: 404 });
+        return new Response(`glb:${path}`, { headers: { "content-type": "model/gltf-binary" } });
+      }
+      return new Response("<title>Clash Royale Clone</title>", { headers: { "content-type": "text/html" } });
+    });
+    await sw.install();
+    expect(await (await sw.cached("/models/troops/knight.glb"))!.text()).toBe("glb:/models/troops/knight.glb");
+    expect(await sw.cached("/models/troops/anims.glb")).toBeDefined();
+    expect(await sw.cached("/models/troops/mage.glb")).toBeUndefined(); // the 404 did not fail the install
+    // Offline (or simply launched again): a cached model is served with no network round trip.
+    modelsOnline = false;
+    const before = fetched.length;
+    expect(await (await sw.get("/models/troops/rogue.glb")).text()).toBe("glb:/models/troops/rogue.glb");
+    expect(fetched.length).toBe(before);
   });
 });
