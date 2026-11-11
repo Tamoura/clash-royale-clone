@@ -5,6 +5,7 @@ import { CAM_HOME, toWorld } from "./common";
 import {
   BATTLE_BOX,
   MAX_TOP_FRAC,
+  TALL_ALIGN_Y,
   TALL_BOX,
   ZERO_INSETS,
   fitBattleFrustum,
@@ -121,6 +122,59 @@ describe("fitBattleFrustum", () => {
     expect(after / before).toBeGreaterThanOrEqual(1.07);
   });
 
+  it("places the board along a free rectangle taller than it (the compact tray's spare height)", () => {
+    // A 390x844 phone: the stage over the 124px tray is 720px, the band 87px.
+    const w = 390;
+    const h = 720;
+    const ins = topOnly(87);
+    const s = w / (2 * TALL_BOX.halfW); // width-bound
+    const boxPx = TALL_BOX.height * s;
+    const slack = h - 87 - boxPx;
+    expect(slack).toBeGreaterThan(50);
+    const boxTop = (f: Frustum): number => toPx(f, w, h, 0, TALL_BOX.mid + TALL_BOX.height / 2).y;
+    const boxBottom = (f: Frustum): number => toPx(f, w, h, 0, TALL_BOX.mid - TALL_BOX.height / 2).y;
+    // Centred by default, exactly as before.
+    const mid = fitBattleFrustum(w, h, ins, TALL_BOX);
+    expect(fitBattleFrustum(w, h, ins, TALL_BOX, 0.5)).toEqual(mid);
+    expect(boxTop(mid) - 87).toBeCloseTo(slack / 2, 6);
+    // 0 hugs the band, 1 the tray; out-of-range values clamp.
+    expect(boxTop(fitBattleFrustum(w, h, ins, TALL_BOX, 0))).toBeCloseTo(87, 6);
+    expect(boxBottom(fitBattleFrustum(w, h, ins, TALL_BOX, 1))).toBeCloseTo(h, 6);
+    expect(fitBattleFrustum(w, h, ins, TALL_BOX, -3)).toEqual(fitBattleFrustum(w, h, ins, TALL_BOX, 0));
+    expect(fitBattleFrustum(w, h, ins, TALL_BOX, 7)).toEqual(fitBattleFrustum(w, h, ins, TALL_BOX, 1));
+    // The battle's own placement: most of the slack above (the far towers
+    // clear the scoreboard), the rest under the player's side; never past either edge.
+    const f = fitBattleFrustum(w, h, ins, TALL_BOX, TALL_ALIGN_Y);
+    expect(TALL_ALIGN_Y).toBeGreaterThan(0.5);
+    expect(TALL_ALIGN_Y).toBeLessThanOrEqual(0.75);
+    expect(boxTop(f) - 87).toBeCloseTo(slack * TALL_ALIGN_Y, 6);
+    expect(h - boxBottom(f)).toBeCloseTo(slack * (1 - TALL_ALIGN_Y), 6);
+    // The scale never changes with the placement, and nothing stretches.
+    for (const a of [0, TALL_ALIGN_Y, 1]) {
+      const g = fitBattleFrustum(w, h, ins, TALL_BOX, a);
+      expect(scaleOf(w, g)).toBeCloseTo(s, 9);
+      expect((g.right - g.left) / (g.top - g.bottom)).toBeCloseTo(w / h, 9);
+      expect(g.left).toBeCloseTo(mid.left, 12);
+    }
+  });
+
+  it("ignores the placement where the board fills the free height (tablets, short phones, side panels)", () => {
+    const cases: [number, number, Insets, ContentBox][] = [
+      [360, 530, topOnly(62), TALL_BOX],
+      [768, 880, topOnly(62), TALL_BOX],
+      [1440, 900, { top: 0, bottom: 0, left: 271, right: 271 }, BATTLE_BOX],
+    ];
+    for (const [w, h, ins, box] of cases) {
+      const mid = fitBattleFrustum(w, h, ins, box);
+      for (const a of [0, TALL_ALIGN_Y, 1]) {
+        const f = fitBattleFrustum(w, h, ins, box, a);
+        expect(f.top).toBeCloseTo(mid.top, 9);
+        expect(f.bottom).toBeCloseTo(mid.bottom, 9);
+        expect(f.left).toBeCloseTo(mid.left, 9);
+      }
+    }
+  });
+
   it("makes desktop troops far bigger with side panels", () => {
     // Today's desktop column (468 wide) against the full 1440x900 screen.
     const before = scaleOf(468, legacy(468, 900 - 217, 97));
@@ -148,17 +202,21 @@ describe("pointer picks at the new framing", () => {
     return cam;
   }
 
-  const CASES: [string, number, number, Insets, ContentBox][] = [
+  const CASES: [string, number, number, Insets, ContentBox, number?][] = [
     ["wide 1440x900", 1440, 900, { top: 0, bottom: 0, left: 320, right: 320 }, BATTLE_BOX],
     ["tall 390x653", 390, 653, topOnly(83), TALL_BOX],
+    // The compact hand: slimmer panels, and a taller stage with the board placed along it.
+    ["wide 1440x900, compact panel", 1440, 900, { top: 0, bottom: 0, left: 271, right: 271 }, BATTLE_BOX],
+    ["tall 390x720, compact tray", 390, 720, topOnly(87), TALL_BOX, TALL_ALIGN_Y],
+    ["tall 360x530, compact tray", 360, 530, topOnly(62), TALL_BOX, TALL_ALIGN_Y],
   ];
-  for (const [name, w, h, ins, box] of CASES) {
+  for (const [name, w, h, ins, box, alignY] of CASES) {
     for (const [view, camZ] of [
       ["host", CAM_HOME.z],
       ["guest", -CAM_HOME.z],
     ] as const) {
       it(`${name} (${view}): the tile under the finger comes back, inside the free rect`, () => {
-        const f = fitBattleFrustum(w, h, ins, box);
+        const f = fitBattleFrustum(w, h, ins, box, alignY);
         const cam = camera(f, camZ);
         const ray = new THREE.Raycaster();
         const hit = new THREE.Vector3();

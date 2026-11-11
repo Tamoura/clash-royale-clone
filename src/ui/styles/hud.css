@@ -866,6 +866,11 @@
    (its base rules are the tall layout's; layout.ts caps the cards by the
    screen's height as well as its width, and lets Next and KING grow with
    them on tablets). ── */
+/* The sandbox reset sits in the stage's top corner, which the scoreboard band
+   covers here: it goes just under the band (--band, measured by layoutWire.ts). */
+:root[data-layout="tall"] .sandbox-reset {
+  top: var(--band, 88px);
+}
 /* Height-bound portrait screens (tablets, short phones): a one-row
    scoreboard band, so the board can start higher and grow. */
 @media (min-width: 600px), (min-aspect-ratio: 47/100) {

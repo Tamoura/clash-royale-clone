@@ -2,9 +2,10 @@
  * Applies the battle layout (layout.ts) to the page while a battle is on
  * screen: :root[data-layout] / [data-side] / [data-panel] with --side,
  * --field-w, --card-w, --card-h, --next-w, --king-w and --hand-cols for the
- * CSS (styles/hud.css), and the matching frame for the camera. Menus and
- * the home diorama keep their phone-width column (no data-layout at all,
- * and the tray falls back to the stylesheet's own sizes).
+ * CSS (styles/hud.css), --band (tall: the measured scoreboard band), and
+ * the matching frame for the camera. Menus and the home diorama keep their
+ * phone-width column (no data-layout at all, and the tray falls back to
+ * the stylesheet's own sizes).
  *
  * Tall mode measures the scoreboard band floating over the top of the
  * board and frames the board under it (a little below the middle of what
@@ -26,7 +27,7 @@ const BAND_PARTS = ".crowns, .clock, .menu-toggle";
 /** Gap between the band and the board's far edging (CSS px). */
 const BAND_GAP = 4;
 /** The CSS variables a battle layout sets on :root (cleared between battles). */
-const LAYOUT_VARS = ["--side", "--field-w", "--card-w", "--card-h", "--next-w", "--king-w", "--hand-cols"] as const;
+const LAYOUT_VARS = ["--side", "--field-w", "--card-w", "--card-h", "--next-w", "--king-w", "--hand-cols", "--band"] as const;
 
 export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutControl {
   const root = document.documentElement;
@@ -87,11 +88,16 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
     root.style.setProperty("--hand-cols", String(lay.handCols));
     // Wide mode shades the world past the stands (drawn by the final pass).
     setEdgeShade(scene, lay.mode === "wide" ? lay.fieldW : 0);
-    scene.setFraming(
-      lay.mode === "wide"
-        ? { insets: lay.insets, box: lay.box }
-        : { insets: { ...ZERO_INSETS, top: bandInset() }, box: TALL_BOX, alignY: TALL_ALIGN_Y },
-    );
+    if (lay.mode === "wide") {
+      root.style.removeProperty("--band");
+      scene.setFraming({ insets: lay.insets, box: lay.box });
+      return;
+    }
+    // Tall: the board goes under the band; so do the stage's own top-corner
+    // controls (the sandbox reset), which the band would otherwise cover.
+    const top = bandInset();
+    root.style.setProperty("--band", px(top));
+    scene.setFraming({ insets: { ...ZERO_INSETS, top }, box: TALL_BOX, alignY: TALL_ALIGN_Y });
   };
 
   window.addEventListener("resize", () => {
