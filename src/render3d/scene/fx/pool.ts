@@ -443,7 +443,7 @@ export class VfxPool implements FxApi, Spawner {
 
   /** Floating damage number at a world point. */
   popup(wx: number, wy: number, wz: number, text: string, scale: number, color: string, crit = false): void {
-    this.glyphs.popup(wx, wy, wz, text, scale, color, crit, this.uTime.value);
+    this.glyphs.popup(wx, wy, wz, text, scale, color, crit, this.uTime.value, this.host.camera.matrixWorldInverse);
   }
 
   /** Freeze dome over arena (x, y). */

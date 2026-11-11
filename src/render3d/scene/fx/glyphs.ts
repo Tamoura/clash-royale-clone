@@ -1,16 +1,21 @@
 /**
  * Damage numbers without a canvas per hit: the glyphs 0-9 - + ! and a star
- * are pre-rendered once, in the game font with a dark outline, into a
- * 1024x256 atlas (8x2 cells of 128px). A popup is a handful of pooled
- * instanced quads with per-glyph UV cells and offsets; the vertex shader
- * pops, raises and fades them over POPUP_LIFE on the shared FX clock.
+ * are pre-rendered once, in the game font, into a 1024x256 atlas (8x2 cells
+ * of 128px). A popup is a handful of pooled instanced quads with per-glyph
+ * UV cells and offsets; the vertex shader pops, raises and fades them over
+ * POPUP_LIFE on the shared FX clock.
  *
- * The atlas keeps the fill mask in red and the outline in green, so one
- * texture serves every number colour: the shader blends outline ink into
- * the per-popup fill colour.
+ * Art bible 8: a gold fill, a 3 CSS px dark stroke and a soft drop shadow.
+ * The atlas keeps three masks in three channels, so one texture serves
+ * every number colour: red is the fill, green the stroke (fill included),
+ * blue the blurred shadow. The shader composites shadow, ink and fill.
+ *
+ * Hits on the same target within MERGE_WINDOW merge into one number, and a
+ * new number that would overlap one still on screen stacks above it (a
+ * view-space lift), so "160" and "80" never print over each other.
  */
 import * as THREE from "three";
-import { POPUP_LIFE } from "../../popups";
+import { POPUP_LIFE, damageLabel, popupRise } from "../../popups";
 import { GAME_FONT } from "../common";
 
 /** Glyph order in the atlas; '*' is drawn as a star. */
@@ -18,11 +23,19 @@ export const GLYPHS = "0123456789-+!*";
 const COLS = 8;
 const ROWS = 2;
 const CELL = 128;
-const FONT_PX = 100;
+const FONT_PX = 96;
+/** Stroke width in atlas px: about 3 CSS px round a normal number on a 390 px phone. */
+const STROKE_PX = 30;
 /** Glyph quads the pool can hold (about 40 numbers on screen). */
 export const GLYPH_CAP = 192;
 /** Fallback advance (in glyph heights) before the font is measured. */
 const DEFAULT_ADVANCE = 0.6;
+/** World height of a scale-1 number's quad. */
+export const GLYPH_HEIGHT = 1.25;
+/** Seconds within which a second hit on the same target merges into the first number. */
+export const MERGE_WINDOW = 0.15;
+/** Ink and shadow colours (art bible 8: #1D1630 stroke). */
+export const GLYPH_INK = 0x1d1630;
 
 export interface GlyphQuad {
   cell: number;
@@ -49,6 +62,56 @@ export function layoutGlyphs(text: string, advance: (cell: number) => number, ou
   return out;
 }
 
+/** A number on screen, as the merge and stack rules see it (view space, world units). */
+export interface LivePopup {
+  id: number;
+  /** View-space anchor at birth, before the stack lift. */
+  vx: number;
+  vy: number;
+  /** View-space lift from stacking. */
+  lift: number;
+  birth: number;
+  /** The number shown (NaN for text that is not a plain number). */
+  value: number;
+  /** Quad height and run width (view units). */
+  h: number;
+  w: number;
+  scale: number;
+  crit: boolean;
+  color: string;
+}
+
+/**
+ * The lift (view units) that keeps a new number of height `h` and width `w`
+ * at view (vx, vy) clear of every live number for the rest of both lives.
+ * `riseK` converts popupRise's world rise into view units. Pure (tests).
+ */
+export function stackLift(live: readonly LivePopup[], vx: number, vy: number, w: number, h: number, now: number, riseK: number): number {
+  let lift = 0;
+  for (let pass = 0; pass < 8; pass++) {
+    let moved = false;
+    for (const p of live) {
+      const age = now - p.birth;
+      // A number in its last moments is fading: it may be overlapped.
+      if (age < 0 || age > POPUP_LIFE - 0.15) continue;
+      if (Math.abs(vx - p.vx) >= (w + p.w) * 0.5) continue;
+      const need = 0.4 * (h + p.h);
+      const py = p.vy + p.lift + popupRise(age / POPUP_LIFE) * riseK;
+      const ny = vy + lift;
+      // Above it already: the newer number rises faster, so the gap only grows.
+      if (ny - py >= need) continue;
+      // Below it for the older one's whole remaining life (the gap shrinks to its end).
+      const left = (POPUP_LIFE - age) / POPUP_LIFE;
+      const endGap = p.vy + p.lift + popupRise(1) * riseK - (ny + popupRise(left) * riseK);
+      if (py - ny >= need && endGap >= need) continue;
+      lift = py - vy + need;
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  return lift;
+}
+
 function paintStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
   ctx.beginPath();
   for (let i = 0; i < 10; i++) {
@@ -62,43 +125,74 @@ function paintStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: num
   ctx.closePath();
 }
 
-/** Paint every glyph (outline green, fill red) and return the advances. */
+/**
+ * Paint every glyph into the three masks and return the advances: on an
+ * opaque black canvas, 'lighter' adds each layer's coverage into its own
+ * channel (blue shadow, green stroke, red fill).
+ */
 function paintGlyphs(ctx: CanvasRenderingContext2D, advances: number[]): void {
-  ctx.clearRect(0, 0, COLS * CELL, ROWS * CELL);
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(0, 0, COLS * CELL, ROWS * CELL);
+  ctx.globalCompositeOperation = "lighter";
   ctx.font = `${FONT_PX}px ${GAME_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.lineJoin = "round";
-  ctx.lineWidth = 18;
-  for (let i = 0; i < GLYPHS.length; i++) {
-    const cx = (i % COLS) * CELL + CELL / 2;
-    const cy = Math.floor(i / COLS) * CELL + CELL / 2;
+  const at = (i: number): [number, number] => [(i % COLS) * CELL + CELL / 2, Math.floor(i / COLS) * CELL + CELL / 2 + 2];
+  const shape = (i: number, x: number, y: number, mode: "stroke" | "fill", width = 0): void => {
     const ch = GLYPHS[i];
     if (ch === "*") {
-      paintStar(ctx, cx, cy + 2, 40);
-      ctx.strokeStyle = "#00ff00";
-      ctx.stroke();
-      ctx.fillStyle = "#ff0000";
+      paintStar(ctx, x, y, 34);
+      if (mode === "stroke") {
+        ctx.lineWidth = width;
+        ctx.stroke();
+      }
       ctx.fill();
-      advances[i] = 0.82;
+      return;
+    }
+    if (mode === "stroke") {
+      ctx.lineWidth = width;
+      ctx.strokeText(ch, x, y);
+    }
+    ctx.fillText(ch, x, y);
+  };
+  for (let i = 0; i < GLYPHS.length; i++) {
+    const [cx, cy] = at(i);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(cx - CELL / 2, cy - 2 - CELL / 2, CELL, CELL);
+    ctx.clip();
+    // Soft drop shadow: the stroked shape, blurred, offset down-right.
+    ctx.filter = "blur(4px)";
+    ctx.fillStyle = ctx.strokeStyle = "#0000ff";
+    shape(i, cx + 3, cy + 6, "stroke", STROKE_PX + 4);
+    ctx.filter = "none";
+    ctx.fillStyle = ctx.strokeStyle = "#00ff00";
+    shape(i, cx, cy, "stroke", STROKE_PX);
+    ctx.fillStyle = "#ff0000";
+    shape(i, cx, cy, "fill");
+    ctx.restore();
+    if (GLYPHS[i] === "*") {
+      advances[i] = 0.78;
       continue;
     }
-    ctx.strokeStyle = "#00ff00";
-    ctx.strokeText(ch, cx, cy + 6);
-    ctx.fillStyle = "#ff0000";
-    ctx.fillText(ch, cx, cy + 6);
-    const w = ctx.measureText(ch).width;
-    advances[i] = w > 0 ? Math.min(0.95, (w + 14) / CELL) : DEFAULT_ADVANCE;
+    const w = ctx.measureText(GLYPHS[i]).width;
+    // The stroke overlaps the neighbour's: ink merges, the run stays tight.
+    advances[i] = w > 0 ? Math.min(0.92, (w + STROKE_PX * 0.55) / CELL) : DEFAULT_ADVANCE;
   }
+  ctx.restore();
 }
 
 const VERT = /* glsl */ `
 uniform float uTime;
 uniform float uLife;
 attribute vec4 aAnchor; // world x, y, z, birth
-attribute vec4 aG;      // cell, x offset (glyph heights), height (world), unused
+attribute vec4 aG;      // cell, x offset (glyph heights), height (world), view-space stack lift
 attribute vec3 aCol;
 varying vec2 vUv;
+varying float vLy;
 varying vec3 vCol;
 varying float vAlpha;
 float popScale(float t) {
@@ -111,6 +205,7 @@ void main() {
   if (age < 0.0 || age > uLife) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     vUv = vec2(0.0);
+    vLy = 0.0;
     vCol = vec3(0.0);
     vAlpha = 0.0;
     return;
@@ -120,10 +215,12 @@ void main() {
   vAlpha = t < 0.65 ? 1.0 : max(0.0, 1.0 - (t - 0.65) / 0.35);
   float h = aG.z * popScale(t);
   vec4 mv = viewMatrix * vec4(aAnchor.x, aAnchor.y + rise, aAnchor.z, 1.0);
+  mv.y += aG.w;
   mv.xy += vec2(position.x + aG.y, position.y) * h;
   float cell = aG.x;
   vec2 cxy = vec2(mod(cell, ${COLS}.0), floor(cell / ${COLS}.0));
   vUv = vec2((cxy.x + uv.x) / ${COLS}.0, (${ROWS - 1}.0 - cxy.y + uv.y) / ${ROWS}.0);
+  vLy = uv.y;
   vCol = aCol;
   gl_Position = projectionMatrix * mv;
 }`;
@@ -132,18 +229,32 @@ const FRAG = /* glsl */ `
 uniform sampler2D uMap;
 uniform vec3 uInk;
 varying vec2 vUv;
+varying float vLy;
 varying vec3 vCol;
 varying float vAlpha;
 void main() {
-  vec4 tex = texture2D(uMap, vUv);
-  float a = tex.a * vAlpha;
-  if (a < 0.004) discard;
-  float fill = clamp(tex.r / max(tex.r + tex.g, 1e-3), 0.0, 1.0);
-  gl_FragColor = vec4(mix(uInk, vCol, fill), a);
+  vec3 m = texture2D(uMap, vUv).rgb;
+  float s = m.b * 0.5;
+  float g = m.g;
+  float r = m.r;
+  // Shadow, then ink, then fill ("over", premultiplied).
+  vec3 c = uInk * s;
+  float a = s;
+  c = uInk * g + c * (1.0 - g);
+  a = g + a * (1.0 - g);
+  // The fill brightens toward its top, deepens toward its foot (toy candy).
+  vec3 fill = vCol * mix(vec3(1.0, 0.74, 0.5), vec3(1.0, 1.06, 1.25), smoothstep(0.3, 0.68, vLy));
+  c = fill * r + c * (1.0 - r);
+  a = r + a * (1.0 - r);
+  if (a * vAlpha < 0.004) discard;
+  gl_FragColor = vec4(c / max(a, 1e-3), a * vAlpha);
   #include <colorspace_fragment>
 }`;
 
 const TMP = new THREE.Color();
+const V = new THREE.Vector3();
+/** Live numbers the merge and stack rules remember (oldest dropped first). */
+const LIVE_CAP = 32;
 
 export class GlyphLayer {
   readonly mesh: THREE.InstancedMesh;
@@ -152,10 +263,15 @@ export class GlyphLayer {
   private total = 0;
   private dirty = false;
   private liveUntil = -1;
+  private nextId = 1;
   private readonly anchor: THREE.InstancedBufferAttribute;
   private readonly g: THREE.InstancedBufferAttribute;
   private readonly col: THREE.InstancedBufferAttribute;
+  /** Which popup each quad slot belongs to (so a merge only kills its own quads). */
+  private readonly owner = new Int32Array(GLYPH_CAP);
   private readonly quads: GlyphQuad[] = [];
+  /** Numbers still on screen (merge and stack bookkeeping). */
+  readonly live: LivePopup[] = [];
   private readonly advanceOf = (cell: number): number => this.advances[cell];
 
   constructor(uTime: { value: number }) {
@@ -190,7 +306,7 @@ export class GlyphLayer {
     this.g = attr("aG", 4);
     this.col = attr("aCol", 3);
     for (let i = 0; i < GLYPH_CAP; i++) this.anchor.array[i * 4 + 3] = -1e6;
-    TMP.setRGB(0.04, 0.055, 0.086, THREE.SRGBColorSpace);
+    TMP.setHex(GLYPH_INK);
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         uTime,
@@ -223,12 +339,57 @@ export class GlyphLayer {
     return layoutGlyphs(crit ? `*${text}` : text, this.advanceOf, this.quads);
   }
 
-  /** A number rising from world (x, y, z); `scale` 1 is a normal hit. */
-  popup(x: number, y: number, z: number, text: string, scale: number, color: string, crit: boolean, now: number): void {
+  /**
+   * A number rising from world (x, y, z); `scale` 1 is a normal hit. `view`
+   * (the camera's matrixWorldInverse) places the merge and stack rules in
+   * screen terms; without it they work in world x/y.
+   */
+  popup(
+    x: number,
+    y: number,
+    z: number,
+    text: string,
+    scale: number,
+    color: string,
+    crit: boolean,
+    now: number,
+    view?: THREE.Matrix4,
+  ): void {
+    // Forget numbers that are gone.
+    for (let i = this.live.length - 1; i >= 0; i--) if (now - this.live[i].birth > POPUP_LIFE) this.live.splice(i, 1);
+    V.set(x, y + 0.3, z);
+    if (view) V.applyMatrix4(view);
+    const riseK = view ? view.elements[5] : 1;
+    const value = /^\d+$/.test(text) ? Number(text) : NaN;
+    // Merge: the same target (same spot on screen) hit again within the window.
+    let birth = now;
+    let lift = 0;
+    for (const p of this.live) {
+      if (Number.isNaN(value) || Number.isNaN(p.value)) continue;
+      if (now - p.birth > MERGE_WINDOW || Math.abs(V.x - p.vx) > 0.5 || Math.abs(V.y - p.vy) > 0.5) continue;
+      const sum = p.value + value;
+      const label = damageLabel(sum);
+      text = String(Math.round(sum));
+      scale = Math.max(scale, p.scale, label?.scale ?? 0);
+      crit = crit || p.crit || label?.crit === true;
+      color = p.color;
+      birth = p.birth;
+      lift = p.lift;
+      this.kill(p.id);
+      this.live.splice(this.live.indexOf(p), 1);
+      break;
+    }
     const quads = this.layout(text, crit);
     if (quads.length === 0) return;
+    const h = GLYPH_HEIGHT * scale;
+    let run = 0;
+    for (const q of quads) run += this.advances[q.cell];
+    const w = run * h;
+    if (birth === now) lift = stackLift(this.live, V.x, V.y, w, h, now, riseK);
+    const id = this.nextId++;
+    this.live.push({ id, vx: V.x, vy: V.y, lift, birth, value: Number.isNaN(value) ? NaN : Number(text), h, w, scale, crit, color });
+    if (this.live.length > LIVE_CAP) this.live.shift();
     TMP.set(color);
-    const h = 1.05 * scale;
     const A = this.anchor.array as Float32Array;
     const G = this.g.array as Float32Array;
     const C = this.col.array as Float32Array;
@@ -236,19 +397,31 @@ export class GlyphLayer {
       const i = this.head;
       this.head = (this.head + 1) % GLYPH_CAP;
       this.total++;
+      this.owner[i] = id;
       A[i * 4] = x;
       A[i * 4 + 1] = y + 0.3;
       A[i * 4 + 2] = z;
-      A[i * 4 + 3] = now;
+      A[i * 4 + 3] = birth;
       G[i * 4] = q.cell;
       G[i * 4 + 1] = q.x;
       G[i * 4 + 2] = h;
+      G[i * 4 + 3] = lift;
       C[i * 3] = TMP.r;
       C[i * 3 + 1] = TMP.g;
       C[i * 3 + 2] = TMP.b;
     }
     this.dirty = true;
-    this.liveUntil = now + POPUP_LIFE;
+    this.liveUntil = Math.max(this.liveUntil, birth + POPUP_LIFE);
+  }
+
+  /** Hide every quad a popup still owns. */
+  private kill(id: number): void {
+    const A = this.anchor.array as Float32Array;
+    for (let i = 0; i < GLYPH_CAP; i++) {
+      if (this.owner[i] !== id) continue;
+      A[i * 4 + 3] = -1e6;
+      this.owner[i] = 0;
+    }
   }
 
   flush(now: number): void {
@@ -267,6 +440,8 @@ export class GlyphLayer {
   reset(): void {
     const A = this.anchor.array as Float32Array;
     for (let i = 0; i < GLYPH_CAP; i++) A[i * 4 + 3] = -1e6;
+    this.owner.fill(0);
+    this.live.length = 0;
     this.head = 0;
     this.total = 0;
     this.dirty = true;

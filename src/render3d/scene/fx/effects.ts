@@ -17,7 +17,7 @@ import { impactStyle } from "../../impactfx";
 import { MODE_GROUND, clearSpec, type ParticleSpec } from "../../particles";
 import { getPrefs } from "../../../ui/prefs";
 import { projectileStyle, type ProjectileStyle } from "../../projectiles";
-import type { DamageLabel } from "../../popups";
+import { towerHitLabel, type DamageLabel } from "../../popups";
 import type { Battle3D } from "../../scene3d";
 import { LOOK_AT, PREV_POS, SIDE_COLOR, arabic, disposeDeep, toWorld, type EntityView } from "../common";
 import { addShake } from "../camera";
@@ -370,9 +370,20 @@ export function deflate(b: Battle3D, ax: number, ay: number, color: number): voi
   V(b).emit("deflate", ax, ay, { color });
 }
 
+/** Whether world (x, z) is on a tower's footprint (its hits print larger). */
+function onTower(b: Battle3D, x: number, z: number): boolean {
+  for (const e of b.byId.values()) {
+    if (e.kind !== "princess-tower" && e.kind !== "king-tower") continue;
+    const w = toWorld(e.x, e.y);
+    if (Math.abs(w.x - x) < 1.3 && Math.abs(w.z - z) < 1.3) return true;
+  }
+  return false;
+}
+
 /** Floating combat text that rises and fades (pooled glyph quads). */
 export function damagePopup(b: Battle3D, x: number, y: number, z: number, label: DamageLabel): void {
   const v = V(b);
+  if (onTower(b, x, z)) label = towerHitLabel(label);
   v.popup(x, y, z, label.text, label.scale, label.color, label.crit === true);
   if (label.crit) v.emitWorld("crit", x, y * 0.6, z, { radius: 0.8 });
 }
