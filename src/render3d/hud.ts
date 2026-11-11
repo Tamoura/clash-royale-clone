@@ -1048,13 +1048,12 @@ export class Hud {
     btn.dataset.rarity = card.rarity;
     btn.setAttribute("aria-label", tr(`${cardDisplayName(id)}, ${card.cost} elixir`, `${cardDisplayName(id)}، ${fmtNum(card.cost)} إكسير`));
     btn.classList.toggle("selected", this.selected === id);
-    const name = document.createElement("div");
-    name.className = "card-name";
-    name.textContent = cardDisplayName(id);
+    // No caption on the art: the button's label, the hover tip and the
+    // long-press bubble name the card.
     const key = document.createElement("div");
     key.className = "key-chip";
     key.textContent = String(i + 1); // keyboard shortcut hint
-    const parts: HTMLElement[] = [handCardCanvas(id, HAND_ART_W, CARD_ASPECT, HAND_ART_ZOOM), name, s.veil, s.need, s.cost, key];
+    const parts: HTMLElement[] = [handCardCanvas(id, HAND_ART_W, CARD_ASPECT, HAND_ART_ZOOM), s.veil, s.need, s.cost, key];
     const me = mySide === "player" ? state.player : state.enemy;
     const lvl = me.levels[id] ?? 1;
     if (lvl > 1) {
