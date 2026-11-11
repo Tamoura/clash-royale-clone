@@ -65,10 +65,8 @@ Good to know about the free plan:
   `render.yaml`, then use **Manual Deploy → Deploy latest commit**.
 * **Limits:** 750 free hours a month (enough to run all month) and a limited
   amount of outbound traffic (5 GB a month when this was written). A first
-  visit downloads about 1.4 MB: 0.55 MB of game code, styles and fonts, then
-  about 0.85 MB of 3D characters (the CC0 cast and its loader) fetched in the
-  background; the service worker keeps them, so return visits mostly use the
-  device's cache. With a card on
+  visit downloads about 1.4 MB (0.55 MB of code, then 0.85 MB of 3D characters
+  in the background); return visits mostly use the device's cache. With a card on
   file, going over may be billed: check **Billing**.
 * **One server.** Rooms live in its memory, and the free plan always runs
   exactly one instance, which is what the relay needs.
