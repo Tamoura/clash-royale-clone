@@ -105,7 +105,8 @@ export interface TownPalette {
   trim: number;
   /** The flat roof deck inside the parapet. */
   roof: number;
-  door: number;
+  /** Painted doors (souk blue, teal, green, oxblood, plain wood), picked per house. */
+  doors: number[];
   /** Window glass: dark by day, lamp-lit on the night sets. */
   glass: number;
   /** Night-native set: windows glow and the walls sit back in the dark. */
@@ -146,7 +147,7 @@ export function townPalette(look: ArenaLook): TownPalette {
     walls,
     trim,
     roof: snow ? 0xf4f8fc : tone(walls[1], 0.88),
-    door: night ? 0x3a2618 : 0x5a3a24,
+    doors: [0x1f6f9b, 0x1a8a84, 0x3f7a3a, 0x8a3428, 0x5a3a24].map((c) => (night ? tone(c, 0.55) : c)),
     glass: night ? 0xffc46b : 0x2a3a5a,
     night,
   };
@@ -222,7 +223,7 @@ function house(s: Sculpt, glow: Sculpt, lot: TownLot, pal: TownPalette, look: Ar
     const uz = z - d * 0.2;
     s.box(uw, uh, ud, wall, ux, h + uh / 2, uz, 0, lit);
     s.box(uw + 0.1, 0.07, ud + 0.1, pal.trim, ux, h + uh, uz, 0, lit);
-    archWindow(pal.night ? glow : s, s, ux, h + uh * 0.5, uz + ud / 2 + 0.012, 0.11 * k, 0.14 * k, pal.glass, pal.trim);
+    archWindow(pal.night ? glow : s, s, ux, h + uh * 0.5, uz + ud / 2 + 0.012, 0.14 * k, 0.16 * k, pal.glass, pal.trim);
   } else if (roll < 0.75) {
     const r = Math.min(w, d) * 0.3;
     const dome = new THREE.SphereGeometry(r, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2);
@@ -232,24 +233,24 @@ function house(s: Sculpt, glow: Sculpt, lot: TownLot, pal: TownPalette, look: Ar
   // An arched door, framed in trim, and a pair of arched windows beside it.
   const south = z + d / 2;
   const doorX = x + (rand() < 0.5 ? -1 : 1) * w * 0.18;
-  horseshoe(s, doorX, 0.34 * k, south, 0.14 * k, pal.trim, pal.door);
+  horseshoe(s, doorX, 0.4 * k, south, 0.19 * k, pal.trim, pal.doors[Math.floor(rand() * pal.doors.length)]);
   const wx = x + (doorX < x ? 1 : -1) * w * 0.2;
-  const wy = Math.max(0.5 * k, h * 0.62);
-  for (const dx of [-0.13, 0.13]) {
-    archWindow(pal.night ? glow : s, s, wx + dx * k, wy, south + 0.012, 0.11 * k, 0.17 * k, pal.glass, pal.trim);
+  const wy = Math.max(0.62 * k, h * 0.62);
+  for (const dx of [-0.16, 0.16]) {
+    archWindow(pal.night ? glow : s, s, wx + dx * k, wy, south + 0.012, 0.15 * k, 0.22 * k, pal.glass, pal.trim);
   }
 }
 
 /** A street lantern: a bronze post with a bracket and a hanging lamp (its core in the glow mesh). */
 function streetLantern(s: Sculpt, glow: Sculpt, x: number, z: number, toward: number, color: number): void {
   const bronze = 0x3a2a1c;
-  s.cyl(0.045, 0.065, 1.55, bronze, x, 0.72, z, 6);
-  s.box(0.08, 0.06, 0.08, THEME.gold, x, 1.5, z, 0, lit);
-  s.box(0.34, 0.035, 0.035, bronze, x + toward * 0.16, 1.46, z, 0, lit);
-  const lx = x + toward * 0.3;
-  s.add(new THREE.ConeGeometry(0.12, 0.13, 6), THEME.gold, lx, 1.36, z, 0, lit);
-  glow.add(new THREE.CylinderGeometry(0.085, 0.07, 0.2, 6), color, lx, 1.2, z);
-  s.add(new THREE.ConeGeometry(0.08, 0.08, 6).rotateX(Math.PI), THEME.gold, lx, 1.06, z, 0, lit);
+  s.cyl(0.055, 0.08, 1.9, bronze, x, 0.9, z, 6);
+  s.box(0.11, 0.08, 0.11, THEME.gold, x, 1.86, z, 0, lit);
+  s.box(0.44, 0.045, 0.045, bronze, x + toward * 0.2, 1.8, z, 0, lit);
+  const lx = x + toward * 0.38;
+  s.add(new THREE.ConeGeometry(0.16, 0.17, 6), THEME.gold, lx, 1.68, z, 0, lit);
+  glow.add(new THREE.CylinderGeometry(0.12, 0.1, 0.28, 6), color, lx, 1.47, z);
+  s.add(new THREE.ConeGeometry(0.11, 0.11, 6).rotateX(Math.PI), THEME.gold, lx, 1.28, z, 0, lit);
 }
 
 /** A palm: a leaning ringed trunk and a crown of drooping fronds. */

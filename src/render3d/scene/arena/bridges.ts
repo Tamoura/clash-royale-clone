@@ -78,9 +78,9 @@ function stoneBridge(s: Sculpt, x: number, look: ArenaLook, rand: () => number):
  * edges, so the crossing reads on white.
  */
 export const ICE_BRIDGE = {
-  body: 0x4a80b4,
-  deck: 0x86bfe4,
-  crack: 0x5f9cc8,
+  body: 0x3f74a8,
+  deck: 0x6aaedc,
+  crack: 0x4f8cc0,
   kerb: 0x435d7c,
   post: 0x3a5270,
   frost: 0xf4fbff,
@@ -94,14 +94,16 @@ function iceBridge(s: Sculpt, x: number, rand: () => number): void {
   s.box(HALF_W * 2 - 0.1, 0.08, HALF_LEN * 2 - 0.1, C.deck, x, 0.25, 0, 0, lit);
   for (const side of [-1, 1]) {
     const kx = x + side * (HALF_W - 0.02);
-    // A blue-grey kerb along each long edge with a frost rim on top.
-    s.box(0.22, 0.16, HALF_LEN * 2 + 0.1, C.kerb, kx, 0.3, 0, 0, lit);
-    s.box(0.14, 0.035, HALF_LEN * 2 + 0.04, C.frost, kx, 0.395, 0, 0, lit);
-    // Low posts at the ends and the middle, each under a snow cap.
+    // A blue-grey kerb along each long edge (its top is what the camera
+    // sees, so the frost rim is only a thin line on the outer edge).
+    s.box(0.24, 0.16, HALF_LEN * 2 + 0.1, C.kerb, kx, 0.3, 0, 0, lit);
+    s.box(0.05, 0.03, HALF_LEN * 2 + 0.06, C.frost, kx + side * 0.1, 0.39, 0, 0, lit);
+    // Low posts at the ends and the middle, each under a small snow cap
+    // that leaves the dark post top showing round it.
     for (const pz of [-(HALF_LEN - 0.02), 0, HALF_LEN - 0.02]) {
-      s.box(0.26, 0.44, 0.26, C.post, kx, 0.4, pz, 0, lit);
-      const cap = new THREE.SphereGeometry(0.17, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
-      cap.scale(1, 0.55, 1);
+      s.box(0.28, 0.44, 0.28, C.post, kx, 0.4, pz, 0, lit);
+      const cap = new THREE.SphereGeometry(0.09, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+      cap.scale(1, 0.6, 1);
       s.add(cap, C.frost, kx, 0.62, pz, 0, lit);
     }
   }
