@@ -115,6 +115,22 @@ export interface ArenaLook {
   islamic?: IslamicTiles;
   /** Display-space colour grade (defaults in scene3d when omitted). */
   grade?: { saturation?: number; contrast?: number; tint?: [number, number, number]; vignette?: number };
+  /** The Toy Tournament set's own palette (kerb, awnings, banks, crowd). Every look carries one. */
+  stage?: StagePalette;
+}
+
+/**
+ * Palette fields the Toy Tournament set reads (stage package): the dressed
+ * kerb stone, the light stripe between team stripes on awnings and
+ * pavilions, the floor's bank colours at the band and where they meet the
+ * floor, and how much of each half's crowd wears its team colour.
+ */
+export interface StagePalette {
+  kerb: number;
+  awning: number;
+  bankNear: string;
+  bankFar: string;
+  crowdTeamShare: number;
 }
 
 /** The Islamic floor and trim palette (the zellige is drawn by scene3d). */
@@ -139,15 +155,15 @@ const WHITE_STREAK = "rgba(255,255,255,0.5)";
 export const LOOKS: Record<string, ArenaLook> = {
   meadow: {
     id: "meadow",
-    grade: { saturation: 1.14, contrast: 1.05, tint: [1.03, 1.0, 0.95], vignette: 0.26 },
+    grade: { saturation: 1.16, contrast: 1.1, tint: [1.02, 1.0, 0.97], vignette: 0.3 },
     sky: 0x7ec8ff, apron: 0x4f9a3c, far: 0x3d7a2f, fieldSide: 0x8a6a3c, edging: 0x8b6b45, drift: 0x5fae4c,
     fogNear: 30, fogFar: 70,
-    hemiSky: 0xdff3ff, hemiGround: 0x4f7a3c, hemiIntensity: 1.0, sun: 0xfff2d8, fill: 0xffe2b8,
+    hemiSky: 0xcfe2ff, hemiGround: 0x5f8a4c, hemiIntensity: 0.95, sun: 0xffedc8, fill: 0xffe2b8,
     nightSky: 0x1a2450,
     skyTop: 0x3d8fe0, skyHorizon: 0xc4e8ff, nightPools: false, backdrop: "castle", ambient: "leaves",
-    floor: { a: "#7fc957", b: "#72bb4d", grid: "rgba(60,110,40,0.3)", lane: "rgba(214,178,112,0.9)", laneEdge: "rgba(150,112,58,0.5)", watermark: null, scatter: "grass" },
-    band: { fill: "#3aa0d8", streak: WHITE_STREAK, glint: 0xcff7ff, glintOpacity: 0.72, foam: 0xd8fff8, foamOpacity: 0.45, bridge: "timber", kind: "water" },
-    tower: { enemy: "sand", player: "sand", platformEnemy: 0xcfc4ab, platformPlayer: 0xcfc4ab, plinth: 0x9c8d74, battlement: 0x9c8d74 },
+    floor: { a: "#6ebb40", b: "#62ae39", grid: "rgba(60,110,40,0.3)", lane: "rgba(226,194,128,0.94)", laneEdge: "rgba(128,92,44,0.6)", watermark: null, scatter: "grass" },
+    band: { fill: "#2f97d6", streak: WHITE_STREAK, glint: 0xcff7ff, glintOpacity: 0.72, foam: 0xe4fffa, foamOpacity: 0.6, bridge: "timber", kind: "water" },
+    tower: { enemy: "sand", player: "sand", platformEnemy: 0xd4cec2, platformPlayer: 0xd4cec2, plinth: 0x9a9388, battlement: 0xa8a092 },
     fencePost: 0x6e4a28, fenceRail: 0x7d5a36, standWall: 0x9c8a6a, standRoofEnemy: 0xc62828, standRoofPlayer: 0x2c55b8, tentWall: 0xe8e3d8, cornerPost: 0xb3a890,
     neon: null, lanterns: null, torch: 0xffa726,
     tree: { kind: "pine", trunk: 0x6e4a28, leafA: 0x3f8f45, leafB: 0x4ba14f }, rock: 0x8e9aa5, flowers: true,
@@ -190,7 +206,7 @@ export const LOOKS: Record<string, ArenaLook> = {
     hemiSky: 0xe8f4ff, hemiGround: 0x8a9ab0, hemiIntensity: 1.05, sun: 0xfff6e8, fill: 0xd8e8ff,
     nightSky: 0x101a30,
     skyTop: 0x5f9ad0, skyHorizon: 0xe2eef8, nightPools: false, backdrop: "castle", ambient: "snow",
-    floor: { a: "#eef4f8", b: "#e2eaf0", grid: "rgba(150,170,190,0.3)", lane: "rgba(190,200,215,0.9)", laneEdge: "rgba(120,135,155,0.5)", watermark: null, scatter: "snow" },
+    floor: { a: "#e3ecf3", b: "#d9e4ec", grid: "rgba(150,170,190,0.3)", lane: "rgba(190,200,215,0.9)", laneEdge: "rgba(120,135,155,0.5)", watermark: null, scatter: "snow" },
     band: { fill: "#5fb5e0", streak: WHITE_STREAK, glint: 0xffffff, glintOpacity: 0.7, foam: 0xe8f4ff, foamOpacity: 0.5, bridge: "ice", kind: "water" },
     tower: { enemy: "grey", player: "grey", platformEnemy: 0xd8dde4, platformPlayer: 0xd8dde4, plinth: 0x8d93a4, battlement: 0x8d93a4 },
     fencePost: 0x5a4a3a, fenceRail: 0x6a5a4a, standWall: 0x8a8a8a, standRoofEnemy: 0xc62828, standRoofPlayer: 0x2c55b8, tentWall: 0xe8e3d8, cornerPost: 0xb3b8c0,
@@ -220,7 +236,7 @@ export const LOOKS: Record<string, ArenaLook> = {
     hemiSky: 0xd8c8ff, hemiGround: 0x3a2a5a, hemiIntensity: 1.0, sun: 0xf0e8ff, fill: 0xb890ff,
     nightSky: 0x0d0820,
     skyTop: 0x120a38, skyHorizon: 0x8a5ad0, nightPools: false, backdrop: "mystic", ambient: "stars",
-    floor: { a: "#7a6ab0", b: "#6e5ea4", grid: "rgba(200,180,255,0.2)", lane: "rgba(190,160,255,0.85)", laneEdge: "rgba(120,90,200,0.5)", watermark: "rgba(220,200,255,0.16)", scatter: "crystals" },
+    floor: { a: "#7a6ab0", b: "#6e5ea4", grid: "rgba(200,180,255,0.2)", lane: "rgba(160,140,200,0.85)", laneEdge: "rgba(100,80,160,0.5)", watermark: "rgba(220,200,255,0.16)", scatter: "crystals" },
     band: { fill: "#5a3aa8", streak: "rgba(220,200,255,0.5)", glint: 0xe0c8ff, glintOpacity: 0.7, foam: 0xc8b0ff, foamOpacity: 0.35, bridge: "stone", kind: "chasm" },
     tower: { enemy: "marble", player: "marble", platformEnemy: 0xcfc4e0, platformPlayer: 0xcfc4e0, plinth: 0x8a7aa8, battlement: 0x8a7aa8 },
     fencePost: 0x3a2a6a, fenceRail: 0x4a3a7a, standWall: 0x3a2a5a, standRoofEnemy: 0xc02a7a, standRoofPlayer: 0x3a5ad8, tentWall: 0x8a7ab0, cornerPost: 0x5a4a8a,
@@ -250,7 +266,7 @@ export const LOOKS: Record<string, ArenaLook> = {
     hemiSky: 0xf0f6ff, hemiGround: 0x8a8070, hemiIntensity: 1.05, sun: 0xfff6e0, fill: 0xffe8c8,
     nightSky: 0x141a38,
     skyTop: 0x2f6fd0, skyHorizon: 0xdaeeff, nightPools: false, backdrop: "castle", ambient: "petals",
-    floor: { a: "#ece6d8", b: "#e2dccd", grid: "rgba(160,140,110,0.3)", lane: "rgba(220,180,90,0.85)", laneEdge: "rgba(170,130,50,0.5)", watermark: "rgba(200,170,90,0.2)", scatter: "none" },
+    floor: { a: "#b4d68a", b: "#aacd80", grid: "rgba(160,140,110,0.3)", lane: "rgba(232,214,170,0.95)", laneEdge: "rgba(200,160,70,0.6)", watermark: "rgba(200,170,90,0.2)", scatter: "none" },
     band: { fill: "#2f7fd0", streak: WHITE_STREAK, glint: 0xcff7ff, glintOpacity: 0.7, foam: 0xd8fff8, foamOpacity: 0.45, bridge: "stone", kind: "water" },
     tower: { enemy: "marble", player: "marble", platformEnemy: 0xe8e0d0, platformPlayer: 0xe8e0d0, plinth: 0xbdb4a2, battlement: 0xbdb4a2 },
     fencePost: 0xb3a890, fenceRail: 0xc8b898, standWall: 0xd0c8b8, standRoofEnemy: 0xc62828, standRoofPlayer: 0x2c55b8, tentWall: 0xf0e8d8, cornerPost: 0xd9a93f,
@@ -450,6 +466,49 @@ export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {
     islamic: tiles({ plaster: "#dcd8e8", star: "rgba(60,50,150,0.16)", diamond: "rgba(202,162,63,0.2)", lane: "200,180,130", laneWear: "140,120,80", dome: 0xcaa23f, domeKing: 0xe8c050, emblem: 0xf0c848 }),
   },
 };
+
+/** Per-look stage palette overrides (the rest derive from the look). */
+const STAGE_OVERRIDES: Record<string, Partial<StagePalette>> = {
+  meadow: { bankNear: "#85734d", bankFar: "#d6c08a" },
+  swamp: { bankNear: "#4a4630", bankFar: "#8a8458", awning: 0xe0d6b8 },
+  bone: { bankNear: "#6a5a48", bankFar: "#cfc0a0" },
+  snow: { bankNear: "#c8dcec", bankFar: "#f6fbff" },
+  forge: { bankNear: "#28201f", bankFar: "#4a4246", awning: 0x3a3236, kerb: 0x4a4246 },
+  mystic: { bankNear: "#3a2c62", bankFar: "#6a5a9a", awning: 0xd8ccf0 },
+  workshop: { bankNear: "#6a4c2c", bankFar: "#b8925a" },
+  royal: { bankNear: "#8a7a5a", bankFar: "#e2d4b0", awning: 0xfff6e0, kerb: 0xd8ccb0 },
+  ice: { bankNear: "#cfe2f2", bankFar: "#f4faff" },
+  jungle: { bankNear: "#5a4a2a", bankFar: "#b09a62" },
+  neon: { bankNear: "#8a90aa", bankFar: "#d0d6e8", awning: 0xe8e6f6, kerb: 0x4a4670 },
+  courtyard: { bankNear: "#b89a68", bankFar: "#e8d9b4" },
+  souk: { bankNear: "#b0965e", bankFar: "#efe7cf" },
+  copper: { bankNear: "#6a4030", bankFar: "#d8c2a8", awning: 0xf0d8b8 },
+  medina: { bankNear: "#6a6088", bankFar: "#dcd8e8" },
+};
+
+function tintHex(hex: number, f: number): number {
+  const ch = (sh: number): number => Math.min(255, Math.round(((hex >> sh) & 255) * f));
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
+/** The look's stage palette: its own, or one derived from its colours. */
+export function stagePalette(look: ArenaLook): StagePalette {
+  if (look.stage) return look.stage;
+  const islamic = !!look.islamic;
+  return {
+    kerb: islamic ? tintHex(look.edging, 0.95) : look.cornerPost,
+    awning: 0xf3ead6,
+    bankNear: "#85734d",
+    bankFar: "#d6c08a",
+    crowdTeamShare: 0.42,
+    ...(STAGE_OVERRIDES[look.id] ?? {}),
+  };
+}
+
+// Every look carries its stage palette.
+for (const look of [...Object.values(LOOKS), ...Object.values(ISLAMIC_LOOKS)]) {
+  look.stage = stagePalette(look);
+}
 
 /** Which Islamic world each trophy-road arena is staged in. */
 const ISLAMIC_ARENA_TO_LOOK: Record<string, string> = {

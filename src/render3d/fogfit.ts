@@ -16,6 +16,12 @@ export interface FogRange {
 
 /** Clear air between the last playfield corner and the start of the fog. */
 export const FOG_MARGIN = 2;
+/**
+ * The far band past each end line (world units): the tournament gate, the
+ * crowd terrace and the pennants behind the far king. The compact card tray
+ * puts it on screen above the enemy king on phones, so it stays crisp too.
+ */
+export const FAR_BAND = 7;
 /** Shortest near-to-far ramp, so the fade into the sky never bands. */
 export const MIN_FOG_RAMP = 20;
 
@@ -28,18 +34,19 @@ const LOOK_M = new THREE.Matrix4();
 /**
  * Fog distances for a camera with `viewMatrix` (world → view). The
  * playfield box spans the whole arena (x ±ARENA_WIDTH/2, z ±ARENA_HEIGHT/2,
- * the toWorld mapping) from the ground up to a king tower's top plus one
- * unit; near sits FOG_MARGIN past its deepest corner and the ramp keeps the
- * look's own length (at least MIN_FOG_RAMP).
+ * the toWorld mapping) plus the far band past each end, from the ground up
+ * to a king tower's top plus one unit; near sits FOG_MARGIN past its deepest
+ * corner and the ramp keeps the look's own length (at least MIN_FOG_RAMP).
  */
 export function fitFog(
   viewMatrix: THREE.Matrix4,
   look: { fogNear: number; fogFar: number },
   kingHeight = 6,
+  farBand = FAR_BAND,
 ): FogRange {
   let deepest = -Infinity;
   for (const x of [-ARENA_WIDTH / 2, ARENA_WIDTH / 2]) {
-    for (const z of [-ARENA_HEIGHT / 2, ARENA_HEIGHT / 2]) {
+    for (const z of [-ARENA_HEIGHT / 2 - farBand, ARENA_HEIGHT / 2 + farBand]) {
       for (const y of [0, kingHeight + 1]) {
         CORNER.set(x, y, z).applyMatrix4(viewMatrix);
         deepest = Math.max(deepest, -CORNER.z); // view space looks down -z

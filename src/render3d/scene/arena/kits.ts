@@ -12,7 +12,7 @@
 import * as THREE from "three";
 import type { ArenaLook, BackdropKind } from "../../arenaLooks";
 
-export const KIT_TRIANGLE_BUDGET = 1200;
+export const KIT_TRIANGLE_BUDGET = 2000;
 /** Kits are laid out against this back wall line (before KIT_SHIFT)... */
 export const KIT_BACK_Z = -21;
 /** ...then the whole set moves this much toward the field, so the sky shows above it. */
@@ -205,6 +205,29 @@ const DARK = 0x231a1c;
 /** Team red until backdrop.ts recolours the team ranges for the viewpoint. */
 const TEAM = 0xef4444;
 
+/**
+ * A sagging string of pennants from (x0, y0, z0) to (x1, y1, z1), the flags
+ * alternating `a` and `b` ("team" paints that flag in the far king's team).
+ */
+function kitBunting(k: Kit, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, a: number | "team", b: number | "team", sag = 0.4): void {
+  const len = Math.hypot(x1 - x0, z1 - z0);
+  const n = Math.max(3, Math.round(len / 0.5));
+  const at = (t: number): [number, number, number] => [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t - sag * 4 * t * (1 - t), z0 + (z1 - z0) * t];
+  for (let i = 0; i < n; i++) {
+    const p0 = at(i / n);
+    const p1 = at((i + 1) / n);
+    const dx = p1[0] - p0[0];
+    const dy = p1[1] - p0[1];
+    k.part("bunting rope", cyl(0.015, 0.015, Math.hypot(dx, dy), 3), 0x4a3a2a, {
+      x: (p0[0] + p1[0]) / 2, y: (p0[1] + p1[1]) / 2, z: (p0[2] + p1[2]) / 2, rz: -Math.atan2(dx, dy),
+    });
+    const m = at((i + 0.5) / n);
+    const c = i % 2 ? b : a;
+    // A flat downward triangle: a 3-sided cone squashed thin, point down.
+    k.part("pennant", cone(0.2, 0.34, 3), c === "team" ? TEAM : c, { x: m[0], y: m[1] - 0.17, z: m[2], rx: Math.PI, sz: 0.25 }, { team: c === "team" });
+  }
+}
+
 // --- The kits ---------------------------------------------------------------
 
 function castle(k: Kit): void {
@@ -244,8 +267,19 @@ function castle(k: Kit): void {
       for (let i = 0; i < 8; i++) k.seat(sx * (4.25 + i * 0.75 + (tier % 2) * 0.3), z, h - 0.06);
     }
     k.part("stand rail", box(6, 0.1, 0.08), GOLD, { x: sx * 6.9, y: 0.52, z: -17.24 });
-    k.part("awning", box(6.4, 0.12, 1.5), roof, { x: sx * 6.9, y: 2.75, z: -19.4, rx: 0.28 });
+    // A striped awning (team and cream) over the terrace.
+    for (let i = 0; i < 8; i++) {
+      k.part("awning", box(0.8, 0.12, 1.5), i % 2 ? 0xf3ead6 : TEAM, { x: sx * 6.9 - 2.8 + i * 0.8, y: 2.75, z: -19.4, rx: 0.28 }, { team: i % 2 === 0 });
+    }
+    k.part("awning valance", box(6.4, 0.22, 0.06), GOLD, { x: sx * 6.9, y: 2.48, z: -18.68 });
     for (const dx of [-3, 3]) k.part("awning pole", cyl(0.05, 0.05, 2.8, 4), wood, { x: sx * 6.9 + dx, y: 1.34, z: -18.7 });
+    // Pennant poles at the terrace ends, strung to the gate towers.
+    const poleX = sx * 10.2;
+    k.part("pennant pole", cyl(0.06, 0.07, 3.6, 5), wood, { x: poleX, y: 1.8, z: -17.6 });
+    k.part("pole knob", ball(0.1, 6, 4), GOLD, { x: poleX, y: 3.66, z: -17.6 });
+    k.part("pole flag", box(0.8, 0.46, 0.04), TEAM, { x: poleX - sx * 0.44, y: 3.3, z: -17.6 }, { team: true });
+    kitBunting(k, sx * 2.5, 4.0, Z + 1.7, sx * 6.9 + sx * 3, 2.85, -18.62, "team", GOLD, 0.35);
+    kitBunting(k, sx * 6.9 + sx * 3, 2.85, -18.62, poleX, 3.5, -17.6, GOLD, "team", 0.2);
   }
 }
 
@@ -581,10 +615,39 @@ const KITS: Record<BackdropKind, (k: Kit) => void> = {
 };
 
 /** Build the kit for `kind`, dressed in the look's palette. */
+/**
+ * The far band's crowd terrace (art bible section 4) for every kit but the
+ * castle (which builds its own): two short tiers of spectators either side
+ * of the gate, a gold rail, a striped awning (team and the look's awning
+ * stripe) and a pennant string. Stone and trim follow the kit's look.
+ */
+function farTerrace(k: Kit): void {
+  const L = k.look;
+  const islamic = !!L.islamic;
+  const stone = islamic ? L.edging : L.standWall;
+  const stoneDk = shade(stone, 0.82);
+  const awningLt = L.stage?.awning ?? 0xf3ead6;
+  for (const sx of [-1, 1]) {
+    for (let tier = 0; tier < 2; tier++) {
+      const h = 0.45 + 0.45 * tier;
+      const z = -17.75 - 0.95 * tier;
+      k.part("far tier", box(4.6, h, 0.95), tier % 2 ? stoneDk : stone, { x: sx * 7.2, y: h / 2 - 0.06, z });
+      for (let i = 0; i < 6; i++) k.seat(sx * (5.3 + i * 0.75 + (tier % 2) * 0.3), z, h - 0.06);
+    }
+    k.part("far rail", box(4.6, 0.1, 0.08), GOLD, { x: sx * 7.2, y: 0.52, z: -17.24 });
+    for (let i = 0; i < 6; i++) {
+      k.part("far awning", box(0.78, 0.1, 1.3), i % 2 ? awningLt : TEAM, { x: sx * 7.2 - 1.95 + i * 0.78, y: 2.4, z: -19.0, rx: 0.3 }, { team: i % 2 === 0 });
+    }
+    for (const dx of [-2.3, 2.3]) k.part("far pole", cyl(0.05, 0.05, 2.4, 4), L.fencePost, { x: sx * 7.2 + dx, y: 1.15, z: -18.4 });
+    kitBunting(k, sx * 4.9, 2.3, -18.4, sx * 9.5, 2.3, -18.4, "team", GOLD, 0.3);
+  }
+}
+
 export function buildKit(kind: BackdropKind, look: ArenaLook): Kit {
   const k = new Kit(look);
   k.zShift = KIT_SHIFT;
   KITS[kind](k);
+  if (kind !== "castle") farTerrace(k);
   k.zShift = 0;
   return k;
 }

@@ -14,10 +14,46 @@ import type { Battle3D } from "../scene3d";
 import { getPrefs, onPrefs } from "../../ui/prefs";
 import { LOOK } from "./common";
 import { setOutlinesVisible } from "../outlineMaterial";
-import { outlinesEnabled, type QualityLevel } from "../quality";
+import { currentQuality, outlinesEnabled, type QualityLevel } from "../quality";
+import { applyArenaQuality } from "./arena/build";
 
-/** Display-space colour grade defaults: saturation, contrast, tint, vignette. */
-const DEFAULT_GRADE = { saturation: 1.1, contrast: 1.05, tint: [1, 1, 1] as [number, number, number], vignette: 0.3 };
+/**
+ * Display-space colour grade (art bible section 5): saturation about 1.12,
+ * contrast 1.06, a subtle split tone and a vignette of at most 0.24. Looks
+ * may lean a little either way, inside GRADE_LIMITS.
+ */
+export const DEFAULT_GRADE = { saturation: 1.12, contrast: 1.06, tint: [1, 1, 1] as [number, number, number], vignette: 0.2 };
+export const GRADE_LIMITS = { saturation: [1.04, 1.16], contrast: [1.03, 1.08], vignette: [0, 0.24] } as const;
+/** Split tone: shadows lean cool, highlights warm (multipliers at each end). */
+export const SPLIT_TONE = { shadows: [0.96, 0.98, 1.04], highlights: [1.03, 1.0, 0.96] } as const;
+
+/**
+ * The bloom contract (art bible section 5): only emissive cores (fireball and
+ * comet cores, sparks, elixir, lanterns and neon at night, lava) exceed the
+ * linear threshold. Lit albedo stays under it: a white toon surface under the
+ * full daylight rig reads about 0.8 linear (the diffuse BRDF divides by pi).
+ */
+export const BLOOM = { threshold: 0.92, strength: 0.32, radius: 0.3 } as const;
+/** setFlash never whites out more than this. */
+export const MAX_FLASH = 0.25;
+
+const clampTo = (v: number, [lo, hi]: readonly [number, number]): number => Math.min(hi, Math.max(lo, v));
+
+/** The look's grade held inside GRADE_LIMITS. */
+export function gradeFor(look: { grade?: { saturation?: number; contrast?: number; tint?: [number, number, number]; vignette?: number } }): {
+  saturation: number;
+  contrast: number;
+  tint: [number, number, number];
+  vignette: number;
+} {
+  const g = { ...DEFAULT_GRADE, ...(look.grade ?? {}) };
+  return {
+    saturation: clampTo(g.saturation, GRADE_LIMITS.saturation),
+    contrast: clampTo(g.contrast, GRADE_LIMITS.contrast),
+    tint: g.tint,
+    vignette: clampTo(g.vignette, GRADE_LIMITS.vignette),
+  };
+}
 
 /**
  * The whole display transform in one full-screen pass:
@@ -66,6 +102,8 @@ export function finalFragmentShader(): string {
       vec3 col = mix( vec3( l ), c.rgb, saturation );
       col = ( col - 0.5 ) * contrast + 0.5;
       col *= tint;
+      // Split tone: shadows lean cool, highlights warm (a painted, sunlit read).
+      col *= mix( vec3( ${SPLIT_TONE.shadows.join(", ")} ), vec3( ${SPLIT_TONE.highlights.join(", ")} ), smoothstep( 0.12, 0.82, l ) );
       vec2 d = uv - 0.5;
       col *= 1.0 - vignette * smoothstep( 0.35, 0.95, dot( d, d ) * 2.2 );
       return vec4( clamp( col, 0.0, 1.0 ), c.a );
@@ -125,7 +163,7 @@ function finalShader(renderer: THREE.WebGLRenderer): THREE.ShaderMaterialParamet
 /** Push the current look's colour grade into the final pass (after a look change). */
 export function applyGrade(b: Battle3D): void {
   if (!b.finalPass) return;
-  const g = { ...DEFAULT_GRADE, ...(LOOK.grade ?? {}) };
+  const g = gradeFor(LOOK);
   const u = b.finalPass.material.uniforms;
   u["saturation"].value = g.saturation;
   u["contrast"].value = g.contrast;
@@ -137,8 +175,12 @@ export function applyGrade(b: Battle3D): void {
   markShadowsDirty(b);
 }
 
-/** The edge shade's darkest alpha (over rgb(4, 8, 20)) at the screen's sides. */
-const EDGE_SHADE = 0.45;
+/**
+ * The edge shade's darkest alpha (over rgb(4, 8, 20)) at the screen's sides:
+ * light, because the long sides are dressed (stands, pavilions, the outer
+ * ring) and are worth seeing; it only settles the eye on the board.
+ */
+const EDGE_SHADE = 0.24;
 
 /**
  * The edge shade's uniform for a board `fieldW` CSS px wide, centred on a
@@ -170,10 +212,10 @@ function applyEdgeShade(b: Battle3D, w: number): void {
   (b.finalPass.material.uniforms["uEdge"].value as THREE.Vector3).set(...edgeShadeStops(b.edgeFieldW, w));
 }
 
-/** Additive white over the whole frame, 0..1 (spell impacts, KOs). */
+/** Additive white over the whole frame, 0..MAX_FLASH (spell impacts, KOs). */
 export function setFlash(b: Battle3D, a: number): void {
   if (!b.finalPass) return;
-  b.finalPass.material.uniforms["uFlash"].value = Math.max(0, Math.min(1, a));
+  b.finalPass.material.uniforms["uFlash"].value = Math.max(0, Math.min(MAX_FLASH, a));
 }
 
 /** The battle renderer, mounted in `container`. */
@@ -222,7 +264,7 @@ export function buildComposer(b: Battle3D): PostStack {
   // lanterns, spell FX, hit-sparks) bloom, so it stays subtle and cheap.
   const composer = new EffectComposer(b.renderer);
   composer.addPass(new RenderPass(b.scene, b.camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.38, 0.34, 0.9);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), BLOOM.strength, BLOOM.radius, BLOOM.threshold);
   composer.addPass(bloom);
   // One pass for tone mapping, sRGB output, the per-arena grade, FXAA and
   // the flash (formerly three separate full-screen passes).
@@ -341,6 +383,7 @@ export function applyQuality(b: Battle3D): void {
   applyEdgeShade(b, w);
   applyLightQuality(b);
   setOutlinesVisible(outlinesEnabled());
+  applyArenaQuality(b, level);
 }
 
 /**
@@ -366,12 +409,65 @@ function applyLightQuality(b: Battle3D): void {
     sun.shadow.map = null; // reallocated at the new size on the next render
     markShadowsDirty(b);
   }
+  syncTroopCasters(b);
   // The rim is the only directional light that is neither the sun nor the fill.
   for (const light of b.lightGroup.children) {
     if ((light as THREE.DirectionalLight).isDirectionalLight && light !== sun && light !== b.fillLight) {
       light.visible = level.rimLight;
     }
   }
+}
+
+const dynState = new WeakMap<Battle3D, boolean>();
+
+/**
+ * Real troop shadows follow the LIVE level: every mesh flagged
+ * userData.troopCaster joins or leaves the sun's casters whenever the level's
+ * answer changes (a Settings change, or the governor stepping down), and the
+ * map re-renders once more so no shadow is left frozen where a troop stood.
+ * Cheap enough to check every frame (one boolean compare).
+ */
+function syncTroopCasters(b: Battle3D): void {
+  const dyn = dynamicShadows(b);
+  if (dynState.get(b) === dyn) return;
+  dynState.set(b, dyn);
+  b.scene.traverse((o) => {
+    if (o.userData.troopCaster) o.castShadow = dyn;
+  });
+  markShadowsDirty(b);
+}
+
+/**
+ * Whether troops cast real shadows at this quality: the top level only (a
+ * full-size shadow map and full bloom). The shadow pass then draws every
+ * troop a second time each frame, so the governor's first step down sheds
+ * it; lower levels keep the static map and the blob shadows. Both editions.
+ */
+export function dynamicShadows(b: Battle3D): boolean {
+  return troopShadowLevel(b.quality.level);
+}
+
+/** Shadow casters each troop may add to the per-frame shadow pass. */
+export const TROOP_CASTERS_PER_UNIT = 1;
+
+/**
+ * The level test behind dynamicShadows, for code that has no scene at hand.
+ * With no argument it reads the live level (quality.currentQuality()), so a
+ * troop built after a step-down never casts a frozen shadow.
+ */
+export function troopShadowLevel(
+  level: Pick<QualityLevel, "shadowSize" | "bloom"> & Partial<Pick<QualityLevel, "troopShadows">> = currentQuality(),
+): boolean {
+  return (level.troopShadows ?? true) && level.shadowSize >= 2048 && level.bloom >= 1;
+}
+
+/**
+ * Flag `mesh` as its troop's shadow caster (one per unit) and set its
+ * castShadow for the live level; post.ts keeps it in step from then on.
+ */
+export function registerTroopCaster(mesh: THREE.Object3D): void {
+  mesh.userData.troopCaster = true;
+  mesh.castShadow = troopShadowLevel();
 }
 
 /** True for one more frame after a tower stops sinking, to drop its shadow. */
@@ -383,8 +479,9 @@ const sinkingLastFrame = new WeakSet<Battle3D>();
  * sinks or collapses.
  */
 export function sampleQuality(b: Battle3D): void {
+  syncTroopCasters(b);
   const sinking = b.dying.some((d) => !d.view.isTroop);
-  if (sinking || sinkingLastFrame.has(b)) markShadowsDirty(b);
+  if (sinking || sinkingLastFrame.has(b) || dynamicShadows(b)) markShadowsDirty(b);
   if (sinking) sinkingLastFrame.add(b);
   else sinkingLastFrame.delete(b);
 

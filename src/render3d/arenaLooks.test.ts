@@ -6,6 +6,7 @@ import {
   ISLAMIC_LOOKS,
   LOOKS,
   lookForArena,
+  stagePalette,
   type ArenaLook,
 } from "./arenaLooks";
 
@@ -44,5 +45,24 @@ describe("arena looks", () => {
     expect(lookForArena("training-camp").backdrop).toBe("castle");
     expect(lookForArena("barbarian-bowl", true).backdrop).toBe("minaret");
     expect(lookForArena("royal-arena", true).backdrop).toBe("alhambra");
+  });
+
+  it.each(ALL.map((l) => [l.id, l] as const))("%s carries the stage palette (kerb, awning, banks, crowd)", (_id, look) => {
+    expect(look.stage).toBeDefined();
+    const pal = stagePalette(look);
+    for (const c of [pal.kerb, pal.awning]) {
+      expect(Number.isInteger(c)).toBe(true);
+      expect(c).toBeGreaterThanOrEqual(0);
+      expect(c).toBeLessThanOrEqual(0xffffff);
+    }
+    expect(pal.bankNear).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(pal.bankFar).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(pal.crowdTeamShare).toBeGreaterThan(0.2);
+    expect(pal.crowdTeamShare).toBeLessThan(0.7);
+  });
+
+  it("keeps the exports the rest of the game imports", () => {
+    expect(lookForArena("training-camp").id).toBe("meadow");
+    expect(lookForArena("training-camp", true).id).toBe("courtyard");
   });
 });

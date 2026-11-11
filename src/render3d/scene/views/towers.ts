@@ -56,6 +56,7 @@ import {
   type EntityView,
 } from "../common";
 import { brickTex } from "../arena/textures";
+import { craftClassicKeep, type KeepResult } from "./towerCraft";
 import { crescentFinial, onionDome } from "../arena/build";
 import { addShake, startKoZoom } from "../camera";
 import { markShadowsDirty } from "../post";
@@ -154,254 +155,275 @@ export function buildTowerMesh(e: Entity): EntityView {
   const root = new THREE.Group();
   const king = e.kind === "king-tower";
   const radius = king ? 1.28 : 0.95;
-  const height = king ? 2.35 : 1.85;
+  const height = arabic ? (king ? 2.35 : 1.85) : king ? 2.7 : 2.15;
   const base = chunkGroup(root, "base");
   const wall = chunkGroup(root, "wall");
   const battlement = chunkGroup(root, "battlement");
   const roof = chunkGroup(root, "roof");
   const flagGroup = chunkGroup(root, "flag", true);
 
-  // Two-step stone platform under the keep, gold-trimmed like CR.
-  // Neon arena: the whole tower is team-colored (enemy magenta, player
-  // blue) like the reference screenshot; the Arabic edition stays sand.
-  // Colours go by the team the viewer sees; positions by the sim side.
   const colors = towerTeamColors(e.side);
   const enemySide = colors.team === "enemy";
-  const platform = new THREE.Mesh(
-    new THREE.BoxGeometry(radius * 2.9, 0.18, radius * 2.9),
-    toon(enemySide ? LOOK.tower.platformEnemy : LOOK.tower.platformPlayer),
-  );
-  platform.position.y = 0.09;
-  base.add(platform);
-  const platTrim = new THREE.Mesh(
-    new THREE.BoxGeometry(radius * 2.95, 0.06, radius * 2.95),
-    toon(0xd9a93f),
-  );
-  platTrim.position.y = 0.2;
-  base.add(platTrim);
-  const plinth = new THREE.Mesh(
-    new THREE.BoxGeometry(radius * 2.3, 0.3, radius * 2.3),
-    toon(LOOK.tower.plinth),
-  );
-  plinth.position.y = 0.32;
-  base.add(plinth);
-
-  const wallMat = paintedToon(
-    new THREE.MeshToonMaterial({
-      map: brickTex(enemySide ? LOOK.tower.enemy : LOOK.tower.player),
-    }),
-  );
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(radius * 2, height, radius * 2),
-    wallMat,
-  );
-  body.position.y = height / 2;
-  wall.add(body);
-
-  // Bevelled corner pillars standing proud of the wall, and a stone base
-  // course: the chunky silhouette CR towers have instead of a bare box.
-  const pillarMat = toon(LOOK.tower.battlement);
-  for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
-      const pillar = new THREE.Mesh(
-        new THREE.BoxGeometry(radius * 0.32, height + 0.06, radius * 0.32),
-        pillarMat,
-      );
-      pillar.position.set(sx * radius * 0.98, (height + 0.06) / 2, sz * radius * 0.98);
-      wall.add(pillar);
-    }
-  }
-  const baseCourse = new THREE.Mesh(
-    new THREE.BoxGeometry(radius * 2.1, 0.26, radius * 2.1),
-    toon(LOOK.tower.plinth),
-  );
-  baseCourse.position.y = 0.6;
-  base.add(baseCourse);
-
-  // Gold trim band under the battlements (CR's royal touch).
-  const trim = new THREE.Mesh(
-    new THREE.BoxGeometry(radius * 2.15, 0.14, radius * 2.15),
-    toon(0xf2c14e),
-  );
-  trim.position.y = height - 0.16;
-  wall.add(trim);
-
-  // Merlons along the four roof edges — taller CR battlements. The three
-  // facing the camera that break off are added last (last-lost first), so
-  // they end the battlement's merged mesh and damage trims them off its
-  // draw range.
   const camSide = viewSide === "player" ? 1 : -1;
-  const breakable = [
-    { row: "a", side: camSide, i: 1 }, // lost at 2/3 HP
-    { row: "a", side: camSide, i: -1 },
-    { row: "b", side: -1, i: camSide }, // both gone by 1/3 HP
-  ];
-  const crenelUnits: THREE.Mesh[][] = [[], [], []];
-  const spots: THREE.Vector3[] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
-  const merlon = toon(LOOK.tower.battlement);
-  const gildCap = TOWER_FLAIR >= 1 ? toon(0xf2c14e) : null;
-  for (const side of [-1, 1]) {
-    for (let i = -1; i <= 1; i++) {
-      for (const row of ["a", "b"] as const) {
-        const along = row === "a";
-        const x = along ? i * radius * 0.7 : side * radius * 0.92;
-        const z = along ? side * radius * 0.92 : i * radius * 0.7;
-        const m = new THREE.Mesh(
-          along ? new THREE.BoxGeometry(0.34, 0.38, 0.2) : new THREE.BoxGeometry(0.2, 0.38, 0.34),
-          merlon,
-        );
-        m.position.set(x, height + 0.16, z);
-        const parts = [m];
-        if (gildCap) {
-          // Trophy-road flair: gilded caps on every battlement.
-          const cap = new THREE.Mesh(
-            along ? new THREE.BoxGeometry(0.36, 0.06, 0.22) : new THREE.BoxGeometry(0.22, 0.06, 0.36),
-            gildCap,
-          );
-          cap.position.set(x, height + 0.38, z);
-          parts.push(cap);
-        }
-        const k = breakable.findIndex((c) => c.row === row && c.side === side && c.i === i);
-        if (k >= 0) {
-          crenelUnits[k] = parts;
-          spots[k].set(x, height + 0.2, z);
-        } else {
-          battlement.add(...parts);
-        }
-      }
-    }
-  }
-  for (let k = crenelUnits.length - 1; k >= 0; k--) battlement.add(...crenelUnits[k]);
-  const vertsOf = (m: THREE.Mesh): number => m.geometry.index?.count ?? m.geometry.getAttribute("position").count;
-  const unitVerts = crenelUnits[0].reduce((n, m) => n + vertsOf(m), 0);
-
-  if (TOWER_FLAIR >= 2) {
-    // Veteran crest: a ruby set in gold on the tower's river-facing wall.
-    const crestSide = e.side === "player" ? -1 : 1;
-    const setting = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.06, 8), toon(0xf2c14e));
-    setting.rotation.x = Math.PI / 2;
-    setting.position.set(0, height * 0.62, crestSide * (radius + 0.03));
-    wall.add(setting);
-    const ruby = new THREE.Mesh(new THREE.OctahedronGeometry(0.11), toon(0xe0314a));
-    ruby.position.set(0, height * 0.62, crestSide * (radius + 0.08));
-    wall.add(ruby);
-  }
-
-  // Door + team banner facing the enemy.
+  // Door + team banner face the enemy.
   const facing = e.side === "player" ? -1 : 1;
+  let spots: THREE.Vector3[] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  const vertsOf = (m: THREE.Mesh): number => m.geometry.index?.count ?? m.geometry.getAttribute("position").count;
+  let unitVerts = 0;
+  let crafted: KeepResult | null = null;
+  if (!arabic) {
+    // Classic edition: the hand-sculpted keep (towerCraft.ts).
+    crafted = craftClassicKeep({
+      king,
+      radius,
+      height,
+      cloth: colors.cloth,
+      enemyTeam: enemySide,
+      facing,
+      camSide,
+      gun: king || e.towerTroop === "cannoneer",
+      flair: TOWER_FLAIR,
+      look: LOOK,
+      chunks: { base, wall, battlement, roof },
+    });
+    unitVerts = crafted.unitVerts;
+    spots = crafted.spots;
+  } else {
+    // Two-step stone platform under the keep, gold-trimmed like CR.
+    // Neon arena: the whole tower is team-colored (enemy magenta, player
+    // blue) like the reference screenshot; the Arabic edition stays sand.
+    // Colours go by the team the viewer sees; positions by the sim side.
+    const platform = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * 2.9, 0.18, radius * 2.9),
+      toon(enemySide ? LOOK.tower.platformEnemy : LOOK.tower.platformPlayer),
+    );
+    platform.position.y = 0.09;
+    base.add(platform);
+    const platTrim = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * 2.95, 0.06, radius * 2.95),
+      toon(0xd9a93f),
+    );
+    platTrim.position.y = 0.2;
+    base.add(platTrim);
+    const plinth = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * 2.3, 0.3, radius * 2.3),
+      toon(LOOK.tower.plinth),
+    );
+    plinth.position.y = 0.32;
+    base.add(plinth);
 
-  // Arabic theme: crown the tower with onion-dome cupolas at the corners and
-  // a big central dome (king) or crescent spire (princess) toward the rear,
-  // so the tower crew stays visible up front.
-  if (arabic) {
-    const domeColor = king ? (LOOK.islamic?.domeKing ?? THEME.turquoise) : (LOOK.islamic?.dome ?? THEME.teal);
+    const wallMat = paintedToon(
+      new THREE.MeshToonMaterial({
+        map: brickTex(enemySide ? LOOK.tower.enemy : LOOK.tower.player),
+      }),
+    );
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * 2, height, radius * 2),
+      wallMat,
+    );
+    body.position.y = height / 2;
+    wall.add(body);
+
+    // Bevelled corner pillars standing proud of the wall, and a stone base
+    // course: the chunky silhouette CR towers have instead of a bare box.
+    const pillarMat = toon(LOOK.tower.battlement);
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
-        const cup = onionDome(radius * 0.26, domeColor);
-        cup.position.set(sx * radius * 0.82, height + 0.02, sz * radius * 0.82);
-        roof.add(cup);
+        const pillar = new THREE.Mesh(
+          new THREE.BoxGeometry(radius * 0.32, height + 0.06, radius * 0.32),
+          pillarMat,
+        );
+        pillar.position.set(sx * radius * 0.98, (height + 0.06) / 2, sz * radius * 0.98);
+        wall.add(pillar);
       }
     }
-    const rearZ = facing * -radius * 0.5;
-    if (king) {
-      const dome = onionDome(radius * 0.62, domeColor);
-      dome.position.set(0, height + 0.05, rearZ);
-      roof.add(dome);
-    } else {
-      const fin = crescentFinial(0.55);
-      fin.position.set(0, height + 0.2, rearZ);
-      roof.add(fin);
+    const baseCourse = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * 2.1, 0.26, radius * 2.1),
+      toon(LOOK.tower.plinth),
+    );
+    baseCourse.position.y = 0.6;
+    base.add(baseCourse);
+
+    // Gold trim band under the battlements (CR's royal touch).
+    const trim = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * 2.15, 0.14, radius * 2.15),
+      toon(0xf2c14e),
+    );
+    trim.position.y = height - 0.16;
+    wall.add(trim);
+
+    // Merlons along the four roof edges — taller CR battlements. The three
+    // facing the camera that break off are added last (last-lost first), so
+    // they end the battlement's merged mesh and damage trims them off its
+    // draw range.
+    const breakable = [
+      { row: "a", side: camSide, i: 1 }, // lost at 2/3 HP
+      { row: "a", side: camSide, i: -1 },
+      { row: "b", side: -1, i: camSide }, // both gone by 1/3 HP
+    ];
+    const crenelUnits: THREE.Mesh[][] = [[], [], []];
+    const merlon = toon(LOOK.tower.battlement);
+    const gildCap = TOWER_FLAIR >= 1 ? toon(0xf2c14e) : null;
+    for (const side of [-1, 1]) {
+      for (let i = -1; i <= 1; i++) {
+        for (const row of ["a", "b"] as const) {
+          const along = row === "a";
+          const x = along ? i * radius * 0.7 : side * radius * 0.92;
+          const z = along ? side * radius * 0.92 : i * radius * 0.7;
+          const m = new THREE.Mesh(
+            along ? new THREE.BoxGeometry(0.34, 0.38, 0.2) : new THREE.BoxGeometry(0.2, 0.38, 0.34),
+            merlon,
+          );
+          m.position.set(x, height + 0.16, z);
+          const parts = [m];
+          if (gildCap) {
+            // Trophy-road flair: gilded caps on every battlement.
+            const cap = new THREE.Mesh(
+              along ? new THREE.BoxGeometry(0.36, 0.06, 0.22) : new THREE.BoxGeometry(0.22, 0.06, 0.36),
+              gildCap,
+            );
+            cap.position.set(x, height + 0.38, z);
+            parts.push(cap);
+          }
+          const k = breakable.findIndex((c) => c.row === row && c.side === side && c.i === i);
+          if (k >= 0) {
+            crenelUnits[k] = parts;
+            spots[k].set(x, height + 0.2, z);
+          } else {
+            battlement.add(...parts);
+          }
+        }
+      }
     }
-  } else {
-    // Classic edition: chunky team-color roof caps and a raised royal crown
-    // platform make princess and king towers identifiable at a glance.
-    const roofColor = colors.cloth;
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        const cap = new THREE.Mesh(
-          new THREE.ConeGeometry(radius * 0.28, radius * 0.52, 4),
-          toon(roofColor),
-        );
-        cap.rotation.y = Math.PI / 4;
-        cap.position.set(sx * radius * 0.78, height + 0.42, sz * radius * 0.78);
-        roof.add(cap);
-        const goldTip = new THREE.Mesh(
-          new THREE.SphereGeometry(radius * 0.07, 8, 6),
+    for (let k = crenelUnits.length - 1; k >= 0; k--) battlement.add(...crenelUnits[k]);
+    unitVerts = crenelUnits[0].reduce((n, m) => n + vertsOf(m), 0);
+
+    if (TOWER_FLAIR >= 2) {
+      // Veteran crest: a ruby set in gold on the tower's river-facing wall.
+      const crestSide = e.side === "player" ? -1 : 1;
+      const setting = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.06, 8), toon(0xf2c14e));
+      setting.rotation.x = Math.PI / 2;
+      setting.position.set(0, height * 0.62, crestSide * (radius + 0.03));
+      wall.add(setting);
+      const ruby = new THREE.Mesh(new THREE.OctahedronGeometry(0.11), toon(0xe0314a));
+      ruby.position.set(0, height * 0.62, crestSide * (radius + 0.08));
+      wall.add(ruby);
+    }
+
+
+    // Arabic theme: crown the tower with onion-dome cupolas at the corners and
+    // a big central dome (king) or crescent spire (princess) toward the rear,
+    // so the tower crew stays visible up front.
+    if (arabic) {
+      const domeColor = king ? (LOOK.islamic?.domeKing ?? THEME.turquoise) : (LOOK.islamic?.dome ?? THEME.teal);
+      for (const sx of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          const cup = onionDome(radius * 0.26, domeColor);
+          cup.position.set(sx * radius * 0.82, height + 0.02, sz * radius * 0.82);
+          roof.add(cup);
+        }
+      }
+      const rearZ = facing * -radius * 0.5;
+      if (king) {
+        const dome = onionDome(radius * 0.62, domeColor);
+        dome.position.set(0, height + 0.05, rearZ);
+        roof.add(dome);
+      } else {
+        const fin = crescentFinial(0.55);
+        fin.position.set(0, height + 0.2, rearZ);
+        roof.add(fin);
+      }
+    } else {
+      // Classic edition: chunky team-color roof caps and a raised royal crown
+      // platform make princess and king towers identifiable at a glance.
+      const roofColor = colors.cloth;
+      for (const sx of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          const cap = new THREE.Mesh(
+            new THREE.ConeGeometry(radius * 0.28, radius * 0.52, 4),
+            toon(roofColor),
+          );
+          cap.rotation.y = Math.PI / 4;
+          cap.position.set(sx * radius * 0.78, height + 0.42, sz * radius * 0.78);
+          roof.add(cap);
+          const goldTip = new THREE.Mesh(
+            new THREE.SphereGeometry(radius * 0.07, 8, 6),
+            toon(0xf6c14e),
+          );
+          goldTip.position.set(sx * radius * 0.78, height + 0.72, sz * radius * 0.78);
+          roof.add(goldTip);
+        }
+      }
+      if (king) {
+        const crownDeck = new THREE.Mesh(
+          new THREE.CylinderGeometry(radius * 0.62, radius * 0.72, 0.18, 8),
           toon(0xf6c14e),
         );
-        goldTip.position.set(sx * radius * 0.78, height + 0.72, sz * radius * 0.78);
-        roof.add(goldTip);
+        crownDeck.position.set(0, height + 0.2, -facing * radius * 0.4);
+        roof.add(crownDeck);
       }
-    }
-    if (king) {
-      const crownDeck = new THREE.Mesh(
-        new THREE.CylinderGeometry(radius * 0.62, radius * 0.72, 0.18, 8),
+
+      // CR-signature gun platform: a timber deck with a chunky cannon aimed
+      // downlane (offset so the tower crew keeps center stage).
+      const deckPlanks = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius * 0.92, radius * 0.98, 0.1, 10),
+        toon(0x8a5c2e),
+      );
+      deckPlanks.position.y = height + 0.02;
+      roof.add(deckPlanks);
+      const gun = new THREE.Group();
+      gun.position.set(radius * 0.5, height + 0.14, facing * radius * 0.5);
+      const carriage = new THREE.Mesh(
+        new THREE.BoxGeometry(0.3, 0.14, 0.34),
+        toon(0x6e4a26),
+      );
+      carriage.position.y = 0.02;
+      gun.add(carriage);
+      const barrel = new THREE.Mesh(
+        new THREE.CylinderGeometry(king ? 0.16 : 0.12, king ? 0.2 : 0.15, king ? 0.85 : 0.65, 10),
+        toon(0x3a4150),
+      );
+      barrel.rotation.x = facing * 1.35; // aimed downlane with a slight lift
+      barrel.position.set(0, 0.16, facing * 0.12);
+      gun.add(barrel);
+      const band = new THREE.Mesh(
+        new THREE.CylinderGeometry((king ? 0.16 : 0.12) + 0.025, (king ? 0.16 : 0.12) + 0.025, 0.08, 10),
         toon(0xf6c14e),
       );
-      crownDeck.position.set(0, height + 0.2, -facing * radius * 0.4);
-      roof.add(crownDeck);
+      band.rotation.x = facing * 1.35;
+      band.position.set(0, 0.16, facing * 0.12);
+      gun.add(band);
+      roof.add(gun);
     }
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.1), toon(0x4a3826));
+    door.position.set(0, 0.62, facing * radius * 1.01);
+    base.add(door);
 
-    // CR-signature gun platform: a timber deck with a chunky cannon aimed
-    // downlane (offset so the tower crew keeps center stage).
-    const deckPlanks = new THREE.Mesh(
-      new THREE.CylinderGeometry(radius * 0.92, radius * 0.98, 0.1, 10),
-      toon(0x8a5c2e),
-    );
-    deckPlanks.position.y = height + 0.02;
-    roof.add(deckPlanks);
-    const gun = new THREE.Group();
-    gun.position.set(radius * 0.5, height + 0.14, facing * radius * 0.5);
-    const carriage = new THREE.Mesh(
-      new THREE.BoxGeometry(0.3, 0.14, 0.34),
-      toon(0x6e4a26),
-    );
-    carriage.position.y = 0.02;
-    gun.add(carriage);
-    const barrel = new THREE.Mesh(
-      new THREE.CylinderGeometry(king ? 0.16 : 0.12, king ? 0.2 : 0.15, king ? 0.85 : 0.65, 10),
-      toon(0x3a4150),
-    );
-    barrel.rotation.x = facing * 1.35; // aimed downlane with a slight lift
-    barrel.position.set(0, 0.16, facing * 0.12);
-    gun.add(barrel);
-    const band = new THREE.Mesh(
-      new THREE.CylinderGeometry((king ? 0.16 : 0.12) + 0.025, (king ? 0.16 : 0.12) + 0.025, 0.08, 10),
-      toon(0xf6c14e),
-    );
-    band.rotation.x = facing * 1.35;
-    band.position.set(0, 0.16, facing * 0.12);
-    gun.add(band);
-    roof.add(gun);
-  }
-  const door = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.1), toon(0x4a3826));
-  door.position.set(0, 0.62, facing * radius * 1.01);
-  base.add(door);
-
-  // The king's platform bears a golden crown emblem out front.
-  if (king) {
-    const emblem = new THREE.Group();
-    const band = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.07), toon(0xd9a93f));
-    emblem.add(band);
-    for (const dx of [-0.17, 0, 0.17]) {
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.18, 4), toon(0xd9a93f));
-      spike.position.set(dx, 0.16, 0);
-      emblem.add(spike);
+    // The king's platform bears a golden crown emblem out front.
+    if (king) {
+      const emblem = new THREE.Group();
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.07), toon(0xd9a93f));
+      emblem.add(band);
+      for (const dx of [-0.17, 0, 0.17]) {
+        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.18, 4), toon(0xd9a93f));
+        spike.position.set(dx, 0.16, 0);
+        emblem.add(spike);
+      }
+      emblem.position.set(0, 0.34, facing * radius * 1.47);
+      base.add(emblem);
     }
-    emblem.position.set(0, 0.34, facing * radius * 1.47);
-    base.add(emblem);
+    const banner = new THREE.Mesh(
+      new THREE.BoxGeometry(0.44, 0.7, 0.06),
+      toon(colors.cloth),
+    );
+    banner.position.set(0, height - 0.62, facing * radius * 1.03);
+    wall.add(banner);
+    const bannerTip = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.24, 4), toon(colors.cloth));
+    bannerTip.rotation.x = Math.PI;
+    bannerTip.rotation.y = Math.PI / 4;
+    bannerTip.position.set(0, height - 1.05, facing * radius * 1.03);
+    wall.add(bannerTip);
   }
-  const banner = new THREE.Mesh(
-    new THREE.BoxGeometry(0.44, 0.7, 0.06),
-    toon(colors.cloth),
-  );
-  banner.position.set(0, height - 0.62, facing * radius * 1.03);
-  wall.add(banner);
-  const bannerTip = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.24, 4), toon(colors.cloth));
-  bannerTip.rotation.x = Math.PI;
-  bannerTip.rotation.y = Math.PI / 4;
-  bannerTip.position.set(0, height - 1.05, facing * radius * 1.03);
-  wall.add(bannerTip);
 
   // Every static stone part casts and takes shadow, so each chunk merges
   // into as few meshes as its materials allow.
@@ -412,12 +434,13 @@ export function buildTowerMesh(e: Entity): EntityView {
   }
 
   // Cracks spread over the walls as the tower is worn down.
-  const cracks = buildCracks(radius, height, king);
+  const cracks = buildCracks(crafted ? crafted.midRadius : radius, height, king);
   wall.add(cracks);
 
   // Team flag, planted off-center so the tower crew has the roof. Its
   // group pivots at the foot of the pole, so damage can tilt it over.
-  flagGroup.position.set(-radius * 0.6, height + 0.1, 0);
+  if (crafted) flagGroup.position.copy(crafted.flagFoot);
+  else flagGroup.position.set(-radius * 0.6, height + 0.1, 0);
   const pole = new THREE.Mesh(
     new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6),
     toon(0x5a4632),

@@ -18,7 +18,8 @@ import * as THREE from "three";
 import type { Side } from "../../../game/arena";
 import type { ArenaLook, BackdropKind } from "../../arenaLooks";
 import { toon } from "../../characters3d";
-import { CAM_HOME, SIDE_COLOR } from "../common";
+import { CAM_HOME } from "../common";
+import { teamColor as liveTeamColor } from "../../teamColors";
 import { hashString } from "./groundPaint";
 import { GROUND_EDGE_Z, buildKit, type Kit, type KitLight, type KitSeat } from "./kits";
 import { makeWaterfall, type WaterfallHandle } from "./river";
@@ -186,13 +187,24 @@ function addLip(k: Kit): void {
   const L = k.look;
   const z = 17.7;
   const kind = L.backdrop;
-  const stone = L.edging;
   if (kind === "castle" || kind === "alhambra" || kind === "minaret") {
-    k.part("lip wall", new THREE.BoxGeometry(24, 0.42, 0.7), stone, { y: 0.15, z });
-    k.part("lip cap", new THREE.BoxGeometry(24.2, 0.1, 0.85), kind === "castle" ? 0xd9a93f : 0xcaa23f, { y: 0.4, z });
-    for (let i = -5; i <= 5; i++) k.part("lip post", new THREE.BoxGeometry(0.42, 0.62, 0.8), stone, { x: i * 2.2, y: 0.25, z });
-    for (let i = -4; i <= 4; i += 2) {
-      k.part("planter", new THREE.IcosahedronGeometry(0.42, 0), L.tree.leafA, { x: i * 2.2 + 1.1, y: 0.62, z: z + 0.1, sy: 0.8 });
+    // The near band: a dressed-stone terrace wall with a capstone run, piers
+    // and flower boxes (low: it must never cover your king).
+    const wall = kind === "castle" ? L.cornerPost : L.edging;
+    const capC = kind === "castle" ? new THREE.Color(wall).multiplyScalar(1.12).getHex() : 0xcaa23f;
+    k.part("lip wall", new THREE.BoxGeometry(24, 0.42, 0.7), wall, { y: 0.15, z });
+    k.part("lip cap", new THREE.BoxGeometry(24.2, 0.09, 0.82), capC, { y: 0.4, z });
+    for (let i = -5; i <= 5; i++) {
+      k.part("lip post", new THREE.BoxGeometry(0.42, 0.6, 0.8), new THREE.Color(wall).multiplyScalar(0.92).getHex(), { x: i * 2.2, y: 0.24, z });
+      k.part("lip post cap", new THREE.BoxGeometry(0.5, 0.07, 0.88), capC, { x: i * 2.2, y: 0.56, z });
+    }
+    for (let i = -5; i < 5; i++) {
+      const x = i * 2.2 + 1.1;
+      k.part("flower box", new THREE.BoxGeometry(1.3, 0.16, 0.42), 0x8a5a2a, { x, y: 0.5, z: z + 0.05 });
+      for (let j = 0; j < 3; j++) {
+        k.part("box shrub", new THREE.IcosahedronGeometry(0.24, 1), j === 1 ? L.tree.leafB : L.tree.leafA, { x: x - 0.4 + j * 0.4, y: 0.64, z: z + 0.05, sy: 0.75 });
+        k.part("box bloom", new THREE.SphereGeometry(0.06, 5, 4), [0xfff176, 0xf48fb1, 0xffffff][(i + j + 5) % 3], { x: x - 0.32 + j * 0.4, y: 0.8, z: z + 0.15 });
+      }
     }
     return;
   }
@@ -212,6 +224,16 @@ function addLip(k: Kit): void {
   }
 }
 
+/**
+ * The far ground's material. The Golden Age town stands on the apron's sand,
+ * so there the far ground continues the apron (its colour through the same
+ * toon material, so no straight edge shows where the apron box ends on a
+ * wide screen); Classic keeps its look's far ground.
+ */
+export function farGroundMaterial(look: ArenaLook): THREE.MeshToonMaterial {
+  return look.islamic ? toon(look.apron) : new THREE.MeshToonMaterial({ color: look.far });
+}
+
 /** Build the backdrop for the current look; `glow` makes the dimmable glow material. */
 export function buildBackdrop(look: ArenaLook, glow: (color: number) => THREE.MeshBasicMaterial): Backdrop {
   const group = new THREE.Group();
@@ -222,7 +244,7 @@ export function buildBackdrop(look: ArenaLook, glow: (color: number) => THREE.Me
   const farGeo = new THREE.PlaneGeometry(160, 100);
   farGeo.rotateX(-Math.PI / 2);
   farGeo.translate(0, -0.45, GROUND_EDGE_Z + 50);
-  const far = new THREE.Mesh(farGeo, new THREE.MeshToonMaterial({ color: look.far }));
+  const far = new THREE.Mesh(farGeo, farGroundMaterial(look));
   far.name = "far ground";
   group.add(far);
 
@@ -271,7 +293,7 @@ export function buildBackdrop(look: ArenaLook, glow: (color: number) => THREE.Me
       group.rotation.y = view === "player" ? 0 : Math.PI;
       // The banners belong to whoever owns the far king.
       if (!teamColor) return;
-      TMP.set(SIDE_COLOR[view === "player" ? "enemy" : "player"]).getHSL(HSL);
+      TMP.set(liveTeamColor(view === "player" ? "enemy" : "player")).getHSL(HSL);
       TMP.setHSL(HSL.h, Math.min(1, HSL.s * 1.2), HSL.l);
       for (const [start, count] of kit.team) {
         // Team parts hang high, above the baked ground shading.

@@ -33,14 +33,28 @@ let toonGradient: THREE.DataTexture | null = null;
 
 function gradientMap(): THREE.DataTexture {
   if (!toonGradient) {
-    // shadow · mid · light · light (the doubled last texel widens the lit band)
-    const data = new Uint8Array([
-      84, 90, 138, 255,
-      168, 170, 200, 255,
-      255, 250, 238, 255,
-      255, 250, 238, 255,
-    ]);
-    toonGradient = new THREE.DataTexture(data, 4, 1, THREE.RGBAFormat);
+    // A 64-texel ramp with two soft steps (cel bands with anti-aliased
+    // edges): cool violet shade, a lavender half-tone, warm cream light.
+    const N = 64;
+    const data = new Uint8Array(N * 4);
+    const shade = [92, 100, 158];
+    const mid = [186, 186, 216];
+    const light = [255, 249, 234];
+    const sm = (e0: number, e1: number, x: number): number => {
+      const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+      return t * t * (3 - 2 * t);
+    };
+    for (let i = 0; i < N; i++) {
+      const u = (i + 0.5) / N;
+      const a = sm(0.43, 0.53, u);
+      const b = sm(0.66, 0.8, u);
+      for (let k = 0; k < 3; k++) {
+        const v = shade[k] + (mid[k] - shade[k]) * a;
+        data[i * 4 + k] = Math.round(v + (light[k] - v) * b);
+      }
+      data[i * 4 + 3] = 255;
+    }
+    toonGradient = new THREE.DataTexture(data, N, 1, THREE.RGBAFormat);
     toonGradient.minFilter = THREE.LinearFilter;
     toonGradient.magFilter = THREE.LinearFilter;
     toonGradient.colorSpace = THREE.NoColorSpace;
@@ -137,9 +151,18 @@ function addRimLight(
          #endif
        }`,
     );
+    if (ink) {
+      // Baked rigs only: feet and hems darken toward the ground they stand
+      // on (painted contact occlusion), so bodies read as rooted volumes.
+      sh.vertexShader = sh.vertexShader
+        .replace("#include <common>", "#include <common>\n varying float vGroundY;")
+        .replace("#include <fog_vertex>", "vGroundY = (modelMatrix * vec4(transformed, 1.0)).y;\n #include <fog_vertex>");
+      sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\n varying float vGroundY;");
+    }
     sh.fragmentShader = sh.fragmentShader.replace(
       "#include <dithering_fragment>",
       `${ink ? INK_FRAGMENT : "{"}
+         ${ink ? "gl_FragColor.rgb *= 0.7 + 0.3 * smoothstep(0.0, 0.55, vGroundY);" : ""}
          float _rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
          _rim = smoothstep(0.72, 1.0, _rim) * 0.26;
          gl_FragColor.rgb += _rim * vec3(0.42, 0.56, 0.80);

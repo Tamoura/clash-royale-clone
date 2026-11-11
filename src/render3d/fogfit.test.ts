@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { ARENA_HEIGHT, ARENA_WIDTH } from "../game/arena";
 import { ARABIC_LOOK, ISLAMIC_LOOKS, LOOKS, type ArenaLook } from "./arenaLooks";
-import { FOG_MARGIN, MIN_FOG_RAMP, fitFog, fogFactor, viewMatrixAt } from "./fogfit";
+import { FAR_BAND, FOG_MARGIN, MIN_FOG_RAMP, fitFog, fogFactor, viewMatrixAt } from "./fogfit";
 import { frameOrtho } from "./scene/camera";
 import { CAM_HOME } from "./scene/common";
 import type { Battle3D } from "./scene3d";
@@ -72,12 +72,27 @@ describe("fitFog", () => {
           // The ramp keeps the look's length, and scenery far behind the
           // board still fades into the sky.
           expect(range.far - range.near).toBe(Math.max(MIN_FOG_RAMP, look.fogFar - look.fogNear));
-          const behind = -Math.sign(camZ) * 60;
+          const behind = -Math.sign(camZ) * (60 + FAR_BAND);
           expect(fogFactor(range, depthOf(cam, 0, 0, behind))).toBeGreaterThan(0.5);
         });
       }
     }
   }
+
+  it("never reaches the far band above the far king (gate, terrace, pennants)", () => {
+    for (const look of ALL_LOOKS) {
+      for (const [, w, h] of ASPECTS) {
+        for (const [, camZ] of VIEWS) {
+          const cam = battleCamera(w, h, camZ);
+          const range = fitFog(cam.matrixWorldInverse, look);
+          const farEnd = -Math.sign(camZ) * (ARENA_HEIGHT / 2 + FAR_BAND);
+          for (const x of [-ARENA_WIDTH / 2 - 3, 0, ARENA_WIDTH / 2 + 3]) {
+            for (const y of [0, 3, 6]) expect(fogFactor(range, depthOf(cam, x, y, farEnd))).toBe(0);
+          }
+        }
+      }
+    }
+  });
 
   it("gives the host and the flipped guest the same fog", () => {
     const host = fitFog(viewMatrixAt(0, CAM_HOME.y, CAM_HOME.z), LOOKS.neon);
