@@ -864,8 +864,17 @@ function buildGiant(): TroopRig {
  */
 const BRICK = 0x9a5a44, BRICK_DK = 0x5e3426;
 
+/** The war elephant's body scale inside its rig (see buildWarElephant). */
+export const ELEPHANT_SCALE = 0.72;
+
 function buildWarElephant(): TroopRig {
+  // Built at full size inside a body group scaled ELEPHANT_SCALE, so the
+  // field's giant scale lands the head-top in the art bible's large band
+  // (3.3-3.8) and the body stays about two tiles wide.
+  const root = new THREE.Group();
   const g = new THREE.Group();
+  g.scale.setScalar(ELEPHANT_SCALE);
+  root.add(g);
   const GRAY = 0x8d8f96, GRAYDK = 0x6d6f77, IVORY = 0xf1e7cf;
   // Art bible 7: the ONE team slot is the saddle cloth (the caparison); the
   // howdah, canopy and medallion keep the edition's emerald, turquoise and gold.
@@ -882,9 +891,10 @@ function buildWarElephant(): TroopRig {
 
   // Barrel body.
   const body = sphere(0.82, GRAY, 0, 1.28, -0.05);
-  body.scale.set(1.05, 0.95, 1.55);
+  body.scale.set(0.84, 0.95, 1.55);
   g.add(body);
   const rump = sphere(0.66, GRAY, 0, 1.28, -0.9);
+  rump.scale.set(0.86, 1, 1);
   g.add(rump);
   const tail = cyl(0.05, 0.04, 0.5, GRAYDK, 0, 1.05, -1.5);
   tail.rotation.x = 0.35;
@@ -899,8 +909,8 @@ function buildWarElephant(): TroopRig {
     g.add(sphere(0.07, 0x1f2430, s * 0.22, 1.5, 1.36)); // small eye
     const ear = new THREE.Group();
     ear.name = "ear";
-    ear.position.set(s * 0.5, 1.55, 0.85);
-    const flap = sphere(0.4, GRAYDK, s * 0.18, 0, 0);
+    ear.position.set(s * 0.44, 1.55, 0.85);
+    const flap = sphere(0.36, GRAYDK, s * 0.14, 0, 0);
     flap.scale.set(0.28, 1.05, 1.1);
     ear.add(flap);
     g.add(ear);
@@ -930,14 +940,19 @@ function buildWarElephant(): TroopRig {
 
   // Caparison: jewel-toned cloth draped over the body with a gold hem and
   // hanging tassels — Moorish parade barding.
-  const drape = box(1.55, 0.7, 1.7, 0xffffff, 0, 1.2, -0.05);
+  // The saddle cloth hangs off both flanks (wider than the body, so it shows
+  // from every side) with a blanket on top that the howdah sits on.
+  const drape = box(1.56, 0.66, 1.62, 0xffffff, 0, 1.26, -0.05);
   drape.name = "saddle-cloth";
   g.add(teamPart(drape));
-  g.add(box(1.6, 0.12, 1.75, GOLD, 0, 0.9, -0.05)); // gold hem
+  const blanket = box(1.24, 0.1, 1.34, 0xffffff, 0, 1.8, -0.15);
+  blanket.name = "saddle-cloth";
+  g.add(teamPart(blanket));
+  g.add(box(1.6, 0.12, 1.66, GOLD, 0, 0.96, -0.05)); // gold hem
   for (let i = 0; i < 4; i++) {
     const x = -0.6 + i * 0.4;
     for (const s of [-1, 1]) {
-      g.add(cone(0.07, 0.18, GOLD, x, 0.78, s * 0.85)); // hem tassels
+      g.add(cone(0.07, 0.18, GOLD, s * 0.82, 0.84, x)); // hem tassels
     }
   }
   g.add(box(0.5, 0.4, 0.04, CLOTH2, 0, 1.5, 1.32)); // brow medallion cloth
@@ -1006,7 +1021,7 @@ function buildWarElephant(): TroopRig {
   // Idle life: the trunk curls and the ears flap gently.
   const ears = g.children.filter((c) => c.name === "ear");
   const rig: TroopRig = {
-    group: g, arm, armRest: -0.25, swingAmp: 1.0, height: 2.9, legs, offArm,
+    group: root, arm, armRest: -0.25, swingAmp: 1.0, height: 2.9 * ELEPHANT_SCALE, legs, offArm,
     extras: (time, phase) => {
       trunk.rotation.x = Math.sin(time * 2 + phase) * 0.18;
       for (let i = 0; i < ears.length; i++) {
@@ -1555,21 +1570,22 @@ function buildWitch(): TroopRig {
 
 /**
  * Art bible 7: a creature wears its team colour on ONE cloth or trim slot.
- * A scarf knotted round the neck: the wrap, the knot and two tails that fly
- * out behind (so the side also reads from the back). All in one node, so
- * the bake merges it into one team mesh.
+ * A scarf knotted round the neck: the wrap, a knot at the nape and two
+ * tails streaming out behind (so the side also reads from the back). All
+ * in one node, so the bake merges it into one team mesh. `back` is how far
+ * behind the neck the tails fly (clear of the body).
  */
-function teamScarf(r: number, y: number, z: number, tilt = 0.3): THREE.Mesh[] {
-  const wrap = new THREE.Mesh(cachedGeo(`scarf:${r}`, () => new THREE.TorusGeometry(r, r * 0.24, 8, 22)), toon(0xffffff));
+function teamScarf(r: number, y: number, z: number, back: number, tilt = 0.3): THREE.Mesh[] {
+  const wrap = new THREE.Mesh(cachedGeo(`scarf:${r}`, () => new THREE.TorusGeometry(r, r * 0.3, 8, 22)), toon(0xffffff));
   wrap.rotation.x = Math.PI / 2 + tilt;
   shadowed(wrap, 0, y, z);
   wrap.name = "scarf";
-  const knot = sphere(round3(r * 0.32), 0xffffff, 0, y - r * 0.28, z - r * 0.92);
+  const knot = sphere(round3(r * 0.36), 0xffffff, 0, y + r * 0.15, z - r * 0.95);
   knot.name = "scarf";
   const parts: THREE.Mesh[] = [teamPart(wrap), teamPart(knot, "dark")];
   for (const s of [-1, 1]) {
-    const tail = box(round3(r * 0.42), round3(r * 1.1), round3(r * 0.1), 0xffffff, s * r * 0.26, y - r * 0.85, z - r * 1.12);
-    tail.rotation.set(-0.5, 0, s * 0.35);
+    const tail = box(round3(r * 0.5), round3(r * 1.5), round3(r * 0.14), 0xffffff, s * r * 0.32, y + r * 0.05, z - back);
+    tail.rotation.set(-1.2, 0, s * 0.35);
     tail.name = "scarf";
     parts.push(teamPart(tail, "dark"));
   }
@@ -1601,23 +1617,49 @@ function teamBandana(r: number, y: number, z: number): THREE.Mesh[] {
   return parts;
 }
 
-/** A membrane wing: a fan of three ribbed panels from the shoulder, in one colour and a darker rib. */
+/**
+ * A membrane wing: three rounded lobes fanned from the shoulder (a scalloped
+ * trailing edge), a darker bone along the leading edge and a claw at its tip.
+ */
 function membraneWing(s: number, span: number, depth: number, skin: number, rib: number): THREE.Group {
   const wing = new THREE.Group();
   for (let i = 0; i < 3; i++) {
-    const a = -0.35 + i * 0.35;
-    const panel = box(round3(span * (1 - i * 0.18)), 0.035, round3(depth * 0.5), skin, 0, 0, 0);
-    panel.position.set(s * span * 0.5 * Math.cos(a), 0, -Math.sin(a) * span * 0.45);
-    panel.rotation.y = s * a;
-    panel.name = "wing-membrane";
-    wing.add(panel);
+    const a = -0.42 + i * 0.42;
+    const len = span * (1 - i * 0.16);
+    const lobe = sphere(0.5, skin, 0, 0, 0);
+    lobe.scale.set(len, 0.06, depth * 0.62);
+    lobe.position.set(s * len * 0.5 * Math.cos(a), -i * 0.012, -Math.sin(Math.abs(a) + 0.2) * depth * 0.42);
+    lobe.rotation.y = s * a;
+    lobe.name = "wing-membrane";
+    wing.add(lobe);
   }
-  const arm = box(round3(span * 1.02), 0.06, 0.07, rib, s * span * 0.5, 0.03, depth * 0.22);
-  arm.name = "wing-rib";
-  wing.add(arm);
-  const claw = cone(0.05, 0.12, rib, s * span * 1.0, 0.06, depth * 0.24);
+  const bone = box(round3(span * 0.9), 0.07, 0.07, rib, s * span * 0.45, 0.03, depth * 0.24);
+  bone.name = "wing-rib";
+  wing.add(bone);
+  const claw = cone(0.05, 0.12, rib, s * span * 0.92, 0.06, depth * 0.26);
   claw.rotation.z = -s * Math.PI / 2;
   wing.add(claw);
+  return wing;
+}
+
+/** A feathered wing: three long rounded feathers fanned from the shoulder, darker at the tips. */
+function featherWing(s: number, span: number, depth: number, feather: number, tip: number, name: string): THREE.Group {
+  const wing = new THREE.Group();
+  for (let i = 0; i < 3; i++) {
+    const a = -0.3 + i * 0.32;
+    const len = span * (1 - i * 0.14);
+    const f = sphere(0.5, feather, 0, 0, 0);
+    f.scale.set(len, 0.07, depth * 0.42);
+    f.position.set(s * len * 0.5 * Math.cos(a), -i * 0.015, -Math.sin(a + 0.3) * depth * 0.5);
+    f.rotation.y = s * a;
+    f.name = name;
+    wing.add(f);
+    const t = sphere(0.5, tip, 0, 0, 0);
+    t.scale.set(len * 0.34, 0.075, depth * 0.36);
+    t.position.set(s * len * 0.84 * Math.cos(a), -i * 0.015 + 0.004, -Math.sin(a + 0.3) * depth * 0.5);
+    t.rotation.y = s * a;
+    wing.add(t);
+  }
   return wing;
 }
 
@@ -1646,8 +1688,9 @@ function buildBalloon(): TroopRig {
   const crown = sphere(0.26, OCHREDK, 0, 2.22, 0);
   crown.scale.set(1, 0.45, 1);
   g.add(crown);
-  // The ONE team slot: a broad stripe round the envelope's middle.
-  const stripe = cyl(0.645, 0.645, 0.24, 0xffffff, 0, 1.55, 0);
+  // The ONE team slot: a broad stripe round the envelope's upper shoulder,
+  // where the battle camera (and the player) look down on it.
+  const stripe = cyl(0.555, 0.64, 0.34, 0xffffff, 0, 1.76, 0);
   stripe.name = "envelope-stripe";
   g.add(teamPart(stripe));
   g.add(cyl(0.2, 0.13, 0.22, OCHREDK, 0, 0.84, 0)); // skirt
@@ -1746,7 +1789,7 @@ function buildBabyDragon(): TroopRig {
   };
   g.add(sphere(0.14, BODY, -0.22, 0.12, 0.1));
   g.add(sphere(0.14, BODY, 0.22, 0.12, 0.1));
-  g.add(...teamScarf(0.3, 0.86, 0.16));
+  g.add(...teamScarf(0.34, 0.9, 0.16, 0.62));
 
   const wings: Wing[] = [];
   for (const s of [-1, 1]) {
@@ -2178,6 +2221,9 @@ function buildCamelRaider(): TroopRig {
  * Same role (slow flying building-seeker with a death blast), new silhouette:
  * a diamond canopy instead of a balloon envelope. Tails flutter in idle.
  */
+/** How far the fire kite's sail tips back from upright (radians). */
+const KITE_TILT = 1.0;
+
 function buildFireKite(): TroopRig {
   const g = new THREE.Group();
   // Turquoise silk on gold spars (the edition's colours, never a team hue);
@@ -2191,13 +2237,18 @@ function buildFireKite(): TroopRig {
     toon(PAPER),
   );
   canopy.scale.set(0.8, 1.1, 0.26);
-  canopy.position.set(0, 1.5, 0);
   canopy.castShadow = true;
   canopy.receiveShadow = true;
-  g.add(canopy);
-  g.add(box(0.06, 1.5, 0.05, GOLD, 0, 1.5, 0.1)); // vertical spar
-  g.add(box(1.1, 0.06, 0.05, GOLD, 0, 1.5, 0.1)); // cross spar
-  g.add(diamond(0.12, GOLD, 0, 1.5, 0.16)); // center boss
+  // The sail flies tipped back, so the battle camera sees its face from
+  // either end of the arena (an upright kite was a thin edge from above).
+  const sail = new THREE.Group();
+  sail.position.set(0, 1.5, 0);
+  sail.rotation.x = -KITE_TILT;
+  sail.add(canopy);
+  sail.add(box(0.06, 1.5, 0.05, GOLD, 0, 0, 0.1)); // vertical spar
+  sail.add(box(1.1, 0.06, 0.05, GOLD, 0, 0, 0.1)); // cross spar
+  sail.add(diamond(0.12, GOLD, 0, 0, 0.16)); // center boss
+  g.add(sail);
   // Crescent finial at the kite's crown.
   const finial = new THREE.Mesh(
     cachedGeo("crescent:0.12", () => {
@@ -2210,18 +2261,19 @@ function buildFireKite(): TroopRig {
     }),
     toon(GOLD),
   );
-  finial.position.set(0, 2.36, 0);
+  finial.position.set(0, 0.86, 0);
   finial.castShadow = true;
-  g.add(finial);
+  sail.add(finial);
 
   // Fluttering cloth tails off the kite's lower point.
   const tails: THREE.Mesh[] = [];
   for (const [dx, len, color] of [
-    [-0.14, 0.5, CLOTH],
-    [0, 0.62, GOLD],
-    [0.14, 0.5, CLOTH],
+    [-0.17, 0.82, CLOTH],
+    [0, 0.6, GOLD],
+    [0.17, 0.82, CLOTH],
   ] as const) {
-    const tail = box(0.09, len, 0.03, color, dx, 0.52 - len / 2, -0.05);
+    // From the sail's lower point (tipped forward by KITE_TILT).
+    const tail = box(color === CLOTH ? 0.15 : 0.08, len, 0.04, color, dx, 1.5 - 0.79 * Math.cos(KITE_TILT) - len / 2, 0.79 * Math.sin(KITE_TILT));
     tail.name = "kite-tail";
     if (color === CLOTH) teamPart(tail); // the two cloth tails fly team colours
     tails.push(tail);
@@ -2883,7 +2935,9 @@ function buildStoneGolem(): TroopRig {
     g.add(c);
   }
   // The team crystal set into the chest.
-  const crystal = teamPart(diamond(0.17, P.dark, 0, 1.3, 0.8));
+  const crystalMesh = diamond(0.17, P.dark, 0, 1.3, 0.8);
+  crystalMesh.name = "chest-crystal";
+  const crystal = teamPart(crystalMesh);
   crystal.scale.set(1, 1.35, 0.7);
   g.add(crystal);
   // Small head sunk into the shoulders, under a heavy brow ridge.
@@ -2931,7 +2985,9 @@ function buildPebbleGolem(): TroopRig {
   nick.rotation.z = 0.3;
   g.add(nick);
   g.add(eyeGems(0.075, 0.17, 0.8, 0.46, P.gem, P.crack));
-  g.add(teamPart(diamond(0.1, P.dark, 0, 0.5, 0.5))); // team pebble-gem
+  const gem = diamond(0.1, P.dark, 0, 0.5, 0.5);
+  gem.name = "chest-gem";
+  g.add(teamPart(gem)); // team pebble-gem
   // A mossy tuft with a two-leaf sprout: the cute read.
   const tuft = sphere(0.22, P.moss, 0, 1.16, 0);
   tuft.scale.set(1.2, 0.4, 1.1);
@@ -2992,7 +3048,9 @@ function buildSandstoneGolem(): TroopRig {
   }
   g.add(sphere(0.09, P.brass, 0, 1.36, 0.66)); // star boss
   for (const sx of [-1, 1]) g.add(box(0.06, 0.8, 0.05, P.crack, sx * 0.56, 1.3, 0.61)); // carved grooves
-  const sash = teamPart(box(0.26, 1.5, 0.06, P.dark, 0, 1.36, 0.64));
+  const sashMesh = box(0.26, 1.5, 0.06, P.dark, 0, 1.36, 0.64);
+  sashMesh.name = "sash";
+  const sash = teamPart(sashMesh);
   sash.rotation.z = 0.72;
   g.add(sash);
   // Domed head, set low between the shoulders.
@@ -3031,7 +3089,9 @@ function buildSandPebble(): TroopRig {
     sq.rotation.z = rz;
     g.add(sq);
   }
-  g.add(teamPart(box(0.9, 0.1, 0.78, P.dark, 0, 0.32, 0))); // team plinth band
+  const plinth = box(0.9, 0.1, 0.78, P.dark, 0, 0.32, 0);
+  plinth.name = "plinth-band";
+  g.add(teamPart(plinth)); // team plinth band
   g.add(domeCap(0.22, 0, 1.1, 0, P.stone, P.brass));
   const offArm = golemArm(-0.54, 0.8, 0.5, P.stone, P.dark, P.dark, 43, P.gem);
   const arm = golemArm(0.54, 0.8, 0.5, P.stone, P.dark, P.dark, 47, P.gem);
@@ -3203,6 +3263,197 @@ export function buildCometRock(r = 0.5): THREE.Group {
     g.add(vein);
   }
   return g;
+}
+
+// ---------------------------------------------------------------------------
+// Card buildings (art bible 7): cannon, tombstone and elixir collector, in
+// the creatures' material language. Each is a TroopRig-shaped group that
+// bakeRig() folds into a couple of inked draws like any troop; the cannon's
+// barrel is a pivot (userData.animated) the scene aims at its target. Each
+// wears its team colour on ONE slot: the cannon's pennant, the tombstone's
+// wreath, the collector's rim band. ship wires these into
+// scene/views/troops.ts buildBuildingMesh (see notes/features/art-creatures-fx.md).
+// ---------------------------------------------------------------------------
+
+/** A card building's rig: the group, its aimable barrel (cannons), and where its HP bar sits. */
+export interface BuildingRig extends TroopRig {
+  barrel?: THREE.Group;
+  /** World height (rig units) for the HP bar above the building. */
+  barY: number;
+}
+
+/** The buildings with a procedural model. */
+export const BUILDING_IDS = ["cannon", "tombstone", "elixir-collector"] as const;
+
+/** A team pennant on a pole: the pole is wood, the flag the ONE team slot. */
+function teamPennant(x: number, z: number, h: number): THREE.Mesh[] {
+  const pole = cyl(0.03, 0.035, h, 0x6b4a2c, x, h / 2, z);
+  const flag = new THREE.Mesh(cachedGeo("pennant", () => {
+    const g = new THREE.BufferGeometry();
+    // A swallow-free triangle flag, two-sided by thickness (a thin wedge).
+    const pts = [
+      [0, 0, 0.03], [0.56, -0.13, 0.015], [0, -0.3, 0.03],
+      [0, 0, -0.03], [0, -0.3, -0.03], [0.56, -0.13, -0.015],
+    ];
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pts.flat()), 3));
+    g.setIndex([0, 2, 1, 3, 5, 4, 0, 1, 3, 3, 1, 5, 2, 4, 1, 4, 5, 1, 0, 3, 2, 3, 4, 2]);
+    g.computeVertexNormals();
+    return g;
+  }), toon(0xffffff));
+  shadowed(flag, x + 0.02, h - 0.02, z);
+  flag.name = "pennant";
+  return [pole, teamPart(flag)];
+}
+
+/** CANNON: a bronze barrel on a timber carriage with spoked wheels, shot stacked behind, a team pennant. */
+function buildCannonRig(): BuildingRig {
+  const g = new THREE.Group();
+  const WOOD = 0x8a5a36, WOODDK = 0x5e3d24, IRON = 0x3a3f46;
+  const BRONZE = ARABIC ? 0xc2a052 : 0xa9844e, BRONZEDK = ARABIC ? 0x8f7434 : 0x7a5e36, TRIM = ARABIC ? THEME.turquoise : 0xd8b25a;
+  // Stone footing so the gun sits on the field like a fixture.
+  const base = cyl(0.72, 0.8, 0.16, ARABIC ? THEME.stone : 0x9a958c, 0, 0.08, 0);
+  g.add(base);
+  // Carriage cheeks and axle.
+  for (const sx of [-1, 1]) g.add(box(0.14, 0.34, 0.86, WOOD, sx * 0.27, 0.42, -0.05));
+  const axle = cyl(0.05, 0.05, 0.8, WOODDK, 0, 0.32, 0.12);
+  axle.rotation.z = Math.PI / 2;
+  g.add(axle);
+  for (const sx of [-1, 1]) {
+    const wheel = cyl(0.3, 0.3, 0.1, WOOD, sx * 0.42, 0.32, 0.12);
+    wheel.rotation.z = Math.PI / 2;
+    g.add(wheel);
+    const tyre = new THREE.Mesh(cachedGeo("cannon-tyre", () => new THREE.TorusGeometry(0.3, 0.045, 6, 18)), toon(IRON));
+    tyre.rotation.y = Math.PI / 2;
+    shadowed(tyre, sx * 0.42, 0.32, 0.12);
+    g.add(tyre);
+    const hub = cyl(0.08, 0.08, 0.14, IRON, sx * 0.44, 0.32, 0.12);
+    hub.rotation.z = Math.PI / 2;
+    g.add(hub);
+  }
+  // Shot stacked behind the carriage.
+  for (const [x, y, z] of [[-0.42, 0.25, -0.5], [-0.26, 0.25, -0.56], [-0.34, 0.39, -0.52]] as const) g.add(sphere(0.1, IRON, x, y, z));
+  // The barrel: a pivot the scene turns toward the target (+z forward).
+  const barrel = new THREE.Group();
+  barrel.name = "barrel";
+  barrel.userData.animated = true;
+  barrel.position.set(0, 0.66, 0);
+  const tube = cyl(0.15, 0.21, 1.05, BRONZE, 0, 0.06, 0.28);
+  tube.rotation.x = Math.PI / 2 - 0.16;
+  barrel.add(tube);
+  for (const z of [0.0, 0.42]) {
+    const band = cyl(0.205 - z * 0.08, 0.205 - z * 0.08, 0.08, BRONZEDK, 0, 0.06 + z * 0.16, z);
+    band.rotation.x = Math.PI / 2 - 0.16;
+    barrel.add(band);
+  }
+  const muzzle = cyl(0.19, 0.17, 0.1, TRIM, 0, 0.14, 0.78);
+  muzzle.rotation.x = Math.PI / 2 - 0.16;
+  barrel.add(muzzle);
+  barrel.add(sphere(0.24, BRONZEDK, 0, 0, -0.22)); // breech
+  barrel.add(sphere(0.08, BRONZE, 0, 0, -0.48)); // cascabel knob
+  g.add(barrel);
+  g.add(...teamPennant(0.38, -0.52, 1.25));
+  return { group: g, arm: null, armRest: 0, swingAmp: 0, height: 1.25, barrel, barY: 1.55 };
+}
+
+/** TOMBSTONE: a rounded headstone on an earth mound, a carved skull, a green soul-light, a team wreath. */
+function buildTombstoneRig(): BuildingRig {
+  const g = new THREE.Group();
+  const STONE = ARABIC ? 0xcdbb94 : 0x9aa1a8, STONEDK = ARABIC ? 0x9c8b6e : 0x6d747c, EARTH = ARABIC ? 0xa88a5c : 0x6b5a45, BONE = 0xe9dfc8;
+  const mound = cyl(0.56, 0.68, 0.22, EARTH, 0, 0.11, 0);
+  g.add(mound);
+  const bump = sphere(0.36, EARTH, 0.1, 0.2, 0.18);
+  bump.scale.set(1.3, 0.35, 1);
+  g.add(bump);
+  // Headstone: a slab with a round top (an arch top in the Golden Age).
+  g.add(box(0.86, 1.0, 0.24, STONE, 0, 0.74, -0.14));
+  const cap = cyl(0.43, 0.43, 0.24, STONE, 0, 1.24, -0.14);
+  cap.rotation.x = Math.PI / 2;
+  g.add(cap);
+  if (ARABIC) {
+    const tip = cone(0.14, 0.3, STONE, 0, 1.78, -0.14);
+    g.add(tip);
+    g.add(box(0.7, 0.08, 0.26, THEME.turquoise, 0, 0.5, -0.14)); // inlaid band
+  } else {
+    const crack = box(0.035, 0.34, 0.03, STONEDK, 0.24, 1.0, -0.01);
+    crack.rotation.z = 0.5;
+    g.add(crack);
+  }
+  g.add(box(0.94, 0.1, 0.32, STONEDK, 0, 0.27, -0.14)); // plinth
+  // Carved skull on the face.
+  const skull = sphere(0.15, BONE, 0, 1.18, -0.01);
+  skull.scale.set(1, 0.95, 0.5);
+  g.add(skull);
+  for (const sx of [-1, 1]) g.add(sphere(0.04, 0x2b2333, sx * 0.055, 1.19, 0.06));
+  // The ONE team slot: a wreath hung on the stone's face.
+  const wreath = new THREE.Mesh(cachedGeo("wreath", () => new THREE.TorusGeometry(0.22, 0.07, 8, 18)), toon(0xffffff));
+  wreath.name = "wreath";
+  shadowed(wreath, 0, 0.72, 0.0);
+  g.add(teamPart(wreath));
+  g.add(teamPart(sphere(0.075, 0xffffff, 0, 0.5, 0.04), "dark")); // its bow
+  // Bones on the mound and the soul-light (under the bloom threshold).
+  const bone = box(0.26, 0.05, 0.05, BONE, -0.34, 0.24, 0.3);
+  bone.rotation.y = 0.6;
+  g.add(bone);
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), glow(0x76ff03, 2));
+  orb.name = "soul-light";
+  orb.position.set(0, ARABIC ? 1.98 : 1.72, -0.14);
+  g.add(orb);
+  return { group: g, arm: null, armRest: 0, swingAmp: 0, height: 1.7, barY: 2.05 };
+}
+
+/** ELIXIR COLLECTOR: a hooped vat brimming with glowing elixir, a pump, a big drop; a team rim band. */
+function buildCollectorRig(): BuildingRig {
+  const g = new THREE.Group();
+  const WOOD = ARABIC ? 0xb08a4a : 0x8d6e4a, WOODDK = ARABIC ? 0x8a6a34 : 0x5e4632, HOOP = ARABIC ? THEME.goldLight : 0x4a4f57;
+  g.add(cyl(0.74, 0.8, 0.18, ARABIC ? THEME.stone : 0x9a958c, 0, 0.09, 0)); // footing
+  const vat = cyl(0.56, 0.62, 0.72, WOOD, 0, 0.56, 0);
+  g.add(vat);
+  for (const y of [0.32, 0.62]) {
+    const hoop = new THREE.Mesh(cachedGeo(`vat-hoop:${y}`, () => new THREE.TorusGeometry(0.6 - (y - 0.32) * 0.1, 0.03, 6, 22)), toon(HOOP));
+    hoop.rotation.x = Math.PI / 2;
+    shadowed(hoop, 0, y, 0);
+    g.add(hoop);
+  }
+  // The ONE team slot: the band round the vat's rim.
+  const rim = cyl(0.6, 0.6, 0.12, 0xffffff, 0, 0.92, 0);
+  rim.name = "rim-band";
+  g.add(teamPart(rim));
+  // Elixir (pink-magenta, under the bloom threshold) and its drop.
+  const brew = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.06, 18), glow(0xd946ef, 2));
+  brew.position.y = 0.96;
+  g.add(brew);
+  const drop = new THREE.Mesh(cachedGeo("elixir-drop", () => {
+    const pts: THREE.Vector2[] = [];
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10;
+      const a = t * Math.PI;
+      pts.push(new THREE.Vector2(Math.sin(a) * 0.18 * (t < 0.5 ? 1 : 1 - (t - 0.5) * 1.6), -Math.cos(a) * 0.18 + t * t * 0.22));
+    }
+    return new THREE.LatheGeometry(pts, 14);
+  }), glow(0xe879f9, 2));
+  drop.name = "elixir-drop";
+  drop.position.y = 1.3;
+  g.add(drop);
+  // A little hand pump at the side.
+  g.add(box(0.1, 0.5, 0.1, WOODDK, 0.52, 0.86, -0.3));
+  const handle = box(0.36, 0.06, 0.06, WOODDK, 0.42, 1.1, -0.3);
+  handle.rotation.z = 0.35;
+  g.add(handle);
+  g.add(cyl(0.05, 0.05, 0.22, HOOP, 0.52, 0.7, -0.12));
+  return { group: g, arm: null, armRest: 0, swingAmp: 0, height: 1.45, barY: 1.85 };
+}
+
+/**
+ * The model for a card building on `side` (the side it wears, as for
+ * buildTroop), or null for a building without one. Bake it with bakeRig
+ * (key `${id}:${side}:${edition}:${palette}`) like a troop.
+ */
+export function buildBuildingRig(cardId: CardId | string, side: Side = "player"): BuildingRig | null {
+  const rig = cardId === "cannon" ? buildCannonRig() : cardId === "tombstone" ? buildTombstoneRig() : cardId === "elixir-collector" ? buildCollectorRig() : null;
+  if (!rig) return null;
+  outlineRig(rig.group);
+  applyTeam(rig.group, side);
+  return rig;
 }
 
 /** Darken a hex color by factor f (0..1). */
@@ -3765,16 +4016,12 @@ function buildRocHatchling(): TroopRig {
   g.add(sphere(0.12, GOLD, -0.2, 0.12, 0.1));
   g.add(sphere(0.12, GOLD, 0.2, 0.12, 0.1));
   // Art bible 7: the ONE team slot, a scarf like the Classic dragon's.
-  g.add(...teamScarf(0.28, 0.84, 0.16));
+  g.add(...teamScarf(0.32, 0.88, 0.16, 0.6));
 
   const wings: Wing[] = [];
   for (const s of [-1, 1]) {
-    const wing = new THREE.Group();
+    const wing = featherWing(s, 0.74, 0.46, GOLD, 0xb98a2e, "roc-wing");
     wing.position.set(s * 0.36, 0.86, -0.08);
-    const feather = box(0.7, 0.06, 0.42, GOLD, s * 0.38, 0, 0);
-    feather.name = "roc-wing";
-    wing.add(feather);
-    wing.add(box(0.65, 0.04, 0.08, 0xb98a2e, s * 0.36, 0.04, 0.18)); // dark-gold wing bar
     wing.rotation.z = s * 0.28;
     g.add(wing);
     wings.push({ obj: wing, base: s * 0.28, amp: s * 0.55 });
@@ -3832,12 +4079,8 @@ function buildWarFalcon(): TroopRig {
 
   const wings: Wing[] = [];
   for (const s of [-1, 1]) {
-    const wing = new THREE.Group();
+    const wing = featherWing(s, 0.52, 0.3, PLUME, 0x5c3c22, "falcon-wing");
     wing.position.set(s * 0.14, 0.58, -0.08);
-    const tip = box(0.5, 0.03, 0.22, PLUME, s * 0.28, 0, 0);
-    tip.name = "falcon-wing";
-    wing.add(tip);
-    wing.add(box(0.46, 0.035, 0.06, 0x5c3c22, s * 0.27, 0.02, -0.06)); // barred tip
     wing.rotation.z = s * 0.5;
     g.add(wing);
     wings.push({ obj: wing, base: s * 0.5, amp: s * 0.75 });

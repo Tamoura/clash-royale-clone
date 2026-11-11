@@ -1,0 +1,199 @@
+<!doctype html>
+<!-- Dev-only contact sheet of the procedural CREATURES and card BUILDINGS (src/render3d/characters3d.ts),
+     baked as in battle and seen through the battle camera's angle with the cast's 14 degree lean:
+     open /tools/creatureview.html on the dev server. Rows: yours from behind (how you see them in battle),
+     yours from the front, theirs from the front, theirs from behind; then a strip at phone size (40 px).
+     ?edition=golden for the Golden Age, ?cards=balloon,bats to narrow it, ?palette=cb for the colour-blind pair. -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Creature contact sheet</title>
+    <style>
+      html, body { margin: 0; background: #86b85a; overflow: hidden; }
+      .tag { position: absolute; font: 11px/1 monospace; color: #fff; background: rgba(0, 0, 0, 0.62); padding: 2px 3px; transform: translate(-50%, 0); white-space: nowrap; }
+      .row { position: absolute; left: 4px; font: bold 11px/1 monospace; color: #fff; background: rgba(0, 0, 0, 0.62); padding: 2px 4px; }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      const q = new URLSearchParams(location.search);
+      const edition = q.get("edition") === "golden" ? "golden" : "classic";
+      // The edition is read once when theme.ts loads: set it before the first import.
+      localStorage.setItem("cr-clone-arena-theme", edition === "golden" ? "arabic" : "normal");
+      const THREE = await import("three");
+      const { buildTroop, animateTroop, buildCometRock } = await import("/src/render3d/characters3d.ts");
+      const { bakeRig } = await import("/src/render3d/rigBake.ts");
+      const { applyTeam } = await import("/src/render3d/teamColors.ts");
+      const { fitInk } = await import("/src/render3d/outlineMaterial.ts");
+      const buildingMod = await import("/src/render3d/characters3d.ts");
+      const palette = q.get("palette") === "cb" ? "cb" : "default";
+      const CREATURES = {
+        classic: ["baby-dragon", "balloon", "bats", "minions", "gargoyles", "stone-golem", "pebble-golem", "cannon", "tombstone", "elixir-collector", "comet"],
+        golden: ["giant", "balloon", "baby-dragon", "minions", "stone-golem", "pebble-golem", "cannon", "tombstone", "elixir-collector", "comet"],
+      };
+      const NAMES = {
+        golden: { giant: "war-elephant", balloon: "fire-kite", "baby-dragon": "roc-hatchling", minions: "war-falcon", "stone-golem": "sandstone-golem", "pebble-golem": "sand-pebble" },
+        classic: {},
+      };
+      const cards = (q.get("cards") || CREATURES[edition].join(",")).split(",");
+      const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(1);
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
+      document.body.appendChild(renderer.domElement);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(edition === "golden" ? 0xd8c8a0 : 0x86b85a);
+      // The battle's light: warm sun from the player's upper-left, cool sky, a cool back rim and a camera-side fill.
+      scene.add(new THREE.HemisphereLight(0xcfe2ff, 0x7d9a5c, 0.8));
+      const sun = new THREE.DirectionalLight(0xffedc8, 1.7);
+      sun.position.set(-10, 18, 8);
+      scene.add(sun);
+      const rim = new THREE.DirectionalLight(0x9fc4ff, 0.55);
+      rim.position.set(-8, 10, -14);
+      scene.add(rim);
+      const fill = new THREE.DirectionalLight(0xa9c8ff, 0.3);
+      fill.position.set(9, 9, 12);
+      scene.add(fill);
+
+      // The battle camera's direction (CAM_HOME 0,30,26 looking at the origin), orthographic.
+      const DIR = new THREE.Vector3(0, -30, -26).normalize();
+      const LEAN = (14 * Math.PI) / 180;
+      const rows = [
+        ["yours, behind", "player", Math.PI],
+        ["yours, front", "player", 0],
+        ["theirs, front", "enemy", 0],
+        ["theirs, behind", "enemy", Math.PI],
+      ];
+      // Field scale as troops.ts sizes them (the elephant is the Golden Age giant).
+      const scaleOf = (id) => (id === "giant" ? 1.48 : ["bats", "minions", "gargoyles"].includes(id) ? 1.08 : 1.25) * 1.14;
+      /** One unit: a baked rig, a building or the comet rock, on a team ring, leaned toward the camera. */
+      function make(id, team, yaw) {
+        const root = new THREE.Group();
+        root.rotation.y = yaw;
+        let body = null;
+        let hover = 0;
+        let height = 1.5;
+        if (id === "comet") {
+          body = buildCometRock(0.6);
+          body.position.y = 1.2;
+          height = 1.8;
+        } else if (["cannon", "tombstone", "elixir-collector"].includes(id)) {
+          const b = buildingMod.buildBuildingRig(id, team);
+          if (!b) return null;
+          applyTeam(b.group, team, palette);
+          bakeRig(b, `${id}:${team}:${edition === "golden" ? "arabic" : "normal"}:${palette}`);
+          if (b.barrel) b.barrel.rotation.y = 0.5;
+          body = b.group;
+          height = b.height;
+        } else {
+          const rig = buildTroop(id, team);
+          applyTeam(rig.group, team, palette);
+          bakeRig(rig, `${id}:${team}:${edition === "golden" ? "arabic" : "normal"}:${palette}`);
+          for (let k = 0; k < 6; k++) animateTroop(rig, { moving: k % 2 === 0, swing: 0, time: 0.4 + k * 0.1, phase: 0.3 });
+          rig.group.scale.setScalar(scaleOf(id));
+          body = rig.group;
+          hover = rig.hover ?? 0;
+          height = hover + rig.height * scaleOf(id);
+        }
+        // Render-only lean toward the camera, pivot at the feet (or at a flyer's hover height).
+        const lean = new THREE.Group();
+        lean.position.y = hover;
+        const back = new THREE.Group();
+        back.position.y = -hover;
+        back.add(body);
+        lean.add(back);
+        // The axis is perpendicular to the camera's horizontal view direction, in the root's (yawed) frame.
+        const h = new THREE.Vector3(DIR.x, 0, DIR.z).normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), -yaw);
+        const axis = new THREE.Vector3(h.z, 0, -h.x).normalize();
+        lean.quaternion.setFromAxisAngle(axis, -LEAN);
+        root.add(lean);
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.62, 24), new THREE.MeshBasicMaterial({ color: team === "player" ? 0x3b82f6 : 0xe53935 }));
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = 0.02;
+        root.add(ring);
+        root.traverse((o) => { if (o.isMesh) o.onBeforeRender = fitInk; });
+        return { root, height };
+      }
+      const cell = 3.6;
+      const W = cards.length * cell;
+      const rowZ = (r) => r * cell * 1.25;
+      const aspect = innerWidth / innerHeight;
+      const pitch = Math.asin(-DIR.y);
+      const needH = (rowZ(rows.length - 1) * Math.sin(pitch) + 3.8 * Math.cos(pitch) + 2.6) / 2;
+      const needW = W / 2 + 0.6;
+      const halfH = Math.max(needH, needW / aspect);
+      const halfW = halfH * aspect;
+      const cam = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, -100, 200);
+      const midZ = rowZ(rows.length - 1) / 2 - 0.9;
+      cam.position.set(0, 1.6, midZ).addScaledVector(DIR, -60);
+      cam.lookAt(0, 1.6, midZ);
+      const tags = [];
+      cards.forEach((id, i) => {
+        const x = (i - (cards.length - 1) / 2) * cell;
+        rows.forEach(([, team, yaw], r) => {
+          const u = make(id, team, yaw);
+          if (!u) return;
+          u.root.position.set(x, 0, rowZ(r));
+          scene.add(u.root);
+          if (r === 0) tags.push({ name: `${NAMES[edition][id] ?? id} h${u.height.toFixed(2)}`, p: new THREE.Vector3(x, 0, -1.9) });
+        });
+      });
+      renderer.render(scene, cam);
+      // The phone strip: each creature (yours behind, theirs front) about as big as on a 390 px phone.
+      const strip = document.createElement("canvas");
+      const sw = 48 * cards.length * 2;
+      strip.width = sw;
+      strip.height = 60;
+      const sctx = strip.getContext("2d");
+      sctx.fillStyle = "#" + scene.background.getHexString();
+      sctx.fillRect(0, 0, sw, 60);
+      const small = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      small.setPixelRatio(1);
+      small.setSize(48, 60);
+      small.outputColorSpace = THREE.SRGBColorSpace;
+      small.toneMapping = THREE.ACESFilmicToneMapping;
+      for (let i = 0; i < cards.length; i++) {
+        for (const [k, r] of [[0, 0], [1, 2]]) {
+          const [, team, yaw] = rows[r];
+          const u = make(cards[i], team, yaw);
+          if (!u) continue;
+          const one = new THREE.Scene();
+          one.background = scene.background;
+          for (const l of scene.children) if (l.isLight) one.add(l.clone());
+          one.add(u.root);
+          // A 390 px phone shows the 18-tile board about 21.7 px per tile.
+          const half = 24 / 21.7;
+          const c2 = new THREE.OrthographicCamera(-half, half, (60 / 48) * half, -(60 / 48) * half, -100, 200);
+          const mid = new THREE.Vector3(0, 1.3, 0);
+          c2.position.copy(mid).addScaledVector(DIR, -60);
+          c2.lookAt(mid);
+          small.render(one, c2);
+          sctx.drawImage(small.domElement, (i * 2 + k) * 48, 0);
+        }
+      }
+      const img = document.createElement("img");
+      img.src = strip.toDataURL();
+      img.style.cssText = `position:absolute;right:6px;bottom:6px;image-rendering:pixelated;border:2px solid #222`;
+      document.body.appendChild(img);
+      for (const t of tags) {
+        const v = t.p.clone().project(cam);
+        const el = document.createElement("div");
+        el.className = "tag";
+        el.textContent = t.name;
+        el.style.left = `${((v.x + 1) / 2) * innerWidth}px`;
+        el.style.top = `${((1 - v.y) / 2) * innerHeight}px`;
+        document.body.appendChild(el);
+      }
+      rows.forEach(([name], r) => {
+        const v = new THREE.Vector3(-W / 2, 0, rowZ(r)).project(cam);
+        const el = document.createElement("div");
+        el.className = "row";
+        el.textContent = name;
+        el.style.top = `${((1 - v.y) / 2) * innerHeight - 30}px`;
+        document.body.appendChild(el);
+      });
+      window.__done = true;
+    </script>
+  </body>
