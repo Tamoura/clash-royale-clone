@@ -420,8 +420,8 @@ function paintClassic(look: ArenaLook, p: Paint, P: number, seed: number, rand: 
     for (let i = 0; i < clumps; i++) {
       const x = rand() * w;
       const y = rand() * h;
-      const r = (0.12 + rand() * 0.3) * P;
-      p.disc(x, y, r, rand() < 0.5 ? dark : light, 0.07 + rand() * 0.08, 0.55 + rand() * 0.3, rand() * 3);
+      const r = (0.2 + rand() * 0.4) * P;
+      p.disc(x, y, r, rand() < 0.35 ? dark : light, 0.03 + rand() * 0.04, 0.55 + rand() * 0.3, rand() * 3);
     }
     const blades = Math.round((w * h) / 520);
     for (let i = 0; i < blades; i++) {

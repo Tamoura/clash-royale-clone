@@ -197,14 +197,14 @@ function terrace(s: Sculpt, sx: number, zc: number, len: number, cloth: number, 
   const stone = tone(look.standWall, 1.12, 0.6);
   const x0 = ARENA_WIDTH / 2 + 2.3;
   const rows = 3;
-  const depth = 0.78;
+  const depth = 0.86;
   const ao = (_x: number, y: number, _z: number, ny: number): number => (0.7 + 0.3 * smooth(0, 1.2, y)) * (ny > 0.7 ? 1.05 : 1);
   for (let k = 0; k < rows; k++) {
     const h = 0.5 + k * 0.44;
     const x = sx * (x0 + k * depth);
     s.box(depth, h, len, tone(stone, k % 2 ? 0.94 : 1.04), x, h / 2 - 0.06, zc, 0, ao);
-    // Bench plank along each row.
-    s.box(depth * 0.5, 0.07, len - 0.3, 0x9a6a3a, x + sx * 0.1, h - 0.03, zc, 0, lit);
+    // Bench plank along the back of each row.
+    s.box(depth * 0.3, 0.07, len - 0.3, 0x9a6a3a, x + sx * 0.24, h - 0.03, zc, 0, lit);
     const n = Math.floor((len - 0.6) / 0.72);
     for (let i = 0; i < n; i++) {
       if (rand() < 0.12) continue; // an empty seat here and there
@@ -281,7 +281,6 @@ export function buildClassicScenery(parent: THREE.Object3D, look: ArenaLook): Sc
     s.add(g, c, x, -0.052, z, rand() * 3, () => 1);
   };
   for (const sx of [-1, 1]) {
-    patch(sx * (hw + 1.0), 0, 0.9, 2.6, tone(look.fieldSide, 1.15, 0.8));
     for (let i = 0; i < 14; i++) {
       patch(sx * (hw + 3 + rand() * 9), (rand() - 0.5) * 40, 1.2 + rand() * 2.2, 1 + rand() * 1.8, tone(apron, rand() < 0.5 ? 0.86 : 1.13));
     }
@@ -316,6 +315,7 @@ export function buildClassicScenery(parent: THREE.Object3D, look: ArenaLook): Sc
       const band = rand();
       const x = sx * (inner + band * band * 9 + rand() * 1.5);
       const z = (rand() - 0.5) * 46;
+      if (Math.abs(z) < 2.4) continue; // the river runs on through the trees
       const k = 0.95 + rand() * 0.75 + band * 0.3;
       if (pine && rand() < 0.45) pineTree(s, x, z, k * 1.15, look);
       else roundTree(s, x, z, k, look, rand);
@@ -323,7 +323,7 @@ export function buildClassicScenery(parent: THREE.Object3D, look: ArenaLook): Sc
       if (rand() < 0.22) boulder(s, x + (rand() - 0.5) * 2.4, z + 1.2, 0.9 + rand() * 0.8, look, rand);
     }
     // A few trees by the corners, in front of and behind the terraces' ends.
-    for (const [dx, z, k] of [[5.4, -hd - 2.2, 1.2], [6.2, hd + 1.6, 1.1], [5.2, -0.4, 1.0], [6.4, 0.9, 1.25]] as const) {
+    for (const [dx, z, k] of [[5.4, -hd - 2.2, 1.2], [6.2, hd + 1.6, 1.1], [5.2, -3.4, 1.0], [6.4, 3.6, 1.25]] as const) {
       roundTree(s, sx * (hw + dx), z, k, look, rand);
     }
   }

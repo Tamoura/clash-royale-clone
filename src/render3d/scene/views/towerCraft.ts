@@ -292,7 +292,7 @@ const SLIT = 0x221d1b;
 export function craftClassicKeep(spec: KeepSpec): KeepResult {
   const { king, radius: R, height: H, cloth, facing, camSide, look } = spec;
   const variant = spec.enemyTeam ? look.tower.enemy : look.tower.player;
-  const platform = tone(spec.enemyTeam ? look.tower.platformEnemy : look.tower.platformPlayer, 1.02, 0.55);
+  const platform = tone(spec.enemyTeam ? look.tower.platformEnemy : look.tower.platformPlayer, 0.97, 0.6);
   const stone = tone(look.tower.battlement, 1.16, 0.6);
   const stoneLt = tone(stone, 1.14, 0.9);
   const stoneDk = tone(look.tower.plinth, 0.86, 0.65);
@@ -314,24 +314,36 @@ export function craftClassicKeep(spec: KeepSpec): KeepResult {
   const wallTop = R * 0.9; // half-width of the keep where it meets the corbels
   const hwAt = (y: number): number => R + (wallTop - R) * Math.min(1, Math.max(0, y / overhangY));
 
-  // ---- Base: team-trimmed platform, stepped plinth -------------------------------
+  // ---- Base: paved, team-trimmed platform under a stepped ashlar plinth ---------------
   const base = new Sculpt(ao);
+  const baseTex = new Sculpt();
   const pw = R * 1.45;
-  base.add(frustum(pw, pw - 0.05, 0, 0.16), platform);
+  const paving = tone(platform, 0.93);
+  base.add(frustum(pw, pw - 0.06, 0, 0.16), paving);
   // Team inlay border with gold corner studs: whose tower this is, from above.
-  const trimW = 0.16;
+  const trimW = 0.15;
+  const inlay = pw - 0.19;
   for (const s of [-1, 1]) {
-    base.box(pw * 2 - 0.18, 0.05, trimW, tone(cloth, 0.95), 0, 0.17, s * (pw - 0.2), 0, lit);
-    base.box(trimW, 0.05, pw * 2 - 0.18 - trimW * 2, tone(cloth, 0.95), s * (pw - 0.2), 0.17, 0, 0, lit);
-    for (const t of [-1, 1]) base.cyl(0.11, 0.13, 0.09, GOLD, s * (pw - 0.2), 0.19, t * (pw - 0.2), 8, lit);
+    base.box(inlay * 2 + trimW, 0.05, trimW, tone(cloth, 0.95), 0, 0.17, s * inlay, 0, lit);
+    base.box(trimW, 0.05, inlay * 2 - trimW, tone(cloth, 0.95), s * inlay, 0.17, 0, 0, lit);
+    for (const t of [-1, 1]) base.cyl(0.12, 0.14, 0.1, GOLD, s * inlay, 0.2, t * inlay, 8, lit);
   }
-  // Flagstone joints scored into the platform's top.
-  for (const t of [-0.5, 0.5]) {
-    base.box(pw * 2 - 0.6, 0.012, 0.03, tone(platform, 0.78), 0, 0.166, t * pw * 0.9, 0, lit);
-    base.box(0.03, 0.012, pw * 2 - 0.6, tone(platform, 0.78), t * pw * 0.9, 0.166, 0, 0, lit);
+  // Paving joints across the ring the keep leaves visible.
+  const joint = tone(platform, 0.66);
+  const ringIn = R * 1.16;
+  const ringMid = (ringIn + inlay - trimW / 2) / 2;
+  const ringW = inlay - trimW / 2 - ringIn;
+  const slabs = king ? 7 : 5;
+  for (let i = 0; i <= slabs; i++) {
+    const t = -ringIn + (i * ringIn * 2) / slabs;
+    for (const s of [-1, 1]) {
+      base.box(0.035, 0.012, ringW, joint, t, 0.167, s * ringMid, 0, () => 1);
+      base.box(ringW, 0.012, 0.035, joint, s * ringMid, 0.167, t, 0, () => 1);
+    }
   }
-  base.add(frustum(R * 1.2, R * 1.14, 0.16, 0.34), stoneDk);
-  base.add(frustum(R * 1.12, R * 1.0, 0.34, 0.62), tone(stoneDk, 1.12));
+  const TILE0 = R * 2.02;
+  baseTex.add(frustum(R * 1.2, R * 1.13, 0.16, 0.36, TILE0, true), 0xffffff, 0, 0, 0, 0, (_x, y, _z, ny) => (ny > 0.7 ? 0.8 : 0.58 + 0.2 * ((y - 0.16) / 0.2)));
+  baseTex.add(frustum(R * 1.1, R * 1.0, 0.36, 0.64, TILE0, true), 0xffffff, 0, 0, 0, 0, (_x, y, _z, ny) => (ny > 0.7 ? 0.9 : 0.7 + 0.2 * ((y - 0.36) / 0.28)));
 
   // ---- Wall: battered ashlar, quoins, slits, door, banner ------------------------
   const wallTex = new Sculpt();
@@ -586,6 +598,7 @@ export function craftClassicKeep(spec: KeepSpec): KeepResult {
     if (m) g.add(m);
   };
   add(spec.chunks.base, base.mesh(sculptMaterial(), "keep-base"));
+  add(spec.chunks.base, baseTex.mesh(sculptMaterial(ashlarTexture(variant)), "keep-plinth"));
   add(spec.chunks.wall, wallTex.mesh(sculptMaterial(ashlarTexture(variant)), "keep-ashlar"));
   add(spec.chunks.wall, wall.mesh(sculptMaterial(), "keep-wall"));
   add(spec.chunks.battlement, bat.mesh(sculptMaterial(), "keep-battlement"));

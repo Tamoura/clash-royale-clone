@@ -226,7 +226,9 @@ export function buildRiver(parent: THREE.Object3D, look: ArenaLook): RiverHandle
   });
   // Lava's cracks are HDR: skip tone mapping so the bloom pass catches them.
   material.toneMapped = kind !== "lava" && kind !== "neon";
-  const geo = new THREE.PlaneGeometry(ARENA_WIDTH + 0.6, RIVER_HALF_WIDTH * 2 + 0.3, 1, 1);
+  // Classic looks: the stream runs on past the kerb, out through the trees.
+  const span = ARENA_WIDTH + (look.islamic ? 0.6 : 46);
+  const geo = new THREE.PlaneGeometry(span, RIVER_HALF_WIDTH * 2 + 0.3, 1, 1);
   geo.rotateX(-Math.PI / 2);
   const mesh = new THREE.Mesh(geo, material);
   mesh.name = "river";
@@ -237,7 +239,7 @@ export function buildRiver(parent: THREE.Object3D, look: ArenaLook): RiverHandle
   // Stone lips along both banks (the floor paint bakes their AO strip).
   const lipColor = kind === "ice" ? 0xdcecf6 : kind === "neon" ? 0x3a4060 : kind === "lava" ? 0x3a2a2a : look.edging;
   for (const side of [-1, 1]) {
-    const lip = new THREE.Mesh(new THREE.BoxGeometry(ARENA_WIDTH + 0.6, 0.16, 0.22), toon(lipColor));
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(span, 0.16, 0.22), toon(lipColor));
     lip.position.set(0, 0.05, side * (RIVER_HALF_WIDTH + 0.1));
     lip.receiveShadow = true;
     lip.name = "bank lip";

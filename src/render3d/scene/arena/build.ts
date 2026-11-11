@@ -185,6 +185,9 @@ export function buildCrowd(b: Battle3D, seats: Array<{ x: number; z: number; gar
   b.arenaGroup.add(bodies, heads);
 }
 
+/** Classic spectators stand this much larger, so the terraces read as people, not beads. */
+const CROWD_SCALE = 1.75;
+
 /** Seat lifts of the crowd being posed (set by buildCrowd). */
 let lifts = new Float32Array(0);
 
@@ -200,9 +203,10 @@ export function poseCrowd(b: Battle3D, t: number, count = Infinity): void {
     const seat = c.seats[i];
     const hop = t >= 0 ? Math.abs(Math.sin(t * 11 + i * 2.6)) * 0.16 : 0;
     const lift = lifts[i] ?? 0;
-    CROWD_M.makeTranslation(seat.x, 1.06 + lift + hop, seat.y);
+    const k = arabic ? 1 : CROWD_SCALE;
+    CROWD_M.makeScale(k, k, k).setPosition(seat.x, 0.93 + 0.13 * k + lift + hop, seat.y);
     c.bodies.setMatrixAt(i, CROWD_M);
-    CROWD_M.makeTranslation(seat.x, 1.28 + lift + hop, seat.y);
+    CROWD_M.makeScale(k, k, k).setPosition(seat.x, 0.93 + 0.35 * k + lift + hop, seat.y);
     c.heads.setMatrixAt(i, CROWD_M);
   }
   c.bodies.instanceMatrix.needsUpdate = true;
