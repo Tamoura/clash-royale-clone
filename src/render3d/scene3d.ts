@@ -76,6 +76,7 @@ import {
 } from "./scene/views/troops";
 import { buildTowerMesh, towersOnEvent, updateTower, updateTowerDeath } from "./scene/views/towers";
 import { beginDeath, updateTroop, updateTroopDeath, viewsOnEvent } from "./scene/views/animate";
+import { setLeanCamera } from "./cast/index";
 
 // The scene's building blocks live in ./scene/ (arena, sky, camera, post,
 // views, fx); Battle3D wires them together behind the same public API.
@@ -682,6 +683,9 @@ export class Battle3D {
       prewarmBakes([...state.player.hand.cards, ...state.player.hand.queue, ...state.enemy.hand.cards, ...state.enemy.hand.queue]);
     }
     this.syncState = state;
+    // The cast leans toward THIS frame's camera (the guest's flipped view
+    // included) before any unit or tower crew is built or posed.
+    setLeanCamera(this.camera);
     this.byId.clear();
     for (const e of state.entities) this.byId.set(e.id, e);
     this.setMatchPhase(state.time, state.overtime);

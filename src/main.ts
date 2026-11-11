@@ -73,10 +73,12 @@ import {
   emit,
   on,
   presentTimeScale,
+  registerSimHold,
   shouldRender,
   simHeld,
   type BattleKind,
 } from "./app/hooks";
+import { beginCastBattle, castReady } from "./render3d/cast/index";
 import {
   POLITE_MATCHES,
   avgDeckLevel,
@@ -477,6 +479,47 @@ function selectCard(id: CardId | null): void {
   if (id === null) clearPreview();
 }
 
+// ---- Battle-start cast gate (render3d/cast) ------------------------------
+// The modelled cast loads at boot. A battle fields it only if the pack is in
+// when the battle begins: beginCastBattle() (called just before each
+// scene.reset()) latches that answer for the WHOLE battle, so modelled and
+// procedural troops never mix and nothing swaps mid-fight. A start that
+// comes before the pack has settled waits up to CAST_WAIT_MS for it, with
+// the solo sim held, then goes ahead with whatever is in (the procedural
+// roster if the pack is still loading or failed).
+const CAST_WAIT_MS = 3000;
+let castSettled = false;
+void castReady().then(() => {
+  castSettled = true;
+});
+/** The start waiting on the pack (the latest request wins), or null. */
+let castWaiting: (() => void) | null = null;
+registerSimHold(() => castWaiting !== null);
+
+/** Run a battle start now if the pack has settled, else after it settles or CAST_WAIT_MS. */
+function afterCastGate(start: () => void): void {
+  if (castSettled) {
+    start();
+    return;
+  }
+  const first = castWaiting === null;
+  castWaiting = start;
+  if (!first) return;
+  const timeout = new Promise<void>((resolve) => window.setTimeout(resolve, CAST_WAIT_MS));
+  void Promise.race([castReady(), timeout]).then(() => {
+    const go = castWaiting;
+    castWaiting = null;
+    go?.();
+  });
+}
+
+// Online matches (match/online.ts) cannot wait on the pack (lockstep with the
+// peer): they latch what is loaded when they begin. matchStart comes right
+// after their scene.reset(), before the next sync builds any unit.
+on("matchStart", (m) => {
+  if (m.online) beginCastBattle();
+});
+
 /** Restart whatever we were just playing (ladder, draft, challenge, daily). */
 function restart(): void {
   // Online: Rematch the same friend, or back to the lobby; never a bot match.
@@ -568,6 +611,7 @@ function startLadder(): void {
   }
   scene.setArenaLook(battleArenaId());
   scene.setViewpoint("player");
+  beginCastBattle(); // the whole battle fields the cast or the procedural roster (afterCastGate)
   scene.reset();
   audio.setIntensity(0);
   audio.restartMusic();
@@ -640,6 +684,7 @@ function startReplay(): void {
   }, battle);
   scene.setArenaLook(battleArenaId());
   scene.setViewpoint("player");
+  beginCastBattle(); // the whole battle fields the cast or the procedural roster (afterCastGate)
   scene.reset();
   audio.setIntensity(0);
   audio.restartMusic();
@@ -678,6 +723,7 @@ function startSpecialBattle(
   hud.setOpponentName(opponentName);
   scene.setArenaLook(battleArenaId());
   scene.setViewpoint("player");
+  beginCastBattle(); // the whole battle fields the cast or the procedural roster (afterCastGate)
   scene.reset();
   audio.setIntensity(0);
   audio.restartMusic();
@@ -704,9 +750,11 @@ function startDaily(): void {
 
 /** Instant sandbox restart — no countdown between experiments. */
 function sandboxReset(): void {
-  restart();
-  setPhase("playing");
-  showBanner(tr("Reset!", "إعادة!"), true);
+  afterCastGate(() => {
+    restart();
+    setPhase("playing");
+    showBanner(tr("Reset!", "إعادة!"), true);
+  });
 }
 sandboxResetBtn.addEventListener("click", () => {
   sandboxReset();
@@ -765,7 +813,7 @@ function closeDeckPicker(): void {
 const hud = new Hud(topbar, hudRoot, overlay, {
   onSelectCard: selectCard,
   onDeployAt: (x, y) => tryDeployAt(x, y),
-  onRestart: restart,
+  onRestart: () => afterCastGate(restart),
   onMuted: (muted) => audio.setMuted(muted),
   onElixirLeak: () => audio.elixirLeak(),
   onAbility: triggerAbility,
@@ -822,14 +870,16 @@ function forfeitMatch(): void {
 window.addEventListener("pointerdown", () => audio.resume(), { passive: true });
 
 const ctx: AppCtx = {
-  startLadder,
-  startDaily,
-  startDraft: (mine, bot) => {
-    draftDecks = { mine, bot };
-    startSpecialBattle("draft", mine, bot, "Draft Bot");
-  },
-  startChallenge,
-  startReplay,
+  // Every battle start passes the cast gate (afterCastGate, above).
+  startLadder: () => afterCastGate(startLadder),
+  startDaily: () => afterCastGate(startDaily),
+  startDraft: (mine, bot) =>
+    afterCastGate(() => {
+      draftDecks = { mine, bot };
+      startSpecialBattle("draft", mine, bot, "Draft Bot");
+    }),
+  startChallenge: (ch) => afterCastGate(() => startChallenge(ch)),
+  startReplay: () => afterCastGate(startReplay),
   openHome,
   openDeckPicker: (opts) => openDeckPicker(ctx, opts),
   openCollection: () => openCollection(ctx),
