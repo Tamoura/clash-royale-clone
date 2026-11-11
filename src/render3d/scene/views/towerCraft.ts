@@ -1087,7 +1087,7 @@ function buildBattlement(c: Ctx): { out: number; pTop: number; chips: THREE.Vect
     if (!broken) s.box(w + (along ? 0.05 : 0.05), 0.06, d + 0.05, cap, x, pTop + h + 0.03, z, 0, null, o);
   };
   const breakable = [
-    { row: "a" as const, side: camSide, i: 0, lost: 1 },
+    { row: "a" as const, side: camSide, i: -1, lost: 1 },
     { row: "a" as const, side: camSide, i: 1, lost: 2 },
     { row: "b" as const, side: 1, i: camSide, lost: 2 },
   ];
@@ -1113,14 +1113,15 @@ function buildBattlement(c: Ctx): { out: number; pTop: number; chips: THREE.Vect
 
 /** The team banner on the camera face; torn and darker from stage 2. Returns its rod height. */
 function buildBanner(c: Ctx, emblem: (ex: number, ey: number, ez: number, o: PartOpts) => void): void {
-  const { s, king, overhangY, hwAt, camSide, lit } = c;
+  const { s, king, camSide, lit } = c;
   s.chunk = "upper";
-  const bw = king ? 0.72 : 0.56;
-  const bh = king ? 0.92 : 0.74;
-  const top = overhangY - 0.1;
-  const z = camSide * (hwAt(top - bh / 2) + 0.05);
+  // Draped over the parapet on the camera face, clear above the gate.
+  const bw = king ? 0.64 : 0.5;
+  const bh = king ? 0.8 : 0.64;
+  const top = c.H + 0.22;
+  const z = camSide * (c.R * 1.08 + 0.045);
   const face = zFace(camSide);
-  const lean = Math.atan((c.R - c.wallTop) / overhangY);
+  const lean = 0;
   // Whole banner (stages 0-1): cloth, a lighter field, swallow tails.
   const whole: PartOpts = { team: 1, to: 2 };
   s.add(facePlaneBox(bw, bh, 0.04, face, 0, top - bh / 2, Math.abs(z), lean), 0xe0e0e0, 0, 0, 0, 0, (_x, y) => 0.86 + 0.14 * smooth(top - bh, top, y), whole);
@@ -1392,13 +1393,22 @@ function buildCanopy(c: Ctx, at: THREE.Vector3, golden: boolean): YZ[] {
     }
     return [{ y: domeY + dr * 3.4, z: at.z }];
   }
-  // A square valance in team cloth with gold trim, under a smooth tiled cone.
-  const vh = 0.16;
-  s.add(frustum(pr + 0.12, pr + 0.12, eave - vh, eave, 0, false), 0xf0f0f0, at.x, 0, at.z, 0, lit, TEAM);
-  s.add(frustum(pr + 0.14, pr + 0.14, eave - vh - 0.03, eave - vh + 0.01, 0, false), GOLD, at.x, 0, at.z, 0, lit);
-  const roofH = 0.62;
-  s.add(bellCone((pr + 0.12) * 1.42, roofH, 4, 6), 0xffffff, at.x, eave + 0.04, at.z, Math.PI / 4, (_x, y) => 0.9 + 0.1 * smooth(eave, eave + roofH, y), { team: 1, tex: KEEP_TEX.roof, ink: true, uv: [4, 3] });
-  const tip = eave + 0.04 + roofH;
+  // A round pavilion: a scalloped team valance with a gold hem under a smooth tiled bell roof.
+  const vr = pr + 0.16;
+  const vh = 0.18;
+  s.add(new THREE.CylinderGeometry(vr, vr, vh, 24, 1, true), 0xf0f0f0, at.x, eave - vh / 2, at.z, 0, lit, TEAM);
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * Math.PI * 2;
+    const flap = new THREE.SphereGeometry(0.075, 8, 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
+    flap.scale(1, 0.9, 0.35);
+    flap.rotateY(a);
+    s.add(flap, 0xf0f0f0, at.x + Math.sin(a) * vr, eave - vh, at.z + Math.cos(a) * vr, 0, lit, TEAM);
+  }
+  s.add(new THREE.TorusGeometry(vr + 0.005, 0.025, 6, 24).rotateX(Math.PI / 2), GOLD, at.x, eave, at.z, 0, lit);
+  const roofH = 0.72;
+  s.add(bellCone(vr + 0.06, roofH, 24, 8), 0xffffff, at.x, eave + 0.02, at.z, 0, (_x, y) => 0.9 + 0.1 * smooth(eave, eave + roofH, y), { team: 1, tex: KEEP_TEX.roof, ink: true, uv: [9, 4] });
+  if (flair.goldRoofBands) s.add(new THREE.CylinderGeometry((vr + 0.06) * 0.62, (vr + 0.06) * 0.66, 0.05, 24, 1, true), GOLD, at.x, eave + 0.02 + roofH * 0.33, at.z, 0, lit);
+  const tip = eave + 0.02 + roofH;
   s.add(new THREE.SphereGeometry(0.08, 10, 8), GOLD, at.x, tip + 0.03, at.z, 0, lit);
   if (flair.gildedFinials) s.add(new THREE.ConeGeometry(0.035, 0.3, 8), GOLD, at.x, tip + 0.22, at.z, 0, lit);
   return [{ y: tip + (flair.gildedFinials ? 0.37 : 0.11), z: at.z }];
@@ -1733,7 +1743,7 @@ export function craftRuin(spec: RuinSpec): { stump: THREE.Mesh; heap: THREE.Mesh
   const c = ctxFor({
     king: spec.king,
     radius: spec.radius,
-    height: spec.king ? (golden ? 2.35 : 2.7) : golden ? 1.85 : 2.15,
+    height: spec.king ? 2.7 : 2.15,
     team: spec.team,
     enemyTeam: spec.enemyTeam,
     camSide: spec.camSide,

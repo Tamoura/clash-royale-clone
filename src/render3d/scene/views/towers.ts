@@ -196,17 +196,24 @@ function buildCrew(e: Entity, team: Side): Crew {
 }
 
 /**
- * The hand-built king's five crown points stand straight up round his
- * crown: from the steep camera they splay out like petals. Pull them in and
- * shorten them so the crown reads as a band with five short points.
+ * The hand-built king's crown is a capped gold drum ringed by five tall
+ * points: from the steep camera it reads as a gold disc with petals (the
+ * "sunflower"). Open the drum into a band, so his hair shows inside, and
+ * shorten the points.
  */
 function shortenCrownPoints(rig: TroopRig): void {
   for (const o of rig.group.children) {
     const m = o as THREE.Mesh;
-    if (!m.isMesh || !(m.geometry instanceof THREE.ConeGeometry)) continue;
-    if (Math.abs(m.position.y - 1.52) > 0.05) continue;
-    m.scale.set(1, 0.7, 1);
-    m.position.set(m.position.x * 0.9, 1.49, m.position.z * 0.9);
+    if (!m.isMesh) continue;
+    if (m.geometry instanceof THREE.ConeGeometry && Math.abs(m.position.y - 1.52) < 0.05) {
+      m.scale.set(0.9, 0.62, 0.9);
+      m.position.set(m.position.x * 1.08, 1.47, m.position.z * 1.08);
+    } else if (m.geometry instanceof THREE.CylinderGeometry && Math.abs(m.position.y - 1.36) < 0.02) {
+      const p = m.geometry.parameters;
+      if (p.openEnded) continue;
+      m.geometry = new THREE.CylinderGeometry(p.radiusTop, p.radiusBottom, p.height, 16, 1, true);
+      (m.material as THREE.Material).side = THREE.DoubleSide;
+    }
   }
 }
 
@@ -300,7 +307,7 @@ export function buildTowerMesh(e: Entity): EntityView {
   const root = new THREE.Group();
   const king = e.kind === "king-tower";
   const radius = king ? 1.28 : 0.95;
-  const height = arabic ? (king ? 2.35 : 1.85) : king ? 2.7 : 2.15;
+  const height = king ? 2.7 : 2.15; // the same massing in both editions
   const colors = towerTeamColors(e.side);
   const camSide = viewSide === "player" ? 1 : -1;
   // The cannon aims toward the opposing side.
