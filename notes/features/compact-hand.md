@@ -33,7 +33,7 @@ up to the board. Nothing under `src/game/` changed.
   tip. At the card's top (where it was) the "Lv.11" chip covered it on the
   smaller cards, and hid it almost entirely with the large text setting.
   The tall tray's chip also stops growing at 13px with that setting, so the
-  three stay apart from 300px wide up; on a 280px cover screen with large
+  three stay apart from 320px wide up; on a 280-300px screen with large
   text they touch at the edges but all three still read.
 - The edition's ornament stays on the tray's top frame (Golden Age's gold
   star and seal, Classic's diamonds), above the rail; the wide panel has
