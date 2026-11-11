@@ -945,6 +945,16 @@ function paintBanks(look: ArenaLook, p: Paint, P: number, seed: number, rand: ()
 }
 
 
+/** Zellige border bands (tiles): along the court edge and the canal. */
+export const ZELLIGE_BAND = 0.9;
+
+/**
+ * Golden Age courtyard (art bible section 3): sandstone or plaster
+ * flagstones in a running bond, zellige border bands round the court and
+ * along the canal (eight-point khatam stars in the look's tile colours,
+ * gold strapwork), packed ochre sand lanes with pebble edging. The crescent
+ * emblems are 3D inlays (build.ts) at a quarter of their old contrast.
+ */
 function paintIslamic(look: ArenaLook, p: Paint, P: number, seed: number, rand: () => number): void {
   const Z = look.islamic!;
   const { w, h } = p;
@@ -953,100 +963,141 @@ function paintIslamic(look: ArenaLook, p: Paint, P: number, seed: number, rand: 
   const star = parseColor(Z.star);
   const diamondC = parseColor(Z.diamond);
   const strap = parseColor(Z.strap);
-  const cell = P * 4; // one star motif every 4 tiles
-  const R = cell * 0.46;
-  const s = R / Math.SQRT2; // khatam: two squares of half-size s
-  const dia = cell * 0.2;
-  const glaze = 1.6; // the stronger glaze: deeper tile colour plus a sheen
-  const starA = Math.min(0.75, star[3] * glaze);
-  const diaA = Math.min(0.75, diamondC[3] * glaze);
-  const strapW = P * 0.035;
+  const turq: RGB = [0.1, 0.64, 0.63];
+  // Tile colours at full glaze for the borders (the floor field is calm).
+  const starTile = mix3(plaster, star, 0.85);
+  const diaTile = mix3(plaster, diamondC, 0.8);
+  const grout = mul3(plaster, 0.86);
 
-  const bigF = new NoiseField(w, h, 8, P, 3, seed);
-  const smallF = new NoiseField(w, h, 2, P, 0.4, seed + 7);
+  // 1) Flagstones: rows of 1.5 x 1 tile stones in a running bond, each with
+  // its own shade, thin grout, and a soft value noise over everything.
+  const bigF = new NoiseField(w, h, 8, P, 7, seed);
+  const smallF = new NoiseField(w, h, 2, P, 0.35, seed + 7);
+  const SW = 1.5;
+  const SH = 1.0;
   for (let y = 0; y < h; y++) {
+    const ay = (y + 0.5) / P;
+    const row = Math.floor(ay / SH);
+    const fy = ay / SH - row;
+    const off = (row % 2) * SW * 0.5;
     for (let x = 0; x < w; x++) {
-      const f = 0.965 + bigF.at(x, y) * 0.05 + (smallF.at(x, y) - 0.5) * 0.03;
-      let r = plaster[0] * f;
-      let g = plaster[1] * f;
-      let b = plaster[2] * f;
-      // Diamonds on the lattice points.
-      const lx = x + 0.5 - Math.round((x + 0.5) / cell) * cell;
-      const ly = y + 0.5 - Math.round((y + 0.5) / cell) * cell;
-      const dd = (Math.abs(lx) + Math.abs(ly) - dia) / Math.SQRT2;
-      // Khatam stars in the cell centres.
-      const sx = x + 0.5 - (Math.floor((x + 0.5) / cell) + 0.5) * cell;
-      const sy = y + 0.5 - (Math.floor((y + 0.5) / cell) + 0.5) * cell;
-      const sq = Math.max(Math.abs(sx), Math.abs(sy)) - s;
-      const rot = (Math.abs(sx) + Math.abs(sy)) / Math.SQRT2 - s;
-      const sd = Math.min(sq, rot);
-      if (sd < 0.5) {
-        const cov = Math.min(1, 0.5 - sd);
-        // Glaze sheen: brighter toward the upper-left of each star.
-        const sheen = Math.max(0, 0.5 - (sx + sy) / (2 * R)) * 0.22 * cov;
-        r += (star[0] - r) * starA * cov + (1 - r) * sheen;
-        g += (star[1] - g) * starA * cov + (1 - g) * sheen;
-        b += (star[2] - b) * starA * cov + (1 - b) * sheen;
-      }
-      if (dd < 0.5) {
-        const cov = Math.min(1, 0.5 - dd);
-        r += (diamondC[0] - r) * diaA * cov;
-        g += (diamondC[1] - g) * diaA * cov;
-        b += (diamondC[2] - b) * diaA * cov;
-      }
-      // Gold strapwork outlining both motifs, and the faint lattice.
-      const sEdge = Math.abs(sd) - strapW;
-      const dEdge = Math.abs(dd) - strapW * 0.8;
-      let sa = 0;
-      if (sEdge < 0.5) sa = Math.max(sa, Math.min(1, 0.5 - sEdge) * 0.42);
-      if (dEdge < 0.5) sa = Math.max(sa, Math.min(1, 0.5 - dEdge) * 0.32);
-      const lat = Math.min(Math.abs(sx), Math.abs(sy)) - P * 0.02;
-      if (lat < 0.5) sa = Math.max(sa, Math.min(1, 0.5 - lat) * 0.08);
-      if (sa > 0) {
-        r += (strap[0] - r) * sa;
-        g += (strap[1] - g) * sa;
-        b += (strap[2] - b) * sa;
-      }
+      const ax = (x + 0.5) / P;
+      const col = Math.floor((ax + off) / SW);
+      const fx = (ax + off) / SW - col;
+      const stoneShade = 0.97 + hash2(col, row, seed + 5) * 0.06;
+      let f = stoneShade * (1 + (bigF.at(x, y) - 0.5) * 0.06) * (1 + (smallF.at(x, y) - 0.5) * 0.035);
+      // Grout: 0.035 tile lines, with a faint lit lip on each stone's top-left.
+      const gx = Math.min(fx * SW, (1 - fx) * SW);
+      const gy = Math.min(fy * SH, (1 - fy) * SH);
+      const gd = Math.min(gx, gy);
+      let r = plaster[0];
+      let g = plaster[1];
+      let b = plaster[2];
+      if (gd < 0.03) {
+        const k = 1 - gd / 0.03;
+        r += (grout[0] - r) * k * 0.8;
+        g += (grout[1] - g) * k * 0.8;
+        b += (grout[2] - b) * k * 0.8;
+      } else if (gd < 0.07 && (fx * SW < 0.07 || fy * SH < 0.07)) f *= 1.02;
       const k = (y * w + x) * 3;
-      buf[k] = r;
-      buf[k + 1] = g;
-      buf[k + 2] = b;
+      buf[k] = r * f;
+      buf[k + 1] = g * f;
+      buf[k + 2] = b * f;
     }
   }
 
-  // Opaque lane strips with gold borders, straight from each bridge.
+  // 2) Zellige border bands: the court's edge and both canal banks.
+  const band = ZELLIGE_BAND;
+  const cell = band * P; // one star per band height
+  const R = cell * 0.4;
+  const sq = R / Math.SQRT2;
+  const strapW = P * 0.03;
+  const inBand = (ax: number, ay: number): { u: number; v: number; d: number } | null => {
+    // Distance into the band and coordinates along it.
+    const dEdge = Math.min(ax, ARENA_WIDTH - ax, ay, ARENA_HEIGHT - ay);
+    if (dEdge < band) return { u: ax, v: ay, d: dEdge };
+    const dc = Math.abs(ay - RIVER_Y) - RIVER_HALF_WIDTH;
+    if (dc >= 0 && dc < band * 0.75) return { u: ax, v: ay, d: dc };
+    return null;
+  };
+  for (let y = 0; y < h; y++) {
+    const ay = (y + 0.5) / P;
+    for (let x = 0; x < w; x++) {
+      const ax = (x + 0.5) / P;
+      const bnd = inBand(ax, ay);
+      if (!bnd) continue;
+      const i = y * w + x;
+      // Band ground: a glazed ivory tile.
+      p.blend(i, mix3(plaster, [1, 0.98, 0.92], 0.35), 0.92);
+      // Khatam stars and diamonds on a grid aligned to the band.
+      const px = x + 0.5;
+      const py = y + 0.5;
+      const sx = px - (Math.floor(px / cell) + 0.5) * cell;
+      const sy = py - (Math.floor(py / cell) + 0.5) * cell;
+      const sqd = Math.max(Math.abs(sx), Math.abs(sy)) - sq;
+      const rot = (Math.abs(sx) + Math.abs(sy)) / Math.SQRT2 - sq;
+      const sd = Math.min(sqd, rot);
+      const lx = px - Math.round(px / cell) * cell;
+      const ly = py - Math.round(py / cell) * cell;
+      const dd = (Math.abs(lx) + Math.abs(ly) - cell * 0.18) / Math.SQRT2;
+      if (sd < 0.5) p.blend(i, starTile, Math.min(1, 0.5 - sd) * 0.95);
+      if (dd < 0.5) p.blend(i, diaTile, Math.min(1, 0.5 - dd) * 0.9);
+      const se = Math.abs(sd) - strapW;
+      if (se < 0.5) p.blend(i, strap, Math.min(1, 0.5 - se) * 0.75);
+      // Gold fillets frame the band; a turquoise rule runs inside them.
+      const edgeIn = Math.abs(bnd.d - (bnd.d < band * 0.5 ? 0.04 : band - 0.04));
+      if (edgeIn < 0.03) p.blend(i, strap, 0.9 * (1 - edgeIn / 0.03));
+      const rule = Math.abs(bnd.d - band * 0.12);
+      if (rule < 0.025 && bnd.d < band) p.blend(i, turq, 0.55 * (1 - rule / 0.025));
+    }
+  }
+
+  // 3) Lanes of packed ochre sand, straight from each bridge, with pebble edging.
   const laneC = parseColor(Z.lane);
   const wear = parseColor(Z.laneWear);
   const dirtF = new NoiseField(w, h, 3, P, 0.5, seed + 41);
-  const hw = 2.35 / 2;
-  const top = 0.6;
-  const bottom = ARENA_HEIGHT - 0.6;
+  const wobbleF = new NoiseField(w, h, 4, P, 1 / 2.2, seed + 31);
+  const hw = 0.95;
+  const top = band + 0.25;
+  const bottom = ARENA_HEIGHT - band - 0.25;
   for (const bx of BRIDGE_XS) {
     for (let y = Math.floor(top * P); y < Math.ceil(bottom * P); y++) {
       const ay = (y + 0.5) / P;
-      const endFade = smoothstep(top, top + 0.4, ay) * (1 - smoothstep(bottom - 0.4, bottom, ay));
-      for (let x = Math.floor((bx - hw) * P); x < Math.ceil((bx + hw) * P); x++) {
+      if (Math.abs(ay - RIVER_Y) < RIVER_HALF_WIDTH + band * 0.75) continue;
+      const endFade = smoothstep(top, top + 0.3, ay) * (1 - smoothstep(bottom - 0.3, bottom, ay));
+      for (let x = Math.floor((bx - hw - 0.3) * P); x < Math.ceil((bx + hw + 0.3) * P); x++) {
         const ax = (x + 0.5) / P;
-        const u = Math.abs(ax - bx) / hw; // 0 centre .. 1 edge
-        if (u >= 1) continue;
+        const edge = hw + (wobbleF.at(x, y) - 0.5) * 0.12;
+        const d = Math.abs(ax - bx);
+        const cover = (1 - smoothstep(edge - 0.1, edge + 0.08, d)) * endFade;
+        if (cover <= 0) continue;
         const i = y * w + x;
-        const dirt = 0.93 + dirtF.at(x, y) * 0.12;
-        const alpha = (u < 0.82 ? 0.97 : 0.97 * (1 - smoothstep(0.82, 1, u))) * endFade;
-        p.blend(i, mul3(laneC, dirt), alpha);
-        // Centre rut for lane readability.
-        if (Math.abs(ax - bx) < 0.05) p.blend(i, wear, 0.3 * endFade);
-        // Gold border just inside each edge.
-        const border = Math.abs(u - 0.86) * hw;
-        if (border < 0.045) p.blend(i, strap, 0.85 * (1 - border / 0.045) * endFade);
+        const crown = 1 - smoothstep(0.1, edge, d) * 0.08;
+        p.blend(i, mul3(laneC, (0.93 + dirtF.at(x, y) * 0.12) * crown), cover * 0.96);
+        const rut = Math.abs(d - 0.38);
+        if (rut < 0.08) p.blend(i, wear, 0.18 * cover * (1 - rut / 0.08));
       }
     }
-    // Worn speckle and light flecks along the strip.
-    for (let n = 0; n < 260; n++) {
-      const ax = bx + (rand() - 0.5) * hw * 1.5;
+    for (let i = 0; i < 70; i++) {
+      const ax = bx + (rand() - 0.5) * hw * 1.6;
       const ay = top + 0.3 + rand() * (bottom - top - 0.6);
-      if (Math.abs(ay - RIVER_Y) < RIVER_HALF_WIDTH + 0.2) continue;
-      const light = rand() < 0.4;
-      p.disc(ax * P, ay * P, (light ? 0.8 : 1.2) * (P / 32), light ? [1, 0.93, 0.67] : wear, light ? 0.4 : 0.55, 0.7, rand() * 3);
+      if (Math.abs(ay - RIVER_Y) < RIVER_HALF_WIDTH + band) continue;
+      p.disc(ax * P, ay * P, (0.7 + rand() * 0.6) * (P / 32), wear, 0.45, 0.7, rand() * 3);
+    }
+    // Pebble edging down both sides.
+    const kerbA = mix3(plaster, [0.62, 0.55, 0.45], 0.5);
+    const kerbB = mix3(plaster, [0.8, 0.74, 0.62], 0.4);
+    for (const side of [-1, 1]) {
+      for (let ay = top + 0.15; ay < bottom; ay += 0.3 + rand() * 0.12) {
+        if (Math.abs(ay - RIVER_Y) < RIVER_HALF_WIDTH + band) continue;
+        if (insideApron(bx, ay)) continue;
+        const ax = bx + side * (hw + 0.04 + (rand() - 0.5) * 0.06);
+        const r = (0.09 + rand() * 0.04) * P;
+        const rot = Math.PI / 2 + (rand() - 0.5) * 0.5;
+        p.disc(ax * P + r * 0.2, ay * P + r * 0.3, r * 1.1, mul3(plaster, 0.55), 0.3, 0.72, rot);
+        p.disc(ax * P, ay * P, r, rand() < 0.5 ? kerbA : kerbB, 0.95, 0.7, rot);
+        p.disc(ax * P - r * 0.15, ay * P - r * 0.2, r * 0.5, [1, 1, 0.96], 0.2, 0.6, rot);
+      }
     }
   }
 }
@@ -1137,8 +1188,12 @@ export const groundPainter = {
     const p = new Paint(ARENA_WIDTH * P, ARENA_HEIGHT * P);
     const seed = hashString(`${islamic ? "islamic" : "classic"}:${look.id}`);
     const rand = rng(seed);
-    if (islamic && look.islamic) paintIslamic(look, p, P, seed, rand);
-    else {
+    if (islamic && look.islamic) {
+      paintIslamic(look, p, P, seed, rand);
+      const Z = parseColor(look.islamic.plaster);
+      const stone = ((Math.round(Z[0] * 0.92 * 255) << 16) | (Math.round(Z[1] * 0.88 * 255) << 8) | Math.round(Z[2] * 0.8 * 255)) >>> 0;
+      paintAprons(p, P, seed, stone);
+    } else {
       paintClassic(look, p, P, seed, rand);
       paintBanks(look, p, P, seed, rand);
       paintAprons(p, P, seed, mixHex(look.tower.platformPlayer, look.tower.plinth, 0.45));
