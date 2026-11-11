@@ -207,9 +207,17 @@ throwaway lab page that rendered two keeps at battle scale with magenta ink and 
 - King KO and Victory (both editions): raw/ko-*.png; no console errors or warnings in any capture (the
   only console lines are the pre-existing 403s for font files outside Vite's fs allow list).
 
-- Review fixes: /tmp/claude-0/art/towers-fix/ (matrix/ for the standard matrix and the flair 1 and 2
-  phone shots; damage.png, also copied to /tmp/claude-0/art/towers/damage.png, the old one kept as
-  damage-before-fix.png; closeups.png likewise; raw/ for the host and guest king checks).
+- Review fixes: /tmp/claude-0/art/towers-fix/: matrix/ (the standard matrix, 4 arenas x 2 editions x
+  390x844@2 and 1440x900, the quality=low phone shots, and flair 1 and 2 phone shots); closeups.png
+  (far and near princess and king for meadow, snow, forge, neon, courtyard, souk, copper, medina, flair
+  1 and 2 per edition, and the real guest view per edition); damage.png (100%, 60%, 30%, collapsing at
+  0.25 and 0.6 s, ruin, both editions); raw/ (host and guest kings asleep and woken, KO zoom and
+  Victory per edition). Both sheets are also copied over /tmp/claude-0/art/towers/{closeups,damage}.png
+  (the earlier ones kept as *-before-fix.png). By eye: roofs end in clean tips with an even outline,
+  no fins or ticks; plates clear of roofs, flags and crews on the phone; kings show face and crown band
+  from both viewpoints; stage 1 reads (gap in the front merlons, two dark splits by the gate); the ruin
+  sits in a scorched ring. No console errors or warnings in any capture (only the known 403s for font
+  files outside Vite's fs allow list, and SwiftShader's ReadPixels stall notes).
 
 ## Known gaps
 
@@ -230,5 +238,7 @@ throwaway lab page that rendered two keeps at battle scale with magenta ink and 
   final quality bar green (tsc, vitest 137 files / 1560 tests, build, perf both editions and 1440x900).
 - State: DONE for wave 1. Ship: wire the crew provider (Requests for ship 1).
 - Review fixes: 470a4b2 (ink, guest slump, dome budget), 901b318 (qubba, flag, stage 1, ruin ring),
-  3a3e9fc (tests), 774f0dc (qubba tweak, notes). tsc clean, vitest 137 files / 1568 tests, build OK,
-  perf both editions at 390x844@2 and 1440x900 within the ceilings (table above).
+  3a3e9fc (tests), 774f0dc (qubba tweak, notes), c89fdac (paving soot). tsc clean, vitest 137 files /
+  1568 tests, build OK, perf both editions at 390x844@2 and 1440x900 within the ceilings (table above);
+  matrix, sheets, guest and KO/Victory checks re-shot and looked at.
+- State: review fixes DONE. Open for ship: Requests for ship 1, 4, 5, 6.
