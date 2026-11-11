@@ -31,3 +31,13 @@ Start shots: /tmp/claude-0/art/stage/start/.
 ## Progress log
 
 - Start: worktree created from art/base, perf measured (above), start shots taken.
+- 57e98d8: Classic floors per look (no checker), LIGHT_RIG in sky.ts, bloom/grade/flash contract in
+  post.ts, quality ladder fields, live troop shadows (both editions), fog past the far band. Tests updated.
+- (next): instanced chibi crowd (crowd.ts), far-band awnings/pennants (kits.ts castle), forest mesh that
+  casts no shadow, tint batching of lit toon props (Golden Age shadow casters 50 -> ~30).
+- b793013: bridges.ts (stone, ice, gatehouse), river reeds/lily pads/bank lips, near-band terrace wall.
+- 15048bb: Golden Age courtyard floor (flagstones, zellige bands, ochre lanes), small faint crescents,
+  golden.ts galleries + souk awnings + town edge.
+- Remaining at this point: perf trim (Classic empty tris <= 230k), tufts, outer ring for wide screens
+  (village / themed), remaining-look polish (snow too white?), contact sheet, ladder sheet, matrix,
+  mid-fight wash check, governor test in browser, notes write-up.
