@@ -139,6 +139,8 @@ All under /tmp/claude-0/art/cast-kit/ (iteration shots in it/).
   legendary-peak}-{390x844,1440x900}.png, {classic,golden}-training-camp-390x844-low.png,
   classic-training-camp-390x844-viewpoint-enemy.png (guest camera set after the battle starts),
   golden-courtyard-extras-390x844.png (janissary, duelist, alchemist, militia on both sides).
+- Review fix extra: classic-mounts-390x844.png (hog riders, princes and giants on both sides: the hog
+  reads by its snout and tusks from the front, the Giant's pale scalp and auburn fringe from behind).
 - Colour-blind palette switched mid-battle: classic-cb-before.png / classic-cb-after.png (the enemy's
   capes, cloaks, tabards and discs go from red to orange on units already on the field).
 - Team share table: tools/troopview.html?measure=1 (script /tmp/claude-0/cast-kit-tools/fix/teamshare.cjs,
@@ -288,4 +290,10 @@ cannoneer         12.1   9.3  18.5  16.7
 duchess           13.3    10  10.4   7.3
 champion            14    11  16.7  14.9
 ```
+- Review fix closed out (877cff0 + this commit): full-turn drapes share their seam column (sashes and
+  capelets shade with no seam; tested closed). Whole standard matrix re-shot on the final code (the
+  golden training-camp desk shot re-taken after a dev-server reload hit it), plus classic-mounts; contact
+  sheets regenerated. Final bar: tsc clean, vitest 137 files / 1570 tests, build ok (index 313.0 KB gz),
+  perf unchanged from the e22315b row. Dev server on 3201 stopped. Nothing left open for the fixer; ship
+  owns Requests #0 (setLeanCamera per frame), #2 (viewer deletion) and #3 (hat heights).
 
