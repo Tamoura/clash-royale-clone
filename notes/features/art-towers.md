@@ -18,6 +18,10 @@ Owns: `src/render3d/scene/views/towers.ts`, `towers.test.ts`, `towerCraft.ts`, `
 | end (this branch) | golden | 135 | 164,154 | 370 | 536,038 | 52 |
 | end, 1440x900@1 | classic | 112 | 282,270 | 369 | 785,898 | 52 |
 | end, 1440x900@1 | golden | 135 | 164,154 | 366 | 536,082 | 52 |
+| review fixes | classic | 112 | 281,406 | 366 | 784,970 | 52 |
+| review fixes | golden | 135 | 152,682 | 366 | 524,610 | 52 |
+| review fixes, 1440x900@1 | classic | 112 | 281,406 | 366 | 784,982 | 52 |
+| review fixes, 1440x900@1 | golden | 135 | 152,682 | 367 | 524,482 | 52 |
 
 Empty calls: classic 178 -> 112, golden 167 -> 135 (ceilings 184 / 173 met with room to spare). The
 triangle growth (+16k classic empty, +27k golden) is the keeps being drawn into the per-frame shadow
@@ -151,6 +155,40 @@ set of six at or under 60k.
    both editions once the provider is wired; if it flips, the cheapest fix is letting far plates rise
    into the gap between the scoreboard chips and the clock (layoutWire could pass that smaller inset).
 
+## Review fixes (towers review, 7 findings)
+
+All seven reproduced first (shots in /tmp/claude-0/art/towers-fix/raw/; the ink was isolated in a
+throwaway lab page that rendered two keeps at battle scale with magenta ink and the hulls alone).
+
+1. **Ink whiskers at every roof tip (major): fixed.** Cause: the cone's back faces are almost edge-on
+   from the 49 degree camera; under the hull push they flipped winding and were culled, so a cone's
+   hull drew only its tip (two strokes either side of the finial) and nothing down its sides. Fix: the
+   keep draws both faces (the hull is depth-pushed, so only its rim past the silhouette shows), the
+   hull grows along its normal in view space instead of a screen-space push, cones close to a single
+   tip vertex, and merlons carry no ink (their hulls drew the V ticks in the gaps). Roofs now have a
+   clean outline from tip to eave in both editions, flair 0-2, both viewpoints.
+2. **Guest kings tilt back under the canopy (major): fixed.** `kingSlumpTilt` signs the slump by
+   `camSide`, so a sleeping king nods toward whichever camera looks at him. Checked by patching
+   `setViewpoint` before the battle (Requests for ship 5): sleeping and woken kings, both editions,
+   host and guest (raw/g1-*, raw/p3-*-guest*): face and crown band read the same from both sides.
+3. **Six-tower budget missed the domes (major): fixed.** The test now builds real onion domes; borrowed
+   dome parts are re-tessellated (bulbs 12 x 10, crescents 5 x 12), snow caps 12 x 4, gold rings 4 x 16.
+   Six towers at flair 2: Golden Age 41.9k (courtyard) to 47.7k (atlas), was 55-64k; Classic 38.4k
+   (meadow) to 48.5k (snow, ice). Golden Age empty battle 164k -> 153k triangles.
+4. **Far king's plate flips on the Golden Age phone (minor): fixed for 390x844.** The qubba is lower
+   (see Golden Age above); the far king's top moved from 93 to 110 CSS px, so his plate sits above him
+   (no flip in either edition). At 1440x900 the flip remains, as the spec allows for landscape; see
+   Requests for ship 4 and 6.
+5. **Far king cut off at 1440x900 (minor): partly fixed, rest requested.** The lower qubba wins back
+   about 23 px (Golden Age top -52 -> -29 px); Classic is at -21 px as on art/base. The rest needs top
+   margin from framing (Requests for ship 4).
+6. **Far princess flag against her plate (minor): fixed.** The flag flies from a camera-side turret,
+   well below a far plate, and its tip is in `tops`; a test checks no keep vertex rises above the tops
+   on screen.
+7. **Stage 1 barely visible; ruin without a scorched ring (minor): fixed.** Bigger, bolder cracks low
+   on the camera face either side of the gate, the camera row's middle merlon knocked out at stage 1;
+   soot on the paving and a ragged scorched ground ring round the ruin.
+
 ## Screenshots and checks
 
 - Iterations: /tmp/claude-0/art/towers/it/ (start-*.png is the art/base state).
@@ -168,6 +206,10 @@ set of six at or under 60k.
   above it; the canopy grows with the king.
 - King KO and Victory (both editions): raw/ko-*.png; no console errors or warnings in any capture (the
   only console lines are the pre-existing 403s for font files outside Vite's fs allow list).
+
+- Review fixes: /tmp/claude-0/art/towers-fix/ (matrix/ for the standard matrix and the flair 1 and 2
+  phone shots; damage.png, also copied to /tmp/claude-0/art/towers/damage.png, the old one kept as
+  damage-before-fix.png; closeups.png likewise; raw/ for the host and guest king checks).
 
 ## Known gaps
 
@@ -187,3 +229,6 @@ set of six at or under 60k.
 - 6c6b137 + sheets: matrix, close-up and damage sheets, stand-in provider and KO/Victory checks done;
   final quality bar green (tsc, vitest 137 files / 1560 tests, build, perf both editions and 1440x900).
 - State: DONE for wave 1. Ship: wire the crew provider (Requests for ship 1).
+- Review fixes: 470a4b2 (ink, guest slump, dome budget), 901b318 (qubba, flag, stage 1, ruin ring),
+  3a3e9fc (tests), 774f0dc (qubba tweak, notes). tsc clean, vitest 137 files / 1568 tests, build OK,
+  perf both editions at 390x844@2 and 1440x900 within the ceilings (table above).
