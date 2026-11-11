@@ -45,401 +45,83 @@ export const SWATCH_HEX: Record<string, number[][]> = {
 /** Swatches ("column,row") each node's mesh uses, per character file. */
 export const MESH_SWATCHES: Record<string, Record<string, string[]>> = {
   knight: {
-    "1H_Sword_Offhand": [
-      "3,1",
-      "5,1"
-    ],
-    Badge_Shield: [
-      "3,1",
-      "5,1",
-      "6,1"
-    ],
-    Rectangle_Shield: [
-      "3,1",
-      "5,1",
-      "6,1"
-    ],
-    Round_Shield: [
-      "3,1",
-      "5,1",
-      "6,1"
-    ],
-    Spike_Shield: [
-      "3,1",
-      "5,1",
-      "6,1"
-    ],
-    "1H_Sword": [
-      "3,1",
-      "5,1"
-    ],
-    "2H_Sword": [
-      "2,2",
-      "3,1",
-      "5,1"
-    ],
-    Knight_Helmet: [
-      "3,0",
-      "7,0"
-    ],
-    Knight_Cape: [
-      "0,1"
-    ],
-    Knight_ArmLeft: [
-      "3,0",
-      "4,0",
-      "6,0",
-      "7,0"
-    ],
-    Knight_ArmRight: [
-      "3,0",
-      "4,0",
-      "6,0",
-      "7,0"
-    ],
-    Knight_Body: [
-      "0,1",
-      "1,1",
-      "2,1",
-      "3,0",
-      "6,0",
-      "7,0",
-      "7,1"
-    ],
-    Knight_Head: [
-      "0,0",
-      "1,0",
-      "2,0"
-    ],
-    Knight_LegLeft: [
-      "3,0",
-      "6,0",
-      "7,0",
-      "7,1"
-    ],
-    Knight_LegRight: [
-      "3,0",
-      "6,0",
-      "7,0",
-      "7,1"
-    ]
+    "1H_Sword_Offhand": ["3,1", "5,1"],
+    Badge_Shield: ["3,1", "5,1", "6,1"],
+    Round_Shield: ["3,1", "5,1", "6,1"],
+    Spike_Shield: ["3,1", "5,1", "6,1"],
+    "1H_Sword": ["3,1", "5,1"],
+    "2H_Sword": ["2,2", "3,1", "5,1"],
+    Knight_Helmet: ["3,0", "7,0"],
+    Knight_Cape: ["0,1"],
+    Knight_ArmLeft: ["3,0", "4,0", "6,0", "7,0"],
+    Knight_ArmRight: ["3,0", "4,0", "6,0", "7,0"],
+    Knight_Body: ["0,1", "1,1", "2,1", "3,0", "6,0", "7,0", "7,1"],
+    Knight_Head: ["0,0", "1,0", "2,0"],
+    Knight_LegLeft: ["3,0", "6,0", "7,0", "7,1"],
+    Knight_LegRight: ["3,0", "6,0", "7,0", "7,1"],
   },
   barbarian: {
-    "1H_Axe_Offhand": [
-      "2,2",
-      "3,1",
-      "5,1"
-    ],
-    Barbarian_Round_Shield: [
-      "0,2",
-      "2,2",
-      "3,1",
-      "4,1",
-      "6,1"
-    ],
-    "1H_Axe": [
-      "2,2",
-      "3,1",
-      "5,1"
-    ],
-    "2H_Axe": [
-      "0,2",
-      "2,2",
-      "3,1",
-      "5,1"
-    ],
-    Mug: [
-      "1,3",
-      "3,1",
-      "5,1"
-    ],
-    Barbarian_Hat: [
-      "2,0",
-      "2,1",
-      "7,0"
-    ],
-    Barbarian_Cape: [
-      "7,0"
-    ],
-    Barbarian_ArmLeft: [
-      "1,1",
-      "2,1",
-      "3,0",
-      "6,0",
-      "7,2"
-    ],
-    Barbarian_ArmRight: [
-      "1,1",
-      "2,1",
-      "3,0",
-      "6,0",
-      "7,2"
-    ],
-    Barbarian_Body: [
-      "0,1",
-      "2,1",
-      "3,0",
-      "6,0",
-      "7,0",
-      "7,1"
-    ],
-    Barbarian_Head: [
-      "0,0",
-      "1,0",
-      "2,0"
-    ],
-    Barbarian_LegLeft: [
-      "2,1",
-      "3,2",
-      "7,1"
-    ],
-    Barbarian_LegRight: [
-      "2,1",
-      "3,2",
-      "6,0",
-      "7,1"
-    ]
+    Barbarian_Round_Shield: ["0,2", "2,2", "3,1", "4,1", "6,1"],
+    "1H_Axe": ["2,2", "3,1", "5,1"],
+    "2H_Axe": ["0,2", "2,2", "3,1", "5,1"],
+    Mug: ["1,3", "3,1", "5,1"],
+    Barbarian_Hat: ["2,0", "2,1", "7,0"],
+    Barbarian_Cape: ["7,0"],
+    Barbarian_ArmLeft: ["1,1", "2,1", "3,0", "6,0", "7,2"],
+    Barbarian_ArmRight: ["1,1", "2,1", "3,0", "6,0", "7,2"],
+    Barbarian_Body: ["0,1", "2,1", "3,0", "6,0", "7,0", "7,1"],
+    Barbarian_Head: ["0,0", "1,0", "2,0"],
+    Barbarian_LegLeft: ["2,1", "3,2", "7,1"],
+    Barbarian_LegRight: ["2,1", "3,2", "6,0", "7,1"],
   },
   mage: {
-    Spellbook: [
-      "0,2",
-      "1,2",
-      "3,1",
-      "5,1"
-    ],
-    Spellbook_open: [
-      "0,2",
-      "1,2",
-      "3,1",
-      "5,1"
-    ],
-    "1H_Wand": [
-      "2,2",
-      "5,1"
-    ],
-    "2H_Staff": [
-      "2,2",
-      "3,1",
-      "5,1",
-      "6,2"
-    ],
-    Mage_Hat: [
-      "1,1",
-      "3,0",
-      "5,0"
-    ],
-    Mage_Cape: [
-      "2,1"
-    ],
-    Mage_ArmLeft: [
-      "0,1",
-      "4,0",
-      "7,2"
-    ],
-    Mage_ArmRight: [
-      "0,1",
-      "4,0",
-      "7,2"
-    ],
-    Mage_Body: [
-      "0,1",
-      "0,2",
-      "2,2",
-      "3,0",
-      "4,0",
-      "5,0",
-      "7,1"
-    ],
-    Mage_Head: [
-      "0,0",
-      "1,0",
-      "1,1",
-      "2,0"
-    ],
-    Mage_LegLeft: [
-      "3,2",
-      "7,1"
-    ],
-    Mage_LegRight: [
-      "3,2",
-      "7,1"
-    ]
+    Spellbook: ["0,2", "1,2", "3,1", "5,1"],
+    "1H_Wand": ["2,2", "5,1"],
+    "2H_Staff": ["2,2", "3,1", "5,1", "6,2"],
+    Mage_Hat: ["1,1", "3,0", "5,0"],
+    Mage_Cape: ["2,1"],
+    Mage_ArmLeft: ["0,1", "4,0", "7,2"],
+    Mage_ArmRight: ["0,1", "4,0", "7,2"],
+    Mage_Body: ["0,1", "0,2", "2,2", "3,0", "4,0", "5,0", "7,1"],
+    Mage_Head: ["0,0", "1,0", "1,1", "2,0"],
+    Mage_LegLeft: ["3,2", "7,1"],
+    Mage_LegRight: ["3,2", "7,1"],
   },
   rogue: {
-    Knife_Offhand: [
-      "2,1",
-      "3,1",
-      "6,1"
-    ],
-    "1H_Crossbow": [
-      "0,2",
-      "3,1",
-      "5,1",
-      "6,1"
-    ],
-    "2H_Crossbow": [
-      "0,2",
-      "3,1",
-      "5,1",
-      "6,1"
-    ],
-    Knife: [
-      "2,1",
-      "3,1",
-      "6,1"
-    ],
-    Throwable: [
-      "5,1",
-      "6,2"
-    ],
-    Rogue_Cape: [
-      "1,1"
-    ],
-    Rogue_ArmLeft: [
-      "0,1",
-      "1,1",
-      "5,0",
-      "5,2"
-    ],
-    Rogue_ArmRight: [
-      "0,1",
-      "1,1",
-      "5,0",
-      "5,2"
-    ],
-    Rogue_Body: [
-      "0,1",
-      "1,1",
-      "3,0",
-      "5,0",
-      "6,0",
-      "7,1"
-    ],
-    Rogue_Head: [
-      "0,0",
-      "1,0",
-      "2,0",
-      "3,0"
-    ],
-    Rogue_LegLeft: [
-      "0,0",
-      "3,2",
-      "7,1"
-    ],
-    Rogue_LegRight: [
-      "0,0",
-      "3,2",
-      "7,1"
-    ]
+    Knife_Offhand: ["2,1", "3,1", "6,1"],
+    "1H_Crossbow": ["0,2", "3,1", "5,1", "6,1"],
+    "2H_Crossbow": ["0,2", "3,1", "5,1", "6,1"],
+    Knife: ["2,1", "3,1", "6,1"],
+    Rogue_Cape: ["1,1"],
+    Rogue_ArmLeft: ["0,1", "1,1", "5,0", "5,2"],
+    Rogue_ArmRight: ["0,1", "1,1", "5,0", "5,2"],
+    Rogue_Body: ["0,1", "1,1", "3,0", "5,0", "6,0", "7,1"],
+    Rogue_Head: ["0,0", "1,0", "2,0", "3,0"],
+    Rogue_LegLeft: ["0,0", "3,2", "7,1"],
+    Rogue_LegRight: ["0,0", "3,2", "7,1"],
   },
   rogue_hooded: {
-    Knife_Offhand: [
-      "2,1",
-      "3,1",
-      "6,1"
-    ],
-    "1H_Crossbow": [
-      "0,2",
-      "3,1",
-      "5,1",
-      "6,1"
-    ],
-    "2H_Crossbow": [
-      "0,2",
-      "3,1",
-      "5,1",
-      "6,1"
-    ],
-    Knife: [
-      "2,1",
-      "3,1",
-      "6,1"
-    ],
-    Throwable: [
-      "5,1",
-      "6,2"
-    ],
-    Rogue_Cape: [
-      "1,1"
-    ],
-    Rogue_ArmLeft: [
-      "0,1",
-      "1,1",
-      "5,0",
-      "5,2"
-    ],
-    Rogue_ArmRight: [
-      "0,1",
-      "1,1",
-      "5,0",
-      "5,2"
-    ],
-    Rogue_Body: [
-      "0,1",
-      "1,1",
-      "3,0",
-      "5,0",
-      "6,0",
-      "7,1"
-    ],
-    Rogue_Head_Hooded: [
-      "0,0",
-      "1,0",
-      "1,1",
-      "2,0"
-    ],
-    Rogue_LegLeft: [
-      "0,0",
-      "3,2",
-      "7,1"
-    ],
-    Rogue_LegRight: [
-      "0,0",
-      "3,2",
-      "7,1"
-    ]
+    "1H_Crossbow": ["0,2", "3,1", "5,1", "6,1"],
+    "2H_Crossbow": ["0,2", "3,1", "5,1", "6,1"],
+    Knife: ["2,1", "3,1", "6,1"],
+    Rogue_Cape: ["1,1"],
+    Rogue_ArmLeft: ["0,1", "1,1", "5,0", "5,2"],
+    Rogue_ArmRight: ["0,1", "1,1", "5,0", "5,2"],
+    Rogue_Body: ["0,1", "1,1", "3,0", "5,0", "6,0", "7,1"],
+    Rogue_Head_Hooded: ["0,0", "1,0", "1,1", "2,0"],
+    Rogue_LegLeft: ["0,0", "3,2", "7,1"],
+    Rogue_LegRight: ["0,0", "3,2", "7,1"],
   },
   skeleton_minion: {
-    Skeleton_Minion_ArmLeft: [
-      "1,1"
-    ],
-    Skeleton_Minion_ArmRight: [
-      "1,1"
-    ],
-    Skeleton_Minion_Body: [
-      "1,1",
-      "2,0",
-      "3,0",
-      "6,0",
-      "7,0"
-    ],
-    Skeleton_Minion_Cloak: [
-      "5,0"
-    ],
-    Skeleton_Minion_Eyes: [
-      "7,3"
-    ],
-    Skeleton_Minion_Head: [
-      "1,1"
-    ],
-    Skeleton_Minion_Jaw: [
-      "1,1"
-    ],
-    Skeleton_Minion_LegLeft: [
-      "1,1",
-      "6,0",
-      "7,0"
-    ],
-    Skeleton_Minion_LegRight: [
-      "1,1",
-      "6,0",
-      "7,0"
-    ],
-    Skeleton_Blade: [
-      "3,0",
-      "3,1",
-      "6,0",
-      "6,2"
-    ]
-  }
+    Skeleton_Minion_ArmLeft: ["1,1"],
+    Skeleton_Minion_ArmRight: ["1,1"],
+    Skeleton_Minion_Body: ["1,1", "2,0", "3,0", "6,0", "7,0"],
+    Skeleton_Minion_Cloak: ["5,0"],
+    Skeleton_Minion_Eyes: ["7,3"],
+    Skeleton_Minion_Head: ["1,1"],
+    Skeleton_Minion_Jaw: ["1,1"],
+    Skeleton_Minion_LegLeft: ["1,1", "6,0", "7,0"],
+    Skeleton_Minion_LegRight: ["1,1", "6,0", "7,0"],
+    Skeleton_Blade: ["3,0", "3,1", "6,0", "6,2"],
+  },
 };

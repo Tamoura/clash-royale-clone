@@ -31,6 +31,12 @@ export const CAPE_LENGTH = 0.56;
 export const HAT_BRIM = 0.8;
 /** Ink width of the cast in CSS px (the shared shell shader is written for OUTLINE_CSS_PX). */
 export const CAST_INK_PX = 1.6;
+/**
+ * The ink shell is pushed this far back along the view (world units): it
+ * only survives where it pokes past the body's SILHOUETTE, so concave
+ * creases (a hat's back fold, a hood's seam) no longer draw "V" lines.
+ */
+export const CAST_INK_DEPTH = 0.3;
 /** Ground occlusion: the lowest share of the body, and how much darker its foot gets. */
 export const GROUND_AO_HEIGHT = 0.18;
 export const GROUND_AO_DARK = 0.15;
@@ -530,6 +536,14 @@ export function castMaterial(map: THREE.Texture, side: Side): THREE.MeshToonMate
          #else
            vec3 nView = normalize(normalMatrix * outlineNormal);
          #endif`,
+      )
+      // Silhouette-only ink: the shell sits CAST_INK_DEPTH behind the body along the view
+      // (straight back for the battle's orthographic camera, along the ray for a portrait's).
+      .replace(
+        "vec3 nView = normalize(normalMatrix",
+        `vec3 _back = projectionMatrix[3][3] > 0.5 ? vec3(0.0, 0.0, -${CAST_INK_DEPTH.toFixed(3)}) : normalize(mvPosition.xyz) * ${CAST_INK_DEPTH.toFixed(3)};
+         gl_Position = projectionMatrix * vec4(mvPosition.xyz + _back, 1.0);
+         vec3 nView = normalize(normalMatrix`,
       )
       // The cast's line is CAST_INK_PX wide (the shared hull is written for OUTLINE_CSS_PX).
       .replace("* uInkPx * 2.0 / uInkViewport", `* uInkPx * ${((2 * CAST_INK_PX) / OUTLINE_CSS_PX).toFixed(4)} / uInkViewport`);
