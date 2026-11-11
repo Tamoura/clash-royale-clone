@@ -974,7 +974,7 @@
 :root[data-layout="wide"] #hud.v2 .hand-row {
   grid-template-columns: repeat(var(--hand-cols, 2), var(--cw));
   justify-content: center;
-  /* layout.ts: HAND_GAP_Y, HAND_GAP_X (the cost droplet hangs 8px into the row gap). */
+  /* layout.ts: HAND_GAP_Y, HAND_GAP_X (the cost droplet hangs 9px into the row gap). */
   gap: 16px 10px;
 }
 :root[data-layout="wide"] #hud.v2 .card-cost {
@@ -993,10 +993,10 @@
 :root[data-layout="wide"] #hud.v2 .hud-next-art canvas {
   height: 46px;
 }
-/* Elixir: a 30px droplet on an 18px bar, 14px under the hand. */
+/* Elixir: a 30px droplet on an 18px bar. Beside Next it lines up with the
+   mini card's middle (14px under the hand, then half of 46 - 30). */
 :root[data-layout="wide"] #hud.v2 .elixir-row {
   height: 30px;
-  /* Beside Next, the bar lines up with the mini card's middle. */
   align-self: start;
   margin-top: 22px;
 }

@@ -103,7 +103,7 @@ const PANEL_INSET = 24;
 const PANEL_CHROME_W = 20;
 /** Panel border (2 + 2), top padding (12) and bottom padding (10). */
 const PANEL_CHROME_H = 26;
-/** Between the hand's two columns, and between its rows (the cost droplet hangs 8px below a card). */
+/** Between the hand's two columns, and between its rows (the cost droplet hangs 9px below a card). */
 const HAND_GAP_X = 10;
 const HAND_GAP_Y = 16;
 /** Inline panel: Next (a mini card over its label tab, 52px) beside the elixir bar, 14px under the hand. */
