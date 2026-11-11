@@ -247,8 +247,10 @@ export const PRESETS: Record<string, readonly Layer[]> = {
   // A shot's smoke ribbon: shed at most half a puff apart along the flight
   // (effects.ts shedRibbon), short-lived so it never hangs after the shot lands.
   // Light (alpha 0.4): the overlapping puffs build a soft ribbon, not a dark rope.
+  // Older puffs shrink (to about 0.6 of their birth size, still overlapping at
+  // half-size spacing), so the ribbon tapers toward its tail like a comet's.
   "ribbon-puff": [
-    { pool: "alpha", cell: CELL.PUFF, count: 1, life: [0.26, 0.34], dir: "up", spread: 0.4, speed: [0.15, 0.35], drag: 1.5, size0: [0.24, 0.28], size1: [0.4, 0.48], spin: [-1, 1], color0: 0x7a6c62, alpha0: 0.4, alpha1: 0, push: 0.3 },
+    { pool: "alpha", cell: CELL.PUFF, count: 1, life: [0.26, 0.34], dir: "up", spread: 0.4, speed: [0.15, 0.35], drag: 1.5, size0: [0.24, 0.28], size1: [0.15, 0.17], spin: [-1, 1], color0: 0x7a6c62, alpha0: 0.4, alpha1: 0, push: 0.3 },
   ],
   // Electric crackle sparks.
   "zap-sparks": [

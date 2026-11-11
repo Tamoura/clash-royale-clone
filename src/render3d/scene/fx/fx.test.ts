@@ -578,6 +578,11 @@ describe("modelled projectiles", () => {
     expect(min(PRESETS["ribbon-puff"][0].size0)).toBeCloseTo(RIBBON_PUFF0);
     // Short-lived: the ribbon never hangs in the air after the shot lands.
     expect(Math.max(...([PRESETS["ribbon-puff"][0].life].flat() as number[]))).toBeLessThanOrEqual(0.35);
+    // It tapers toward its tail: puffs shrink as they age, but never below the
+    // half-size spacing, so the thinned tail is still one ribbon.
+    const rp = PRESETS["ribbon-puff"][0];
+    expect(Math.max(...([rp.size1].flat() as number[]))).toBeLessThan(min(rp.size0));
+    expect(Math.min(...([rp.size1].flat() as number[]))).toBeGreaterThan(Math.max(...([rp.size0].flat() as number[])) * RIBBON_SPACING);
     for (const id of ["wizard", "baby-dragon", "firecracker", "cannon", "ice-wizard"] as CardId[]) {
       const style = projectileStyle(id, "troop");
       for (const scale of [1, 0.5]) {
