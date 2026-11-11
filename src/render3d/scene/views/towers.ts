@@ -236,10 +236,7 @@ function roofColor(team: Side, palette: TeamPalette): number {
 /** Repaint every live tower and ruin for a palette (roofs, trim, banner, flag, HP fill). */
 export function repaintTowers(palette: TeamPalette): void {
   for (const t of teamLive) {
-    if (!t.root.parent) {
-      teamLive.delete(t);
-      continue;
-    }
+    if (!t.root.parent) continue; // not on stage (yet, or any more)
     for (const u of t.uniforms) u.uTeam.value.setHex(roofColor(t.team, palette));
     if (t.hpFill) setHpFillColor(t.hpFill, unitHpColor(t.team, palette));
   }
@@ -254,7 +251,7 @@ function trackTeam(entry: TeamLive): void {
       repaintTowers(p.teamPalette);
     });
   }
-  for (const t of teamLive) if (!t.root.parent && t.root !== entry.root) teamLive.delete(t);
+  if (teamLive.size > 48) for (const t of teamLive) if (!t.root.parent) teamLive.delete(t);
   teamLive.add(entry);
 }
 
@@ -299,7 +296,7 @@ interface Collapse {
 const rigs = new WeakMap<THREE.Object3D, TowerRig>();
 
 /** Plate half-height (local units): the level shield is its tallest part. */
-const PLATE_HALF = 0.3;
+export const PLATE_HALF = 0.3;
 /** How far in front of the tower (toward the camera) the plate floats, local units. */
 const PLATE_LIFT = 6;
 
@@ -419,6 +416,20 @@ export function buildTowerMesh(e: Entity): EntityView {
   rigs.set(root, rig);
   trackTeam({ root, team: colors.team, uniforms: [keep.uniforms], hpFill: bar.fill });
   return view as EntityView;
+}
+
+/**
+ * A tower's plate layout (for tests and tools): the silhouette's top and
+ * foot and the plate's spot, in screen-up local units from the tower's foot.
+ */
+export function towerPlateInfo(view: EntityView): { top: number; foot: number; spot: PlateSpot; camSide: number; far: boolean } | null {
+  const rig = rigs.get(view.root);
+  return rig && rig.spot ? { top: rig.top, foot: rig.foot, spot: rig.spot, camSide: rig.camSide, far: rig.far } : null;
+}
+
+/** The keep's uniforms (team colour, damage stage) for a tower view. */
+export function towerKeepUniforms(view: EntityView): KeepUniforms | null {
+  return rigs.get(view.root)?.keep.uniforms ?? null;
 }
 
 /** Put the plate's centre at screen-up `spot.s`, floated toward the camera so nothing hides it. */

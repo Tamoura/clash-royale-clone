@@ -735,7 +735,7 @@ export function keepMesh(s: KeepSculpt, map: THREE.Texture, team: number, name =
 // ---- Shared shapes ---------------------------------------------------------------
 
 /** A smooth bell-cast cone (lathe): flared eave lip up to the apex. */
-function bellCone(rb: number, h: number, seg = 20, rows = 8): THREE.LatheGeometry {
+function bellCone(rb: number, h: number, seg = 18, rows = 6): THREE.LatheGeometry {
   const pts = [new THREE.Vector2(rb + 0.05, -0.05)];
   for (let i = 0; i <= rows; i++) {
     const t = i / rows;
@@ -961,18 +961,6 @@ function buildBase(c: Ctx): void {
     s.box(inlay * 2 + trimW, 0.05, trimW, 0xe8e8e8, 0, 0.17, sd * inlay, 0, c.lit, TEAM);
     s.box(trimW, 0.05, inlay * 2 - trimW, 0xe8e8e8, sd * inlay, 0.17, 0, 0, c.lit, TEAM);
     for (const t of [-1, 1]) s.cyl(0.12, 0.14, 0.1, GOLD, sd * inlay, 0.2, t * inlay, 8, c.lit);
-  }
-  const joint = tone(plat, 0.66);
-  const ringIn = R * 1.16;
-  const ringMid = (ringIn + inlay - trimW / 2) / 2;
-  const ringW = inlay - trimW / 2 - ringIn;
-  const slabs = c.king ? 7 : 5;
-  for (let i = 0; i <= slabs; i++) {
-    const t = -ringIn + (i * ringIn * 2) / slabs;
-    for (const sd of [-1, 1]) {
-      s.box(0.035, 0.012, ringW, joint, t, 0.167, sd * ringMid, 0, () => 1);
-      s.box(ringW, 0.012, 0.035, joint, sd * ringMid, 0.167, t, 0, () => 1);
-    }
   }
   // Stepped ashlar plinth with a team band on its top course.
   const TILE0 = R * 2.02;
@@ -1308,19 +1296,19 @@ function craftClassic(spec: KeepSpec2): KeepBuild {
       s.chunk = sz === camSide ? "front" : "back";
       const x = sx * tx;
       const z = sz * tx;
-      s.cyl(tr, tr * 0.35, 0.42, stoneDk, x, overhangY - 0.03, z, 16, (_x, y) => 0.7 + 0.3 * smooth(overhangY - 0.24, overhangY + 0.18, y));
-      s.add(new THREE.CylinderGeometry(tr, tr, turretTop - (overhangY + 0.18), 18), stoneLt, x, (turretTop + overhangY + 0.18) / 2, z, 0, null, { ink: true });
-      s.cyl(tr + 0.035, tr + 0.035, 0.07, flair.gildedTrim ? GOLD : stone, x, H - 0.02, z, 18);
+      s.add(new THREE.CylinderGeometry(tr, tr * 0.35, 0.42, 14, 1, true), stoneDk, x, overhangY - 0.03, z, 0, (_x, y) => 0.7 + 0.3 * smooth(overhangY - 0.24, overhangY + 0.18, y));
+      s.add(new THREE.CylinderGeometry(tr, tr, turretTop - (overhangY + 0.18), 16, 1, true), stoneLt, x, (turretTop + overhangY + 0.18) / 2, z, 0, null, { ink: true });
+      s.add(new THREE.CylinderGeometry(tr + 0.035, tr + 0.035, 0.07, 16, 1, true), flair.gildedTrim ? GOLD : stone, x, H - 0.02, z);
       s.box(0.07, 0.24, 0.04, SLIT, x, H + 0.22, z + sz * (tr - 0.005), 0, () => 1);
       s.box(0.04, 0.24, 0.07, SLIT, x + sx * (tr - 0.005), H + 0.22, z, 0, () => 1);
       // Eave ring in the dark team shade, then the cone.
-      s.cyl(tr + 0.05, tr + 0.1, 0.08, 0xa0a0a0, x, turretTop + 0.02, z, 18, lit, TEAM);
+      s.add(new THREE.CylinderGeometry(tr + 0.05, tr + 0.1, 0.08, 16, 1, true), 0xa0a0a0, x, turretTop + 0.02, z, 0, lit, TEAM);
       const coneY = turretTop + 0.06;
       s.add(bellCone(rb, coneH), 0xffffff, x, coneY, z, 0, (_x, y) => 0.88 + 0.12 * smooth(coneY, coneY + coneH, y), { team: 1, tex: KEEP_TEX.roof, ink: true, uv: [7, 4] });
       if (flair.goldRoofBands) {
         for (const t of [0.3, 0.62]) {
           const r = rb * Math.pow(1 - t, 1.15) + 0.012;
-          s.add(new THREE.CylinderGeometry(r * 0.96, r, 0.05, 18, 1, true), GOLD, x, coneY + t * coneH, z, 0, lit);
+          s.add(new THREE.CylinderGeometry(r * 0.96, r, 0.05, 16, 1, true), GOLD, x, coneY + t * coneH, z, 0, lit);
         }
       }
       if (extras.has("snowCaps")) {
@@ -1338,12 +1326,12 @@ function craftClassic(spec: KeepSpec2): KeepBuild {
       // Finial: a gold ball, or a tall gilded spire (flair 1+).
       const tipY = coneY + coneH;
       if (flair.gildedFinials) {
-        s.add(new THREE.SphereGeometry(R * 0.06, 10, 8), GOLD, x, tipY + 0.02, z, 0, lit);
+        s.add(new THREE.SphereGeometry(R * 0.06, 8, 6), GOLD, x, tipY + 0.02, z, 0, lit);
         s.add(new THREE.ConeGeometry(0.035, 0.32, 8), GOLD, x, tipY + 0.2, z, 0, lit);
         s.add(new THREE.SphereGeometry(0.04, 8, 6), GOLD_DK, x, tipY + 0.12, z, 0, lit);
         tops.push({ y: tipY + 0.36, z });
       } else {
-        s.add(new THREE.SphereGeometry(R * 0.075, 10, 8), GOLD, x, tipY + 0.02, z, 0, lit);
+        s.add(new THREE.SphereGeometry(R * 0.075, 8, 6), GOLD, x, tipY + 0.02, z, 0, lit);
         tops.push({ y: tipY + 0.1, z });
       }
       if (sz === camSide && sx === -camSide) {
@@ -1404,7 +1392,7 @@ function buildCanopy(c: Ctx, at: THREE.Vector3, golden: boolean): YZ[] {
   s.add(new THREE.CylinderGeometry(vr, vr, vh, 24, 1, true), 0xf0f0f0, at.x, eave - vh / 2, at.z, 0, lit, TEAM);
   for (let k = 0; k < 12; k++) {
     const a = (k / 12) * Math.PI * 2;
-    const flap = new THREE.SphereGeometry(0.075, 8, 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
+    const flap = new THREE.SphereGeometry(0.075, 6, 2, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
     flap.scale(1, 0.9, 0.35);
     flap.rotateY(a);
     s.add(flap, 0xf0f0f0, at.x + Math.sin(a) * vr, eave - vh, at.z + Math.cos(a) * vr, 0, lit, TEAM);
@@ -1676,10 +1664,10 @@ function craftGolden(spec: KeepSpec2): KeepBuild {
       s.chunk = sz === camSide ? "front" : "back";
       const x = sx * tx;
       const z = sz * tx;
-      s.cyl(tr, tr * 0.35, 0.42, stoneDk, x, overhangY - 0.03, z, 16, (_x, y) => 0.7 + 0.3 * smooth(overhangY - 0.24, overhangY + 0.18, y));
-      s.add(new THREE.CylinderGeometry(tr, tr, drumTop - (overhangY + 0.18), 18), stoneLt, x, (drumTop + overhangY + 0.18) / 2, z, 0, null, { ink: true });
-      s.add(new THREE.CylinderGeometry(tr + 0.012, tr + 0.012, 0.14, 18, 1, true), 0xffffff, x, drumTop - 0.1, z, 0, () => 1, { tex: KEEP_TEX.band, uv: [3, 1] });
-      s.cyl(tr + 0.04, tr + 0.04, 0.05, flair.gildedTrim ? GOLD : stoneLt, x, drumTop, z, 18);
+      s.add(new THREE.CylinderGeometry(tr, tr * 0.35, 0.42, 14, 1, true), stoneDk, x, overhangY - 0.03, z, 0, (_x, y) => 0.7 + 0.3 * smooth(overhangY - 0.24, overhangY + 0.18, y));
+      s.add(new THREE.CylinderGeometry(tr, tr, drumTop - (overhangY + 0.18), 16, 1, true), stoneLt, x, (drumTop + overhangY + 0.18) / 2, z, 0, null, { ink: true });
+      s.add(new THREE.CylinderGeometry(tr + 0.012, tr + 0.012, 0.14, 16, 1, true), 0xffffff, x, drumTop - 0.1, z, 0, () => 1, { tex: KEEP_TEX.band, uv: [3, 1] });
+      s.add(new THREE.CylinderGeometry(tr + 0.04, tr + 0.04, 0.05, 16), flair.gildedTrim ? GOLD : stoneLt, x, drumTop, z);
       // Pointed-arch window on the outer face.
       const win = new THREE.ShapeGeometry(horseshoe(0.11, 0.24), 6);
       s.add(win, style.litWindows ? LIT_SLIT : SLIT, x, H + 0.08, z + sz * (tr + 0.004), sz > 0 ? 0 : Math.PI, () => 1, style.litWindows ? { glow: 0.55 } : {});
