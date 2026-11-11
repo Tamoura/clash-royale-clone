@@ -133,6 +133,14 @@ function palm(s: Sculpt, x: number, z: number, k: number, look: ArenaLook, rand:
   }
 }
 
+/** A cypress (or a snowy cedar on a white apron): the trees of the looks without palms. */
+function cypress(s: Sculpt, x: number, z: number, k: number, look: ArenaLook): void {
+  s.cyl(0.08 * k, 0.11 * k, 0.4 * k, look.tree.trunk, x, 0.2 * k, z, 6);
+  const g = new THREE.ConeGeometry(0.42 * k, 2.2 * k, 9);
+  s.add(g, look.tree.leafA, x, 0.3 * k + 1.1 * k, z, 0, (_x, y) => 0.7 + 0.35 * Math.min(1, y / (2.4 * k)));
+  if (look.ambient === "snow") s.add(new THREE.ConeGeometry(0.26 * k, 0.7 * k, 9), 0xf4f8fc, x, 2.05 * k, z, 0, lit);
+}
+
 /** A souk stall: a striped team awning on four poles over a counter of goods. */
 function stall(s: Sculpt, x: number, z: number, side: "player" | "enemy", rand: () => number): void {
   const team = setTeam(side);
@@ -176,7 +184,8 @@ export function buildGoldenSurround(parent: THREE.Object3D, look: ArenaLook): Cr
       const x = sx * (GAL_X + GAL_DEPTH + 0.8 + rand() * 7.5);
       const z = (rand() - 0.5) * 38;
       if (Math.abs(z) < 1.6) continue;
-      palm(palms[sx], x, z, 0.9 + rand() * 0.5, look, rand);
+      if (look.tree.kind === "palm") palm(palms[sx], x, z, 0.9 + rand() * 0.5, look, rand);
+      else cypress(palms[sx], x, z, 0.9 + rand() * 0.5, look);
     }
   }
   const mesh = s.mesh(sculptMaterial(), "golden-galleries");
