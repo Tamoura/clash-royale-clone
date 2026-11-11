@@ -16,6 +16,8 @@ import {
   SIDE_GAP,
   SIDE_MIN,
   SIDE_SLIM,
+  TRAY_GAP,
+  TRAY_GUTTER,
   cardHeight,
   handGridW,
   handPanelBudget,
@@ -70,6 +72,10 @@ describe("the tray's stylesheet numbers match layout.ts", () => {
     expect(trayHeight(64, { top: 0, left: 0, right: 0, bottom: padBottom - 2 })).toBe(trayHeight(64));
     // The row: gutters, then Next, four cards and KING with five gaps between them.
     const [gap] = px(tray["--tray-gap"]);
+    // layoutWire.ts sets --gutter-w and --gap-w (squeezed under 299px); these are the defaults.
+    expect(tray["--tray-gap"]).toBe(`var(--gap-w, ${TRAY_GAP}px)`);
+    expect(tray.padding).toContain(`var(--gutter-w, ${TRAY_GUTTER}px)`);
+    expect(gutter).toBe(TRAY_GUTTER);
     expect(tray["grid-template-columns"]).toBe("var(--nw) auto var(--kw)");
     expect(rule("#hud.v2 .hand-row")["grid-template-columns"]).toBe("repeat(4, var(--cw))");
     for (const [w, h] of [[360, 640], [390, 844], [820, 1180]]) {
@@ -99,6 +105,12 @@ describe("the tray's stylesheet numbers match layout.ts", () => {
     const hang = -px(rule("#hud.v2 .card-cost").bottom)[0];
     expect(hang).toBeGreaterThan(0);
     expect(hang).toBeLessThan(px(tray.padding)[2]);
+    // The "+N elixir needed" badge sits at the card's middle: on a small card
+    // the level chip (top corner) and the droplet (bottom edge) would cover it.
+    const need = rule("#hud.v2 .card-need");
+    expect(need.top).toBe("calc(50% - 2px)");
+    expect(need.transform).toBe("translate(-50%, -50%)");
+    expect(px(rule("#hud.v2 .lvl-chip").top)[0]).toBeLessThan(0);
   });
 
   it("wide panel: its inset, border and padding, the hand's gaps, Next and the elixir row", () => {

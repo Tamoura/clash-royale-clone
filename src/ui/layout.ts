@@ -19,7 +19,8 @@
  * that draws the bigger board wins. CSS and the camera both read the one
  * result (CSS through :root's data-layout / data-side / data-slim /
  * data-panel and the --side, --field-w, --card-w, --card-h, --next-w,
- * --king-w and --hand-cols variables), so they never disagree.
+ * --king-w, --gutter-w, --gap-w and --hand-cols variables), so they never
+ * disagree.
  */
 import { BATTLE_BOX, TALL_BOX, ZERO_INSETS, type ContentBox, type Insets } from "../render3d/scene/fit";
 
@@ -71,9 +72,15 @@ export const TALL_CARD_H_FRAC = 0.1;
 export const TALL_CARD_MIN = 56;
 /** ...and tablets stop here: the board is the hero, not the hand. */
 export const TALL_CARD_MAX = 96;
-/** The tray's side gutters, and the gap between its six columns. */
-const TRAY_GUTTER = 8;
-const TRAY_GAP = 5;
+/** The tray's side gutters, and the gap between its six columns... */
+export const TRAY_GUTTER = 8;
+export const TRAY_GAP = 5;
+/**
+ * ...which a screen too narrow for four fingertip-sized cards beside Next
+ * and KING (under 299px, a foldable's 280px cover screen) squeezes, only as
+ * far as the cards need and to no less than this share of them.
+ */
+const TRAY_SQUEEZE_MIN = 0.4;
 /** The Next column (a mini card over the chat bubble) and the KING column, at their narrowest... */
 const NEXT_MIN = 36;
 const KING_MIN = 46;
@@ -135,6 +142,9 @@ export interface BattleLayout {
   /** Tall: the Next column and the KING column (CSS px; 0 when wide). */
   nextW: number;
   kingW: number;
+  /** Tall: the tray's side gutters and the gap between its columns (CSS px; 0 when wide). */
+  gutter: number;
+  gap: number;
   /** Tall: the tray's height (CSS px; 0 when wide, where the hand is a side panel). */
   tray: number;
   /** The board's predicted scale: CSS px per tile. */
@@ -181,9 +191,13 @@ export function trayHeight(cardW: number, safe: Insets = ZERO_INSETS): number {
 /** The tall candidate: the board spans the width, over a tray sized by width and height. */
 export function tallLayout(w: number, h: number, safe: Insets = ZERO_INSETS): BattleLayout {
   const availW = Math.max(1, w - safe.left - safe.right);
-  // Gutters and the five gaps between Next, the four cards and KING.
-  const fixed = 2 * TRAY_GUTTER + 5 * TRAY_GAP;
-  const byWidth = (availW - fixed - NEXT_MIN - KING_MIN) / 4;
+  // Gutters and the five gaps between Next, the four cards and KING; on the
+  // narrowest screens they give way first, so the cards stay finger-sized.
+  const fullChrome = 2 * TRAY_GUTTER + 5 * TRAY_GAP;
+  const room = availW - NEXT_MIN - KING_MIN;
+  const fixed = Math.min(fullChrome, Math.max(TRAY_SQUEEZE_MIN * fullChrome, room - 4 * CARD_TOUCH_MIN));
+  const squeeze = fixed / fullChrome;
+  const byWidth = (room - fixed) / 4;
   const byHeight = Math.max(TALL_CARD_MIN, cardForHeight(TALL_CARD_H_FRAC * h));
   const cardW = Math.max(1, Math.min(byWidth, byHeight, TALL_CARD_MAX));
   // Width the cards leave over (tablets) lets Next and KING grow with them.
@@ -210,6 +224,8 @@ export function tallLayout(w: number, h: number, safe: Insets = ZERO_INSETS): Ba
     handW: fixed + 4 * cardW + nextW + kingW,
     nextW,
     kingW,
+    gutter: TRAY_GUTTER * squeeze,
+    gap: TRAY_GAP * squeeze,
     tray,
     tile,
   };
@@ -263,6 +279,8 @@ export function wideLayout(w: number, h: number, safe: Insets = ZERO_INSETS): Ba
     handW: 0,
     nextW: 0,
     kingW: 0,
+    gutter: 0,
+    gap: 0,
     tray: 0,
     tile: fieldW / (2 * BATTLE_BOX.halfW),
   };

@@ -9,6 +9,8 @@ import {
   TALL_CARD_H_FRAC,
   TALL_CARD_MAX,
   TALL_CARD_MIN,
+  TRAY_GAP,
+  TRAY_GUTTER,
   battleLayout,
   cardHeight,
   handGridW,
@@ -116,11 +118,12 @@ describe("battleLayout", () => {
   });
 
   it("never makes a tall card smaller than a fingertip, and at least 56px wide on real phones", () => {
-    for (let w = 320; w <= 2000; w += 7) {
+    // From 280px: a foldable's cover screen (the original Galaxy Fold's is 280x653).
+    for (let w = 280; w <= 2000; w += 7) {
       for (let h = 300; h <= 1600; h += 47) {
         const t = tallLayout(w, h);
         const at = `${w}x${h}`;
-        expect(t.cardW, at).toBeGreaterThanOrEqual(CARD_TOUCH_MIN);
+        expect(t.cardW, at).toBeGreaterThanOrEqual(CARD_TOUCH_MIN - 1e-9);
         expect(t.cardH, at).toBeGreaterThanOrEqual(CARD_TOUCH_MIN);
         if (w >= 360) expect(t.cardW, at).toBeGreaterThanOrEqual(TALL_CARD_MIN);
         expect(t.cardW, at).toBeLessThanOrEqual(TALL_CARD_MAX);
@@ -129,18 +132,35 @@ describe("battleLayout", () => {
         expect((t.cardH - 6) / (t.cardW - 6), at).toBeCloseTo(CARD_ASPECT, 9);
       }
     }
+    // Under 299px the tray's gutters and gaps give way first, only as far as
+    // the cards need; wider screens keep the stylesheet's own.
+    const fold = tallLayout(280, 653);
+    expect(fold.cardW).toBeCloseTo(CARD_TOUCH_MIN, 9);
+    expect(fold.handW).toBeCloseTo(280, 9);
+    expect(fold.gutter).toBeLessThan(TRAY_GUTTER);
+    expect(fold.gutter).toBeGreaterThanOrEqual(0.4 * TRAY_GUTTER);
+    expect(fold.gap / fold.gutter).toBeCloseTo(TRAY_GAP / TRAY_GUTTER, 9);
+    for (const w of [299, 300, 320, 360, 390]) {
+      expect(tallLayout(w, 700).gutter, `${w}`).toBe(TRAY_GUTTER);
+      expect(tallLayout(w, 700).gap, `${w}`).toBe(TRAY_GAP);
+    }
+    // No cliff where the squeeze starts: one pixel narrower, never a jump.
+    for (let w = 270; w < 330; w++) {
+      expect(Math.abs(tallLayout(w + 1, 700).cardW - tallLayout(w, 700).cardW), `${w}`).toBeLessThanOrEqual(0.26);
+    }
   });
 
   it("caps tall cards by the screen's height (down to the 56px floor) and fits the tray's row in the width", () => {
     for (const safe of SAFES) {
-      for (let w = 320; w <= 2000; w += 53) {
+      for (let w = 280; w <= 2000; w += 53) {
         for (let h = 300; h <= 1600; h += 47) {
           const t = tallLayout(w, h, safe);
           const at = `${w}x${h} ${JSON.stringify(safe)}`;
           expect(t.cardH, at).toBeLessThanOrEqual(Math.max(cardHeight(TALL_CARD_MIN), TALL_CARD_H_FRAC * h) + 1e-9);
           // Next, four cards, KING, five gaps and the gutters: inside the safe width.
           expect(t.handW, at).toBeLessThanOrEqual(w - safe.left - safe.right + 1e-9);
-          expect(t.handW, at).toBeCloseTo(16 + 25 + 4 * t.cardW + t.nextW + t.kingW, 9);
+          expect(t.handW, at).toBeCloseTo(2 * t.gutter + 5 * t.gap + 4 * t.cardW + t.nextW + t.kingW, 9);
+          if (w - safe.left - safe.right >= 299) expect(2 * t.gutter + 5 * t.gap, at).toBe(16 + 25);
           // Next shows a mini card and KING stays a full finger target.
           expect(t.nextW, at).toBeGreaterThanOrEqual(36);
           expect(t.kingW, at).toBeGreaterThanOrEqual(46);

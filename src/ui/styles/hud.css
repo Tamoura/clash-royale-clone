@@ -18,7 +18,9 @@
   --ch: var(--card-h, 78.5px);
   --nw: var(--next-w, 36px);
   --kw: var(--king-w, 46px);
-  --tray-gap: 5px;
+  /* The gap between the row's columns and the side gutters (layout.ts:
+     TRAY_GAP, TRAY_GUTTER; squeezed only on screens under 299px wide). */
+  --tray-gap: var(--gap-w, 5px);
   z-index: var(--z-hud);
   display: grid;
   grid-template-columns: var(--nw) auto var(--kw);
@@ -28,12 +30,14 @@
   align-items: center;
   gap: 7px var(--tray-gap);
   /* 3 + 6 + 16 + 7 + card + 10 (layout.ts: TALL_TRAY_CHROME). */
-  padding: 6px 8px max(10px, env(safe-area-inset-bottom));
+  padding: 6px var(--gutter-w, 8px) max(10px, env(safe-area-inset-bottom));
   border-top-width: 3px;
 }
-/* The rail is the tray's top edge now: no ornaments on the frame. */
+/* The edition's ornament (style.css) stays on the tray's top frame, centred
+   on its outer edge: it ends above the elixir rail (6px under the frame). */
 #hud.v2::before {
-  display: none;
+  top: -3px;
+  line-height: 12px;
 }
 
 /* ── Hand: exactly four cards in a row ── */
@@ -125,9 +129,12 @@
 #hud.v2 button.card:not(.locked) .card-need {
   display: none;
 }
-/* "+N" elixir still needed: the number comes from --need via a counter. */
+/* "+N" elixir still needed: the number comes from --need via a counter.
+   Midway between the level chip on the card's top corner and the cost
+   droplet's tip (2px over the middle), so neither covers it on a small card. */
 #hud.v2 .card-need {
-  top: 3px;
+  top: calc(50% - 2px);
+  transform: translate(-50%, -50%);
   font-size: var(--fs-xs);
   line-height: 1.35;
   counter-reset: need var(--need, 0);
@@ -966,6 +973,10 @@
   grid-template-areas: "hand hand" "next elixir";
   justify-content: stretch;
   gap: 0 10px;
+}
+/* A panel beside the board has no top frame to carry the ornament. */
+:root[data-layout="wide"] #hud.v2::before {
+  display: none;
 }
 /* The Islamic edition's teal-and-gold tray, as a panel. */
 :root[data-edition="arabic"][data-layout="wide"] #hud.v2 {

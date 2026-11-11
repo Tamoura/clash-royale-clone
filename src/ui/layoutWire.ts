@@ -1,9 +1,10 @@
 /**
  * Applies the battle layout (layout.ts) to the page while a battle is on
  * screen: :root[data-layout] / [data-side] / [data-slim] / [data-panel]
- * with --side, --field-w, --card-w, --card-h, --next-w, --king-w and
- * --hand-cols for the CSS (styles/hud.css), --band (tall: the measured
- * scoreboard band), and the matching frame for the camera. Menus and the
+ * with --side, --field-w, --card-w, --card-h, --next-w, --king-w,
+ * --gutter-w, --gap-w and --hand-cols for the CSS (styles/hud.css), --band
+ * (tall: the measured scoreboard band), and the matching frame for the
+ * camera. Menus and the
  * home diorama keep their phone-width column (no data-layout at all, and
  * the tray falls back to the stylesheet's own sizes).
  *
@@ -27,7 +28,7 @@ const BAND_PARTS = ".crowns, .clock, .menu-toggle";
 /** Gap between the band and the board's far edging (CSS px). */
 const BAND_GAP = 4;
 /** The CSS variables a battle layout sets on :root (cleared between battles). */
-const LAYOUT_VARS = ["--side", "--field-w", "--card-w", "--card-h", "--next-w", "--king-w", "--hand-cols", "--band"] as const;
+const LAYOUT_VARS = ["--side", "--field-w", "--card-w", "--card-h", "--next-w", "--king-w", "--gutter-w", "--gap-w", "--hand-cols", "--band"] as const;
 
 export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutControl {
   const root = document.documentElement;
@@ -83,8 +84,10 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
     const px = (n: number): string => `${Math.round(n * 100) / 100}px`;
     root.style.setProperty("--card-w", px(lay.cardW));
     root.style.setProperty("--card-h", px(lay.cardH));
-    // The tray's Next and KING columns (tall only; a side panel keeps the stylesheet's sizes).
-    for (const [name, v] of [["--next-w", lay.nextW], ["--king-w", lay.kingW]] as const) {
+    // The tray's Next and KING columns, its gutters and gaps (tall only; a
+    // side panel keeps the stylesheet's sizes).
+    const tray = [["--next-w", lay.nextW], ["--king-w", lay.kingW], ["--gutter-w", lay.gutter], ["--gap-w", lay.gap]] as const;
+    for (const [name, v] of tray) {
       if (lay.mode === "tall") root.style.setProperty(name, px(v));
       else root.style.removeProperty(name);
     }
