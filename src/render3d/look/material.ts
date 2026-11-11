@@ -59,6 +59,25 @@ export const TOWER_FLASH_MAX = 0.25;
 /** Peak full-screen flash (setFlash and the FX pool's impact flashes). */
 export const SCREEN_FLASH_MAX = 0.25;
 
+/**
+ * The brightest a lit character pixel may get (linear HDR luminance, with
+ * the bloom pass's weights), kept under the bloom threshold (scene/post.ts
+ * BLOOM.threshold, 0.92) so no albedo, rim or hit flash ever glows: a white
+ * turban, beard or bork in full sun rolls off softly from LIT_KNEE toward
+ * LIT_MAX instead (art bible 5, bloom contract).
+ */
+export const LIT_MAX = 0.9;
+export const LIT_KNEE = 0.8;
+/** Luminance weights of three's LuminosityHighPassShader (the bloom's bright pass). */
+export const BLOOM_LUMA = [0.299, 0.587, 0.114] as const;
+
+/** The roll-off litClampGlsl applies, on a luminance (for tests and tools). */
+export function litClamp(l: number): number {
+  if (l <= LIT_KNEE) return l;
+  const room = LIT_MAX - LIT_KNEE;
+  return LIT_KNEE + room * (1 - Math.exp(-(l - LIT_KNEE) / room));
+}
+
 /** 0..1 sRGB channels of a hex colour, for GLSL literals. */
 export function rgb01(hex: number): [number, number, number] {
   return [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
@@ -90,4 +109,14 @@ export function rimGlsl(onUniform: string): string {
   return `float _rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
          _rim = smoothstep(${f2(RIM_FROM)}, 1.0, _rim) * ${f2(RIM_STRENGTH)} * ${onUniform};
          gl_FragColor.rgb += _rim * vec3(${f3(r)}, ${f3(g)}, ${f3(b)});`;
+}
+
+/** GLSL for the very end of a lit character's fragment: the soft luminance roll-off (litClamp). */
+export function litClampGlsl(): string {
+  const room = LIT_MAX - LIT_KNEE;
+  const [r, g, b] = BLOOM_LUMA;
+  return `{
+           float _l = dot(gl_FragColor.rgb, vec3(${f3(r)}, ${f3(g)}, ${f3(b)}));
+           if (_l > ${f2(LIT_KNEE)}) gl_FragColor.rgb *= (${f2(LIT_KNEE)} + ${f2(room)} * (1.0 - exp(-(_l - ${f2(LIT_KNEE)}) / ${f2(room)}))) / _l;
+         }`;
 }

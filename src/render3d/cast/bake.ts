@@ -25,6 +25,7 @@ import {
   INK_PX,
   RIM_UNIFORM as SHARED_RIM,
   TINT_MAX,
+  litClampGlsl,
   rimGlsl,
   toonRampGlsl,
 } from "../look/material";
@@ -632,11 +633,12 @@ export function castMaterial(map: THREE.Texture, side: Side): THREE.MeshToonMate
            ${rimGlsl("uRim")}
            float _k = max(_tint.r, max(_tint.g, _tint.b));
            if (_k > 0.001) gl_FragColor.rgb = mix(gl_FragColor.rgb, _tint / _k, min(_k, ${TINT_MAX.toFixed(2)}));
+           ${litClampGlsl()}
          }
          #include <dithering_fragment>`,
       );
   };
-  mat.customProgramCacheKey = () => "cast-v2";
+  mat.customProgramCacheKey = () => "cast-v3";
   return mat;
 }
 

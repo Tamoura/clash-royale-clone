@@ -61,7 +61,9 @@ import {
 import { addShake } from "../camera";
 import { contactRing, damagePopup, emitSparks, megaSlam } from "../fx/effects";
 import { fxTeamColor } from "../fx/spells";
-import { hpBarVisible, makeStunSprite, setHpFill } from "./troops";
+import { CONTACT_SHADOW, hpBarVisible, makeStunSprite, setHpFill } from "./troops";
+import { troopShadowLevel } from "../post";
+import { SHADOW_SLOPE } from "../sky";
 import { animateKitTroop, LEAN, leanQuaternion, startKitDeath, stepKitDeath, VIEW_DIR } from "../../cast/index";
 import { TOWER_FLASH_MAX, TROOP_FLASH_MAX, syncRim } from "../../look/material";
 import { currentQuality } from "../../quality";
@@ -893,6 +895,46 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
   }
   // Render-only lean toward the camera (the body only: disc, shadow and bar stay flat).
   if (view.lean) leanQuaternion(VIEW_DIR.x, VIEW_DIR.z, view.root.rotation.y, view.lean.quaternion);
+  if (view.isTroop) sunBlob(view);
+}
+
+/**
+ * Share of a walker's height its blob shadow slides away from the sun
+ * (SHADOW_SLOPE) on the levels where troops cast no real shadow (L1-L4,
+ * art bible 5): enough to read the sun's direction, while the blob still
+ * covers the feet. On L0 the shadow map draws the real shadow and the blob
+ * sits centred as contact occlusion.
+ */
+export const SUN_BLOB_SHARE = 0.32;
+/** How much the slid blob stretches along the sun's slope per world unit slid. */
+export const SUN_BLOB_STRETCH = 0.35;
+
+/** The sun-offset blob (world x/z offset, stretch along it) for a walker of height `lift`. */
+export function sunBlobOffset(lift: number, real: boolean): { x: number; z: number; stretch: number } {
+  if (real) return { x: 0, z: 0, stretch: 1 };
+  const x = SHADOW_SLOPE.x * lift * SUN_BLOB_SHARE;
+  const z = SHADOW_SLOPE.y * lift * SUN_BLOB_SHARE;
+  return { x, z, stretch: 1 + SUN_BLOB_STRETCH * Math.hypot(x, z) };
+}
+
+/** Keep a walker's blob under the live level's rule (follows the governor and Settings). */
+function sunBlob(view: EntityView): void {
+  const blob = view.root.getObjectByName(CONTACT_SHADOW) as THREE.Mesh | undefined;
+  const spec = blob?.userData.sunBlob as { size: number; lift: number } | undefined;
+  if (!blob || !spec) return;
+  const o = sunBlobOffset(spec.lift, troopShadowLevel());
+  // The blob is a child of the yawing root: turn the world offset into its frame.
+  const yaw = view.root.rotation.y;
+  const c = Math.cos(yaw);
+  const sn = Math.sin(yaw);
+  const lx = c * o.x - sn * o.z;
+  const lz = sn * o.x + c * o.z;
+  blob.position.x = lx;
+  blob.position.z = lz;
+  // Stretch along the slope: the plane's own z spin (applied before it is laid
+  // flat by rotation.x = -PI/2, which sends its y axis to -z) aims its x axis.
+  blob.rotation.z = o.stretch > 1 ? Math.atan2(-lz, lx) : 0;
+  blob.scale.set(spec.size * o.stretch, spec.size, 1);
 }
 
 const DEFENDER_BLINKS = new WeakMap<TroopRig, BlinkClock>();

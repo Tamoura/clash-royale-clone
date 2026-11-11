@@ -13,6 +13,10 @@ import {
   TOON_RAMP,
   TOWER_FLASH_MAX,
   TROOP_FLASH_MAX,
+  LIT_KNEE,
+  LIT_MAX,
+  litClamp,
+  litClampGlsl,
   rgb01,
   rimGlsl,
   syncRim,
@@ -23,7 +27,9 @@ import { ALBEDO_SATURATION as CAST_SATURATION, CAST_INK_DEPTH, CAST_INK_PX, GROU
 import { RIG_AO, RIG_FLASH_MAX, RIG_INK_DEPTH, RIG_INK_PX, RIG_RAMP, RIG_RIM, RIG_RIM_UNIFORM, RIG_SATURATION, RIG_TINT_MAX } from "../characters3d";
 import { TOWER_INK, TOWER_INK_PX } from "../scene/views/towerCraft";
 import { HIT_FLASH, HIT_FLASH_PEAK, TOWER_FLASH_PEAK } from "../scene/views/animate";
-import { MAX_FLASH } from "../scene/post";
+import { BLOOM, MAX_FLASH } from "../scene/post";
+import * as THREE from "three";
+import { castMaterial } from "../cast/bake";
 import { FX_MAX_FLASH } from "../scene/fx/pool";
 
 describe("look/material: one material language (shared rules 5)", () => {
@@ -72,5 +78,31 @@ describe("look/material: one material language (shared rules 5)", () => {
     expect(rimGlsl("uRim")).toContain("_rim = smoothstep(0.62, 1.0, _rim) * 0.35 * uRim;");
     expect(rimGlsl("uRim")).toContain("vec3(0.749, 0.890, 1.000)");
     expect(rgb01(RIM_COLOR).map((v) => Math.round(v * 255))).toEqual([0xbf, 0xe3, 0xff]);
+  });
+
+  it("rolls a lit character's brightest pixels off under the bloom threshold (no white turban or bork glows)", () => {
+    expect(LIT_MAX).toBeLessThan(BLOOM.threshold);
+    for (let l = 0; l <= LIT_KNEE; l += 0.05) expect(litClamp(l)).toBeCloseTo(l, 12);
+    let last = 0;
+    for (let l = LIT_KNEE; l <= 20; l += 0.01) {
+      const v = litClamp(l);
+      expect(v).toBeLessThanOrEqual(LIT_MAX);
+      expect(v).toBeGreaterThanOrEqual(last); // monotone: shading order is kept
+      last = v;
+    }
+    // A sun-facing cream bork (about 1.1 linear before the roll-off) lands under the threshold.
+    expect(litClamp(1.1)).toBeLessThan(BLOOM.threshold);
+  });
+
+  it("puts the roll-off at the end of the cast's lit fragment", () => {
+    const mat = castMaterial(new THREE.Texture(), "player");
+    const sh = {
+      uniforms: {} as Record<string, { value: unknown }>,
+      vertexShader: THREE.ShaderLib.toon.vertexShader,
+      fragmentShader: THREE.ShaderLib.toon.fragmentShader,
+    };
+    mat.onBeforeCompile(sh as never, undefined as never);
+    expect(sh.fragmentShader).toContain(litClampGlsl());
+    expect(sh.fragmentShader.indexOf(litClampGlsl())).toBeGreaterThan(sh.fragmentShader.indexOf("_tint / _k"));
   });
 });

@@ -286,4 +286,20 @@ describe("HP plate maths", () => {
     const pinned = clampPlate(want, top, foot, half, clear, top + 0.3, foot + 0.1);
     expect(pinned.s + half).toBeLessThanOrEqual(top + 0.3 + 1e-9);
   });
+
+  it("slides a far plate down toward the roofs (keeping the 4 px floor) before flipping it under the gate", () => {
+    const margin = clear + 2 / ppu; // the scene asks for 2 px on top of the floor
+    const want = platePlacement(top, foot, half, margin, true);
+    // Half a pixel short of the room the margin wants: it stays above, 1.5 px over the floor.
+    const tight = want.s + half - 0.5 / ppu;
+    const slid = clampPlate(want, top, foot, half, margin, tight, -20, clear);
+    expect(slid.above).toBe(true);
+    expect(slid.s + half).toBeCloseTo(tight, 9);
+    expect(plateClearancePx(slid, top, foot, half, ppu)).toBeGreaterThanOrEqual(PLATE_CLEAR_PX - 1e-6);
+    // Three pixels short: sliding would break the floor, so it flips as before.
+    const flipped = clampPlate(want, top, foot, half, margin, want.s + half - 3 / ppu, -20, clear);
+    expect(flipped.above).toBe(false);
+    // Without a separate floor the old rule holds (no slide).
+    expect(clampPlate(want, top, foot, half, margin, tight, -20).above).toBe(false);
+  });
 });

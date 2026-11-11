@@ -472,7 +472,8 @@ function updatePlate(b: Battle3D, rig: TowerRig, root: THREE.Object3D): void {
   const screenTop = (cam.top / cam.zoom - (ins?.top ?? 0) / (ppu / TOWER_SCALE) - footUp) / TOWER_SCALE;
   const screenBottom = (cam.bottom / cam.zoom + (ins?.bottom ?? 0) / (ppu / TOWER_SCALE) - footUp) / TOWER_SCALE;
   const want = platePlacement(rig.top, rig.foot, PLATE_HALF, clear, rig.far);
-  const spot = clampPlate(want, rig.top, rig.foot, PLATE_HALF, clear, screenTop, screenBottom);
+  const minClear = PLATE_CLEAR_PX / ppu; // the art bible's floor; `clear` adds 2 px of margin
+  const spot = clampPlate(want, rig.top, rig.foot, PLATE_HALF, clear, screenTop, screenBottom, minClear);
   if (!rig.spot || Math.abs(rig.spot.s - spot.s) > 1e-3) placePlate(rig, spot);
 }
 

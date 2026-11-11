@@ -327,6 +327,9 @@ export function setHpFill(view: EntityView, frac: number, width: number): void {
   view.hpFill.position.x = (-(1 - f) * (width - 0.06)) / 2;
 }
 
+/** Name of a unit's soft contact / blob shadow mesh. */
+export const CONTACT_SHADOW = "contactShadow";
+
 /** Shared soft radial contact-shadow texture (dark centre, feathered edge). */
 let contactShadowTexture: THREE.CanvasTexture | null = null;
 export function contactShadowTex(): THREE.CanvasTexture {
@@ -465,6 +468,8 @@ export function buildBuildingMesh(e: Entity): EntityView {
 
 /** Every troop stands this much larger than its old size, so faces and weapons read on a phone. */
 const TROOP_POP = 1.14;
+/** The Golden Age war elephant's rig scale (the Classic Giant's is 1.48): still in the large band (head-top 3.3+). */
+export const GOLDEN_GIANT_SCALE = 1.3;
 
 /** Troop HP bar size (world units): wide and tall enough for a 2 px outline at phone size. */
 export const TROOP_BAR_W = 1.0;
@@ -557,7 +562,8 @@ export function buildTroopMesh(e: Entity): EntityView {
     const scale =
       (e.cardId === "mega-knight" ? 1.6
       : e.cardId === "pekka" ? 1.5
-      : e.cardId === "giant" ? 1.48
+      // The Golden Age Giant is a war elephant: long-bodied, so a size down keeps it off a whole bridge.
+      : e.cardId === "giant" ? (ARABIC ? GOLDEN_GIANT_SCALE : 1.48)
       : e.cardId === "royal-giant" ? 1.42
       : e.radius <= 0.32 ? 1.08 // skeletons, bats, minions — spindly packs
       : 1.25) * TROOP_POP;
@@ -590,6 +596,9 @@ export function buildTroopMesh(e: Entity): EntityView {
     const d = Math.max(0.8, e.radius * 2.6) * (kitUnit ? 1.2 : 1);
     contact.scale.set(d, d, 1);
     contact.renderOrder = -1;
+    contact.name = CONTACT_SHADOW;
+    // Walkers' blob leans away from the sun where troops cast no real shadow (animate.ts sunBlob).
+    if (!rig?.hover) contact.userData.sunBlob = { size: d, lift };
     root.add(contact);
     if (rig?.hover) blobShadow = contact;
   }

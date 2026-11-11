@@ -151,8 +151,13 @@ export function platePlacement(top: number, foot: number, halfH: number, clear: 
 /**
  * Screen clamp: given the plate's preferred spot and the room on screen
  * (in the same units: `screenTop` and `screenBottom` bound the visible,
- * HUD-free band), keep it where it is when it fits, else flip it to the
- * other side of the tower, else pin it to the edge it overflows.
+ * HUD-free band), keep it where it is when it fits; else slide it toward
+ * the tower, on the same side, as long as it still clears the tower by
+ * `minClear` (the art bible's 4 px, where `clear` carries a safety margin
+ * on top); else flip it to the other side of the tower, else pin it to the
+ * edge it overflows. The slide keeps a far king's plate over his roofs on a
+ * phone whose HUD leaves a hair too little room, instead of flipping it
+ * under his gate where flyers pass.
  */
 export function clampPlate(
   spot: PlateSpot,
@@ -162,9 +167,13 @@ export function clampPlate(
   clear: number,
   screenTop: number,
   screenBottom: number,
+  minClear = clear,
 ): PlateSpot {
-  const fits = (s: number): boolean => s + halfH <= screenTop && s - halfH >= screenBottom;
+  const fits = (s: number): boolean => s + halfH <= screenTop + 1e-9 && s - halfH >= screenBottom - 1e-9;
   if (fits(spot.s)) return spot;
+  const slid = spot.above ? screenTop - halfH : screenBottom + halfH;
+  const gap = spot.above ? slid - halfH - top : foot - (slid + halfH);
+  if (fits(slid) && gap >= minClear - 1e-9) return { s: slid, above: spot.above };
   const flipped = platePlacement(top, foot, halfH, clear, !spot.above);
   if (fits(flipped.s)) return flipped;
   const s = Math.min(screenTop - halfH, Math.max(screenBottom + halfH, spot.s));

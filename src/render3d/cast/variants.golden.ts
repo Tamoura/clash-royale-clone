@@ -87,7 +87,8 @@ export const GOLDEN: Record<string, Variant> = {
     team: /Cape/,
     paint: { "1,0": 0xffa21e, "0,1": 0x8a6a4a, "1,1": "team" },
     propPaint: { "2,2": 0x8a6a4a },
-    extras: [...headCloth(SAND, GOLD), ...braids(0xffa21e)],
+    // The drape stops above the shoulders (hem 1.56) so both braids hang clear below it from behind.
+    extras: [...headCloth(SAND, GOLD, 1.56), ...braids(0xffa21e)],
     idle: "2H_Melee_Idle",
     walk: "Walking_A",
     attack: "2H_Melee_Attack_Spin",

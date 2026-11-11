@@ -77,3 +77,25 @@ describe("freeze vs stun", () => {
     expect(isFrozen(b, troop(9, 20, 1))).toBe(false);
   });
 });
+
+describe("sun-offset blob shadows (art bible 5: L1-L4 have no real troop shadow)", () => {
+  it("stays centred where the shadow map draws real troop shadows", async () => {
+    const { sunBlobOffset } = await import("./animate");
+    expect(sunBlobOffset(2.5, true)).toEqual({ x: 0, z: 0, stretch: 1 });
+  });
+
+  it("slides away from the sun (to the right on screen, like the shadow map's) and stays under the feet", async () => {
+    const { sunBlobOffset, SUN_BLOB_SHARE } = await import("./animate");
+    const { SHADOW_SLOPE } = await import("../sky");
+    const o = sunBlobOffset(2.5, false);
+    // The light rig's sun stands to the left (sky.ts LIGHT_RIG): shadows fall mostly to +x.
+    expect(o.x).toBeGreaterThan(0);
+    expect(Math.abs(o.z)).toBeLessThan(o.x);
+    expect(Math.hypot(o.x, o.z)).toBeCloseTo(SHADOW_SLOPE.length() * 2.5 * SUN_BLOB_SHARE, 9);
+    // A standard troop's blob (about 1.2 to 1.6 world units across) still overlaps its feet.
+    expect(Math.hypot(o.x, o.z)).toBeLessThan(0.8);
+    expect(o.stretch).toBeGreaterThan(1);
+    // Taller units throw it further.
+    expect(Math.hypot(sunBlobOffset(3.6, false).x, sunBlobOffset(3.6, false).z)).toBeGreaterThan(Math.hypot(o.x, o.z));
+  });
+});
