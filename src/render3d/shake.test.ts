@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { setPrefs } from "../ui/prefs";
-import { ShakeController } from "./shake";
+import { MAX_TRAUMA, ShakeController } from "./shake";
 
 describe("trauma-based camera shake", () => {
   it("adds trauma and reports a quadratic intensity", () => {
@@ -12,18 +12,22 @@ describe("trauma-based camera shake", () => {
     expect(s.active).toBe(true);
   });
 
-  it("clamps trauma at 1", () => {
+  it("stacks with diminishing returns and clamps at MAX_TRAUMA", () => {
     const s = new ShakeController();
+    s.add(0.4);
+    s.add(0.4); // the second kick lands at 80%
+    expect(Math.sqrt(s.intensity)).toBeCloseTo(0.4 + 0.4 * 0.8);
     s.add(0.8);
     s.add(0.8); // would overshoot
-    expect(s.intensity).toBeCloseTo(1);
+    expect(Math.sqrt(s.intensity)).toBeCloseTo(MAX_TRAUMA);
+    expect(MAX_TRAUMA).toBeLessThan(1);
   });
 
   it("decays to rest over time", () => {
     const s = new ShakeController();
     s.add(1);
     s.update(0.5, 1.5); // 0.75 of trauma drains
-    expect(s.intensity).toBeCloseTo(0.25 * 0.25, 4); // (1 - 0.75)^2
+    expect(s.intensity).toBeCloseTo((MAX_TRAUMA - 0.75) ** 2, 4);
     s.update(1, 1.5); // fully drained (clamped)
     expect(s.intensity).toBe(0);
     expect(s.active).toBe(false);

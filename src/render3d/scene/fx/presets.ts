@@ -220,9 +220,9 @@ export const PRESETS: Record<string, readonly Layer[]> = {
     { pool: "alpha", cell: CELL.RING, count: 1, life: 0.45, dir: "none", speed: 0, height: 0.07, size0: 0.4, size1: 2, ground: true, color0: 0xffc27a, alpha0: 0.9, alpha1: 0 },
     { pool: "alpha", cell: CELL.SOFT, count: 1, life: 0.3, dir: "none", speed: 0, height: 0.05, size0: 1.2, size1: 2.2, ground: true, color0: 0xff9a40, alpha0: 0.3, alpha1: 0 },
   ],
-  // Fireball billows: warm soot (the effect colour), outlined.
+  // Fireball billows: fire-lit orange cooling to ash (the effect colour), outlined.
   "fire-billow": [
-    { pool: "alpha", cell: SMOKE, count: 7, life: [1, 1.4], dir: "out", speed: [1.6, 2.6], vy: [0.9, 1.7], area: 0.5, height: 0.4, drag: 2, gravity: -0.6, size0: [0.8, 1.0], size1: [1.8, 2.3], spin: [-0.7, 0.7], color0: 0xe39a52, color1: 0x5e5550, alpha0: 1, alpha1: 0, push: 0.45 },
+    { pool: "alpha", cell: SMOKE, count: 7, life: [1, 1.4], dir: "out", speed: [1.6, 2.6], vy: [0.9, 1.7], area: 0.5, height: 0.4, drag: 2, gravity: -0.6, size0: [0.8, 1.0], size1: [1.8, 2.3], spin: [-0.7, 0.7], color0: 0xffb468, color1: 0x9a918a, alpha0: 0.95, alpha1: 0, push: 0.45 },
   ],
   // Fire of the blast: three-tone toon flame tongues, then a small hot core.
   "fire-core": [

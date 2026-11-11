@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { setPrefs } from "../ui/prefs";
-import { HitStopController, MAX_HITSTOP, REDUCED_HITSTOP } from "./hitstop";
+import { BIG_HITSTOP, HitStopController, MAX_HITSTOP, REDUCED_HITSTOP, REST_AFTER } from "./hitstop";
 
 describe("HitStopController", () => {
   it("is inactive until punched", () => {
@@ -20,15 +20,29 @@ describe("HitStopController", () => {
     expect(h.left).toBeCloseTo(0.09);
   });
 
-  it("clamps to 300ms and drains over time", () => {
+  it("clamps to 250ms and drains over time", () => {
     const h = new HitStopController();
     h.punch(1);
     expect(h.left).toBeCloseTo(MAX_HITSTOP);
-    expect(MAX_HITSTOP).toBeCloseTo(0.3);
+    expect(MAX_HITSTOP).toBeCloseTo(0.25);
     h.update(0.05);
-    expect(h.left).toBeCloseTo(0.25);
+    expect(h.left).toBeCloseTo(0.2);
     h.update(0.3);
     expect(h.active).toBe(false);
+  });
+
+  it("rests after a freeze: light punches skip, big beats still land", () => {
+    const h = new HitStopController();
+    h.punch(0.06);
+    h.update(0.07); // the freeze ends: the rest window opens
+    h.punch(0.05);
+    expect(h.active).toBe(false);
+    h.punch(BIG_HITSTOP);
+    expect(h.left).toBeCloseTo(BIG_HITSTOP);
+    h.update(0.2);
+    h.update(REST_AFTER + 0.01); // rested
+    h.punch(0.05);
+    expect(h.left).toBeCloseTo(0.05);
   });
 
   it("holds a king tower's 250ms freeze in full", () => {
