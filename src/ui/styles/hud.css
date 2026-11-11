@@ -96,7 +96,8 @@
   height: 24px;
   box-sizing: border-box;
   line-height: 20px;
-  font-size: var(--fs-sm);
+  /* The text-size setting may grow the digit, but not out of its droplet. */
+  font-size: min(var(--fs-sm), 16px);
   transform: translateX(-50%);
   border-width: 2px;
 }
@@ -172,10 +173,10 @@
 }
 #hud.v2 .hud-next-art canvas {
   display: block;
-  /* Half a card tall, so its tab and the chat bubble fit under it. */
-  height: calc(var(--ch) * 0.52);
+  /* Half a card tall, so its tab and the chat bubble fit under it, and no
+     wider than its column (4:5, like the hand's cards). */
+  height: min(calc(var(--ch) * 0.52), calc(var(--nw) * 1.25));
   width: auto;
-  max-width: var(--nw);
   aspect-ratio: 4 / 5;
   box-sizing: border-box;
   border: 2px solid #e0a83c;
@@ -256,7 +257,8 @@
   border-radius: var(--r-pill);
   background: #141d3a;
   color: var(--accent);
-  font-size: var(--fs-xs);
+  /* Capped: the label must stay inside KING's column beside the fourth card. */
+  font-size: min(var(--fs-xs), 13px);
   line-height: 16px;
   letter-spacing: calc(0.06em * var(--tracking));
   white-space: nowrap;
@@ -297,7 +299,7 @@
   margin: 0;
   margin-inline-end: -10px;
   border-width: 2px;
-  font-size: var(--fs-md);
+  font-size: min(var(--fs-md), 18px);
 }
 #hud.v2 .elixir-bar {
   height: 16px;
@@ -978,7 +980,7 @@
   width: 28px;
   height: 28px;
   line-height: 24px;
-  font-size: var(--fs-md);
+  font-size: min(var(--fs-md), 19px);
 }
 /* Next: a 46px mini card over its label tab (52px, 14px under the hand). */
 :root[data-layout="wide"] #hud.v2 .hud-next {
@@ -988,7 +990,6 @@
 }
 :root[data-layout="wide"] #hud.v2 .hud-next-art canvas {
   height: 46px;
-  max-width: none;
 }
 /* Elixir: a 30px droplet on an 18px bar, 14px under the hand. */
 :root[data-layout="wide"] #hud.v2 .elixir-row {

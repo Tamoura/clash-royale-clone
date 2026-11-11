@@ -143,7 +143,8 @@ function handCardCanvas(id: CardId, w = 72, aspect = 4 / 3, zoom = 1): HTMLCanva
   const portrait = cardPortrait(id);
   if (portrait) {
     // Fill the frame: the square render scaled to the card's height and
-    // centred, so the sides crop and the whole figure stays in view.
+    // centred, so the sides crop and the whole figure stays in view; a zoom
+    // crops the feet before the head.
     const s = h * 0.96 * zoom;
     ctx.drawImage(portrait, (w - s) / 2, (h - s) * 0.4, s, s);
   } else {
