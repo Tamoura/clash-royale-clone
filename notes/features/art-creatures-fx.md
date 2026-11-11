@@ -180,7 +180,12 @@ All in `/tmp/claude-0/art/creatures-fx/`:
        flashMats: collectFlashMats(root), lastHp: e.hp, flashT: 0, spawnT: 0, isTroop: false };
    }
    ```
-   The palette repaint (onPrefs) must re-run `applyTeam` on building rigs like it does for troops.
+   The palette repaint (onPrefs) must re-run `applyTeam` on building rigs like it does for troops: `trackTeam`
+   (troops.ts) already does that for any root it is given. Checked against troops.ts on art/base: `makeHpBar`,
+   `unitHpColor`, `trackTeam`, `collectFlashMats`, `teamSide`, `bakeRig`, `ARABIC` and `teamPalette` are all
+   imported or defined there with these signatures, and the tombstone and collector views carry no extra
+   fields, so nothing else depends on the old meshes. The floating name label the old cannon carried goes
+   (art bible: no floating name tags).
 2. **cardwaveFx.test.ts** (this package's file) still pins the old one-frame white troop flash
    ("troops keep their one-frame white snap and warm fade"); cast-kit asked ship to replace it with
    `expect(Math.max(...troopFlashTint(FLASH_TIME, out))).toBeLessThanOrEqual(0.35)` once its animate.ts lands

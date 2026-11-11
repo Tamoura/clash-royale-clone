@@ -152,7 +152,7 @@ export function fireball(v: VfxPool, x: number, y: number, r: number): void {
     s.size0 = puff0 * grow;
     s.size1 = (0.85 * k + 0.25) * grow;
     s.push = 0.3;
-    color(s, 0x7b6252, 1, 0.78, 0x544a44, 1, 0);
+    color(s, 0x86705f, 1, 0.62, 0x5e544d, 1, 0);
     s.cell = CELL.PUFF;
     v.spawn("alpha", s);
   }
