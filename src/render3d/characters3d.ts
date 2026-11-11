@@ -181,8 +181,8 @@ function installRigLanguage(sh: THREE.WebGLProgramParametersWithUniforms): void 
          _rim = smoothstep(0.62, 1.0, _rim) * ${RIG_RIM.strength.toFixed(2)} * uRigRim;
          gl_FragColor.rgb += _rim * vec3(0.749, 0.890, 1.0);
          float _k = max(_tint.r, max(_tint.g, _tint.b));
-         // A near-white tint is a hit flash: art bible 6 caps it at RIG_FLASH_MAX.
-         float _cap = _k - min(_tint.r, min(_tint.g, _tint.b)) < 0.12 * _k ? ${RIG_FLASH_MAX.toFixed(2)} : ${RIG_TINT_MAX.toFixed(2)};
+         // A white or warm-white tint is a hit flash: art bible 6 caps it at RIG_FLASH_MAX.
+         float _cap = min(_tint.r, min(_tint.g, _tint.b)) >= 0.6 * _k ? ${RIG_FLASH_MAX.toFixed(2)} : ${RIG_TINT_MAX.toFixed(2)};
          if (_k > 0.001) gl_FragColor.rgb = mix(gl_FragColor.rgb, _tint / _k, min(_k, _cap));
        }
        #include <dithering_fragment>`,
