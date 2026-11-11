@@ -5,19 +5,44 @@
    style.css stay untouched. New values come from tokens.css.
    ============================================================ */
 
-/* ══ Bottom tray ══ */
+/* ══ Bottom tray ══
+   One compact strip under the board: a slim elixir rail along its top edge,
+   then a single row of Next (over the chat bubble), the four cards and KING.
+   Nothing of it floats over the board. src/ui/layout.ts sizes it (--card-w,
+   --card-h, --next-w, --king-w on :root during a battle) and predicts its
+   height for the camera: keep its numbers in step with these. The wide
+   layout turns it into a side panel (see "Battle layouts" below). */
 #hud.v2 {
+  /* Between battles nothing sets the sizes: a phone's own. */
+  --cw: var(--card-w, 64px);
+  --ch: var(--card-h, 78.5px);
+  --nw: var(--next-w, 36px);
+  --kw: var(--king-w, 46px);
+  --tray-gap: 5px;
   z-index: var(--z-hud);
-  padding: var(--sp-3) 0 max(8px, env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: var(--nw) auto var(--kw);
+  grid-template-rows: 16px var(--ch);
+  grid-template-areas: "elixir elixir elixir" "next hand king";
+  justify-content: center;
+  align-items: center;
+  gap: 7px var(--tray-gap);
+  /* 3 + 6 + 16 + 7 + card + 10 (layout.ts: TALL_TRAY_CHROME). */
+  padding: 6px 8px max(10px, env(safe-area-inset-bottom));
+  border-top-width: 3px;
+}
+/* The rail is the tray's top edge now: no ornaments on the frame. */
+#hud.v2::before {
+  display: none;
 }
 
-/* ── Hand: exactly four big cards, edge to edge ── */
+/* ── Hand: exactly four cards in a row ── */
 #hud.v2 .hand-row {
+  grid-area: hand;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--sp-2);
-  /* 16px gutters + 3 gaps = 56px: each card is (width - 56px) / 4. */
-  padding: 0 var(--sp-4);
+  grid-template-columns: repeat(4, var(--cw));
+  gap: var(--tray-gap);
+  padding: 0;
   background: none;
   border: 0;
   border-radius: 0;
@@ -25,21 +50,24 @@
 }
 #hud.v2 button.card {
   --charge: 0;
-  width: auto;
+  box-sizing: border-box;
+  width: var(--cw);
+  height: var(--ch);
   min-width: 0;
   padding: 0;
   border: 3px solid #e0a83c;
-  border-radius: var(--r-md);
+  border-radius: 10px;
   background: #0d1426;
   touch-action: none;
 }
+/* 4:5 art, cropped in on the character (hud.ts draws it that shape). */
 #hud.v2 button.card canvas.card-art {
   display: block;
   width: 100%;
-  height: auto;
-  aspect-ratio: 3 / 4;
+  height: 100%;
+  aspect-ratio: auto;
   border: 0;
-  border-radius: calc(var(--r-md) - 3px);
+  border-radius: 7px;
   background: none;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
@@ -51,29 +79,37 @@
     transform: translateY(-4px);
   }
 }
+/* A picked card lifts out of the tray, over the rail. */
 #hud.v2 button.card.selected {
   transform: translateY(-10px);
+  z-index: 4;
 }
 #hud.v2 button.card.dragging {
   transform: translateY(-14px) scale(1.08) rotate(-3deg);
 }
 
-/* Cost droplet: bottom centre, 40% of it hanging below the card. */
+/* Cost droplet: bottom centre, a quarter of it hanging below the card. */
 #hud.v2 .card-cost {
   left: 50%;
-  bottom: -12px; /* 0.4 x 30px */
-  width: 30px;
-  height: 30px;
-  line-height: 26px;
-  font-size: var(--fs-md);
+  bottom: -7px;
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  line-height: 20px;
+  font-size: var(--fs-sm);
   transform: translateX(-50%);
   border-width: 2px;
+}
+#hud.v2 .card-cost::before {
+  top: -6px;
+  border-width: 4px;
+  border-bottom-width: 7px;
 }
 
 /* Charge veil: a static gradient; --charge (0..100) moves the line. */
 #hud.v2 .elixir-veil {
   inset: 0;
-  border-radius: calc(var(--r-md) - 3px);
+  border-radius: 7px;
   transition: none;
   background: linear-gradient(
     to top,
@@ -90,8 +126,9 @@
 }
 /* "+N" elixir still needed: the number comes from --need via a counter. */
 #hud.v2 .card-need {
-  top: var(--sp-1);
-  font-size: var(--fs-sm);
+  top: 3px;
+  font-size: var(--fs-xs);
+  line-height: 1.35;
   counter-reset: need var(--need, 0);
 }
 #hud.v2 .card-need::before {
@@ -104,38 +141,45 @@
   content: "\2014";
 }
 #hud.v2 .lvl-chip {
-  top: -8px;
-  right: -6px;
+  top: -7px;
+  right: -5px;
+  line-height: 1.25;
 }
 
-/* ── Next card: a mini card floating at the inline start ── */
+/* ── Next card: a mini card at the row's start, its label a tab on its bottom edge ── */
 #hud.v2 .hud-next {
-  position: absolute;
-  inset-inline-start: var(--sp-3);
-  bottom: calc(100% + var(--sp-2));
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
+  grid-area: next;
+  align-self: start;
+  justify-self: center;
+  position: relative;
   pointer-events: none;
 }
 #hud.v2 .hud-next-label {
-  padding: 0 var(--sp-1);
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  z-index: 1;
+  transform: translateX(-50%);
+  padding: 0 4px;
   border-radius: var(--r-pill);
-  background: rgba(8, 12, 28, 0.72);
+  background: #0d1c4a;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
   color: var(--on-surface);
-  font-size: var(--fs-xs);
-  line-height: 16px;
-  text-shadow: var(--cr-outline);
+  font-size: 10px;
+  line-height: 12px;
+  text-shadow: none;
   white-space: nowrap;
 }
 #hud.v2 .hud-next-art canvas {
   display: block;
-  width: 34px;
-  height: auto;
-  aspect-ratio: 3 / 4;
+  /* Half a card tall, so its tab and the chat bubble fit under it. */
+  height: calc(var(--ch) * 0.52);
+  width: auto;
+  max-width: var(--nw);
+  aspect-ratio: 4 / 5;
+  box-sizing: border-box;
   border: 2px solid #e0a83c;
-  border-radius: var(--r-sm);
+  border-radius: 6px;
   box-shadow: var(--elev-1);
 }
 #hud.v2 .hud-next-art.slide-in {
@@ -146,14 +190,17 @@
   to   { opacity: 1; transform: none; }
 }
 
-/* ── King's ability: a 56px round button floating at the inline end ── */
+/* ── King's ability: a round button at the row's end ── */
 #hud.v2 .hud-ability {
   --charge: 0;
-  position: absolute;
-  inset-inline-end: var(--sp-3);
-  bottom: calc(100% + var(--sp-3));
-  width: 56px;
-  height: 56px;
+  grid-area: king;
+  justify-self: center;
+  align-self: center;
+  position: relative;
+  width: min(var(--kw), 60px);
+  height: min(var(--kw), 60px);
+  /* Its label hangs 9px below the ring. */
+  margin-bottom: 9px;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -196,8 +243,8 @@
   filter: grayscale(0.7) brightness(0.75);
 }
 #hud.v2 .hud-ability-icon .ui-icon {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
 }
 #hud.v2 .hud-ability-label {
   position: absolute;
@@ -226,7 +273,7 @@
 }
 @keyframes hudKingPulse {
   0%, 100% { box-shadow: var(--elev-2), 0 0 0 0 rgba(255, 210, 80, 0.7); }
-  50%      { box-shadow: var(--elev-2), 0 0 0 9px rgba(255, 210, 80, 0); }
+  50%      { box-shadow: var(--elev-2), 0 0 0 7px rgba(255, 210, 80, 0); }
 }
 @keyframes hudKingPop {
   0%   { transform: scale(1); }
@@ -234,24 +281,31 @@
   100% { transform: scale(1); }
 }
 
-/* ── Elixir: droplet first, then a full-width bar ── */
+/* ── Elixir: a slim rail along the tray's top edge, droplet first ── */
 #hud.v2 .elixir-row {
-  margin-top: var(--sp-4);
-  padding: 0 var(--sp-4);
+  grid-area: elixir;
+  height: 16px;
+  margin: 0;
+  padding: 0;
 }
 #hud.v2 .elixir-num {
-  width: 38px;
-  height: 38px;
-  line-height: 33px;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  line-height: 23px;
   margin: 0;
-  margin-inline-end: -12px;
-  font-size: var(--fs-lg);
+  margin-inline-end: -10px;
+  border-width: 2px;
+  font-size: var(--fs-md);
 }
 #hud.v2 .elixir-bar {
-  height: 24px;
+  height: 16px;
+  box-sizing: border-box;
+  border-radius: 8px;
 }
 #hud.v2 .elixir-fill {
   width: calc(var(--elixir, 0) * 1%);
+  border-radius: 6px;
 }
 /* Sitting on a full bar: the row's leak class pulses bar and droplet. */
 #hud.v2 .elixir-row.leak .elixir-bar {
@@ -266,7 +320,8 @@
   box-shadow: 0 0 12px rgba(255, 143, 208, 0.9);
 }
 #hud.v2 .x2-tag {
-  font-size: var(--fs-sm);
+  font-size: 11px;
+  line-height: 1;
 }
 #hud.v2 .x2-tag:empty {
   display: none;
@@ -354,16 +409,36 @@
   width: 20px;
 }
 
-/* ══ In-stage controls that sit with the HUD ══ */
+/* ══ The chat bubble: in the tray, under Next (hud.ts moves #emotes there) ══ */
 .hud-v2 .emote-bar {
-  /* Beside the Next card, clear of the King button. */
-  left: auto;
-  inset-inline-start: calc(var(--sp-3) + 34px + var(--sp-3));
-  bottom: var(--sp-2);
+  grid-area: next;
+  align-self: end;
+  justify-self: center;
+  position: static;
+  display: block;
 }
 .hud-v2 .emote-bar .emote-toggle {
-  width: 48px;
-  height: 48px;
+  position: relative;
+  display: grid;
+  width: min(var(--nw), 48px);
+  height: clamp(22px, calc(var(--ch) * 0.34), 34px);
+  border-radius: 10px 10px 10px 3px;
+}
+/* A full 44px finger target around the small bubble. */
+.hud-v2 .emote-bar .emote-toggle::after {
+  content: "";
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+/* Its tray of faces opens over the board, above the hand's start. */
+.hud-v2 .emote-tray {
+  position: absolute;
+  inset-inline-start: 8px;
+  bottom: calc(100% + 8px);
+  z-index: 6;
 }
 .hud-v2 .emote-tray button {
   width: 44px;
@@ -786,35 +861,10 @@
 
 /* ══ Battle layouts: src/ui/layoutWire.ts sets :root[data-layout] during battles only ══ */
 
-/* ── Tall (portrait): the board spans the width; the hand stays a comfortable
-   size, capped by the screen's height as well as its width (--hand-w, from
-   layout.ts), so the tray never eats a short screen. ── */
-:root[data-layout="tall"] #hud.v2 .hand-row,
-:root[data-layout="tall"] #hud.v2 .elixir-row {
-  max-width: var(--hand-w, 480px);
-  margin-inline: auto;
-  box-sizing: border-box;
-}
-/* The board spans the width, so King and the chat bubble float over its
-   near corners: keep them small and low (docked on the tray's edge) so they
-   cover as few deploy tiles as they can, and taps beside them still land on
-   the board. */
-:root[data-layout="tall"] #hud.v2 .hud-ability {
-  width: 46px;
-  height: 46px;
-  bottom: calc(100% + 2px);
-}
-:root[data-layout="tall"] #hud.v2 .hud-ability-icon .ui-icon {
-  width: 22px;
-  height: 22px;
-}
-:root[data-layout="tall"] .hud-v2 .emote-bar {
-  bottom: 2px;
-}
-:root[data-layout="tall"] .hud-v2 .emote-bar .emote-toggle {
-  width: 44px;
-  height: 44px;
-}
+/* ── Tall (portrait): the board spans the width over the compact tray above
+   (its base rules are the tall layout's; layout.ts caps the cards by the
+   screen's height as well as its width, and lets Next and KING grow with
+   them on tablets). ── */
 /* Height-bound portrait screens (tablets, short phones): a one-row
    scoreboard band, so the board can start higher and grow. */
 @media (min-width: 600px), (min-aspect-ratio: 47/100) {
@@ -884,62 +934,98 @@
   position: absolute;
   inset: 0;
 }
-/* Right panel: the hand, then Next + elixir (a stacked panel: Next on top and
-   the elixir bar across the foot, see below).
-   NOTE: no transform or filter on #app / #hud: KING below is position: fixed. */
+/* Right panel: the hand as a 2x2 (or one column, --hand-cols), then Next
+   beside the elixir bar (a stacked panel: Next on top and the bar across the
+   foot, see below). A small card block, so the board stays the hero.
+   NOTE: no transform or filter on #app / #hud: KING and the chat bubble
+   below are position: fixed. */
 :root[data-layout="wide"] #hud.v2 {
   position: absolute;
   inset-inline-end: max(var(--hug), env(safe-area-inset-right));
   bottom: max(12px, env(safe-area-inset-bottom));
   width: calc(var(--side) - 24px);
   box-sizing: border-box;
-  padding: 16px 8px 12px;
-  border: 3px solid #0d1c4a;
-  border-radius: 20px;
-  background: linear-gradient(180deg, rgba(45, 92, 192, 0.93) 0%, rgba(29, 63, 150, 0.93) 45%, rgba(20, 42, 104, 0.95) 100%);
-  display: grid;
-  grid-template-columns: auto 1fr;
+  /* 2 + 12 ... 10 + 2 (layout.ts: PANEL_CHROME_H), 2 + 8 ... 8 + 2 (PANEL_CHROME_W). */
+  padding: 12px 8px 10px;
+  border: 2px solid #0d1c4a;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(45, 92, 192, 0.88) 0%, rgba(29, 63, 150, 0.88) 45%, rgba(20, 42, 104, 0.9) 100%);
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
   grid-template-areas: "hand hand" "next elixir";
-  align-items: center;
-  column-gap: 10px;
-}
-:root[data-layout="wide"] #hud.v2::before {
-  display: none;
+  justify-content: stretch;
+  gap: 0 10px;
 }
 /* The Islamic edition's teal-and-gold tray, as a panel. */
 :root[data-edition="arabic"][data-layout="wide"] #hud.v2 {
-  background: var(--ar-khatam), linear-gradient(180deg, rgba(22, 128, 126, 0.95) 0%, rgba(14, 95, 102, 0.95) 40%, rgba(10, 61, 74, 0.96) 100%);
+  background: var(--ar-khatam), linear-gradient(180deg, rgba(22, 128, 126, 0.9) 0%, rgba(14, 95, 102, 0.9) 40%, rgba(10, 61, 74, 0.92) 100%);
   border-color: #caa23f;
 }
 :root[data-layout="wide"] #hud.v2 .hand-row {
-  grid-area: hand;
-  grid-template-columns: repeat(var(--hand-cols, 2), var(--card-w));
+  grid-template-columns: repeat(var(--hand-cols, 2), var(--cw));
   justify-content: center;
-  gap: 22px 12px;
-  padding: 0;
+  /* layout.ts: HAND_GAP_Y, HAND_GAP_X (the cost droplet hangs 8px into the row gap). */
+  gap: 16px 10px;
 }
+:root[data-layout="wide"] #hud.v2 .card-cost {
+  bottom: -9px;
+  width: 28px;
+  height: 28px;
+  line-height: 24px;
+  font-size: var(--fs-md);
+}
+/* Next: a 46px mini card over its label tab (52px, 14px under the hand). */
 :root[data-layout="wide"] #hud.v2 .hud-next {
-  grid-area: next;
-  position: static;
-  margin-top: 18px;
+  align-self: start;
+  justify-self: start;
+  margin: 14px 0 6px;
 }
+:root[data-layout="wide"] #hud.v2 .hud-next-art canvas {
+  height: 46px;
+  max-width: none;
+}
+/* Elixir: a 30px droplet on an 18px bar, 14px under the hand. */
 :root[data-layout="wide"] #hud.v2 .elixir-row {
-  grid-area: elixir;
-  margin-top: 18px;
-  padding: 0;
+  height: 30px;
+  /* Beside Next, the bar lines up with the mini card's middle. */
+  align-self: start;
+  margin-top: 22px;
+}
+:root[data-layout="wide"] #hud.v2 .elixir-num {
+  width: 30px;
+  height: 30px;
+  line-height: 25px;
+}
+:root[data-layout="wide"] #hud.v2 .elixir-bar {
+  height: 18px;
+  border-radius: 9px;
 }
 /* Stacked panel (most panels under 240px, layout.ts): Next on its own row at
-   the top, so the elixir bar gets the panel's full width and its ten
-   segments stay readable. */
+   the top (40px, then 8px), so the elixir bar gets the panel's full width and
+   its ten segments stay readable. */
 :root[data-layout="wide"][data-panel="stacked"] #hud.v2 {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
   grid-template-areas: "next" "hand" "elixir";
 }
 :root[data-layout="wide"][data-panel="stacked"] #hud.v2 .hud-next {
-  flex-direction: row;
-  justify-self: start;
+  display: flex;
+  align-items: center;
   gap: 6px;
-  margin: 0 0 10px;
+  margin: 0 0 8px;
+}
+:root[data-layout="wide"][data-panel="stacked"] #hud.v2 .hud-next-label {
+  position: static;
+  transform: none;
+  padding: 0 6px;
+  font-size: var(--fs-xs);
+  line-height: 16px;
+}
+:root[data-layout="wide"][data-panel="stacked"] #hud.v2 .hud-next-art canvas {
+  height: 40px;
+}
+:root[data-layout="wide"][data-panel="stacked"] #hud.v2 .elixir-row {
+  margin-top: 14px;
 }
 /* The stats tooltip opens beside the panel, toward the board. */
 :root[data-layout="wide"] #hud.v2 .card-tip {
@@ -993,14 +1079,32 @@
   position: fixed;
   inset-inline: calc(max(var(--hug), env(safe-area-inset-left)) + 6px) auto;
   bottom: calc(max(12px, env(safe-area-inset-bottom)) + 64px);
+  width: 56px;
+  height: 56px;
+  margin: 0;
+}
+:root[data-layout="wide"] #hud.v2 .hud-ability-icon .ui-icon {
+  width: 26px;
+  height: 26px;
 }
 /* Chat bubble bottom-left; its tray opens sideways (toward the board) so it
    never covers King. DOM order is tray, toggle: row-reverse puts the toggle first. */
 :root[data-layout="wide"] .hud-v2 .emote-bar {
+  position: fixed;
   inset-inline-start: max(var(--hug), env(safe-area-inset-left));
   bottom: max(12px, env(safe-area-inset-bottom));
+  display: flex;
   flex-direction: row-reverse;
   align-items: center;
+  gap: 6px;
+}
+:root[data-layout="wide"] .hud-v2 .emote-bar .emote-toggle {
+  width: 48px;
+  height: 44px;
+  border-radius: 14px 14px 14px 4px;
+}
+:root[data-layout="wide"] .hud-v2 .emote-tray {
+  position: static;
 }
 /* Sandbox reset / replay speed: mid-height in the left panel, between the
    scoreboard and King (top-right is under the hand panel on short screens). */
@@ -1155,7 +1259,7 @@
 #hud.v2 .card-bubble {
   position: absolute;
   left: 50%;
-  bottom: calc(100% + 64px);
+  bottom: calc(100% + 10px);
   z-index: 8;
   width: min(calc(100vw - 32px), 360px);
   box-sizing: border-box;

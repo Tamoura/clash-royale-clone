@@ -1,16 +1,18 @@
 /**
  * Applies the battle layout (layout.ts) to the page while a battle is on
- * screen: :root[data-layout] / [data-side] / [data-panel] with --side, --field-w,
- * --card-w, --hand-cols and --hand-w for the CSS (styles/hud.css), and the
- * matching frame for the camera. Menus and the home diorama keep their
- * phone-width column (no data-layout at all).
+ * screen: :root[data-layout] / [data-side] / [data-panel] with --side,
+ * --field-w, --card-w, --card-h, --next-w, --king-w and --hand-cols for the
+ * CSS (styles/hud.css), and the matching frame for the camera. Menus and
+ * the home diorama keep their phone-width column (no data-layout at all,
+ * and the tray falls back to the stylesheet's own sizes).
  *
  * Tall mode measures the scoreboard band floating over the top of the
- * board and frames the board just under it; wide mode frames it between
- * the two side panels.
+ * board and frames the board under it (a little below the middle of what
+ * is left over the tray, see TALL_ALIGN_Y); wide mode frames it between the
+ * two side panels.
  */
 import type { Battle3D } from "../render3d/scene3d";
-import { TALL_BOX, ZERO_INSETS, type Insets } from "../render3d/scene/fit";
+import { TALL_ALIGN_Y, TALL_BOX, ZERO_INSETS, type Insets } from "../render3d/scene/fit";
 import { setEdgeShade } from "../render3d/scene/post";
 import { SIDE_ROOMY, battleLayout } from "./layout";
 
@@ -23,6 +25,8 @@ export interface LayoutControl {
 const BAND_PARTS = ".crowns, .clock, .menu-toggle";
 /** Gap between the band and the board's far edging (CSS px). */
 const BAND_GAP = 4;
+/** The CSS variables a battle layout sets on :root (cleared between battles). */
+const LAYOUT_VARS = ["--side", "--field-w", "--card-w", "--card-h", "--next-w", "--king-w", "--hand-cols"] as const;
 
 export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutControl {
   const root = document.documentElement;
@@ -61,6 +65,7 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
       delete root.dataset.layout;
       delete root.dataset.side;
       delete root.dataset.panel;
+      for (const name of LAYOUT_VARS) root.style.removeProperty(name);
       setEdgeShade(scene, 0);
       return;
     }
@@ -71,15 +76,21 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
     root.dataset.panel = lay.stacked ? "stacked" : "inline";
     root.style.setProperty("--side", `${lay.side}px`);
     root.style.setProperty("--field-w", `${lay.fieldW}px`);
-    root.style.setProperty("--card-w", `${lay.cardW}px`);
+    const px = (n: number): string => `${Math.round(n * 100) / 100}px`;
+    root.style.setProperty("--card-w", px(lay.cardW));
+    root.style.setProperty("--card-h", px(lay.cardH));
+    // The tray's Next and KING columns (tall only; a side panel keeps the stylesheet's sizes).
+    for (const [name, v] of [["--next-w", lay.nextW], ["--king-w", lay.kingW]] as const) {
+      if (lay.mode === "tall") root.style.setProperty(name, px(v));
+      else root.style.removeProperty(name);
+    }
     root.style.setProperty("--hand-cols", String(lay.handCols));
-    root.style.setProperty("--hand-w", `${lay.handW}px`);
     // Wide mode shades the world past the stands (drawn by the final pass).
     setEdgeShade(scene, lay.mode === "wide" ? lay.fieldW : 0);
     scene.setFraming(
       lay.mode === "wide"
         ? { insets: lay.insets, box: lay.box }
-        : { insets: { ...ZERO_INSETS, top: bandInset() }, box: TALL_BOX },
+        : { insets: { ...ZERO_INSETS, top: bandInset() }, box: TALL_BOX, alignY: TALL_ALIGN_Y },
     );
   };
 

@@ -15,6 +15,7 @@ import { on, pendingSpend, setPresentTimeScale, type MatchEndPayload } from "../
 import { resultExtras } from "../app/slots";
 import { battleMenuOpen, battleMenuPausing, closeBattleMenu, openBattleMenu } from "../ui/battleMenu";
 import { getPrefs, onPrefs, reducedMotion } from "../ui/prefs";
+import { CARD_ASPECT } from "../ui/layout";
 import {
   DROP_HINT_GUTTER,
   MATCH_CLOCK,
@@ -109,17 +110,21 @@ function el<K extends keyof HTMLElementTagNameMap>(
 
 /**
  * Backing width (CSS px) of the hand's card art. CSS sizes the canvas to its
- * card (up to 131px wide in the desktop side panel), so this only sets how
+ * card (up to 112px wide in the desktop side panel), so this only sets how
  * sharp the art stays at that size.
  */
-const HAND_ART_W = 136;
+const HAND_ART_W = 112;
+/** The hand's cards are small, so their art zooms in on the character (1 = the whole figure). */
+const HAND_ART_ZOOM = 1.16;
 
 /**
- * A full-bleed 3:4 card portrait: the card's colour as a lit backdrop, the
+ * A full-bleed card portrait, `aspect` tall for its width (3:4 in the info
+ * bubble, 4:5 in the hand): the card's colour as a lit backdrop, the
  * pre-rendered 3D character cropped to fill it (spells keep painted art).
+ * `zoom` over 1 crops in on the character's head and body.
  */
-function handCardCanvas(id: CardId, w = 72): HTMLCanvasElement {
-  const h = Math.round((w * 4) / 3);
+function handCardCanvas(id: CardId, w = 72, aspect = 4 / 3, zoom = 1): HTMLCanvasElement {
+  const h = Math.round(w * aspect);
   const canvas = document.createElement("canvas");
   const dpr = Math.min(2, (typeof devicePixelRatio !== "undefined" ? devicePixelRatio : 1) || 1);
   canvas.width = Math.round(w * dpr);
@@ -139,10 +144,10 @@ function handCardCanvas(id: CardId, w = 72): HTMLCanvasElement {
   if (portrait) {
     // Fill the frame: the square render scaled to the card's height and
     // centred, so the sides crop and the whole figure stays in view.
-    const s = h * 0.96;
+    const s = h * 0.96 * zoom;
     ctx.drawImage(portrait, (w - s) / 2, (h - s) * 0.4, s, s);
   } else {
-    drawCardArt(ctx, id, w / 2, h * 0.46, w * 0.6);
+    drawCardArt(ctx, id, w / 2, h * 0.46, w * 0.6 * zoom);
   }
   // Floor shade so the cost droplet always reads.
   const shade = ctx.createLinearGradient(0, h * 0.62, 0, h);
@@ -280,7 +285,8 @@ export class Hud {
       this.openMenu();
     });
 
-    // ---- Bottom: floating Next + King, the hand, the elixir bar.
+    // ---- Bottom tray: the elixir rail, then Next (over the chat bubble), the
+    // hand and KING in one row (the wide layout re-places them, see hud.css).
     this.nextWrap = el("div", "hud-next", bottom);
     this.nextWrap.setAttribute("role", "img");
     el("div", "hud-next-label", this.nextWrap).textContent = tr("Next", "التالية");
@@ -448,7 +454,12 @@ export class Hud {
       this.slots.push({ btn, cost, veil, need });
     }
 
-    // The elixir bar runs full width under the hand, droplet first.
+    // The chat bubble (built by main.ts in the stage) lives in the tray too,
+    // under Next, so it never covers a tile of the board.
+    const emotes = document.getElementById("emotes");
+    if (emotes) bottom.appendChild(emotes);
+
+    // The elixir rail runs along the tray's top edge, droplet first.
     this.elixirRow = el("div", "elixir-row", bottom);
     this.elixirRow.dataset.tut = "elixir";
     this.elixirRow.setAttribute("role", "group");
@@ -946,7 +957,7 @@ export class Hud {
     if (m.next !== p?.next) {
       this.nextArt.replaceChildren();
       if (m.next) {
-        this.nextArt.appendChild(handCardCanvas(m.next, 34));
+        this.nextArt.appendChild(handCardCanvas(m.next, 48, CARD_ASPECT, HAND_ART_ZOOM));
         this.nextWrap.setAttribute("aria-label", tr(`Next: ${cardDisplayName(m.next)}`, `التالية: ${cardDisplayName(m.next)}`));
         if (p && !reducedMotion()) this.restartAnim(this.nextArt, "slide-in");
       }
@@ -1043,7 +1054,7 @@ export class Hud {
     const key = document.createElement("div");
     key.className = "key-chip";
     key.textContent = String(i + 1); // keyboard shortcut hint
-    const parts: HTMLElement[] = [handCardCanvas(id, HAND_ART_W), name, s.veil, s.need, s.cost, key];
+    const parts: HTMLElement[] = [handCardCanvas(id, HAND_ART_W, CARD_ASPECT, HAND_ART_ZOOM), name, s.veil, s.need, s.cost, key];
     const me = mySide === "player" ? state.player : state.enemy;
     const lvl = me.levels[id] ?? 1;
     if (lvl > 1) {

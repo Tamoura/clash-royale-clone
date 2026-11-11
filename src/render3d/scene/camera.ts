@@ -18,6 +18,8 @@ import { BATTLE_BOX, ZERO_INSETS, fitBattleFrustum, type ContentBox, type Frustu
 export interface Framing {
   insets: Insets;
   box: ContentBox;
+  /** Where the board sits along a free rectangle taller than it (fit.ts; default 0.5, centred). */
+  alignY?: number;
 }
 
 /** Distance fog in the sky colour (gradeSky re-tints it every frame). */
@@ -88,7 +90,7 @@ export function showcase(b: Battle3D, on: boolean, windowFrac = 0.5): void {
  */
 export function applyFraming(b: Battle3D, f: Framing): void {
   const cur = b.framing;
-  if (cur && cur.box === f.box) {
+  if (cur && cur.box === f.box && (cur.alignY ?? 0.5) === (f.alignY ?? 0.5)) {
     const a = cur.insets;
     const n = f.insets;
     const near = (x: number, y: number): boolean => Math.abs(x - y) < 0.5;
@@ -115,8 +117,8 @@ export function frameOrtho(b: Battle3D): void {
   }
   const w = b.container.clientWidth || 1;
   const h = b.container.clientHeight || 1;
-  const fr = b.framing ?? { insets: ZERO_INSETS, box: BATTLE_BOX };
-  restFrustum.set(b.camera, fitBattleFrustum(w, h, fr.insets, fr.box));
+  const fr: Framing = b.framing ?? { insets: ZERO_INSETS, box: BATTLE_BOX };
+  restFrustum.set(b.camera, fitBattleFrustum(w, h, fr.insets, fr.box, fr.alignY));
   applyFrustum(b);
   applyFogRange(b);
 }
