@@ -68,6 +68,11 @@ export interface Layer {
   tint?: boolean;
   /** Whether opts.radius scales this layer (default true). */
   scales?: boolean;
+  /**
+   * Dust kicked off the floor: without opts.color the layer takes the arena
+   * floor's dust colour (Spawner.floorColor), fading to a deeper shade.
+   */
+  floor?: boolean;
 }
 
 export interface Spawner {
@@ -76,6 +81,8 @@ export interface Spawner {
   rand(): number;
   /** Particle count multiplier for the current quality. */
   scale(): number;
+  /** The arena floor's dust colour (presets with `floor` layers use it). */
+  floorColor?(): number;
 }
 
 export interface EmitOpts {
@@ -89,147 +96,181 @@ export interface EmitOpts {
 
 const SMOKE = SMOKE_CELLS;
 
+/**
+ * Bloom contract (art bible 5): the bloom threshold is a linear luminance
+ * of 0.9, so only emissive CORES and SPARKS may carry hdr above 1 (fireball
+ * and comet cores, sparks, embers, muzzle flashes). Rings, puffs, flames and
+ * flashes over the field stay at or under 1 and mostly draw in the alpha
+ * pool, where they can never brighten what is under them past their colour.
+ * Puffs are outlined toon clouds tinted with the floor or the effect colour,
+ * never opaque white; single-target impact puffs stay at or under
+ * IMPACT_PUFF_MAX tiles.
+ */
+export const IMPACT_PUFF_MAX = 1.2;
+/** The hdr ceiling for layers that are not cores or sparks (fx.test.ts checks it). */
+export const PLAIN_HDR_MAX = 1;
+/** Presets whose additive layers are cores or sparks (allowed above PLAIN_HDR_MAX). */
+export const HOT_PRESETS: ReadonlySet<string> = new Set([
+  "hitSpark", "crit", "muzzle", "embers", "smoke-column", "sparks", "zap-sparks", "rage-ember", "portal", "spark-burst", "fire-core", "dust-kick",
+]);
+/** The cream every impact star and ring falls back to (warm, never pure white). */
+const CREAM = 0xfff1c4;
+
 export const PRESETS: Record<string, readonly Layer[]> = {
-  // Footstep dust: two tiny scuffs.
+  // Footstep dust: two tiny scuffs in the floor's colour.
   dust: [
-    { pool: "alpha", cell: SMOKE, count: 2, life: [0.35, 0.5], dir: "up", spread: 1.2, speed: [0.3, 0.6], area: 0.15, height: 0.1, drag: 2, size0: [0.12, 0.18], size1: [0.35, 0.45], spin: [-1, 1], color0: 0xd6cbb6, color1: 0xbcae96, alpha0: 0.55, alpha1: 0, push: 0.5 },
+    { pool: "alpha", cell: SMOKE, count: 2, life: [0.35, 0.5], dir: "up", spread: 1.2, speed: [0.3, 0.6], area: 0.15, height: 0.1, drag: 2, size0: [0.12, 0.18], size1: [0.35, 0.45], spin: [-1, 1], color0: 0xc9b99c, alpha0: 0.75, alpha1: 0, push: 0.5, floor: true },
   ],
-  // Smouldering grey billows (damaged towers, generic puffs).
+  // Smouldering billows (damaged towers, death puffs): tinted by the caller.
   smoke: [
-    { pool: "alpha", cell: SMOKE, count: 4, life: [0.7, 1.0], dir: "up", spread: 0.9, speed: [0.5, 1.1], area: 0.3, height: 0.2, drag: 1.6, gravity: -0.4, size0: [0.35, 0.5], size1: [0.9, 1.3], spin: [-0.8, 0.8], color0: 0x8a8278, color1: 0x5a544d, alpha0: 0.8, alpha1: 0, push: 0.5 },
+    { pool: "alpha", cell: SMOKE, count: 4, life: [0.7, 1.0], dir: "up", spread: 0.9, speed: [0.5, 1.1], area: 0.3, height: 0.2, drag: 1.6, gravity: -0.4, size0: [0.32, 0.45], size1: [0.8, 1.15], spin: [-0.8, 0.8], color0: 0x8a8278, color1: 0x5a544d, alpha0: 0.9, alpha1: 0, push: 0.5 },
   ],
   // A tall rising column (tower collapse): staggered billows plus cinders.
   "smoke-column": [
-    { pool: "alpha", cell: SMOKE, count: 16, life: [1.6, 2.3], delay: [0, 1.2], dir: "up", spread: 0.35, speed: [1.4, 2.4], area: 0.9, height: [0.3, 1.2], drag: 0.6, gravity: -0.3, size0: [0.7, 1.0], size1: [1.9, 2.6], spin: [-0.5, 0.5], color0: 0x6e665d, color1: 0x3b3733, alpha0: 0.85, alpha1: 0, push: 0.4 },
-    { pool: "add", cell: CELL.EMBER, count: 10, life: [0.8, 1.4], delay: [0, 0.8], dir: "up", spread: 0.6, speed: [2, 4], area: 0.8, height: 0.6, drag: 1.2, gravity: 1.5, size0: [0.12, 0.18], size1: 0.04, color0: 0xffa040, color1: 0xff3d00, hdr0: 3, hdr1: 1.5, alpha0: 1, alpha1: 0, tint: false },
+    { pool: "alpha", cell: SMOKE, count: 16, life: [1.6, 2.3], delay: [0, 1.2], dir: "up", spread: 0.35, speed: [1.4, 2.4], area: 0.9, height: [0.3, 1.2], drag: 0.6, gravity: -0.3, size0: [0.7, 1.0], size1: [1.9, 2.6], spin: [-0.5, 0.5], color0: 0x6e665d, color1: 0x3b3733, alpha0: 0.9, alpha1: 0, push: 0.4 },
+    { pool: "add", cell: CELL.EMBER, count: 10, life: [0.8, 1.4], delay: [0, 0.8], dir: "up", spread: 0.6, speed: [2, 4], area: 0.8, height: 0.6, drag: 1.2, gravity: 1.5, size0: [0.12, 0.18], size1: 0.04, color0: 0xffa040, color1: 0xff3d00, hdr0: 1.8, hdr1: 1.1, alpha0: 1, alpha1: 0, tint: false },
   ],
-  // Masonry chips knocked off a tower, with a little dust.
+  // Masonry chips knocked off a tower, with a little floor dust.
   chips: [
     { pool: "alpha", cell: CELL.CHIP, count: 8, life: [0.55, 0.8], dir: "up", spread: 1.1, speed: [3, 5.5], area: 0.35, height: 0.4, gravity: 16, size0: [0.16, 0.26], size1: [0.14, 0.2], spin: [-12, 12], color0: 0xa89a86, color1: 0x8b7c69, alpha0: 1, alpha1: 0.6 },
-    { pool: "alpha", cell: SMOKE, count: 2, life: [0.4, 0.6], dir: "up", spread: 1.2, speed: [0.5, 1], area: 0.3, height: 0.3, drag: 2, size0: 0.3, size1: 0.8, color0: 0xb8ab98, alpha0: 0.6, alpha1: 0, push: 0.5, tint: false },
+    { pool: "alpha", cell: SMOKE, count: 2, life: [0.4, 0.6], dir: "up", spread: 1.2, speed: [0.5, 1], area: 0.3, height: 0.3, drag: 2, size0: 0.3, size1: 0.75, color0: 0xb8ab98, alpha0: 0.7, alpha1: 0, push: 0.5, tint: false, floor: true },
   ],
-  // Troop landing: a low ring of dust rolling outward.
+  // Troop landing: a low ring of floor dust rolling outward.
   deployPuff: [
-    { pool: "alpha", cell: SMOKE, count: 7, life: [0.45, 0.65], dir: "out", speed: [1.6, 2.4], vy: [0.2, 0.5], area: 0.3, edge: true, height: 0.15, drag: 3.5, size0: [0.3, 0.4], size1: [0.7, 0.9], spin: [-1, 1], color0: 0xe2d7c4, color1: 0xcbbda6, alpha0: 0.75, alpha1: 0, push: 0.5 },
+    { pool: "alpha", cell: SMOKE, count: 7, life: [0.45, 0.65], dir: "out", speed: [1.6, 2.4], vy: [0.2, 0.5], area: 0.3, edge: true, height: 0.15, drag: 3.5, size0: [0.28, 0.36], size1: [0.6, 0.8], spin: [-1, 1], color0: 0xc9b99c, alpha0: 0.85, alpha1: 0, push: 0.5, floor: true },
   ],
-  // Melee contact: velocity-stretched streaks plus one sparkle.
+  // The team-colour landing burst: a ring snapping out and a few stars popping up.
+  deployBurst: [
+    { pool: "alpha", cell: CELL.RING, count: 1, life: 0.32, dir: "none", speed: 0, height: 0.05, size0: 0.6, size1: 2, ground: true, color0: 0x3b82f6, alpha0: 0.85, alpha1: 0 },
+    { pool: "alpha", cell: CELL.STAR5, count: 5, min: 3, life: [0.4, 0.55], dir: "up", spread: 0.9, speed: [2.2, 3.4], area: 0.25, edge: true, height: 0.2, drag: 2.5, gravity: 5, size0: [0.26, 0.34], size1: 0.1, spin: [-8, 8], color0: 0x3b82f6, alpha0: 1, alpha1: 0.2, push: 0.6, scales: false },
+  ],
+  // Contact: 4-6 inked star sprites flying off the struck target, plus a small hot core.
   hitSpark: [
-    { pool: "add", cell: CELL.STREAK, count: 6, life: [0.18, 0.3], dir: "sphere", speed: [4, 7.5], height: 0, drag: 3, gravity: 9, size0: [0.08, 0.12], size1: 0.04, stretch: 0.9, color0: 0xfff1c4, hdr0: 2.6, hdr1: 1.2, alpha0: 1, alpha1: 0 },
-    { pool: "add", cell: CELL.STAR, count: 1, life: 0.13, dir: "none", speed: 0, size0: 0.65, size1: 0.2, spin: [-6, 6], color0: 0xfff7e0, hdr0: 3, hdr1: 1.5, alpha0: 1, alpha1: 0, push: 1 },
+    { pool: "alpha", cell: CELL.STAR5, count: 5, min: 4, life: [0.26, 0.38], dir: "sphere", speed: [2.4, 4.2], height: 0, drag: 3, gravity: 7, size0: [0.24, 0.32], size1: 0.08, spin: [-11, 11], color0: CREAM, alpha0: 1, alpha1: 0.3, push: 0.8, scales: false },
+    { pool: "add", cell: CELL.SOFT, count: 1, life: 0.1, dir: "none", speed: 0, size0: 0.55, size1: 0.25, color0: 0xfff1c4, hdr0: 1.3, hdr1: 0.6, alpha0: 0.9, alpha1: 0, push: 1, tint: false, scales: false },
   ],
-  // A huge hit: a big sparkle, a hot flash, a fan of streaks and a ring.
+  // A huge hit: gold stars, a small hot core and a gold ring.
   crit: [
-    { pool: "add", cell: CELL.FLARE, count: 1, life: 0.16, dir: "none", speed: 0, size0: 1.6, size1: 0.5, color0: 0xffe7a0, hdr0: 3.2, hdr1: 1, alpha0: 1, alpha1: 0, push: 1 },
-    { pool: "add", cell: CELL.STAR, count: 1, life: 0.22, dir: "none", speed: 0, size0: 1.1, size1: 0.3, spin: [-5, 5], color0: 0xffffff, hdr0: 3, alpha0: 1, alpha1: 0, push: 1, tint: false },
-    { pool: "add", cell: CELL.STREAK, count: 12, life: [0.25, 0.4], dir: "sphere", speed: [6, 10], drag: 3, gravity: 8, size0: [0.1, 0.15], size1: 0.05, stretch: 1.0, color0: 0xffd36b, hdr0: 3, hdr1: 1.2, alpha0: 1, alpha1: 0 },
-    { pool: "add", cell: CELL.RING, count: 1, life: 0.3, dir: "none", speed: 0, height: 0.06, size0: 0.4, size1: 2.6, ground: true, color0: 0xffe7a0, hdr0: 2, alpha0: 0.9, alpha1: 0 },
+    { pool: "add", cell: CELL.SOFT, count: 1, life: 0.14, dir: "none", speed: 0, size0: 1.0, size1: 0.4, color0: 0xffe7a0, hdr0: 1.6, hdr1: 0.8, alpha0: 1, alpha1: 0, push: 1 },
+    { pool: "alpha", cell: CELL.STAR5, count: 1, life: 0.3, dir: "none", speed: 0, size0: 0.9, size1: 0.35, spin: [-5, 5], color0: 0xffd23f, alpha0: 1, alpha1: 0, push: 1.2, tint: false },
+    { pool: "alpha", cell: CELL.STAR5, count: 8, min: 5, life: [0.3, 0.45], dir: "sphere", speed: [4.5, 7], drag: 3, gravity: 8, size0: [0.26, 0.34], size1: 0.1, spin: [-10, 10], color0: 0xffd23f, alpha0: 1, alpha1: 0.2, push: 0.8 },
+    { pool: "alpha", cell: CELL.RING, count: 1, life: 0.3, dir: "none", speed: 0, height: 0.06, size0: 0.4, size1: 2.2, ground: true, color0: 0xffd23f, alpha0: 0.8, alpha1: 0 },
   ],
-  // Ranged shot leaving the barrel.
+  // Ranged shot leaving the barrel: a small hot core and three embers.
   muzzle: [
-    { pool: "add", cell: CELL.FLARE, count: 1, life: 0.09, dir: "none", speed: 0, size0: 0.9, size1: 0.35, color0: 0xffb300, hdr0: 3.5, hdr1: 1.5, alpha0: 1, alpha1: 0, push: 1 },
-    { pool: "add", cell: CELL.EMBER, count: 3, life: [0.15, 0.25], dir: "sphere", speed: [1.5, 3], drag: 4, size0: 0.12, size1: 0.04, color0: 0xffd36b, hdr0: 2.5, alpha0: 1, alpha1: 0 },
+    { pool: "add", cell: CELL.FLARE, count: 1, life: 0.08, dir: "none", speed: 0, size0: 0.6, size1: 0.3, color0: 0xffb300, hdr0: 2, hdr1: 1, alpha0: 1, alpha1: 0, push: 1 },
+    { pool: "add", cell: CELL.EMBER, count: 3, life: [0.15, 0.25], dir: "sphere", speed: [1.5, 3], drag: 4, size0: 0.12, size1: 0.04, color0: 0xffd36b, hdr0: 1.8, alpha0: 1, alpha1: 0 },
   ],
-  // A skeleton falls apart.
+  // A skeleton falls apart: ivory bones and a little floor dust.
   boneShards: [
-    { pool: "alpha", cell: CELL.BONE, count: 6, life: [0.5, 0.65], dir: "up", spread: 1.1, speed: [2.2, 3.6], height: 0.4, gravity: 12, size0: [0.24, 0.32], size1: [0.2, 0.26], spin: [-14, 14], color0: 0xf5f2ea, color1: 0xd9d2c3, alpha0: 1, alpha1: 0.2 },
-    { pool: "alpha", cell: SMOKE, count: 2, life: 0.45, dir: "up", spread: 1, speed: 0.6, height: 0.2, drag: 2, size0: 0.3, size1: 0.7, color0: 0xcfc7b8, alpha0: 0.6, alpha1: 0, push: 0.5, tint: false },
+    { pool: "alpha", cell: CELL.BONE, count: 6, life: [0.5, 0.65], dir: "up", spread: 1.1, speed: [2.2, 3.6], height: 0.4, gravity: 12, size0: [0.24, 0.32], size1: [0.2, 0.26], spin: [-14, 14], color0: 0xe9dfc8, color1: 0xd6cab0, alpha0: 1, alpha1: 0.2 },
+    { pool: "alpha", cell: SMOKE, count: 2, life: 0.45, dir: "up", spread: 1, speed: 0.6, height: 0.2, drag: 2, size0: 0.3, size1: 0.7, color0: 0xcfc7b8, alpha0: 0.7, alpha1: 0, push: 0.5, tint: false, floor: true },
   ],
-  // Hot embers thrown up from fire.
+  // Hot embers thrown up from fire (sparks: allowed past the threshold).
   embers: [
-    { pool: "add", cell: CELL.EMBER, count: 12, life: [0.6, 1.1], dir: "up", spread: 1.2, speed: [2.5, 5.5], area: 0.4, height: 0.3, drag: 1.4, gravity: 3, size0: [0.12, 0.2], size1: 0.04, color0: 0xffb347, color1: 0xff3d00, hdr0: 3.2, hdr1: 1.4, alpha0: 1, alpha1: 0 },
+    { pool: "add", cell: CELL.EMBER, count: 12, life: [0.6, 1.1], dir: "up", spread: 1.2, speed: [2.5, 5.5], area: 0.4, height: 0.3, drag: 1.4, gravity: 3, size0: [0.12, 0.2], size1: 0.04, color0: 0xffb347, color1: 0xff3d00, hdr0: 2.2, hdr1: 1.1, alpha0: 1, alpha1: 0 },
   ],
   // Snowflakes drifting down over the area.
   snow: [
-    { pool: "add", cell: CELL.SNOW, count: 22, life: [1.2, 1.9], delay: [0, 0.9], dir: "down", speed: [0.9, 1.5], area: 1, height: [1.6, 3.2], drag: 0.3, size0: [0.2, 0.32], size1: [0.14, 0.22], spin: [-2, 2], color0: 0xe3f6ff, hdr0: 1.25, alpha0: 0.95, alpha1: 0 },
+    { pool: "alpha", cell: CELL.SNOW, count: 22, life: [1.2, 1.9], delay: [0, 0.9], dir: "down", speed: [0.9, 1.5], area: 1, height: [1.6, 3.2], drag: 0.3, size0: [0.2, 0.32], size1: [0.14, 0.22], spin: [-2, 2], color0: 0xd6efff, alpha0: 0.95, alpha1: 0 },
   ],
-  // Low freezing fog rolling out over the ground.
+  // Low freezing fog rolling out over the ground (icy blue, outlined).
   "frost-mist": [
-    { pool: "alpha", cell: SMOKE, count: 10, life: [1.1, 1.7], dir: "out", speed: [0.4, 0.9], vy: [0.05, 0.2], area: 0.75, height: 0.2, drag: 1.2, size0: [0.7, 0.9], size1: [1.5, 2.0], spin: [-0.4, 0.4], color0: 0xf0fbff, color1: 0xc7ecff, alpha0: 0.6, alpha1: 0, push: 0.35 },
+    { pool: "alpha", cell: SMOKE, count: 10, life: [1.1, 1.7], dir: "out", speed: [0.4, 0.9], vy: [0.05, 0.2], area: 0.75, height: 0.2, drag: 1.2, size0: [0.7, 0.9], size1: [1.4, 1.8], spin: [-0.4, 0.4], color0: 0xc2e6fa, color1: 0x9fd0ee, alpha0: 0.55, alpha1: 0, push: 0.35 },
   ],
   // Green plus signs floating up.
   "heal-plus": [
     { pool: "alpha", cell: CELL.PLUS, count: 14, life: [0.9, 1.3], delay: [0, 0.7], dir: "up", spread: 0.25, speed: [1.1, 1.8], area: 0.85, height: [0.1, 0.6], drag: 0.5, size0: [0.5, 0.62], size1: [0.34, 0.42], color0: 0x5dff8f, color1: 0x2fd46f, alpha0: 1, alpha1: 0, push: 1 },
-    { pool: "add", cell: CELL.SOFT, count: 6, life: [0.7, 1], delay: [0, 0.6], dir: "up", spread: 0.3, speed: [1, 1.6], area: 0.8, height: [0.1, 0.5], size0: 0.7, size1: 0.3, color0: 0x7dffa8, hdr0: 1.6, alpha0: 0.6, alpha1: 0 },
+    { pool: "add", cell: CELL.SOFT, count: 6, life: [0.7, 1], delay: [0, 0.6], dir: "up", spread: 0.3, speed: [1, 1.6], area: 0.8, height: [0.1, 0.5], size0: 0.7, size1: 0.3, color0: 0x7dffa8, hdr0: 0.7, alpha0: 0.6, alpha1: 0 },
   ],
   // Purple rage embers rising.
   "rage-ember": [
-    { pool: "add", cell: CELL.EMBER, count: 10, life: [0.8, 1.3], dir: "up", spread: 0.3, speed: [0.9, 1.7], area: 0.9, height: [0, 0.4], drag: 0.6, size0: [0.22, 0.32], size1: 0.06, color0: 0xd36bff, color1: 0xff4db8, hdr0: 3, hdr1: 1.5, alpha0: 1, alpha1: 0 },
+    { pool: "add", cell: CELL.EMBER, count: 10, life: [0.8, 1.3], dir: "up", spread: 0.3, speed: [0.9, 1.7], area: 0.9, height: [0, 0.4], drag: 0.6, size0: [0.22, 0.32], size1: 0.06, color0: 0xd36bff, color1: 0xff4db8, hdr0: 1.5, hdr1: 0.9, alpha0: 1, alpha1: 0 },
   ],
-  // A flat ring snapping outward to 2 x radius.
+  // A flat ring snapping outward to 2 x radius (cream unless tinted).
   ring: [
-    { pool: "add", cell: CELL.RING, count: 1, life: 0.3, dir: "none", speed: 0, height: 0.06, size0: 0.5, size1: 2, ground: true, color0: 0xffffff, hdr0: 1.6, alpha0: 0.95, alpha1: 0 },
+    { pool: "alpha", cell: CELL.RING, count: 1, life: 0.3, dir: "none", speed: 0, height: 0.06, size0: 0.5, size1: 2, ground: true, color0: CREAM, alpha0: 0.85, alpha1: 0 },
   ],
   // Melee contact: a soft, quick ring (many land per second in a brawl).
   contact: [
-    { pool: "add", cell: CELL.RING, count: 1, life: 0.24, dir: "none", speed: 0, height: 0.06, size0: 0.6, size1: 2, ground: true, color0: 0xffffff, hdr0: 1.15, alpha0: 0.7, alpha1: 0 },
+    { pool: "alpha", cell: CELL.RING, count: 1, life: 0.24, dir: "none", speed: 0, height: 0.06, size0: 0.6, size1: 2, ground: true, color0: CREAM, alpha0: 0.55, alpha1: 0 },
   ],
   // Celebration confetti.
   confetti: [
-    { pool: "alpha", cell: CELL.CONFETTI, count: 26, life: [1.4, 2.1], dir: "up", spread: 0.7, speed: [4.5, 7.5], area: 0.3, height: 0.5, drag: 1.4, gravity: 5, size0: [0.16, 0.22], size1: [0.14, 0.2], spin: [-14, 14], palette: [0xffd23f, 0xff5c8a, 0x4dd4ff, 0x7cff6b, 0xb98bff, 0xffffff], color0: 0xffffff, alpha0: 1, alpha1: 0.6, tint: false },
+    { pool: "alpha", cell: CELL.CONFETTI, count: 26, life: [1.4, 2.1], dir: "up", spread: 0.7, speed: [4.5, 7.5], area: 0.3, height: 0.5, drag: 1.4, gravity: 5, size0: [0.16, 0.22], size1: [0.14, 0.2], spin: [-14, 14], palette: [0xffd23f, 0xff5c8a, 0x4dd4ff, 0x7cff6b, 0xb98bff, 0xfff1c4], color0: 0xffffff, alpha0: 1, alpha1: 0.6, tint: false },
   ],
-  // Heavy debris: chunky chips and a dust cloud.
+  // Heavy debris: chunky ramp-shaded chips and a floor-dust cloud.
   debris: [
     { pool: "alpha", cell: CELL.CHIP, count: 12, life: [0.6, 0.9], dir: "up", spread: 1.25, speed: [3.5, 6.5], area: 0.5, height: 0.3, gravity: 15, size0: [0.24, 0.36], size1: [0.2, 0.3], spin: [-10, 10], color0: 0x9d8b72, color1: 0x7a6b55, alpha0: 1, alpha1: 0.5 },
-    { pool: "alpha", cell: SMOKE, count: 5, life: [0.7, 1], dir: "out", speed: [1.2, 2], vy: [0.3, 0.8], area: 0.4, height: 0.2, drag: 2.2, size0: [0.5, 0.7], size1: [1.2, 1.6], spin: [-0.6, 0.6], color0: 0xc9b99c, color1: 0xa8987d, alpha0: 0.8, alpha1: 0, push: 0.45, tint: false },
+    { pool: "alpha", cell: SMOKE, count: 5, life: [0.7, 1], dir: "out", speed: [1.2, 2], vy: [0.3, 0.8], area: 0.4, height: 0.2, drag: 2.2, size0: [0.5, 0.7], size1: [1.1, 1.5], spin: [-0.6, 0.6], color0: 0xc9b99c, alpha0: 0.85, alpha1: 0, push: 0.45, tint: false, floor: true },
   ],
 
   // --- building blocks for the spell recipes and the legacy helpers ---
 
-  // Point spark spray (emitSparks): soft hot dots under gravity.
+  // Point spark spray (emitSparks): hot dots under gravity.
   sparks: [
-    { pool: "add", cell: CELL.EMBER, count: 6, life: [0.3, 0.5], dir: "up", spread: 1.4, speed: [2.5, 4], gravity: 7, size0: [0.18, 0.24], size1: 0.06, color0: 0xfff1c4, hdr0: 2.4, hdr1: 1.2, alpha0: 1, alpha1: 0 },
+    { pool: "add", cell: CELL.EMBER, count: 6, life: [0.3, 0.5], dir: "up", spread: 1.4, speed: [2.5, 4], gravity: 7, size0: [0.18, 0.24], size1: 0.06, color0: 0xfff1c4, hdr0: 1.8, hdr1: 1, alpha0: 1, alpha1: 0 },
   ],
-  // Impact flash quad.
+  // Impact glow quad (never a white-out: a soft warm bloom-free glow).
   flash: [
-    { pool: "add", cell: CELL.FLARE, count: 1, life: 0.2, dir: "none", speed: 0, height: 0.6, size0: 2.6, size1: 1.4, color0: 0xffd08a, hdr0: 3, hdr1: 1, alpha0: 1, alpha1: 0, push: 2 },
+    { pool: "add", cell: CELL.SOFT, count: 1, life: 0.18, dir: "none", speed: 0, height: 0.6, size0: 1.8, size1: 1.0, color0: 0xffd08a, hdr0: 0.9, hdr1: 0.4, alpha0: 0.9, alpha1: 0, push: 2 },
   ],
   // Ground shockwave to 2 x radius.
   shockwave: [
-    { pool: "add", cell: CELL.RING, count: 1, life: 0.45, dir: "none", speed: 0, height: 0.07, size0: 0.4, size1: 2, ground: true, color0: 0xffc27a, hdr0: 3.2, hdr1: 2, alpha0: 1, alpha1: 0 },
-    { pool: "add", cell: CELL.SOFT, count: 1, life: 0.3, dir: "none", speed: 0, height: 0.05, size0: 1.2, size1: 2.2, ground: true, color0: 0xff9a40, hdr0: 1.4, alpha0: 0.6, alpha1: 0 },
+    { pool: "alpha", cell: CELL.RING, count: 1, life: 0.45, dir: "none", speed: 0, height: 0.07, size0: 0.4, size1: 2, ground: true, color0: 0xffc27a, alpha0: 0.9, alpha1: 0 },
+    { pool: "alpha", cell: CELL.SOFT, count: 1, life: 0.3, dir: "none", speed: 0, height: 0.05, size0: 1.2, size1: 2.2, ground: true, color0: 0xff9a40, alpha0: 0.3, alpha1: 0 },
   ],
-  // Fireball billows: warm, then sooty.
+  // Fireball billows: warm soot (the effect colour), outlined.
   "fire-billow": [
-    { pool: "alpha", cell: SMOKE, count: 7, life: [1, 1.4], dir: "out", speed: [1.6, 2.6], vy: [0.9, 1.7], area: 0.5, height: 0.4, drag: 2, gravity: -0.6, size0: [0.9, 1.1], size1: [2.1, 2.7], spin: [-0.7, 0.7], color0: 0xffc07a, color1: 0x6d635a, alpha0: 1, alpha1: 0, push: 0.45 },
+    { pool: "alpha", cell: SMOKE, count: 7, life: [1, 1.4], dir: "out", speed: [1.6, 2.6], vy: [0.9, 1.7], area: 0.5, height: 0.4, drag: 2, gravity: -0.6, size0: [0.8, 1.0], size1: [1.8, 2.3], spin: [-0.7, 0.7], color0: 0xb0794a, color1: 0x5e5550, alpha0: 1, alpha1: 0, push: 0.45 },
   ],
-  // Fire core of the blast (additive tongues).
+  // Fire of the blast: three-tone toon flame tongues, then a small hot core.
   "fire-core": [
-    { pool: "add", cell: CELL.FLAME, count: 8, life: [0.25, 0.4], dir: "up", spread: 0.9, speed: [1.5, 3], area: 0.35, height: 0.3, drag: 2.5, size0: [0.7, 0.9], size1: [0.3, 0.4], color0: 0xffc061, color1: 0xff4a12, hdr0: 3.2, hdr1: 1.6, alpha0: 1, alpha1: 0, push: 0.6 },
+    { pool: "alpha", cell: CELL.FLAME3, count: 8, life: [0.3, 0.45], dir: "up", spread: 0.9, speed: [1.5, 3], area: 0.35, height: 0.3, drag: 2.5, size0: [0.8, 1.0], size1: [0.3, 0.4], spin: [-1.5, 1.5], color0: 0xffffff, alpha0: 1, alpha1: 0, push: 0.6, tint: false },
+    { pool: "add", cell: CELL.SOFT, count: 1, life: 0.16, dir: "none", speed: 0, height: 0.4, size0: 1.0, size1: 0.5, color0: 0xffd36b, hdr0: 1.8, hdr1: 0.9, alpha0: 1, alpha1: 0, push: 1, tint: false },
+  ],
+  // Small toon flames licking along a trail.
+  "flame-lick": [
+    { pool: "alpha", cell: CELL.FLAME3, count: 3, life: [0.22, 0.32], dir: "up", spread: 0.6, speed: [0.6, 1.2], area: 0.12, drag: 2, size0: [0.32, 0.42], size1: 0.12, spin: [-2, 2], color0: 0xffffff, alpha0: 1, alpha1: 0, push: 0.6, tint: false },
+  ],
+  // A ribbon puff of smoke (tinted by the effect), shed along a path.
+  "smoke-puff": [
+    { pool: "alpha", cell: CELL.PUFF, count: 1, life: [0.4, 0.55], dir: "up", spread: 0.4, speed: [0.2, 0.5], drag: 1.5, size0: [0.16, 0.2], size1: [0.36, 0.46], spin: [-1, 1], color0: 0x7a6c62, alpha0: 0.8, alpha1: 0, push: 0.3 },
   ],
   // Electric crackle sparks.
   "zap-sparks": [
-    { pool: "add", cell: CELL.STREAK, count: 14, life: [0.15, 0.3], dir: "sphere", speed: [5, 9], height: 0.3, area: 0.6, drag: 4, gravity: 4, size0: [0.09, 0.13], size1: 0.05, stretch: 0.8, color0: 0xd8f6ff, hdr0: 3, hdr1: 1.5, alpha0: 1, alpha1: 0 },
+    { pool: "add", cell: CELL.STREAK, count: 14, life: [0.15, 0.3], dir: "sphere", speed: [5, 9], height: 0.3, area: 0.6, drag: 4, gravity: 4, size0: [0.09, 0.13], size1: 0.05, stretch: 0.8, color0: 0xd8f6ff, hdr0: 2, hdr1: 1.1, alpha0: 1, alpha1: 0 },
   ],
   // Electric ground ring.
   "zap-ring": [
-    { pool: "add", cell: CELL.RING, count: 1, life: 0.36, dir: "none", speed: 0, height: 0.07, size0: 1.3, size1: 2, ground: true, color0: 0xfff38a, hdr0: 3.4, hdr1: 1.6, alpha0: 1, alpha1: 0 },
-    { pool: "add", cell: CELL.SOFT, count: 1, life: 0.22, dir: "none", speed: 0, height: 0.05, size0: 2.1, size1: 2.3, ground: true, color0: 0x4aa8ff, hdr0: 1.2, alpha0: 0.3, alpha1: 0 },
+    { pool: "alpha", cell: CELL.RING, count: 1, life: 0.36, dir: "none", speed: 0, height: 0.07, size0: 1.3, size1: 2, ground: true, color0: 0xfff38a, alpha0: 0.95, alpha1: 0 },
+    { pool: "alpha", cell: CELL.SOFT, count: 1, life: 0.22, dir: "none", speed: 0, height: 0.05, size0: 2.1, size1: 2.3, ground: true, color0: 0x4aa8ff, alpha0: 0.22, alpha1: 0 },
   ],
-  // Arrow landing kick.
+  // Arrow landing kick: a little floor dust and two quick sparks.
   "dust-kick": [
-    { pool: "alpha", cell: SMOKE, count: 2, life: [0.4, 0.55], dir: "up", spread: 1.1, speed: [0.8, 1.4], height: 0.1, drag: 3, size0: 0.3, size1: [0.7, 0.85], spin: [-1, 1], color0: 0xb9a582, color1: 0xa18e6e, alpha0: 0.85, alpha1: 0, push: 0.5 },
-    { pool: "add", cell: CELL.STREAK, count: 2, life: 0.18, dir: "up", spread: 0.8, speed: [2.5, 4], gravity: 10, size0: 0.07, size1: 0.03, stretch: 0.8, color0: 0xfff1c4, hdr0: 2, alpha0: 1, alpha1: 0 },
+    { pool: "alpha", cell: SMOKE, count: 2, life: [0.4, 0.55], dir: "up", spread: 1.1, speed: [0.8, 1.4], height: 0.1, drag: 3, size0: 0.28, size1: [0.6, 0.75], spin: [-1, 1], color0: 0xb9a582, alpha0: 0.85, alpha1: 0, push: 0.5, floor: true },
+    { pool: "add", cell: CELL.STREAK, count: 2, life: 0.18, dir: "up", spread: 0.8, speed: [2.5, 4], gravity: 10, size0: 0.07, size1: 0.03, stretch: 0.8, color0: 0xfff1c4, hdr0: 1.4, alpha0: 1, alpha1: 0, tint: false },
   ],
   // Tornado debris whipped around (the spiral is placed by the recipe).
   "tornado-dust": [
-    { pool: "alpha", cell: SMOKE, count: 6, life: [0.7, 1], dir: "out", speed: [0.6, 1], vy: [1.2, 2], area: 0.9, edge: true, height: 0.2, drag: 1, size0: [0.5, 0.7], size1: [1, 1.3], spin: [-3, -1.5], color0: 0xb7c0cc, color1: 0x8d96a3, alpha0: 0.7, alpha1: 0, push: 0.4 },
+    { pool: "alpha", cell: SMOKE, count: 6, life: [0.7, 1], dir: "out", speed: [0.6, 1], vy: [1.2, 2], area: 0.9, edge: true, height: 0.2, drag: 1, size0: [0.5, 0.7], size1: [1, 1.3], spin: [-3, -1.5], color0: 0xb7c0cc, color1: 0x8d96a3, alpha0: 0.75, alpha1: 0, push: 0.4 },
   ],
   // Dark summoning disc for risers.
   portal: [
     { pool: "alpha", cell: CELL.SOFT, count: 1, life: 0.6, dir: "none", speed: 0, height: 0.04, size0: 0.6, size1: 1.5, ground: true, color0: 0x2e1a47, alpha0: 0.85, alpha1: 0, tint: false },
-    { pool: "add", cell: CELL.RING, count: 1, life: 0.6, dir: "none", speed: 0, height: 0.06, size0: 0.8, size1: 1.9, ground: true, color0: 0x76ff03, hdr0: 2, alpha0: 1, alpha1: 0 },
-    { pool: "add", cell: CELL.EMBER, count: 6, life: [0.4, 0.6], dir: "up", spread: 0.3, speed: [1.2, 2], area: 0.45, edge: true, height: 0.05, size0: 0.16, size1: 0.05, color0: 0x76ff03, hdr0: 2.5, alpha0: 1, alpha1: 0 },
+    { pool: "alpha", cell: CELL.RING, count: 1, life: 0.6, dir: "none", speed: 0, height: 0.06, size0: 0.8, size1: 1.9, ground: true, color0: 0x76ff03, alpha0: 0.9, alpha1: 0 },
+    { pool: "add", cell: CELL.EMBER, count: 6, life: [0.4, 0.6], dir: "up", spread: 0.3, speed: [1.2, 2], area: 0.45, edge: true, height: 0.05, size0: 0.16, size1: 0.05, color0: 0x76ff03, hdr0: 1.6, alpha0: 1, alpha1: 0 },
   ],
-  // A broken war machine: streaky electric burst plus a flash.
+  // A broken war machine: streaky electric burst, a small core and a ring.
   "spark-burst": [
-    { pool: "add", cell: CELL.STREAK, count: 10, life: [0.3, 0.45], dir: "sphere", speed: [3.5, 6], height: 0.7, drag: 2.5, gravity: 6, size0: [0.1, 0.14], size1: 0.05, stretch: 0.9, color0: 0x8c7bff, hdr0: 2.8, hdr1: 1.2, alpha0: 1, alpha1: 0 },
-    { pool: "add", cell: CELL.FLARE, count: 1, life: 0.16, dir: "none", speed: 0, height: 0.7, size0: 1.6, size1: 0.6, color0: 0x8c7bff, hdr0: 2.6, alpha0: 1, alpha1: 0, push: 1 },
-    { pool: "add", cell: CELL.RING, count: 1, life: 0.3, dir: "none", speed: 0, height: 0.06, size0: 0.4, size1: 1.8, ground: true, color0: 0x8c7bff, hdr0: 2, alpha0: 0.9, alpha1: 0 },
+    { pool: "add", cell: CELL.STREAK, count: 10, life: [0.3, 0.45], dir: "sphere", speed: [3.5, 6], height: 0.7, drag: 2.5, gravity: 6, size0: [0.1, 0.14], size1: 0.05, stretch: 0.9, color0: 0x8c7bff, hdr0: 2, hdr1: 1, alpha0: 1, alpha1: 0 },
+    { pool: "add", cell: CELL.SOFT, count: 1, life: 0.16, dir: "none", speed: 0, height: 0.7, size0: 1.1, size1: 0.5, color0: 0x8c7bff, hdr0: 1.4, alpha0: 1, alpha1: 0, push: 1 },
+    { pool: "alpha", cell: CELL.RING, count: 1, life: 0.3, dir: "none", speed: 0, height: 0.06, size0: 0.4, size1: 1.8, ground: true, color0: 0x8c7bff, alpha0: 0.8, alpha1: 0 },
   ],
   // A balloon envelope venting: torn scraps spiralling down plus a sigh of smoke.
   deflate: [
     { pool: "alpha", cell: CELL.PETAL, count: 7, life: [0.8, 1.1], dir: "out", speed: [1, 2], vy: [0.5, 1.5], height: 1.5, area: 0.3, drag: 1.5, gravity: 3, size0: [0.32, 0.42], size1: [0.24, 0.3], spin: [-9, 9], color0: 0xc62828, color1: 0x8e1c1c, alpha0: 1, alpha1: 0.3 },
-    { pool: "alpha", cell: SMOKE, count: 4, life: [0.7, 0.9], dir: "up", spread: 0.8, speed: [0.5, 1], height: 1.4, area: 0.3, drag: 1.5, size0: 0.5, size1: 1.2, color0: 0xd8cbb5, alpha0: 0.7, alpha1: 0, push: 0.5, tint: false },
+    { pool: "alpha", cell: SMOKE, count: 4, life: [0.7, 0.9], dir: "up", spread: 0.8, speed: [0.5, 1], height: 1.4, area: 0.3, drag: 1.5, size0: 0.5, size1: 1.1, color0: 0xb8a990, alpha0: 0.75, alpha1: 0, push: 0.5, tint: false },
   ],
   // A Digger breaking the surface: a fountain of big, chunky clods
   // (re-tinted per arena: loam or sand). They keep a floor of clods at low
@@ -323,11 +364,13 @@ export function emitPreset(sp: Spawner, name: string, wx: number, wy: number, wz
       s.size1 = pick(L.size1, rand) * k;
       s.rot = rand() * Math.PI * 2;
       s.spin = L.spin === undefined ? 0 : pick(L.spin, rand);
-      // Colours: linear, scaled into HDR by hdr0/hdr1.
-      const c0 = L.palette ? L.palette[Math.floor(rand() * L.palette.length)] : tinted ? opts!.color! : L.color0;
-      const c1 = L.palette ? c0 : tinted ? opts!.color! : (L.color1 ?? L.color0);
+      // Colours: linear, scaled into HDR by hdr0/hdr1. Floor dust takes the
+      // arena's floor colour and settles a shade deeper.
+      const floorC = L.floor && !tinted && sp.floorColor ? sp.floorColor() : undefined;
+      const c0 = L.palette ? L.palette[Math.floor(rand() * L.palette.length)] : tinted ? opts!.color! : (floorC ?? L.color0);
+      const c1 = L.palette ? c0 : tinted ? opts!.color! : (floorC ?? L.color1 ?? L.color0);
       const h0 = L.hdr0 ?? 1;
-      const h1 = L.hdr1 ?? h0;
+      const h1 = (L.hdr1 ?? h0) * (floorC !== undefined ? 0.86 : 1);
       TMP.setHex(c0);
       s.r0 = TMP.r * h0;
       s.g0 = TMP.g * h0;

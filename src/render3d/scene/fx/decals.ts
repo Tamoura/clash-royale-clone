@@ -11,6 +11,13 @@ import * as THREE from "three";
 import type { DecalKindName } from "./api";
 import { DECAL_CELL, DECAL_COLS, DECAL_ROWS, makeDecalAtlas } from "./atlas";
 
+/**
+ * Bloom contract (art bible 5): a mark's colour never goes past 1, so no
+ * ground mark crosses the bloom threshold (callers' `hdr` is honoured up
+ * to this ceiling).
+ */
+export const DECAL_MAX_RGB = 1;
+
 export const DECAL_CAP = 16;
 /** Default decal life in seconds (the spec's 6-8 s window). */
 export const DECAL_LIFE = 7;
@@ -57,8 +64,10 @@ attribute vec4 aC; // rgba
 attribute vec4 aD; // rotation
 varying vec2 vUv;
 varying vec4 vCol;
+varying float vRing;
 void main() {
   float age = uTime - aB.x;
+  vRing = abs(aB.z - ${DECAL_CELL.ring}.0) < 0.5 ? 1.0 : 0.0;
   if (age < 0.0 || age > aB.y) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     vUv = vec2(0.0);
@@ -85,11 +94,20 @@ const FRAG = /* glsl */ `
 uniform sampler2D uMap;
 varying vec2 vUv;
 varying vec4 vCol;
+varying float vRing;
 void main() {
   vec4 tex = texture2D(uMap, vUv);
   float a = tex.a * vCol.a;
   if (a < 0.004) discard;
-  gl_FragColor = vec4(vCol.rgb * tex.rgb, a);
+  vec3 col = min(vCol.rgb, vec3(${DECAL_MAX_RGB.toFixed(1)}));
+  if (vRing > 0.5) {
+    // Two-tone ring: red = tinted band, green = white inner rim, blue = tinted fill.
+    float w = tex.g / max(tex.r + tex.g + tex.b, 1e-3);
+    col = mix(col, vec3(1.0), w);
+  } else {
+    col *= tex.rgb;
+  }
+  gl_FragColor = vec4(col, a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;

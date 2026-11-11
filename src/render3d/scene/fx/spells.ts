@@ -10,7 +10,8 @@ import { RALLY_SECONDS, SALVO_RADIUS } from "../../../game/abilities";
 import type { Side } from "../../../game/arena";
 import { getCard, type CardId } from "../../../game/cards";
 import { MODE_GROUND, MODE_SEGMENT, clearSpec, makeRng, seedFrom, type ParticleSpec } from "../../particles";
-import { toWorld } from "../common";
+import { toWorld, viewSide } from "../common";
+import { teamColor as teamHex, teamPalette } from "../../teamColors";
 import { CELL, SMOKE_CELLS } from "./atlas";
 import type { VfxPool } from "./pool";
 import { cometCast } from "./comet";
@@ -60,7 +61,32 @@ function color(s: ParticleSpec, c0: number, h0: number, a0: number, c1: number, 
   s.a1 = a1;
 }
 
-/** Fireball: a comet falls, then a hot flash, shockwave, billows, embers and a scorch. */
+/**
+ * The team colour an effect wears for `side` (a sim side), relative to the
+ * viewer like every other team cue, in the player's palette.
+ */
+export function fxTeamColor(side: Side): number {
+  return teamHex(side === viewSide ? "player" : "enemy", "main", teamPalette());
+}
+
+/** Seconds a one-shot spell's area ring stays on the ground. */
+export const SPELL_RING_LIFE = 0.9;
+
+/**
+ * Art bible 8: every spell area shows a ring in the caster's team colour
+ * with a white inner rim, drawn at the radius the sim applied (the decal
+ * cell's band ends at its edge). Lasting spells keep it for their life.
+ */
+export function spellRing(v: VfxPool, x: number, y: number, r: number, side: Side, life = SPELL_RING_LIFE, delay = 0): void {
+  v.decal("ring", x, y, r, { color: fxTeamColor(side), r0: r * 0.9, grow: 0.16, life, delay, alpha: 0.92 });
+}
+
+/**
+ * Fireball: a comet falls (a hot core above the bloom threshold inside a
+ * pinwheel of three toon flame petals, shedding a smoke ribbon), then toon
+ * flame tongues, a small hot core, outlined soot billows, embers, debris
+ * and a scorch.
+ */
 export function fireball(v: VfxPool, x: number, y: number, r: number): void {
   const w = toWorld(x, y);
   const k = r / 2.5; // a Salvo shot is a smaller blast
@@ -70,8 +96,7 @@ export function fireball(v: VfxPool, x: number, y: number, r: number): void {
   const vx = (w.x - sx) / FIREBALL_FALL;
   const vy = (0.35 - sy) / FIREBALL_FALL;
   const vz = (w.z - sz) / FIREBALL_FALL;
-  // The comet: hot flare, white core and a velocity-stretched tail (HDR x3).
-  const comet = (cell: number, size: number, c: number, h: number, stretch: number, push: number): void => {
+  const comet = (pool: "add" | "alpha", cell: number, size: number, c: number, h: number, rot: number, spin: number, push: number): void => {
     const s = clearSpec(S);
     s.x = sx;
     s.y = sy;
@@ -81,44 +106,54 @@ export function fireball(v: VfxPool, x: number, y: number, r: number): void {
     s.vz = vz;
     s.life = FIREBALL_FALL;
     s.size0 = size;
-    s.size1 = size * 0.9;
-    s.rot = v.rand() * 6;
-    s.spin = 8;
+    s.size1 = size * 0.92;
+    s.rot = rot;
+    s.spin = spin;
     color(s, c, h, 1, c, h, 1);
     s.cell = cell;
-    s.stretch = stretch;
     s.push = push;
-    v.spawn("add", s);
+    v.spawn(pool, s);
   };
-  comet(CELL.STREAK, 0.9 * k + 0.3, 0xff8a2a, 2.4, 0.09, 0.5);
-  comet(CELL.FLARE, 1.5 * k + 0.4, 0xffa040, 3, 0, 1);
-  comet(CELL.SOFT, 0.75 * k + 0.25, 0xfff1c4, 3.5, 0, 1.4);
-  // Ember trail shed along the flight path.
-  const n = Math.max(4, Math.round(16 * v.scale()));
+  // Three petals, 120 degrees apart, spinning; the core in front of them.
+  const r0 = v.rand() * 6;
+  for (let i = 0; i < 3; i++) comet("alpha", CELL.FPETAL, 1.25 * k + 0.45, 0xffffff, 1, r0 + (i * Math.PI * 2) / 3, 9, 0.8);
+  comet("add", CELL.SOFT, 0.95 * k + 0.3, 0xffc04a, 2.2, 0, 0, 1.4);
+  comet("add", CELL.EMBER, 0.55 * k + 0.2, 0xfff1c4, 2.4, 0, 0, 1.6);
+  // The smoke ribbon (and a few embers) shed along the flight path.
+  const n = Math.max(5, Math.round(14 * v.scale()));
   for (let i = 0; i < n; i++) {
     const f = i / n;
     const s = clearSpec(S);
     s.x = sx + (w.x - sx) * f;
     s.y = sy + (0.35 - sy) * f;
     s.z = sz + (w.z - sz) * f;
-    s.vx = (v.rand() - 0.5) * 1.5;
-    s.vy = 0.6 + v.rand() * 1.2;
-    s.vz = (v.rand() - 0.5) * 1.5;
-    s.drag = 2;
+    s.vx = (v.rand() - 0.5) * 0.6;
+    s.vy = 0.3 + v.rand() * 0.5;
+    s.vz = (v.rand() - 0.5) * 0.6;
+    s.drag = 1.5;
     s.delay = f * FIREBALL_FALL;
-    s.life = 0.3 + v.rand() * 0.25;
-    s.size0 = 0.32 * k + 0.08;
-    s.size1 = 0.05;
-    color(s, 0xffc061, 3, 1, 0xff3d00, 1.2, 0);
-    s.cell = i % 3 === 0 ? CELL.FLAME : CELL.EMBER;
+    s.life = 0.45 + v.rand() * 0.2;
     s.rot = v.rand() * 6;
-    v.spawn("add", s);
+    s.spin = (v.rand() - 0.5) * 2;
+    if (i % 4 === 3) {
+      s.size0 = 0.24 * k + 0.08;
+      s.size1 = 0.04;
+      color(s, 0xffc061, 1.8, 1, 0xff3d00, 1, 0);
+      s.cell = CELL.EMBER;
+      v.spawn("add", s);
+    } else {
+      s.size0 = 0.42 * k + 0.12;
+      s.size1 = 0.85 * k + 0.25;
+      s.push = 0.3;
+      color(s, 0x7b6252, 1, 0.85, 0x544a44, 1, 0);
+      s.cell = CELL.PUFF;
+      v.spawn("alpha", s);
+    }
   }
   // Impact.
   const d = FIREBALL_FALL;
-  v.emitWorld("flash", w.x, 0, w.z, { delay: d, radius: k });
-  v.emitWorld("shockwave", w.x, 0, w.z, { delay: d, radius: r });
-  v.emitWorld("fire-core", w.x, 0, w.z, { delay: d, radius: k });
+  v.emitWorld("fire-core", w.x, 0, w.z, { delay: d, radius: Math.max(0.6, k) });
+  v.emitWorld("shockwave", w.x, 0, w.z, { delay: d, radius: r, color: 0xffa04a });
   v.emitWorld("fire-billow", w.x, 0, w.z, { delay: d, radius: Math.max(0.6, k) });
   v.emitWorld("debris", w.x, 0, w.z, { delay: d, radius: Math.max(0.5, k * 0.8), color: 0x6b5a48, count: 6 });
   v.emitWorld("embers", w.x, 0, w.z, { delay: d, radius: Math.max(0.6, k) });
@@ -162,8 +197,8 @@ function bolt(
         continue;
       }
       // A white-hot core in a saturated blue halo, so it reads on pale sand too.
-      if (layer === 0) color(s, 0xf4fdff, 2, 1, 0xbfe9ff, 1.3, 0);
-      else color(s, 0x2f8dff, 0.8, 0.35, 0x2f8dff, 0.6, 0);
+      if (layer === 0) color(s, 0xf4fdff, 1.8, 1, 0xbfe9ff, 1.2, 0);
+      else color(s, 0x2f8dff, 0.6, 0.35, 0x2f8dff, 0.45, 0);
       v.spawn("add", s);
     }
   };
@@ -204,9 +239,9 @@ function bolt(
   s.delay = delay;
   s.size0 = 0.9;
   s.size1 = 0.5;
-  s.cell = CELL.FLARE;
+  s.cell = CELL.SOFT;
   s.push = 1.5;
-  color(s, 0xeefcff, 1.8, 0.8, 0x9fe7ff, 1, 0);
+  color(s, 0xeefcff, 1.4, 0.8, 0x9fe7ff, 0.8, 0);
   v.spawn("add", s);
 }
 
@@ -231,7 +266,7 @@ export function zap(v: VfxPool, x: number, y: number, r: number): void {
   v.emitWorld("zap-ring", w.x, 0, w.z, { radius: r });
   v.emitWorld("zap-sparks", w.x, 0, w.z, { radius: r / 2 });
   v.decal("crack", x, y, r * 0.55, { life: 3.5, alpha: 0.7 });
-  v.flash(0.5, 2);
+  v.flash(0.22, 2);
   v.shake(0.15);
 }
 
@@ -239,7 +274,6 @@ export function zap(v: VfxPool, x: number, y: number, r: number): void {
 export function freeze(v: VfxPool, x: number, y: number, r: number, seconds: number): void {
   const w = toWorld(x, y);
   v.dome(x, y, r, seconds);
-  v.emitWorld("ring", w.x, 0, w.z, { radius: r, color: 0xbdf3ff });
   v.emitWorld("flash", w.x, 0, w.z, { radius: r / 3, color: 0xcff6ff });
   v.emitWorld("snow", w.x, 0, w.z, { radius: r });
   v.emitWorld("frost-mist", w.x, 0, w.z, { radius: r * 0.8 });
@@ -258,15 +292,16 @@ export function freeze(v: VfxPool, x: number, y: number, r: number, seconds: num
     s.spin = 3;
     s.cell = CELL.STAR;
     s.push = 1;
-    color(s, 0xffffff, 2.6, 1, 0xbdf3ff, 1.5, 0);
+    color(s, 0xeefaff, 1.6, 1, 0xbdf3ff, 1, 0);
     v.spawn("add", s);
   }
   v.decal("frost", x, y, r, { life: seconds + 1.5 });
 }
 
 /**
- * Arrows: a volley of glowing tracers lobbed from the caster's side of the
- * arena, raining over the radius with dust kicks where they land.
+ * Arrows: a volley of fletched arrows (an inked arrow sprite turned along
+ * its flight) lobbed from the caster's side of the arena, raining over the
+ * radius with floor-dust kicks where they land.
  */
 export function arrows(v: VfxPool, x: number, y: number, r: number, side: Side): void {
   const w = toWorld(x, y);
@@ -284,47 +319,31 @@ export function arrows(v: VfxPool, x: number, y: number, r: number, side: Side):
     const sy = 1.1;
     const T = ARROW_FLIGHT * (0.92 + v.rand() * 0.16);
     const delay = i * 0.022;
-    for (let layer = 0; layer < 3; layer++) {
-      const s = clearSpec(S);
-      s.x = sx;
-      s.y = sy;
-      s.z = sz;
-      s.vx = (tx - sx) / T;
-      s.vz = (tz - sz) / T;
-      s.vy = (0.05 - sy + 0.5 * G * T * T) / T;
-      s.gravity = G;
-      s.delay = delay;
-      s.life = T;
-      s.cell = CELL.STREAK;
-      if (layer === 0) {
-        s.size0 = s.size1 = 0.24;
-        s.stretch = 0.3;
-        color(s, 0xfff6dc, 3, 1, 0xffe9a8, 2.6, 1);
-      } else if (layer === 1) {
-        s.size0 = s.size1 = 0.7;
-        s.stretch = 0.12;
-        color(s, 0xffb84d, 1.6, 0.55, 0xffb84d, 1.3, 0.5);
-      } else {
-        // A dark shaft under the glow: the volley still reads on pale ground.
-        s.size0 = s.size1 = 0.13;
-        s.stretch = 0.3;
-        s.push = 0.2;
-        color(s, 0x3b2a1a, 1, 0.9, 0x3b2a1a, 1, 0.9);
-        v.spawn("alpha", s);
-        continue;
-      }
-      v.spawn("add", s);
-    }
+    const s = clearSpec(S);
+    s.x = sx;
+    s.y = sy;
+    s.z = sz;
+    s.vx = (tx - sx) / T;
+    s.vz = (tz - sz) / T;
+    s.vy = (0.05 - sy + 0.5 * G * T * T) / T;
+    s.gravity = G;
+    s.delay = delay;
+    s.life = T;
+    s.cell = CELL.ARROW;
+    s.size0 = s.size1 = 0.62;
+    // A token stretch: turns the sprite along its flight without smearing it.
+    s.stretch = 0.004;
+    s.push = 0.2;
+    color(s, 0xffffff, 1, 1, 0xffffff, 1, 1);
+    v.spawn("alpha", s);
     v.emitWorld("dust-kick", tx, 0, tz, { delay: delay + T });
   }
-  v.emitWorld("ring", w.x, 0, w.z, { radius: r, color: 0xdce6ff, delay: ARROW_FLIGHT + 0.05 });
 }
 
 /** Heal: plus signs float up over a glowing heal glyph. */
 export function heal(v: VfxPool, x: number, y: number, r: number): void {
   const w = toWorld(x, y);
   v.emitWorld("heal-plus", w.x, 0, w.z, { radius: r });
-  v.emitWorld("ring", w.x, 0, w.z, { radius: r, color: 0x6ee7a0 });
   const s = clearSpec(S);
   s.x = w.x;
   s.y = 0.06;
@@ -334,15 +353,15 @@ export function heal(v: VfxPool, x: number, y: number, r: number): void {
   s.size0 = r * 1.6;
   s.size1 = r * 2.1;
   s.cell = CELL.SOFT;
-  color(s, 0x6ee7a0, 1.3, 0.5, 0x6ee7a0, 1, 0);
+  color(s, 0x6ee7a0, 0.6, 0.5, 0x6ee7a0, 0.4, 0);
   v.spawn("add", s);
-  v.decal("heal", x, y, r, { color: 0x7dffb0, hdr: 1.4, life: 3, alpha: 0.85 });
+  v.decal("heal", x, y, r * 0.9, { color: 0x7dffb0, life: 3, alpha: 0.8 });
 }
 
 /** Rage: a rune circle for the zone's life, pulsing rings and purple embers. */
 export function rage(v: VfxPool, x: number, y: number, r: number, seconds: number): void {
   const w = toWorld(x, y);
-  v.decal("rune", x, y, r, { color: 0xe07bff, hdr: 2, life: seconds, alpha: 1 });
+  v.decal("rune", x, y, r * 0.9, { color: 0xe07bff, life: seconds, alpha: 0.9 });
   v.emitWorld("flash", w.x, 0, w.z, { radius: r / 3, color: 0xd36bff });
   const PULSE = 0.6;
   const pulses = Math.max(1, Math.floor(seconds / PULSE));
@@ -357,8 +376,8 @@ export function rage(v: VfxPool, x: number, y: number, r: number, seconds: numbe
     s.size0 = r * 1.7;
     s.size1 = r * 2.04;
     s.cell = CELL.RING;
-    color(s, 0xff4db8, 2.2, 0.9, 0xd36bff, 1.2, 0);
-    v.spawn("add", s);
+    color(s, 0xff4db8, 1, 0.75, 0xd36bff, 1, 0);
+    v.spawn("alpha", s);
     v.emitWorld("rage-ember", w.x, 0, w.z, { radius: r, delay: i * PULSE, count: 6 });
   }
 }
@@ -376,8 +395,8 @@ export function tornado(v: VfxPool, x: number, y: number, r: number): void {
   s.size1 = r * 1.2;
   s.spin = -7;
   s.cell = CELL.SWIRL;
-  color(s, 0xe4ebf5, 1.4, 0.9, 0xb7c0cc, 1, 0);
-  v.spawn("add", s);
+  color(s, 0xdfe7f2, 1, 0.85, 0xb7c0cc, 1, 0);
+  v.spawn("alpha", s);
   const ARMS = 3;
   const per = Math.max(8, Math.round(22 * v.scale()));
   for (let arm = 0; arm < ARMS; arm++) {
@@ -410,7 +429,7 @@ export function tornado(v: VfxPool, x: number, y: number, r: number): void {
         p.cell = CELL.STREAK;
         p.size0 = p.size1 = 0.12;
         p.stretch = 0.5;
-        color(p, 0xffffff, 1.8, 0.9, 0xcfd6e0, 1, 0);
+        color(p, 0xeef3f9, 1, 0.9, 0xcfd6e0, 0.8, 0);
         v.spawn("add", p);
       }
     }
@@ -423,8 +442,7 @@ export function skeletonBarrel(v: VfxPool, x: number, y: number, r: number): voi
   const w = toWorld(x, y);
   v.emitWorld("debris", w.x, 0, w.z, { color: 0x8a5a30, radius: 0.8 });
   v.emitWorld("boneShards", w.x, 0, w.z);
-  v.emitWorld("smoke", w.x, 0, w.z, { color: 0xb59772, radius: 1.2 });
-  v.emitWorld("ring", w.x, 0, w.z, { radius: r, color: 0xc9954a });
+  v.emitWorld("smoke", w.x, 0, w.z, { color: 0xa88a66, radius: Math.min(1.1, r) });
 }
 
 /** Mega Knight sky-slam: shockwave, debris and a crater, timed to his landing. */
@@ -444,13 +462,21 @@ export function megaSlam(v: VfxPool, x: number, y: number): void {
 export function fallback(v: VfxPool, x: number, y: number, r: number, tint = 0xffd36b): void {
   const w = toWorld(x, y);
   v.emitWorld("flash", w.x, 0, w.z, { radius: Math.max(0.6, r / 2.5), color: tint });
-  v.emitWorld("ring", w.x, 0, w.z, { radius: r, color: tint });
+  v.emitWorld("ring", w.x, 0, w.z, { radius: r * 0.8, color: tint });
 }
 
 /** Run the recipe for a 'spell' event. */
 export function castSpell(v: VfxPool, cardId: CardId, x: number, y: number, side: Side, ctx: SpellContext = {}): void {
   const r = spellRadius(cardId, ctx);
   const card = getCard(cardId);
+  // The caster's team ring at the true radius (lasting spells keep it up).
+  // The Mega Knight's slam is timed from his spawn; the comet rings its
+  // own telegraph and impact.
+  if (cardId !== "mega-knight" && cardId !== "comet") {
+    const lasting = card.kind === "spell" ? Math.max(card.rageSeconds, cardId === "freeze" ? card.stunSeconds : 0) : 0;
+    const land = cardId === "fireball" ? FIREBALL_FALL : cardId === "arrows" ? ARROW_FLIGHT : 0;
+    spellRing(v, x, y, r, side, lasting > 0 ? lasting + 0.3 : SPELL_RING_LIFE, land);
+  }
   switch (cardId) {
     case "fireball":
       return fireball(v, x, y, r);
@@ -478,10 +504,15 @@ export function castSpell(v: VfxPool, cardId: CardId, x: number, y: number, side
 }
 
 /** King's abilities reuse the spell recipes, centred on the king. */
-export function castAbility(v: VfxPool, ability: AbilityId, x: number, y: number): void {
+export function castAbility(v: VfxPool, ability: AbilityId, x: number, y: number, side?: Side): void {
   const w = toWorld(x, y);
-  if (ability === "rally") rage(v, x, y, 4, RALLY_SECONDS);
-  else if (ability === "restore") heal(v, x, y, 3.5);
+  if (ability === "rally") {
+    rage(v, x, y, 4, RALLY_SECONDS);
+    if (side) spellRing(v, x, y, 4, side, RALLY_SECONDS + 0.3);
+  } else if (ability === "restore") {
+    heal(v, x, y, 3.5);
+    if (side) spellRing(v, x, y, 3.5, side);
+  }
   else {
     // Salvo: the launch; each shot lands as its own fireball event.
     v.emitWorld("muzzle", w.x, 3.2, w.z, { radius: 2.2 });

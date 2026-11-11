@@ -35,11 +35,22 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { weldVertices } from "./weld";
 import { DEFAULT_ARCHETYPE, archetypeFor } from "./anim/archetypes";
-import { type AnimateOpts, GRAINLESS_UV, animateTroop, bakedToon, buildTroop, teamToon, unitBakedToon, type TroopRig } from "./characters3d";
+import {
+  type AnimateOpts,
+  GRAINLESS_UV,
+  RIG_AO,
+  RIG_SATURATION,
+  animateTroop,
+  bakedToon,
+  buildTroop,
+  teamToon,
+  unitBakedToon,
+  type TroopRig,
+} from "./characters3d";
 import { OUTLINE_MIN_RADIUS, ensureOutlineNormals, fitInk, outlineHull, registerInkGeometry } from "./outlineMaterial";
 import { bake as bakeWorld } from "./staticBatch";
 import { ARABIC } from "./theme";
-import { TEAM_MESH } from "./teamColors";
+import { TEAM, TEAM_MESH } from "./teamColors";
 import { type CardId, getCard } from "../game/cards";
 
 /** Names that never fold into a node's baked mesh. */
@@ -465,6 +476,80 @@ function withInk(
   return merged;
 }
 
+// ---------------------------------------------------------------------------
+// Albedo grade (art bible 6/7): the cast's brighter, more saturated palette
+// ---------------------------------------------------------------------------
+
+/** The saturation boost toon() already gave every rig colour at build time. */
+const TOON_BOOST = 1.2;
+/** Art bible 6: a signature colour may not sit within this many degrees of a team hue... */
+export const TEAM_HUE_SPREAD = 25;
+/** ...at more than this saturation, with a lightness in TEAM_FAMILY_L. */
+export const TEAM_FAMILY_S = 0.45;
+export const TEAM_FAMILY_L: readonly [number, number] = [0.25, 0.75];
+
+const TEAM_HUES = ((): number[] => {
+  const hsl = { h: 0, s: 0, l: 0 };
+  return (["player", "enemy"] as const).map((side) => {
+    new THREE.Color().setHex(TEAM.default[side].main).getHSL(hsl, THREE.SRGBColorSpace);
+    return hsl.h * 360;
+  });
+})();
+
+/** Whether an sRGB colour falls in a team hue family (the forbidden signature colours). */
+export function inTeamFamily(h: number, sat: number, l: number): boolean {
+  if (sat <= TEAM_FAMILY_S || l < TEAM_FAMILY_L[0] || l > TEAM_FAMILY_L[1]) return false;
+  const deg = h * 360;
+  return TEAM_HUES.some((t) => {
+    const d = Math.abs(deg - t) % 360;
+    return Math.min(d, 360 - d) <= TEAM_HUE_SPREAD;
+  });
+}
+
+/**
+ * The cast's grade of one rig colour (sRGB HSL in 0..1, written to `out`):
+ * the build-time toon boost is swapped for RIG_SATURATION with a lift, steel
+ * greys go a touch cool and light, and the team rule holds (a colour the
+ * boost would push into a team hue family keeps its saturation under it).
+ */
+export function gradeRigHsl(h: number, s: number, l: number, out: { h: number; s: number; l: number }): { h: number; s: number; l: number } {
+  const s0 = s / TOON_BOOST;
+  if (s0 < 0.12) {
+    out.h = 0.6;
+    out.s = 0.06 + s0;
+    out.l = Math.min(0.95, Math.pow(l, 0.8));
+    return out;
+  }
+  out.h = h;
+  out.s = Math.min(1, s0 * RIG_SATURATION + 0.03);
+  out.l = Math.min(0.9, Math.pow(l, 0.9));
+  if (inTeamFamily(out.h, out.s, out.l) && !inTeamFamily(h, s0, l)) out.s = TEAM_FAMILY_S - 0.01;
+  return out;
+}
+
+const GRADE_IN = { h: 0, s: 0, l: 0 };
+const GRADE_OUT = { h: 0, s: 0, l: 0 };
+const GRADE_C = new THREE.Color();
+
+/** Grade a baked body's vertex colours in place (ink vertices are black and stay so). */
+function gradeColours(g: THREE.BufferGeometry): void {
+  const col = g.getAttribute("color") as THREE.BufferAttribute | undefined;
+  if (!col) return;
+  for (let i = 0; i < col.count; i++) {
+    GRADE_C.setRGB(col.getX(i), col.getY(i), col.getZ(i));
+    GRADE_C.getHSL(GRADE_IN, THREE.SRGBColorSpace);
+    gradeRigHsl(GRADE_IN.h, GRADE_IN.s, GRADE_IN.l, GRADE_OUT);
+    GRADE_C.setHSL(GRADE_OUT.h, GRADE_OUT.s, GRADE_OUT.l, THREE.SRGBColorSpace);
+    col.setXYZ(i, GRADE_C.r, GRADE_C.g, GRADE_C.b);
+  }
+  col.needsUpdate = true;
+}
+
+/** The ground-occlusion band for a rig (world units: its lowest RIG_AO.share at field scale). */
+export function aoTopFor(rig: TroopRig): number {
+  return RIG_AO.share * rig.height * 1.4;
+}
+
 /** Point every vertex's UV at the grain map's white texel (no grain). */
 function grainless(g: THREE.BufferGeometry): void {
   const uv = g.getAttribute("uv") as THREE.BufferAttribute;
@@ -802,6 +887,7 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
           }),
         );
         if (!body) return null;
+        gradeColours(body);
         // The ink rides in the same mesh: one draw call per node, not two.
         const h = hull();
         const merged = withInk(body, h);
@@ -914,7 +1000,7 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
   for (const o of removed) o.removeFromParent();
 
   // 2. Materials: one baked clone per unit, one team material per unit.
-  const unit = unitBakedToon();
+  const unit = unitBakedToon(aoTopFor(rig));
   let teamMat: THREE.MeshToonMaterial | null = null;
   // The team colours as applyTeam painted them when the rig was built.
   let mainColor: THREE.Color | null = null;
@@ -955,6 +1041,7 @@ function bakeUnsafe(rig: TroopRig, key: string, before: number): BakeStats {
     if (b.team) {
       if (!teamMat) {
         teamMat = teamToon();
+        teamMat.userData.aoTop = unit.userData.aoTop;
         if (mainColor) teamMat.color.copy(mainColor);
         if (darkColor) (teamMat.userData.teamDark as THREE.Color).copy(darkColor);
       }

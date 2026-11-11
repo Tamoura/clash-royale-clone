@@ -19,13 +19,17 @@ import { toon } from "../../characters3d";
 import { Ring, makeRng, type ParticleSpec } from "../../particles";
 import { particleScale } from "../../quality";
 import { reducedMotion } from "../../../ui/prefs";
-import { toWorld } from "../common";
+import { LOOK, toWorld } from "../common";
+import type { ArenaLook } from "../../arenaLooks";
 import type { DecalKindName, FxApi } from "./api";
 import { ATLAS_GRID, makeParticleAtlas } from "./atlas";
 import { DecalLayer, type DecalOpts } from "./decals";
 import { GlyphLayer } from "./glyphs";
 import { IceDomes } from "./iceDome";
 import { emitPreset, type EmitOpts, type PoolKind, type Spawner } from "./presets";
+
+/** Bloom contract (art bible 5): a screen flash never asks for more than this. */
+export const FX_MAX_FLASH = 0.25;
 
 /** Pool capacities before the quality scale. */
 export const ADD_CAP = 1024;
@@ -312,6 +316,31 @@ interface Scheduled {
   frames: number;
 }
 
+/** "#rrggbb" or "rgb(a)(r,g,b,...)" to a hex number (no alpha warnings from THREE.Color). */
+export function cssHex(css: string, fallback: number): number {
+  const hex = /^#([0-9a-f]{6})$/i.exec(css.trim());
+  if (hex) return parseInt(hex[1], 16);
+  const rgb = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(css);
+  if (rgb) return (Number(rgb[1]) << 16) | (Number(rgb[2]) << 8) | Number(rgb[3]);
+  return fallback;
+}
+
+const DUST_HSL = { h: 0, s: 0, l: 0 };
+
+/**
+ * Dust for a look: 70% lane, 30% floor, held to a mid lightness and a
+ * muted saturation, so footsteps and landings read as the floor stirred up
+ * and never as white blobs (a snow look's dust is a soft blue-grey).
+ */
+export function floorDust(look: ArenaLook): number {
+  const base = look.islamic ? cssHex(look.islamic.plaster, 0xd8c8a0) : cssHex(look.floor.a, 0x9a8a6a);
+  const lane = cssHex(look.floor.lane, 0xc9b99c);
+  const c = new THREE.Color(base).lerp(new THREE.Color(lane), 0.7);
+  c.getHSL(DUST_HSL);
+  c.setHSL(DUST_HSL.h, Math.min(DUST_HSL.s, 0.42), Math.min(0.66, Math.max(0.36, DUST_HSL.l * 0.92)));
+  return c.getHex();
+}
+
 /** Draw an emote bubble into its (reused) canvas. */
 function paintBubble(ctx: CanvasRenderingContext2D, emoji: string): void {
   ctx.clearRect(0, 0, 128, 128);
@@ -408,6 +437,18 @@ export class VfxPool implements FxApi, Spawner {
 
   rand = (): number => this.rng();
 
+  private dustLook: ArenaLook | null = null;
+  private dust = 0xc9b99c;
+
+  /** The current arena's floor dust colour (mostly the lane, a little floor). */
+  floorColor(): number {
+    if (this.dustLook !== LOOK) {
+      this.dustLook = LOOK;
+      this.dust = floorDust(LOOK);
+    }
+    return this.dust;
+  }
+
   scale(): number {
     return particleScale();
   }
@@ -475,7 +516,7 @@ export class VfxPool implements FxApi, Spawner {
       this.later(delay, 1, level, frames);
       return;
     }
-    this.flashLevel = Math.max(this.flashLevel, level);
+    this.flashLevel = Math.max(this.flashLevel, Math.min(FX_MAX_FLASH, level));
     this.flashFrames = Math.max(this.flashFrames, frames);
   }
 

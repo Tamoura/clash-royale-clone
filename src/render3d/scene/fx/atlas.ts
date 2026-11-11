@@ -38,8 +38,20 @@ export const CELL = {
   FLARE: 15,
   CONFETTI: 16,
   BONE: 17,
+  /** A chunky five-point cartoon star with an ink rim (hit sparks). */
+  STAR5: 18,
+  /** A toon flame painted in its own three tones (tint white): red rim, orange body, yellow core. */
+  FLAME3: 19,
+  /** A soft round puff with an ink rim (smoke ribbons, small trails). */
+  PUFF: 20,
+  /** A fletched arrow, head at +x, in its own colours (tint white; velocity-aligned). */
+  ARROW: 21,
+  /** One toon flame petal from the cell centre to its top, three tones (fireball pinwheel). */
+  FPETAL: 22,
 } as const;
-export const CELL_COUNT = 18;
+export const CELL_COUNT = 23;
+/** Ink grey the outlined cells paint their rims in (tinted cells darken to an ink line). */
+export const CELL_INK = 0.2;
 export const SMOKE_CELLS: readonly number[] = [CELL.SMOKE_A, CELL.SMOKE_B, CELL.SMOKE_C];
 
 export interface CellRect {
@@ -119,24 +131,121 @@ function paintSoft(ctx: Ctx, cx: number, cy: number, s: number): void {
   ]));
 }
 
-/** Cartoon cloud: a lumpy silhouette with a dark rim and a lit top-left. */
+/**
+ * Toon cloud (art bible 8): a lumpy silhouette with a thin ink rim, a body
+ * in two ramp tones (lit top-left, shaded bottom-right) and a highlight.
+ * Painted grey so the instance colour tints it; the rim darkens to ink in
+ * any tint, so a puff never reads as an opaque white blob.
+ */
 function paintSmoke(ctx: Ctx, cx: number, cy: number, s: number, seed: number): void {
   const rnd = makeRng(seed);
-  const blobs: Array<[number, number, number]> = [[0, 0, s * 0.27]];
+  const blobs: Array<[number, number, number]> = [[0, 0, s * 0.25]];
   const n = 5 + Math.floor(rnd() * 2);
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + rnd() * 0.6;
-    const d = s * (0.13 + rnd() * 0.06);
-    blobs.push([Math.cos(a) * d, Math.sin(a) * d, s * (0.12 + rnd() * 0.07)]);
+    const d = s * (0.13 + rnd() * 0.05);
+    blobs.push([Math.cos(a) * d, Math.sin(a) * d, s * (0.11 + rnd() * 0.06)]);
   }
-  ctx.save();
-  ctx.filter = "blur(1px)";
-  for (const [x, y, r] of blobs) disc(ctx, cx + x, cy + y, r, "#7d7d7d"); // rim
-  for (const [x, y, r] of blobs) disc(ctx, cx + x - 1, cy + y - 2, r - s * 0.055, "#d9d9d9"); // body
+  const g = (v: number): string => {
+    const c = Math.round(v * 255);
+    return `rgb(${c},${c},${c})`;
+  };
+  const ink = s * 0.045;
+  for (const [x, y, r] of blobs) disc(ctx, cx + x, cy + y, r + ink, g(CELL_INK)); // ink rim
+  for (const [x, y, r] of blobs) disc(ctx, cx + x, cy + y, r, g(0.66)); // shade
+  for (const [x, y, r] of blobs) disc(ctx, cx + x - r * 0.18, cy + y - r * 0.22, r * 0.86, g(0.86)); // body
   for (const [x, y, r] of blobs) {
-    if (y < 0 || x < 0) disc(ctx, cx + x - 3, cy + y - 4, r * 0.45, "rgba(255,255,255,0.85)"); // lit side
+    if (y <= 0 && x <= s * 0.05) disc(ctx, cx + x - r * 0.32, cy + y - r * 0.38, r * 0.42, g(0.97)); // lit top-left
   }
+}
+
+/** A round puff with an ink rim and one ramp step (smoke ribbons). */
+function paintPuff(ctx: Ctx, cx: number, cy: number, s: number): void {
+  const r = s * 0.4;
+  disc(ctx, cx, cy, r + s * 0.05, `rgb(${Math.round(CELL_INK * 255)},${Math.round(CELL_INK * 255)},${Math.round(CELL_INK * 255)})`);
+  disc(ctx, cx, cy, r, "rgb(168,168,168)");
+  disc(ctx, cx - r * 0.16, cy - r * 0.2, r * 0.8, "rgb(219,219,219)");
+  disc(ctx, cx - r * 0.38, cy - r * 0.4, r * 0.3, "rgb(247,247,247)");
+}
+
+/** A fletched arrow pointing at +x: steel head, brown shaft, cream feathers, inked. */
+function paintArrow(ctx: Ctx, cx: number, cy: number, s: number): void {
+  const L = s * 0.46;
+  const ink = `rgb(${Math.round(CELL_INK * 255)},${Math.round(CELL_INK * 255)},${Math.round(CELL_INK * 255)})`;
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  const shape = (pass: "ink" | "fill"): void => {
+    const grow = pass === "ink" ? s * 0.035 : 0;
+    // Feathers.
+    ctx.beginPath();
+    ctx.moveTo(cx - L, cy - s * 0.1 - grow);
+    ctx.lineTo(cx - L + s * 0.2 + grow, cy - grow * 0.5);
+    ctx.lineTo(cx - L, cy + s * 0.1 + grow);
+    ctx.lineTo(cx - L + s * 0.08, cy);
+    ctx.closePath();
+    ctx.fillStyle = pass === "ink" ? ink : "#e8dcc0";
+    ctx.fill();
+    if (pass === "ink") {
+      ctx.lineWidth = grow * 2;
+      ctx.strokeStyle = ink;
+      ctx.stroke();
+    }
+    // Shaft.
+    ctx.lineWidth = s * 0.05 + grow * 2;
+    ctx.strokeStyle = pass === "ink" ? ink : "#6b4528";
+    ctx.beginPath();
+    ctx.moveTo(cx - L + s * 0.04, cy);
+    ctx.lineTo(cx + L - s * 0.14, cy);
+    ctx.stroke();
+    // Head.
+    ctx.beginPath();
+    ctx.moveTo(cx + L + grow, cy);
+    ctx.lineTo(cx + L - s * 0.17, cy - s * 0.085 - grow);
+    ctx.lineTo(cx + L - s * 0.14, cy);
+    ctx.lineTo(cx + L - s * 0.17, cy + s * 0.085 + grow);
+    ctx.closePath();
+    ctx.fillStyle = pass === "ink" ? ink : "#9aa6b2";
+    ctx.fill();
+    if (pass === "ink") ctx.stroke();
+  };
+  shape("ink");
+  shape("fill");
   ctx.restore();
+}
+
+/** One toon flame petal: a round base at the cell centre, a tip at the top; three tones. */
+function paintFlamePetal(ctx: Ctx, cx: number, cy: number, s: number): void {
+  const petal = (h: number, w: number, fill: string): void => {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - h);
+    ctx.bezierCurveTo(cx + w * 0.7, cy - h * 0.55, cx + w * 1.05, cy - h * 0.05, cx + w * 0.7, cy + w * 0.35);
+    ctx.arc(cx, cy, w * 0.78, 0.45, Math.PI - 0.45);
+    ctx.bezierCurveTo(cx - w * 1.05, cy - h * 0.05, cx - w * 0.7, cy - h * 0.55, cx, cy - h);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+  };
+  petal(s * 0.47, s * 0.2, "#d8431c");
+  petal(s * 0.36, s * 0.14, "#ff9a2e");
+  petal(s * 0.22, s * 0.08, "#ffe46b");
+}
+
+/** A toon flame in three tones (red-orange rim, orange body, yellow core), tinted white. */
+function paintFlame3(ctx: Ctx, cx: number, cy: number, s: number): void {
+  const tongue = (h: number, w: number, fill: string, dy = 0): void => {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - h + dy);
+    ctx.bezierCurveTo(cx + w * 0.55, cy - h * 0.35 + dy, cx + w * 1.05, cy + h * 0.15 + dy, cx + w * 0.72, cy + h * 0.52 + dy);
+    ctx.arc(cx, cy + h * 0.38 + dy, w * 0.75, 0.2, Math.PI - 0.2);
+    ctx.bezierCurveTo(cx - w * 1.05, cy + h * 0.15 + dy, cx - w * 0.55, cy - h * 0.35 + dy, cx, cy - h + dy);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+  };
+  tongue(s * 0.46, s * 0.3, "#d8431c");
+  tongue(s * 0.34, s * 0.22, "#ff9a2e", s * 0.06);
+  tongue(s * 0.2, s * 0.13, "#ffe46b", s * 0.12);
 }
 
 function paintFlame(ctx: Ctx, cx: number, cy: number, s: number): void {
@@ -313,27 +422,58 @@ function paintBolt(ctx: Ctx, x0: number, y0: number, s: number): void {
   ctx.putImageData(img, x0, y0);
 }
 
+/** A chunky rock chip in the toon ramp: lit top face, mid side, shaded side, ink rim. */
 function paintChip(ctx: Ctx, cx: number, cy: number, s: number): void {
   const pts: Array<[number, number]> = [
     [-0.3, -0.18], [0.02, -0.36], [0.33, -0.12], [0.26, 0.26], [-0.08, 0.34], [-0.36, 0.1],
   ];
+  const path = (): void => {
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(cx + x * s, cy + y * s) : ctx.lineTo(cx + x * s, cy + y * s)));
+    ctx.closePath();
+  };
   ctx.save();
-  ctx.beginPath();
-  pts.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(cx + x * s, cy + y * s) : ctx.lineTo(cx + x * s, cy + y * s)));
-  ctx.closePath();
-  ctx.fillStyle = "#8f8f8f";
+  path();
+  ctx.fillStyle = "rgb(219,219,219)"; // 0.86: the mid band
   ctx.fill();
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = "#5c5c5c";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = `rgb(${Math.round(CELL_INK * 255)},${Math.round(CELL_INK * 255)},${Math.round(CELL_INK * 255)})`;
   ctx.stroke();
-  // Lit top face.
+  // Shaded lower-right face (0.62).
   ctx.beginPath();
-  ctx.moveTo(cx - 0.3 * s, cy - 0.18 * s);
-  ctx.lineTo(cx + 0.02 * s, cy - 0.36 * s);
+  ctx.moveTo(cx + 0.02 * s, cy + 0.02 * s);
   ctx.lineTo(cx + 0.33 * s, cy - 0.12 * s);
-  ctx.lineTo(cx + 0.02 * s, cy + 0.02 * s);
+  ctx.lineTo(cx + 0.26 * s, cy + 0.26 * s);
+  ctx.lineTo(cx - 0.08 * s, cy + 0.34 * s);
   ctx.closePath();
-  ctx.fillStyle = "#e6e6e6";
+  ctx.fillStyle = "rgb(158,158,158)";
+  ctx.fill();
+  // Lit top face (1.0).
+  ctx.beginPath();
+  ctx.moveTo(cx - 0.27 * s, cy - 0.17 * s);
+  ctx.lineTo(cx + 0.02 * s, cy - 0.33 * s);
+  ctx.lineTo(cx + 0.3 * s, cy - 0.12 * s);
+  ctx.lineTo(cx + 0.02 * s, cy + 0.0 * s);
+  ctx.closePath();
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.restore();
+}
+
+/** A chunky five-point star: ink rim, white body, a shaded lower-right half. */
+function paintStar5(ctx: Ctx, cx: number, cy: number, s: number): void {
+  ctx.save();
+  ctx.lineJoin = "round";
+  starPath(ctx, cx, cy + s * 0.03, 5, s * 0.4, s * 0.19);
+  ctx.lineWidth = s * 0.09;
+  ctx.strokeStyle = `rgb(${Math.round(CELL_INK * 255)},${Math.round(CELL_INK * 255)},${Math.round(CELL_INK * 255)})`;
+  ctx.stroke();
+  ctx.fillStyle = "rgb(214,214,214)";
+  ctx.fill();
+  ctx.clip();
+  starPath(ctx, cx - s * 0.04, cy - s * 0.01, 5, s * 0.36, s * 0.16);
+  ctx.fillStyle = "#ffffff";
   ctx.fill();
   ctx.restore();
 }
@@ -433,6 +573,11 @@ export function paintParticleAtlas(ctx: Ctx): void {
   cell(CELL.FLARE, (cx, cy) => paintFlare(ctx, cx, cy, s));
   cell(CELL.CONFETTI, (cx, cy) => paintConfetti(ctx, cx, cy, s));
   cell(CELL.BONE, (cx, cy) => paintBone(ctx, cx, cy, s));
+  cell(CELL.STAR5, (cx, cy) => paintStar5(ctx, cx, cy, s));
+  cell(CELL.FLAME3, (cx, cy) => paintFlame3(ctx, cx, cy, s));
+  cell(CELL.PUFF, (cx, cy) => paintPuff(ctx, cx, cy, s));
+  cell(CELL.ARROW, (cx, cy) => paintArrow(ctx, cx, cy, s));
+  cell(CELL.FPETAL, (cx, cy) => paintFlamePetal(ctx, cx, cy, s));
 }
 
 // --- decal cells -----------------------------------------------------------
@@ -579,15 +724,34 @@ function paintCrater(ctx: Ctx, cx: number, cy: number, s: number): void {
   }
 }
 
+/**
+ * The spell-area and deploy ring, two-tone (art bible 8): the decal shader
+ * reads red as the tinted band (the team colour), green as the white inner
+ * rim and blue as a faint tinted fill. The band's outer edge sits at the
+ * cell's edge, so the ring is drawn at the true radius.
+ */
 function paintDecalRing(ctx: Ctx, cx: number, cy: number, s: number): void {
-  disc(ctx, cx, cy, s * 0.48, radial(ctx, cx, cy, s * 0.48, [
-    [0, "rgba(255,255,255,0.1)"],
-    [0.7, "rgba(255,255,255,0.16)"],
-    [0.8, "rgba(255,255,255,0.55)"],
-    [0.86, "rgba(255,255,255,1)"],
-    [0.94, "rgba(255,255,255,1)"],
-    [1, "rgba(255,255,255,0)"],
+  const R = s * 0.5;
+  // Faint fill toward the band.
+  disc(ctx, cx, cy, R * 0.86, radial(ctx, cx, cy, R * 0.86, [
+    [0, "rgba(0,0,255,0.05)"],
+    [0.75, "rgba(0,0,255,0.12)"],
+    [1, "rgba(0,0,255,0.24)"],
   ]));
+  ctx.save();
+  // Team band: the outer 12% of the radius.
+  ctx.beginPath();
+  ctx.arc(cx, cy, R * 0.975, 0, Math.PI * 2);
+  ctx.arc(cx, cy, R * 0.86, 0, Math.PI * 2, true);
+  ctx.fillStyle = "#ff0000";
+  ctx.fill();
+  // White inner rim along its inside edge.
+  ctx.beginPath();
+  ctx.arc(cx, cy, R * 0.875, 0, Math.PI * 2);
+  ctx.arc(cx, cy, R * 0.82, 0, Math.PI * 2, true);
+  ctx.fillStyle = "#00ff00";
+  ctx.fill();
+  ctx.restore();
 }
 
 function paintShadow(ctx: Ctx, cx: number, cy: number, s: number): void {

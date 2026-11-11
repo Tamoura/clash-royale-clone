@@ -81,7 +81,7 @@ export class IceDomes {
     for (let i = 0; i < DOMES; i++) {
       const mat = new THREE.ShaderMaterial({
         uniforms: {
-          uRim: { value: new THREE.Vector3(rim.r * 2.2, rim.g * 2.2, rim.b * 2.2) }, // HDR: blooms
+          uRim: { value: new THREE.Vector3(rim.r, rim.g, rim.b) }, // under the bloom threshold
           uBody: { value: new THREE.Vector3(body.r, body.g, body.b) },
           uAlpha: { value: 0 },
           uTime: { value: 0 },

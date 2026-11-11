@@ -4,7 +4,8 @@ import type { CardId } from "../game/cards";
 import { loadChampion, normalizeChampion, type ChampionDef } from "../game/customcard";
 import type { Side } from "../game/arena";
 import { applyTeam, teamPart } from "./teamColors";
-import { INK_FRAGMENT, OUTLINE_MIN_RADIUS, installInk, outlineHull } from "./outlineMaterial";
+import { INK_FRAGMENT, OUTLINE_CSS_PX, OUTLINE_MIN_RADIUS, installInk, outlineHull } from "./outlineMaterial";
+import { currentQuality } from "./quality";
 import { ARABIC, THEME } from "./theme";
 import { rigArchetype, type AttackStyle, type QuadGait, type Weight } from "./anim/archetypes";
 import { BASE_CADENCE, hopScale, legPhase, stepSquash } from "./anim/gait";
@@ -112,6 +113,79 @@ function grainMap(): THREE.DataTexture {
 }
 
 /**
+ * The art bible's material language for baked rigs (creatures, buildings and
+ * the procedural fallback cast), matching the KayKit cast's (cast/bake.ts):
+ * - a three-band toon ramp at 0.62 / 0.86 / 1.0 with soft 0.04 edges;
+ * - a cool rim (#BFE3FF at 0.35), off at the quality levels without rim light;
+ * - painted ground occlusion: the lowest 18% of the unit darkens by up to 15%;
+ * - silhouette-only ink at 1.6 CSS px: the shell sits behind the body along
+ *   the view, so only the outline survives (no fins, no crease lines);
+ * - status and hit tints MIX toward their colour, never add light, so a
+ *   flash can never cross the bloom threshold.
+ * Each wave-1 package holds these constants locally; ship unifies them.
+ */
+export const RIG_RAMP = [0.62, 0.86, 1.0] as const;
+export const RIG_RIM = { color: 0xbfe3ff, strength: 0.35 } as const;
+export const RIG_INK_PX = 1.6;
+/** World units the ink shell sits behind the body (silhouette-only ink). */
+export const RIG_INK_DEPTH = 0.3;
+export const RIG_AO = { share: 0.18, dark: 0.15 } as const;
+/** Albedo saturation multiplier applied when a rig is baked. */
+export const RIG_SATURATION = 1.12;
+/** The most a tint (flash, freeze, rage) may pull a pixel toward its colour. */
+export const RIG_TINT_MAX = 0.6;
+/** Rim strength (1 on, 0 off) shared by every rig material; follows the quality level. */
+export const RIG_RIM_UNIFORM = { value: 1 };
+
+/** Keep the shared rim switch in step with the live quality level (called per animated rig). */
+function syncRigRim(): void {
+  RIG_RIM_UNIFORM.value = currentQuality().rimLight ? 1 : 0;
+}
+
+/** The vertex and fragment changes that give a baked rig material the art bible's language. */
+function installRigLanguage(sh: THREE.WebGLProgramParametersWithUniforms): void {
+  sh.uniforms.uRigRim = RIG_RIM_UNIFORM;
+  if (!sh.uniforms.uAoTop) sh.uniforms.uAoTop = { value: 0.55 };
+  sh.vertexShader = sh.vertexShader
+    .replace("#include <common>", "#include <common>\n varying float vGroundY;")
+    .replace("#include <fog_vertex>", "vGroundY = (modelMatrix * vec4(transformed, 1.0)).y;\n #include <fog_vertex>")
+    // Silhouette-only ink: push the shell back along the view before widening it.
+    .replace(
+      "vec3 nView = normalize(normalMatrix * outlineNormal);",
+      `vec3 _back = projectionMatrix[3][3] > 0.5 ? vec3(0.0, 0.0, -${RIG_INK_DEPTH.toFixed(3)}) : normalize(mvPosition.xyz) * ${RIG_INK_DEPTH.toFixed(3)};
+           gl_Position = projectionMatrix * vec4(mvPosition.xyz + _back, 1.0);
+           vec3 nView = normalize(normalMatrix * outlineNormal);`,
+    )
+    .replace("* uInkPx * 2.0 / uInkViewport", `* uInkPx * ${((2 * RIG_INK_PX) / OUTLINE_CSS_PX).toFixed(4)} / uInkViewport`);
+  sh.fragmentShader = sh.fragmentShader
+    .replace("#include <common>", "#include <common>\n varying float vGroundY;\n uniform float uRigRim;\n uniform float uAoTop;")
+    .replace(
+      "#include <gradientmap_pars_fragment>",
+      `vec3 getGradientIrradiance( vec3 normal, vec3 lightDirection ) {
+         float x = dot( normal, lightDirection ) * 0.5 + 0.5;
+         float k = ${RIG_RAMP[0].toFixed(2)} + ${(RIG_RAMP[1] - RIG_RAMP[0]).toFixed(2)} * smoothstep(0.40, 0.44, x) + ${(RIG_RAMP[2] - RIG_RAMP[1]).toFixed(2)} * smoothstep(0.68, 0.72, x);
+         return vec3(k);
+       }`,
+    )
+    .replace(
+      "#include <emissivemap_fragment>",
+      "#include <emissivemap_fragment>\n vec3 _tint = totalEmissiveRadiance;\n totalEmissiveRadiance = vec3(0.0);",
+    )
+    .replace(
+      "#include <dithering_fragment>",
+      `${INK_FRAGMENT}
+         gl_FragColor.rgb *= 1.0 - ${RIG_AO.dark.toFixed(2)} * (1.0 - smoothstep(0.0, uAoTop, vGroundY));
+         float _rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
+         _rim = smoothstep(0.62, 1.0, _rim) * ${RIG_RIM.strength.toFixed(2)} * uRigRim;
+         gl_FragColor.rgb += _rim * vec3(0.749, 0.890, 1.0);
+         float _k = max(_tint.r, max(_tint.g, _tint.b));
+         if (_k > 0.001) gl_FragColor.rgb = mix(gl_FragColor.rgb, _tint / _k, min(_k, ${RIG_TINT_MAX.toFixed(2)}));
+       }
+       #include <dithering_fragment>`,
+    );
+}
+
+/**
  * Inject a cool Fresnel rim-light into a lit material's fragment shader —
  * a bright edge where the surface turns away from the camera. This single
  * touch makes every rounded shape read as 3D and gives the whole roster a
@@ -125,6 +199,7 @@ function addRimLight(
 ): void {
   mat.onBeforeCompile = (sh) => {
     if (ink) installInk(sh);
+    if (ink && mat.userData.aoTop) sh.uniforms.uAoTop = mat.userData.aoTop;
     if (dark) {
       // A second team shade rides in a vertex attribute (see teamToon).
       sh.uniforms.uDark = { value: dark };
@@ -134,6 +209,11 @@ function addRimLight(
       sh.fragmentShader = sh.fragmentShader
         .replace("#include <common>", "#include <common>\n uniform vec3 uDark;\n varying float vDark;")
         .replace("#include <map_fragment>", "diffuseColor.rgb = mix(diffuse, uDark, vDark);\n #include <map_fragment>");
+    }
+    if (ink) {
+      // Baked rigs speak the cast's material language (see installRigLanguage).
+      installRigLanguage(sh);
+      return;
     }
     // Coloured light ramp: sample the gradient's RGB, not just red.
     sh.fragmentShader = sh.fragmentShader.replace(
@@ -151,18 +231,9 @@ function addRimLight(
          #endif
        }`,
     );
-    if (ink) {
-      // Baked rigs only: feet and hems darken toward the ground they stand
-      // on (painted contact occlusion), so bodies read as rooted volumes.
-      sh.vertexShader = sh.vertexShader
-        .replace("#include <common>", "#include <common>\n varying float vGroundY;")
-        .replace("#include <fog_vertex>", "vGroundY = (modelMatrix * vec4(transformed, 1.0)).y;\n #include <fog_vertex>");
-      sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\n varying float vGroundY;");
-    }
     sh.fragmentShader = sh.fragmentShader.replace(
       "#include <dithering_fragment>",
-      `${ink ? INK_FRAGMENT : "{"}
-         ${ink ? "gl_FragColor.rgb *= 0.7 + 0.3 * smoothstep(0.0, 0.55, vGroundY);" : ""}
+      `{
          float _rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
          _rim = smoothstep(0.72, 1.0, _rim) * 0.26;
          gl_FragColor.rgb += _rim * vec3(0.42, 0.56, 0.80);
@@ -222,8 +293,10 @@ export function bakedToon(): THREE.MeshToonMaterial {
  * A unit's own copy of the baked material: its emissive carries the flash,
  * rage and freeze glows, so it can never be shared between units.
  */
-export function unitBakedToon(): THREE.MeshToonMaterial {
+export function unitBakedToon(aoTop = 0.55): THREE.MeshToonMaterial {
   const mat = bakedToon().clone();
+  // The ground-occlusion band (world units): the lowest RIG_AO.share of this unit.
+  mat.userData.aoTop = { value: aoTop };
   addRimLight(mat, "baked", true); // clone() drops shader hooks
   mat.userData.shared = false;
   mat.userData.baked = true;
@@ -257,9 +330,20 @@ export function paintedToon(mat: THREE.MeshToonMaterial): THREE.MeshToonMaterial
  * mutes emissives far less, so gems, orbs, and robot eyes stay hot.
  */
 function glow(color: number, _intensity = 1.6): THREE.MeshBasicMaterial {
-  const mat = new THREE.MeshBasicMaterial({ color });
+  const mat = new THREE.MeshBasicMaterial({ color: underBloom(color) });
   mat.toneMapped = false; // full saturation, no filmic rolloff
   return mat;
+}
+
+/** The brightest linear luminance a rig's glow part may have (art bible 5: under the 0.9 bloom threshold). */
+export const RIG_GLOW_MAX = 0.8;
+
+/** `hex` scaled down, if need be, so its linear luminance stays at or under RIG_GLOW_MAX. */
+export function underBloom(hex: number): THREE.Color {
+  const c = new THREE.Color(hex);
+  const lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  if (lum > RIG_GLOW_MAX) c.multiplyScalar(RIG_GLOW_MAX / lum);
+  return c;
 }
 
 type Ctx3 = THREE.Object3D;
@@ -3937,6 +4021,7 @@ const TAU = Math.PI * 2;
  * always give the same pose (a frozen unit holds perfectly still).
  */
 export function animateTroop(rig: TroopRig, opts: AnimateOpts): void {
+  syncRigRim();
   const t = opts.time;
   const arch = rigArchetype(rig);
   const style: AttackStyle = opts.style ?? arch?.attackStyle ?? "chop";

@@ -182,7 +182,7 @@ export function syncBurrows(b: Battle3D, state: BattleState, dt: number, alpha: 
       b.scene.add(m.root);
       st.live.set(e.id, m);
       // Mark where it will pop up for the whole dig.
-      v.decal("ring", e.x, e.y, 0.9, { color: moundColor(e.side), hdr: 1.4, life: e.burrowTimer + 0.25, alpha: 0.7, grow: 0.3 });
+      v.decal("ring", e.x, e.y, 0.9, { color: moundColor(e.side), life: e.burrowTimer + 0.25, alpha: 0.7, grow: 0.3 });
     }
     poseMound(m, e, burrowProgress(e.burrowTimer, e.burrowTotal, alpha), dt, st.clock, v);
   }
