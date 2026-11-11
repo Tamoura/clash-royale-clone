@@ -81,7 +81,7 @@ set of six at or under 60k.
   team onion domes (arena/build.ts `onionDome` geometry, read only, passed in as a factory to avoid an
   import cycle, re-tessellated on bake by `lighten`: bulbs 12 x 10, crescents 5 x 12) with gold crescent
   finials; a low domed qubba over the king (narrower posts than the Classic pavilion, a short zellige
-  drum, a dome of radius R*0.34+0.03 with its crescent at 0.55 scale, set back 0.12), so the far king's
+  drum, a dome of radius R*0.34+0.01 with its crescent at 0.45 scale (QUBBA_FINIAL), set back 0.12), so the far king's
   plate fits over him on a 390x844 phone; crescent (princess) or eight-point star (king) on the banner;
   a tiled star on the deck.
 - **Per look** (`towerStyles.ts`): stone, plinth, battlement and platform from `ArenaLook.tower`; extras
@@ -242,3 +242,5 @@ throwaway lab page that rendered two keeps at battle scale with magenta ink and 
   1568 tests, build OK, perf both editions at 390x844@2 and 1440x900 within the ceilings (table above);
   matrix, sheets, guest and KO/Victory checks re-shot and looked at.
 - State: review fixes DONE. Open for ship: Requests for ship 1, 4, 5, 6.
+- Ship (notes only): the Golden Age qubba line under Decisions now gives the shipped sizes from 774f0dc
+  (dome radius R*0.34+0.01, crescent at QUBBA_FINIAL 0.45); it still said +0.03 and 0.55.
