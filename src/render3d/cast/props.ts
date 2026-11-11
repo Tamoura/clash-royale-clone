@@ -78,8 +78,11 @@ export function drape(s: DrapeSpec): THREE.BufferGeometry {
     }
   }
   const W = seg + 1;
-  const O = (r: number, i: number): number => r * W + i;
-  const I = (r: number, i: number): number => (rows + 1) * W + r * W + i;
+  // A full turn closes on itself: its last column is its first (shared, so no seam in the shading).
+  const full = Math.abs(s.arc[1] - s.arc[0]) >= Math.PI * 2 - 1e-6;
+  const col = (i: number): number => (full ? i % seg : i);
+  const O = (r: number, i: number): number => r * W + col(i);
+  const I = (r: number, i: number): number => (rows + 1) * W + r * W + col(i);
   const idx: number[] = [];
   for (let r = 0; r < rows; r++) {
     for (let i = 0; i < seg; i++) {
@@ -91,8 +94,8 @@ export function drape(s: DrapeSpec): THREE.BufferGeometry {
     idx.push(O(0, i), O(0, i + 1), I(0, i), O(0, i + 1), I(0, i + 1), I(0, i));
     idx.push(O(rows, i), I(rows, i), O(rows, i + 1), O(rows, i + 1), I(rows, i), I(rows, i + 1));
   }
-  // The two side edges (a full band has none: they would meet as a seam).
-  if (Math.abs(s.arc[1] - s.arc[0]) < Math.PI * 2 - 1e-6) {
+  // The two side edges (a full band has none).
+  if (!full) {
     for (let r = 0; r < rows; r++) {
       idx.push(O(r, 0), I(r, 0), O(r + 1, 0), O(r + 1, 0), I(r, 0), I(r + 1, 0));
       idx.push(O(r, seg), O(r + 1, seg), I(r, seg), O(r + 1, seg), I(r + 1, seg), I(r, seg));

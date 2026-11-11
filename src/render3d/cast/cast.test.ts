@@ -390,8 +390,11 @@ describe("cast side reads from the body", () => {
 });
 
 describe("cast cloth and colour", () => {
-  it("drapes are closed shells with outward normals (they shade like cloth and take ink)", () => {
-    const g = drape({ top: 1.1, bottom: 0.5, rx: [0.33, 0.42], rz: [0.34, 0.42], arc: [-0.75, 0.75], thick: 0.05, belly: 0.03 });
+  it.each([
+    ["a panel", [-0.75, 0.75]],
+    ["a full band", [-Math.PI, Math.PI]],
+  ] as const)("drapes are closed shells with outward normals: %s (they shade like cloth and take ink)", (_, arc) => {
+    const g = drape({ top: 1.1, bottom: 0.5, rx: [0.33, 0.42], rz: [0.34, 0.42], arc: [arc[0], arc[1]], thick: 0.05, belly: 0.03 });
     const pos = g.getAttribute("position");
     const idx = g.index!;
     // Signed volume of a closed, outward-wound mesh is positive.
