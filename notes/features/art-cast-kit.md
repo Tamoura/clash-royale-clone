@@ -55,6 +55,27 @@ the matrix runs (the home screen and the bot battle start take longer).
 - castActiveForBattle() reads a latch set by beginCastBattle(); until ship calls that at battle start
   it follows the pack's state (see Requests for ship).
 - Flying Studio champions keep the procedural rig (explicit fallback: the cast has no wings).
+- (Review fix) The side reads from the FRONT too: enemies walk toward the camera and a cape hides behind
+  the body. Every variant wears front team cloth from props.teamFront: a TABARD (a curved closed shell
+  down chest and belly) on the knight, rogue and mage bodies, front and back on a body without a cape
+  (mini-pekka, pekka), short over a rider's lap; a waist SASH with a knot and tails on the bare-chested
+  barbarian body (the Giant's sits high, where his belt was); plus a CAPELET where a weapon held across
+  the belly hides the front (mini-pekka, pekka, executioner, magic-archer, War Drummer, Mamluk Amir).
+  The War Drummer's drum barrel is wrapped in team cloth. The skeletons' team cloak already wraps their
+  chest. The champion is dressed the same way. All cloth: true extras, so the team rule still holds.
+- (Review fix) Cloth is modelled with props.drape: an elliptical band segment between two heights,
+  flaring, with thickness, outward normals and ink. No flat boards (a test forbids box extras with two
+  sides over 0.45 and the third under 0.15): the Golden Age veils (princess, duchess) are sand silk shells
+  round the back of the head down to the nape (clear of the team cape) with a gold hem; the keffiyeh
+  drape is a shell too.
+- (Review fix) Our primitives' colours (extras and mounts) carry no palette grade, so their lightness is
+  capped at EXTRA_MAX_LIGHTNESS 0.85 at bake (bake.extraColor): CREAM #F5F0E6 bakes as about #E6DBC6.
+- (Review fix) Heights: every BODY's head crown is in its band (standard 2.15-2.49, large 2.9-3.5 before
+  hats); the art bible's numbers are read as head-top heights, so tall headgear is an accepted exception
+  for ship to sign off: wizard hat 2.98, ice-wizard hat 2.95, executioner peaked hood 3.05 (trimmed from
+  3.26), janissary bork 3.04 (from 3.21), duelist helm spike 2.91 (from 3.03), Golden knight 2.82 (from
+  2.93), Golden treasure digger 2.81, electro-wizard 2.75. The cataphract is 3.65 (from 3.88, the sheet's
+  label read 4.18 before the HP-bar fix): a smaller barded horse (size 1.18) and a shorter helm spike.
 
 ## Variant table
 
@@ -65,21 +86,21 @@ back-visible features in `back` (cast.test.ts checks at least two).
 |---|---|---|
 | knight | knight 2.73: plumed helm, sword, shield, team cape+tabard | spiked steel turban helmet, scimitar, round shield, beard |
 | archers | rogue 2.36: pink hair + ponytail, quiver, bow arc, team cape | sand headscarf, pink ponytail, quiver, bow |
-| giant | barbarian 3.31 (stretch 1.16, head 0.94): bald + ginger fringe, beard under chin, team mantle, belt | war elephant (creature, not cast) |
+| giant | barbarian 3.31 (stretch 1.16, head 0.94): pale bald scalp + dark auburn fringe, ginger beard under chin, team mantle, team sash | war elephant (creature, not cast) |
 | valkyrie | rogue 2.66: two orange braids, winged steel cap, 2H axe | sand headscarf, braids, axe |
 | wizard | mage 2.98 (hat): crooked teal hat, flame-orb staff, white beard | ALCHEMIST: emerald turban, alembic staff, green flask |
-| musketeer | rogue 2.62: steel morion + finial, musket, purple ponytail | JANISSARY: tall white bork, matchlock, beard |
+| musketeer | rogue 2.62: steel morion + finial, musket, purple ponytail | JANISSARY 3.04: tall cream bork, matchlock, beard |
 | mini-pekka | knight 2.53: gunmetal helm + pale horns, cyan visor, 2H sword | DUELIST: spiked steel helm, twin scimitars |
 | skeletons / army | skeleton 1.87: skull, bone blade, team cloak | MILITIA 2.02: white turban, tall spear |
 | witch | mage 2.66: tall purple hat, pink-gem staff | WAR DRUMMER: plum turban, copper drum, mallet |
-| pekka | knight 3.63: long horns, pauldrons, 2H sword, magenta visor | CATAPHRACT: nasal helm, kontos lance, steel-barded horse |
+| pekka | knight 3.63: long horns, pauldrons, 2H sword, magenta visor | CATAPHRACT 3.65: nasal helm, kontos lance, steel-barded horse |
 | mega-knight | knight 3.62 (girth 1.15): spiked crest, spiked pauldrons | MAMLUK AMIR 3.72: gold fluted helm, teal-gold plate, mace fists |
 | royal-giant | barbarian 3.74: crown on bald head, beard, cannon | BOMBARDIER 3.66: white turban, bronze bombard |
 | prince | knight on a white horse 3.67: white-plumed gold helm, lance + pennant | gold turban + aigrette, lance, cream horse |
-| hog-rider | barbarian on a hog 3.15: tall mohawk, war hammer | CAMEL RAIDER 3.61: brown turban, scimitar, camel |
+| hog-rider | barbarian on a hog 3.12: tall mohawk, war hammer; the hog: round barrel on stubby legs, snout disc, tusks, floppy ears, curly tail | CAMEL RAIDER 3.61: brown turban, scimitar, camel |
 | digger | barbarian 2.55: yellow mining helmet + lamp, shovel, pack | TREASURE DIGGER: sand turban, coin sack, shovel, brass lamp |
-| princess | rogue 2.61: gold crown, blonde plait, bow | gold circlet, cream veil, bow |
-| executioner | barbarian 3.26: tall peaked leather hood, double axe | dark keffiyeh-style hood, double axe |
+| princess | rogue 2.61: gold crown, blonde plait, bow | gold circlet, sand silk veil with a gold hem, bow |
+| executioner | barbarian 3.05: peaked leather hood, double axe | dark keffiyeh-style hood, double axe |
 | electro-wizard | mage 2.75: spiky pale hair, orb in each hand | crest swept back, orbs, gold sash |
 | ice-wizard | mage 2.95: frosty hat + icicle, white beard | frosty white turban, white beard |
 | magic-archer | hooded rogue 2.37: teal hood, glowing quiver, crossbow | turquoise hood + gold band, quiver |
@@ -88,10 +109,19 @@ back-visible features in `back` (cast.test.ts checks at least two).
 | tower-princess | hooded rogue 2.25 (x0.72 crew): team hood, crossbow | team hood + gold band |
 | tower-king | knight 2.87 (x0.72 crew): five-point band crown, white beard, long team cape | crown over a white turban, scimitar |
 | cannoneer | barbarian (crew): iron cap, beard, team mantle | sand turban |
-| duchess | mage (crew): small crown, hair bun, team cape | circlet, cream veil |
+| duchess | mage (crew): small crown, hair bun, team cape | circlet, sand silk veil |
 
 Team colour lands only on capes/cloaks (whole meshes), the knight's tabard swatch, the rogues'
-hood-and-cape swatch, the mage's cape swatch, and the discs.
+hood-and-cape swatch, the mage's cape swatch, the cloth extras (tabards, sashes, capelets, the drummer's
+drum cloth, saddle cloths) and the discs. Every variant also wears its front team cloth (Decisions).
+
+Team share of each unit's pixels through the battle camera with the lean (tools/troopview.html
+?measure=1, no disc; % of the unit's pixels in its team's hue; theirs front / yours front / theirs
+behind / yours behind). Before the review fix the front rows were near 0 for all but the prince, hog
+rider and skeletons. After (e22315b): Classic lowest front shares mini-pekka 6.8, pekka 7.9, knight 8.0,
+executioner 8.1, magic-archer 9.4; most units 10-24. Golden Age lowest: War Drummer 5.9 before its
+capelet, Mamluk Amir 6.7 before its capelet, executioner 8.4, magic-archer 9.0; most 10-15. Full table
+in the Progress log.
 
 ## Screenshots
 
@@ -134,11 +164,23 @@ Vite's fs allow list), so text uses a fallback face; the production build bundle
      pack's state (the pack loads at boot and is in long before the first battle in practice).
    - scene3d.ts (or post.ts) per frame: `RIM_UNIFORM.value = currentQuality().rimLight ? 1 : 0` if the rim must
      follow L4 from somewhere other than updateTroop (cast-kit sets it in updateTroop already).
+   - scene3d.ts per frame, BEFORE the views and the towers update: `setLeanCamera(this.camera)` (from
+     `src/render3d/cast/index.ts`). Today only updateTroop sets the lean camera, so with no live troop (battle
+     start, the online guest's flipped camera before anything spawns, the home diorama) the crews would lean
+     along a stale or default direction (VIEW_DIR starts as the home view, 0,-1). Review finding, read from the
+     code: it cannot show until the crew provider is wired. cast.test.ts "cast lean camera" checks the guest's
+     flipped camera flips VIEW_DIR.
 1. src/render3d/scene/fx/cardwaveFx.test.ts (creatures-fx owns it): the test "troops keep their one-frame
    white snap and warm fade" pins the old white hit flash the art bible forbids. The game no longer uses it:
    troops flash through `troopFlashTint` (animate.ts, peak 0.35 toward #FFF4E0, 80 ms). Replace that test with
    `expect(Math.max(...troopFlashTint(FLASH_TIME, out))).toBeLessThanOrEqual(0.35)` and then delete the
    legacy troop branch of `hitFlashTint` (LEGACY_FLASH_TIME / LEGACY_FLASH_WARM) in animate.ts.
+2. Approve two deletions outside the owned list: `viewer.html` and `src/viewer.ts` (the orphan dev page that
+   only loaded public/models/kaykit through glbModels.ts, both deleted by the spec; keeping it would break
+   tsc). The other wave-1 worktrees still carry the old copies untouched, so the merge takes the deletion.
+3. Hat heights: the standard band (2.3-2.7) is met by every body's head crown; tall headgear rises above it
+   (wizard 2.98, ice-wizard 2.95, executioner 3.05, janissary 3.04, duelist 2.91). Sign off the exception
+   or ask for shorter hats (Decisions, "Heights").
 
 ## Progress log
 
@@ -167,3 +209,13 @@ Vite's fs allow list), so text uses a fallback face; the production build bundle
 - Final quality bar: tsc clean, vitest 137 files / 1562 tests green, npm run build ok, perf-budget
   passes --max-calls 330 --max-empty-calls 200 in both editions (table above). Second matrix run captured
   after the HP-bar fix.
+- REVIEW FIX (fixer, from 05bcbb7): reproduced all 8 findings on the sheets, battle shots and code.
+  2871c20 + e22315b: front team cloth on every variant (tabard / sash / capelet, props.drape), Golden Age
+  veils and keffiyeh as draped shells, extras + mounts lightness capped at 0.85, Giant pale scalp + dark
+  auburn fringe, hog redesigned (stubby legs, snout disc, tusks, floppy ears, curly tail), cataphract
+  3.88 -> 3.65, executioner / janissary / duelist / Golden knight hats trimmed, champion dressed. New tests
+  in cast.test.ts (front and back team area per variant incl. every champion look, mount colours, closed
+  drapes, no flat boards, colour cap, lean camera). Requests for ship #0 (setLeanCamera per frame), #2
+  (viewer deletion), #3 (hat exception) added. troopview: ?measure=1 team-share table, taller strip cells.
+  Next: full quality bar (tsc, vitest, build, perf both editions), regenerate sheets, matrix by eye.
+
