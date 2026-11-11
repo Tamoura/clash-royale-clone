@@ -152,7 +152,7 @@ describe("cel outlines", () => {
     const o = outline as unknown as THREE.Mesh;
     // Not scaled up any more: the width is a clip-space extrusion in screen px.
     expect(o.scale.x).toBe(1);
-    expect(OUTLINE_CSS_PX).toBeGreaterThanOrEqual(1.5); // 1.5-2.5 CSS px on screen
+    expect(OUTLINE_CSS_PX).toBeGreaterThanOrEqual(1); // 1-2.5 CSS px on screen (thinner since the handcrafted-plus pass)
     expect(OUTLINE_CSS_PX).toBeLessThanOrEqual(2.5);
     const mat = o.material as THREE.ShaderMaterial;
     expect(mat).toBe(outlineMaterial()); // one shared material for every unit

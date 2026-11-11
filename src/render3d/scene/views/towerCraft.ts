@@ -342,8 +342,8 @@ export function craftClassicKeep(spec: KeepSpec): KeepResult {
     }
   }
   const TILE0 = R * 2.02;
-  baseTex.add(frustum(R * 1.2, R * 1.13, 0.16, 0.36, TILE0, true), 0xffffff, 0, 0, 0, 0, (_x, y, _z, ny) => (ny > 0.7 ? 0.8 : 0.58 + 0.2 * ((y - 0.16) / 0.2)));
-  baseTex.add(frustum(R * 1.1, R * 1.0, 0.36, 0.64, TILE0, true), 0xffffff, 0, 0, 0, 0, (_x, y, _z, ny) => (ny > 0.7 ? 0.9 : 0.7 + 0.2 * ((y - 0.36) / 0.28)));
+  baseTex.add(frustum(R * 1.2, R * 1.13, 0.16, 0.36, TILE0, true), 0xffffff, 0, 0, 0, 0, (_x, y, _z, ny) => (ny > 0.7 ? 0.96 : 0.7 + 0.2 * ((y - 0.16) / 0.2)));
+  baseTex.add(frustum(R * 1.1, R * 1.0, 0.36, 0.64, TILE0, true), 0xffffff, 0, 0, 0, 0, (_x, y, _z, ny) => (ny > 0.7 ? 1.0 : 0.8 + 0.2 * ((y - 0.36) / 0.28)));
 
   // ---- Wall: battered ashlar, quoins, slits, door, banner ------------------------
   const wallTex = new Sculpt();

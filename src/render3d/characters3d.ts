@@ -151,9 +151,18 @@ function addRimLight(
          #endif
        }`,
     );
+    if (ink) {
+      // Baked rigs only: feet and hems darken toward the ground they stand
+      // on (painted contact occlusion), so bodies read as rooted volumes.
+      sh.vertexShader = sh.vertexShader
+        .replace("#include <common>", "#include <common>\n varying float vGroundY;")
+        .replace("#include <fog_vertex>", "vGroundY = (modelMatrix * vec4(transformed, 1.0)).y;\n #include <fog_vertex>");
+      sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\n varying float vGroundY;");
+    }
     sh.fragmentShader = sh.fragmentShader.replace(
       "#include <dithering_fragment>",
       `${ink ? INK_FRAGMENT : "{"}
+         ${ink ? "gl_FragColor.rgb *= 0.7 + 0.3 * smoothstep(0.0, 0.55, vGroundY);" : ""}
          float _rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
          _rim = smoothstep(0.72, 1.0, _rim) * 0.26;
          gl_FragColor.rgb += _rim * vec3(0.42, 0.56, 0.80);

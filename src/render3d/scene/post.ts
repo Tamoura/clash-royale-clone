@@ -389,8 +389,10 @@ function applyLightQuality(b: Battle3D): void {
 const dynState = new WeakMap<Battle3D, boolean>();
 
 /**
- * Whether troops cast real shadows at this quality (L0 and L1: a shadow map
- * and bloom still on). Lower levels keep the static map and blob shadows.
+ * Whether troops cast real shadows at this quality: the top level only (a
+ * full-size shadow map and full bloom). The shadow pass then draws every
+ * troop a second time each frame, so the governor's first step down sheds
+ * it; lower levels keep the static map and the blob shadows.
  */
 export function dynamicShadows(b: Battle3D): boolean {
   return troopShadowLevel(b.quality.level);
@@ -398,7 +400,7 @@ export function dynamicShadows(b: Battle3D): boolean {
 
 /** The level test behind dynamicShadows, for code that has no scene at hand. */
 export function troopShadowLevel(level: Pick<QualityLevel, "shadowSize" | "bloom">): boolean {
-  return level.shadowSize > 0 && level.bloom > 0;
+  return level.shadowSize >= 2048 && level.bloom >= 1;
 }
 
 /** True for one more frame after a tower stops sinking, to drop its shadow. */
