@@ -68,6 +68,21 @@ Deduplicated issues (critics 1-3), and what this round does with each:
 | Player king plate under the tray on 360x640 | minor | improved: near plates keep 8 px over the tray when the tray sits under the board |
 | Damage numbers from different targets overlap; tower fall payoff; lava "giraffe print"; archers' back cloth; cast ink at 85% alpha; Golden Age gallery arcades | minor | not done (Known gaps) |
 
+## Known gaps after the polish round
+
+These supersede the ship log's list in the art-direction plan (that file is read-only for the polish step):
+
+1. **Laptop and landscape framing (major, frozen file).** At 1440x900, 1280x720 and 844x390 the far king's roofs are cut by the top edge and his plate flips under his gate, where flyers cover it; the near king's plate sits against the bottom edge. Fix for the compact-hand owner: about 6-8% top and 3% bottom margin in wide mode (`WIDE_BOX` in `src/render3d/scene/fit.ts` and `src/ui/layout.ts`, with the layout tests); `clampPlate` then keeps the far plate above the roofs on its own.
+2. **Golden Age galleries have no horseshoe arcades.** The camera is orthographic and looks straight down the board's length, so a gallery's field-facing side is edge-on; arcades would need the galleries rebuilt as stepped bays with south faces (about a day of stage work).
+3. **Outer ring still simple.** Streets, patches, contact shadows, awnings and four limewash tints are in; per-look house kits (heights, parapet styles, market props), a soft edge vignette and per-look pavilion fabric (forge, neon, snow) are not.
+4. **Damage numbers from different targets** can still overlap within about 40 px (the merge and stack work per target); a screen-space de-overlap pass across all live numbers is not done.
+5. **Tower-fall payoff:** no flying crown to the scoreboard chip and no team-coloured rubble; the collapse, dust and soft scorch are in.
+6. **Lava** is one Voronoi scale with no flow; the copper canal's black lip blobs remain.
+7. **Archers from behind** still read mostly as pink hair over a sliver of team cape (cast-kit's variant; a team quiver strap would break the cloth-only team rule).
+8. **Cast ink is opaque** (the bible asks for 85% alpha) and the set props carry no ink.
+9. **Golden Age headgear stays cream** (team bands would break the team rule); with the courts now mid-value the hats separate by value.
+10. Carried over: real-device fps (owner), empty-battle triangles at 1440x900 over the 260k target (gate 300k), unbaked `toon()` parts on the old ramp, the procedural Studio champion and blocky mount heads, `?viewpoint=enemy` reset by bot-battle starts (main.ts, frozen).
+
 ## Requests for the publish step
 
 - Push `art/ship` (a fast-forward of `claude/game-visuals-character-balance-w122wb`: every commit sits on top of `29f6451`).
