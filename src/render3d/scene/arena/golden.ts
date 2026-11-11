@@ -151,7 +151,10 @@ function stall(s: Sculpt, x: number, z: number, side: "player" | "enemy", rand: 
 /** Build the Golden Age surround into `parent`; returns the gallery crowd seats. */
 export function buildGoldenSurround(parent: THREE.Object3D, look: ArenaLook): CrowdSeat[] {
   const s = new Sculpt(lit);
-  const f = new Sculpt(lit);
+  // Per side, so a portrait phone culls them whole: the houses are the outer
+  // ring (hidden below L2), the palms the fallback that always stays.
+  const town = { [-1]: new Sculpt(lit), [1]: new Sculpt(lit) } as Record<number, Sculpt>;
+  const palms = { [-1]: new Sculpt(lit), [1]: new Sculpt(lit) } as Record<number, Sculpt>;
   const rand = mulberry(31337);
   const seats: CrowdSeat[] = [];
   const hd = ARENA_HEIGHT / 2;
@@ -167,22 +170,25 @@ export function buildGoldenSurround(parent: THREE.Object3D, look: ArenaLook): Cr
       const x = sx * (GAL_X + GAL_DEPTH + 1.6 + rand() * 7);
       const z = (rand() - 0.5) * 38;
       if (Math.abs(z) < 1.8) continue;
-      house(f, x, z, 0.9 + rand() * 0.5, look, rand);
+      house(town[sx], x, z, 0.9 + rand() * 0.5, look, rand);
     }
     for (let i = 0; i < 12; i++) {
       const x = sx * (GAL_X + GAL_DEPTH + 0.8 + rand() * 7.5);
       const z = (rand() - 0.5) * 38;
       if (Math.abs(z) < 1.6) continue;
-      palm(f, x, z, 0.9 + rand() * 0.5, look, rand);
+      palm(palms[sx], x, z, 0.9 + rand() * 0.5, look, rand);
     }
   }
   const mesh = s.mesh(sculptMaterial(), "golden-galleries");
   if (mesh) parent.add(mesh);
-  const town = f.mesh(sculptMaterial(), "golden-town");
-  if (town) {
-    town.castShadow = false;
-    town.userData.dressing = "forest";
-    parent.add(town);
+  for (const sx of [-1, 1]) {
+    for (const [sc, name, tier] of [[town[sx], "golden-town", "outer"], [palms[sx], "golden-palms", "forest"]] as const) {
+      const m = sc.mesh(sculptMaterial(), name);
+      if (!m) continue;
+      m.castShadow = false;
+      m.userData.dressing = tier;
+      parent.add(m);
+    }
   }
   return seats;
 }

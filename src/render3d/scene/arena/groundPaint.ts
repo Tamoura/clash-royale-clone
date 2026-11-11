@@ -318,8 +318,8 @@ function laneDist(ax: number, ay: number): number {
   return d;
 }
 
-/** True where scatter (flowers, clover, puddles, planks) may go: clear of lanes, towers, river and kerb. */
-function openTurf(ax: number, ay: number, margin = 0.6): boolean {
+/** True where scatter (flowers, clover, puddles, planks, tufts) may go: clear of lanes, towers, river and kerb. */
+export function openTurf(ax: number, ay: number, margin = 0.6): boolean {
   if (ax < 0.7 || ay < 0.7 || ax > ARENA_WIDTH - 0.7 || ay > ARENA_HEIGHT - 0.7) return false;
   if (Math.abs(ay - RIVER_Y) < RIVER_HALF_WIDTH + 0.9) return false;
   if (laneDist(ax, ay) < LANE_HW + margin) return false;
@@ -362,8 +362,8 @@ export function floorRecipe(look: ArenaLook): FloorRecipe {
   return t.h > 0.17 && t.h < 0.45 && t.s > 0.22 ? "lawn" : "earth";
 }
 
-/** Recipes painted as mown grass (stripes, blades). */
-const GRASSY: ReadonlySet<FloorRecipe> = new Set<FloorRecipe>(["lawn", "royal", "jungle", "moss", "violet"]);
+/** Recipes painted as mown grass (stripes, blades); these also grow 3D tufts. */
+export const GRASSY: ReadonlySet<FloorRecipe> = new Set<FloorRecipe>(["lawn", "royal", "jungle", "moss", "violet"]);
 
 /** Flagstone aprons reach this far (tiles) past each tower platform. */
 export const APRON = 0.62;

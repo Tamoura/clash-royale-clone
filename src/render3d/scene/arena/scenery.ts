@@ -113,7 +113,6 @@ function roundTree(s: Sculpt, x: number, z: number, k: number, look: ArenaLook, 
   crown(-0.5 * k, 0.5 * k, 0.25 * k, 0.56 * k, leafA);
   crown(0.48 * k, 0.55 * k, 0.2 * k, 0.6 * k, leafB);
   crown(0.1 * k, 1.18 * k, -0.1 * k, 0.56 * k, leafB);
-  crown(-0.1 * k, 0.42 * k, 0.55 * k, 0.5 * k, tone(look.tree.leafB, 1.2, 1.05));
 }
 
 /** A pine: tiers of drooping cones, each tier lighter toward its rim. */
@@ -304,10 +303,128 @@ function terrace(s: Sculpt, sx: number, zc: number, len: number, cloth: number, 
  * Build the classic surround into `parent`; returns the terrace crowd seats.
  * `phoneReach` is how far past the court a portrait phone sees (bushes there).
  */
+/** Outer-ring theme per look (art bible section 4). */
+export type OuterTheme = "village" | "chalets" | "spires" | "basalt" | "crystal" | "city";
+export const OUTER_THEMES: Readonly<Record<string, OuterTheme>> = {
+  meadow: "village", swamp: "village", jungle: "village", workshop: "village", royal: "village",
+  snow: "chalets", ice: "chalets", bone: "spires", forge: "basalt", mystic: "crystal", neon: "city",
+};
+
+/** Where the outer ring's set pieces stand: clear of the river, spread along the side. */
+const OUTER_SPOTS: ReadonlyArray<readonly [number, number]> = [
+  [17.6, -13.5], [19.6, -10.2], [17.4, -7.2], [19.8, -4.6], [17.9, 5.0], [20.0, 8.2], [17.5, 11.0], [19.4, 14.2],
+];
+
+/** A cottage: cream walls, a gabled roof in an earthy (never team) colour, a door and a window. */
+function cottage(s: Sculpt, x: number, z: number, k: number, roof: number, wall: number, rand: () => number): void {
+  const w = 1.5 * k;
+  const d = 1.2 * k;
+  const h = 0.9 * k;
+  s.box(w, h, d, wall, x, h / 2 - 0.05, z, 0, (_x, y) => 0.72 + 0.28 * smooth(0, h, y));
+  const prism = new THREE.CylinderGeometry(d * 0.62, d * 0.62, w + 0.2, 3, 1);
+  prism.rotateZ(Math.PI / 2);
+  prism.rotateX(Math.PI / 6);
+  prism.scale(1, 0.75, 1);
+  s.add(prism, roof, x, h + d * 0.22, z, 0, lit);
+  s.box(0.24 * k, 0.42 * k, 0.03, 0x6b4520, x - w * 0.2, 0.18 * k, z + d / 2 + 0.01, 0, () => 1);
+  s.box(0.24 * k, 0.2 * k, 0.03, 0x37506e, x + w * 0.22, h * 0.55, z + d / 2 + 0.01, 0, () => 1);
+  if (rand() < 0.5) s.box(0.16 * k, 0.4 * k, 0.16 * k, tone(wall, 0.8), x + w * 0.3, h + d * 0.4, z - d * 0.1, 0, lit);
+}
+
+/** A windmill: a tapered tower, a cap and four sails facing the camera. */
+function windmill(s: Sculpt, x: number, z: number, k: number, look: ArenaLook): void {
+  s.cyl(0.42 * k, 0.62 * k, 2.4 * k, 0xece2cc, x, 1.15 * k, z, 10, (_x, y) => 0.72 + 0.3 * smooth(0, 2.4 * k, y));
+  s.add(new THREE.ConeGeometry(0.55 * k, 0.6 * k, 10), 0x8a5a3a, x, 2.65 * k, z, 0, lit);
+  for (let i = 0; i < 4; i++) {
+    const g = new THREE.BoxGeometry(0.2 * k, 1.5 * k, 0.03);
+    g.translate(0, 0.8 * k, 0);
+    g.rotateZ((i * Math.PI) / 2 + 0.4);
+    s.add(g, 0xf3ead6, x, 2.2 * k, z + 0.62 * k, 0, () => 1);
+  }
+  s.box(0.24 * k, 0.4 * k, 0.03, 0x6b4520, x, 0.2 * k, z + 0.6 * k, 0, () => 1);
+  void look;
+}
+
+/** A small orchard: two rows of round fruit trees. */
+function orchard(s: Sculpt, x: number, z: number, look: ArenaLook, rand: () => number): void {
+  for (let r = 0; r < 2; r++) {
+    for (let c = 0; c < 3; c++) {
+      const tx = x + (c - 1) * 1.1;
+      const tz = z + r * 1.1;
+      s.cyl(0.07, 0.1, 0.5, look.tree.trunk, tx, 0.25, tz, 6);
+      const crown = new THREE.IcosahedronGeometry(0.45, 1);
+      s.add(crown, tone(look.tree.leafB, 1.05), tx, 0.8, tz, rand() * 3, (_x, y) => 0.7 + 0.4 * smooth(0.4, 1.2, y));
+      for (let f = 0; f < 3; f++) s.add(new THREE.SphereGeometry(0.06, 5, 4), rand() < 0.5 ? 0xe53935 : 0xf2a03a, tx + (rand() - 0.5) * 0.6, 0.85 + rand() * 0.25, tz + 0.35);
+    }
+  }
+}
+
+/** A market stall with a neutral striped awning (no team colours off the court). */
+function marketStall(s: Sculpt, x: number, z: number, stripe: number, rand: () => number): void {
+  s.box(1.3, 0.45, 0.6, 0x8a5a2a, x, 0.22, z, 0, lit);
+  for (let i = 0; i < 4; i++) s.add(new THREE.SphereGeometry(0.1, 6, 4), [0xf2c14e, 0x7cb342, 0xe8a33a][Math.floor(rand() * 3)], x - 0.45 + i * 0.3, 0.5, z);
+  for (const dx of [-0.6, 0.6]) s.cyl(0.03, 0.03, 1.2, 0x6e4a28, x + dx, 0.6, z - 0.25, 5);
+  for (let i = 0; i < 5; i++) {
+    const g = new THREE.BoxGeometry(0.28, 0.04, 0.9);
+    g.rotateX(-0.3);
+    s.add(g, i % 2 ? 0xf3ead6 : stripe, x - 0.56 + i * 0.28, 1.25, z, 0, lit);
+  }
+}
+
+/** One outer-ring set piece of `theme` at (x, z). */
+function outerPiece(s: Sculpt, theme: OuterTheme, i: number, x: number, z: number, look: ArenaLook, rand: () => number): void {
+  const roofs = [0x9a5a3a, 0x7a4a32, 0x8c6a3a, 0x5a6a7a];
+  switch (theme) {
+    case "village":
+      if (i === 2) windmill(s, x, z, 1.0, look);
+      else if (i === 5) orchard(s, x, z, look, rand);
+      else if (i === 3 || i === 4) marketStall(s, x - 0.8, z + 0.8, [0x2e7d32, 0xf2a03a, 0x8e44ad][i % 3], rand);
+      else cottage(s, x, z, 0.9 + rand() * 0.3, roofs[i % roofs.length], 0xf0e6d0, rand);
+      break;
+    case "chalets":
+      cottage(s, x, z, 0.95 + rand() * 0.3, 0xf4f8fc, 0x9a6a3a, rand);
+      pineTree(s, x + 1.3, z - 0.8, 1.1, look);
+      s.add(new THREE.ConeGeometry(0.42, 0.5, 9), 0xf4f8fc, x + 1.3, 2.05, z - 0.8);
+      break;
+    case "spires":
+      for (let k = 0; k < 3; k++) {
+        const g = new THREE.ConeGeometry(0.5 - k * 0.1, 2.2 + k * 0.8, 6);
+        s.add(g, tone(look.rock, 0.9 + k * 0.08), x + (k - 1) * 0.7, (2.2 + k * 0.8) / 2, z + (k % 2) * 0.5, rand() * 3, (_x, y) => 0.7 + 0.35 * smooth(0, 3, y));
+      }
+      break;
+    case "basalt":
+      for (let k = 0; k < 4; k++) {
+        const g = new THREE.CylinderGeometry(0.42, 0.5, 1.2 + k * 0.5, 6);
+        s.add(g, tone(0x2e2628, 0.9 + rand() * 0.2), x + (k - 1.5) * 0.75, (1.2 + k * 0.5) / 2, z + (k % 2) * 0.4, rand(), lit);
+      }
+      s.box(1.0, 0.7, 0.8, 0x3a3236, x, 0.35, z + 1.2, 0, lit);
+      s.box(0.5, 0.25, 0.04, 0xff8a3a, x, 0.35, z + 1.61, 0, () => 1);
+      break;
+    case "crystal":
+      for (let k = 0; k < 4; k++) {
+        const g = new THREE.OctahedronGeometry(0.4);
+        g.scale(0.7, 2.4 + k * 0.6, 0.7);
+        s.add(g, k % 2 ? 0xc8a8ff : 0x9a7ae0, x + (k - 1.5) * 0.55, 0.9 + k * 0.25, z + (k % 2) * 0.4, rand(), lit);
+      }
+      break;
+    case "city": {
+      const h = 2.2 + rand() * 2.4;
+      s.box(1.4, h, 1.2, 0x2a2f48, x, h / 2, z, 0, lit);
+      for (let r = 0; r < Math.floor(h / 0.5); r++) {
+        s.box(1.1, 0.12, 0.03, r % 2 ? 0x59d6ff : 0xff6ad8, x, 0.4 + r * 0.5, z + 0.61, 0, () => 1);
+      }
+      break;
+    }
+  }
+}
+
 export function buildClassicScenery(parent: THREE.Object3D, look: ArenaLook): CrowdSeat[] {
   const s = new Sculpt(lit);
-  /** The forest, bushes, boulders and patches: a separate mesh that casts no shadow. */
-  const f = new Sculpt(lit);
+  // The forest and the outer ring, per side: off-screen on a portrait phone
+  // (frustum-culled whole), and they never cast (their shadows would fall off
+  // the court, and the per-frame troop-shadow pass would redraw them).
+  const forest = { [-1]: new Sculpt(lit), [1]: new Sculpt(lit) } as Record<number, Sculpt>;
+  const outer = { [-1]: new Sculpt(lit), [1]: new Sculpt(lit) } as Record<number, Sculpt>;
   const rand = mulberry(20261111);
   const seats: CrowdSeat[] = [];
   const hw = ARENA_WIDTH / 2;
@@ -326,9 +443,10 @@ export function buildClassicScenery(parent: THREE.Object3D, look: ArenaLook): Cr
   // darker turf further out, so the surround is not one flat green.
   const apron = tone(look.apron, 1.0, 1.0);
   const patch = (x: number, z: number, rx: number, rz: number, c: number): void => {
-    const g = new THREE.CylinderGeometry(1, 1, 0.012, 18);
+    const g = new THREE.CircleGeometry(1, 14);
+    g.rotateX(-Math.PI / 2);
     g.scale(rx, 1, rz);
-    f.add(g, c, x, -0.052, z, rand() * 3, () => 1);
+    forest[Math.sign(x) || 1].add(g, c, x, -0.052, z, rand() * 3, () => 1);
   };
   for (const sx of [-1, 1]) {
     for (let i = 0; i < 14; i++) {
@@ -343,29 +461,34 @@ export function buildClassicScenery(parent: THREE.Object3D, look: ArenaLook): Cr
       if (Math.abs(z) < 1.9) continue; // keep the river mouth clear
       const x = sx * (hw + 1.02 + rand() * 0.2);
       const roll = rand();
-      if (roll < 0.55) bush(f, x, z, 0.7 + rand() * 0.45, look, rand);
-      else if (roll < 0.8) boulder(f, x, z, 0.7 + rand() * 0.5, look, rand);
+      if (roll < 0.55) bush(s, x, z, 0.7 + rand() * 0.45, look, rand);
+      else if (roll < 0.8) boulder(s, x, z, 0.7 + rand() * 0.5, look, rand);
       else {
         for (let k = 0; k < 4; k++) {
-          f.add(new THREE.SphereGeometry(0.09, 6, 5), [0xffffff, 0xfff176, 0xf48fb1][k % 3], x + (rand() - 0.5) * 0.5, 0.05, z + (rand() - 0.5) * 0.7, 0, () => 1);
+          s.add(new THREE.SphereGeometry(0.09, 6, 5), [0xffffff, 0xfff176, 0xf48fb1][k % 3], x + (rand() - 0.5) * 0.5, 0.05, z + (rand() - 0.5) * 0.7, 0, () => 1);
         }
       }
     }
     // Reeds and a boulder where the river leaves the court.
-    boulder(f, sx * (hw + 1.2), -1.7, 1.0, look, rand);
-    boulder(f, sx * (hw + 1.5), 1.75, 0.8, look, rand);
+    boulder(s, sx * (hw + 1.2), -1.7, 1.0, look, rand);
+    boulder(s, sx * (hw + 1.5), 1.75, 0.8, look, rand);
   }
 
   // The forest edge: clusters that thicken away from the court. Kept clear
   // of the terraces' front so their shadows stay off the playfield.
   const pine = look.tree.kind === "pine";
+  const theme = OUTER_THEMES[look.id] ?? "village";
   for (const sx of [-1, 1]) {
+    const f = forest[sx];
+    OUTER_SPOTS.forEach(([ox, oz], i) => outerPiece(outer[sx], theme, i, sx * ox, oz * (sx > 0 ? 1 : -1), look, rand));
     const inner = hw + 7.9;
-    for (let i = 0; i < 46; i++) {
+    for (let i = 0; i < 40; i++) {
       const band = rand();
       const x = sx * (inner + band * band * 9 + rand() * 1.5);
       const z = (rand() - 0.5) * 46;
       if (Math.abs(z) < 2.4) continue; // the river runs on through the trees
+      // Leave the outer ring's set pieces standing in clearings.
+      if (OUTER_SPOTS.some(([ox, oz]) => Math.abs(Math.abs(x) - ox) < 1.6 && Math.abs(z - oz * sx) < 1.6)) continue;
       const k = 0.95 + rand() * 0.75 + band * 0.3;
       if (pine && rand() < 0.45) pineTree(f, x, z, k * 1.15, look);
       else roundTree(f, x, z, k, look, rand);
@@ -380,13 +503,19 @@ export function buildClassicScenery(parent: THREE.Object3D, look: ArenaLook): Cr
 
   const mesh = s.mesh(sculptMaterial(), "classic-scenery");
   if (mesh) parent.add(mesh);
-  // The forest's shadows would fall off the court: it receives, never casts,
-  // so the per-frame shadow pass (troop shadows) never redraws it.
-  const forest = f.mesh(sculptMaterial(), "classic-forest");
-  if (forest) {
-    forest.castShadow = false;
-    forest.userData.dressing = "forest";
-    parent.add(forest);
+  for (const sx of [-1, 1]) {
+    const fm = forest[sx].mesh(sculptMaterial(), "classic-forest");
+    if (fm) {
+      fm.castShadow = false;
+      fm.userData.dressing = "forest";
+      parent.add(fm);
+    }
+    const om = outer[sx].mesh(sculptMaterial(), "outer-ring");
+    if (om) {
+      om.castShadow = false;
+      om.userData.dressing = "outer";
+      parent.add(om);
+    }
   }
   return seats;
 }

@@ -19,6 +19,7 @@ import { skyHorizon } from "../sky";
 import { buildAmbient, disposeAmbient, updateAmbient, type Ambient } from "./ambient";
 import { buildBackdrop, type Backdrop } from "./backdrop";
 import { buildClassicBridges } from "./bridges";
+import { buildTufts } from "./tufts";
 import { makeCrowd, poseCrowd, type Crowd, type CrowdSeat } from "./crowd";
 import { groundTexture, hashString } from "./groundPaint";
 import { LightPools, type LightSpot } from "./lightPools";
@@ -433,6 +434,8 @@ export function buildArena(b: Battle3D): void {
       b.arenaGroup.add(strip);
     }
   }
+  const tufts = buildTufts(LOOK);
+  if (tufts) b.arenaGroup.add(tufts);
   const lights: LightSpot[] = [];
   const seats = decorate(b, lights);
 
@@ -728,4 +731,11 @@ export function applyArenaQuality(b: Battle3D, level: QualityLevel): void {
   const art = ART.get(b);
   if (!art) return;
   art.level = level;
+  // Tufts on the top three levels; the outer dressing (forest, town) from
+  // 'full' and 'inner' down to nothing at 'min' is kept: L4 must still look
+  // finished, and those meshes cast no shadow.
+  b.arenaGroup.traverse((o) => {
+    if (o.userData.dressing === "tufts") o.visible = level.tufts;
+    else if (o.userData.dressing === "outer") o.visible = level.dressing === "full";
+  });
 }
