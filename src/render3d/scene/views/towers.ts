@@ -619,13 +619,10 @@ function startCollapse(d: DyingView, rig: TowerRig): Collapse {
   for (const name of CHUNK_ORDER) {
     let piece: THREE.Object3D | null;
     if (name === "crew") {
+      // The crew tumbles about its own feet (the mount's pivot).
       piece = rig.mount;
-      BOX.setFromObject(piece);
-      root.updateMatrixWorld(true);
-      if (BOX.isEmpty()) continue;
-      BOX.applyMatrix4(P.set(0, 0, 0) && new THREE.Matrix4().copy(root.matrixWorld).invert());
-      BOX.getCenter(CENTER);
-      BOX.getSize(SIZE);
+      CENTER.copy(piece.position);
+      SIZE.set(0.6, rig.crew.height, 0.6);
     } else {
       const chunk = CHUNK_OF[name];
       piece = chunk ? chunkPiece(rig.keep, chunk) : null;
