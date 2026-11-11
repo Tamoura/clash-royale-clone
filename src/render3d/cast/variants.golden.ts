@@ -12,7 +12,7 @@
  */
 import * as THREE from "three";
 import { THEME } from "../theme";
-import { ball, beard, box, braids, cap, cone, crown, cyl, headCloth, inHand, musket, pack, quiver, scimitar, torus, turban, turbanHelmet, x, HEAD_TOP } from "./props";
+import { ball, beard, box, braids, cap, capelet, cone, crown, cyl, dressTeamFront, drape, headCloth, inHand, musket, pack, quiver, scimitar, tabard, teamFront, torus, turban, turbanHelmet, x, HEAD_TOP } from "./props";
 import type { Variant } from "./types";
 
 const TURQ = THEME.turquoise;
@@ -23,6 +23,22 @@ const STEEL = 0xc3ccd6;
 const BRONZE = 0xb8823a;
 const EMERALD = 0x1f9e6a;
 const PLUM = 0x7a2a6a;
+/** A veil's sand silk: warm and below the bloom threshold, never a white board. */
+const VEIL = 0xd6bc86;
+
+/**
+ * A veil of real cloth: a tapered shell hugging the back of the head from
+ * under the circlet to the nape (clear of the team cape below), flaring a
+ * little like silk. `back` is how far the head reaches behind its centre.
+ */
+const veil = (back = 0.5): ReturnType<typeof x>[] => {
+  const arc: [number, number] = [Math.PI - 1.45, Math.PI + 1.45];
+  return [
+    x("head", VEIL, () => drape({ top: HEAD_TOP - 0.3, bottom: 1.3, rx: [0.47, 0.53], rz: [back * 0.96, back * 1.06], z: -0.02, arc, thick: 0.05, seg: 12, rows: 4, belly: 0.1 })),
+    // A gold hem along its lower edge.
+    x("head", GOLD, () => drape({ top: 1.37, bottom: 1.29, rx: [0.555, 0.56], rz: [back * 1.1, back * 1.11], z: -0.02, arc, thick: 0.05, seg: 12, rows: 1 })),
+  ];
+};
 
 /** A bow arc in the shooting hand, out past the shoulders. */
 const bowArc = (): THREE.BufferGeometry =>
@@ -106,14 +122,14 @@ export const GOLDEN: Record<string, Variant> = {
     paint: { "1,0": 0x4a3020, "0,1": TURQ, "1,1": "team" },
     extras: [
       ...crown(GOLD, 0.32, HEAD_TOP - 0.04, EMERALD),
-      x("head", CREAM, () => box(0.74, 0.7, 0.1, 0, 1.62, -0.66, -0.3)),
+      ...veil(),
       inHand(0x8a5a2e, bowArc),
     ],
     idle: "Idle",
     walk: "Walking_A",
     attack: "1H_Ranged_Shoot",
     strike: 0.3,
-    back: ["gold circlet", "cream veil down the back", "bow"],
+    back: ["gold circlet", "sand silk veil over the back of the head", "bow"],
   },
   executioner: {
     file: "barbarian",
@@ -203,7 +219,7 @@ export const GOLDEN: Record<string, Variant> = {
     paint: { "1,0": 0x4a3020, "0,1": 0x2a7f7a, "1,1": "team", "3,0": GOLD },
     extras: [
       ...musket(0x6d4c41, 0x9aa3ad, GOLD),
-      x("head", CREAM, () => cyl(0.36, 0.44, 0.82, 0, HEAD_TOP + 0.3, -0.12, 14, -0.3)),
+      x("head", CREAM, () => cyl(0.36, 0.44, 0.66, 0, HEAD_TOP + 0.22, -0.1, 14, -0.3)),
       x("head", GOLD, () => torus(0.44, 0.05, 0, HEAD_TOP - 0.06, 0, Math.PI / 2, 16)),
       ...beard(0x4a3020, 0.5),
     ],
@@ -274,12 +290,12 @@ export const GOLDEN: Record<string, Variant> = {
     paint: { "0,1": "team", "3,0": 0x8a93a0, "7,0": 0xb4c0d0, "1,0": 0x4a3020 },
     extras: [
       x("head", 0x8a93a0, () => cap(0.54, 0.5, 0, 1.94, 0, 1.25)),
-      x("head", 0x8a93a0, () => cone(0.08, 0.4, 0, HEAD_TOP + 0.34, 0, 0, 0, 8)),
+      x("head", 0x8a93a0, () => cone(0.08, 0.3, 0, HEAD_TOP + 0.3, 0, 0, 0, 8)),
       x("head", 0x8a93a0, () => box(0.08, 0.36, 0.06, 0, 1.86, 0.52)),
       inHand(0x6d4c41, () => cyl(0.06, 0.07, 2.8, 0, 1.0, 0, 8)),
       inHand(0xd8e2ec, () => cone(0.12, 0.5, 0, 2.6, 0, 0, 0, 8)),
     ],
-    mount: { kind: "horse", coat: 0x8a93a0, mane: 0x3a3f4a, hoof: 0x2a2a30, cloth: "team", seat: 1.42, seatZ: -0.05, size: 1.28 },
+    mount: { kind: "horse", coat: 0x8a93a0, mane: 0x3a3f4a, hoof: 0x2a2a30, cloth: "team", seat: 1.42, seatZ: -0.05, size: 1.18 },
     idle: "Idle",
     walk: "2H_Melee_Idle",
     attack: "1H_Melee_Attack_Stab",
@@ -444,12 +460,25 @@ export const GOLDEN: Record<string, Variant> = {
     props: ["Mage_Cape"],
     team: /Cape/,
     paint: { "0,1": TURQ, "1,1": TURQ, "7,1": 0x10605e, "1,0": 0x4a3020, "2,1": "team", "5,0": GOLD },
-    extras: [...crown(GOLD, 0.3, HEAD_TOP - 0.02, EMERALD), x("head", CREAM, () => box(0.7, 0.66, 0.1, 0, 1.62, -0.66, -0.3))],
+    extras: [...crown(GOLD, 0.3, HEAD_TOP - 0.02, EMERALD), ...veil(0.7)],
     idle: "Idle",
     walk: "Walking_A",
     attack: "Spellcast_Shoot",
     strike: 0.45,
-    back: ["gold circlet", "cream veil", "team cape"],
+    back: ["gold circlet", "sand silk veil", "team cape"],
   },
 };
 GOLDEN["skeleton-army"] = GOLDEN.skeletons;
+
+/**
+ * Every variant also wears its side on the FRONT (see props.teamFront). The
+ * War Drummer's drum covers his belly: a team cloth wraps the drum's barrel
+ * as well as his tabard. A weapon held across the belly adds a capelet.
+ */
+dressTeamFront(GOLDEN, {
+  witch: [...capelet(), ...tabard(), x("hips", "team", () => cyl(0.475, 0.475, 0.42, 0, 1.05, 0.55, 18, Math.PI / 2), { cloth: true })],
+  "mega-knight": [...capelet(), ...teamFront(GOLDEN["mega-knight"])],
+  // A weapon held across the belly hides the tabard or sash: a team capelet shows on the shoulders too.
+  executioner: [...capelet(), ...teamFront(GOLDEN.executioner)],
+  "magic-archer": [...capelet(), ...teamFront(GOLDEN["magic-archer"])],
+});

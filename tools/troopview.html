@@ -168,6 +168,59 @@
         document.body.appendChild(el);
       });
       window.__cards = cards.map((c) => ({ id: c, back: variantOf(c, edition)?.back }));
+      // ?measure=1: how much of each unit's body wears its side, front and back, through the battle camera with the
+      // lean (no disc): the share of the unit's pixels in its team's hue family (signature colours never are).
+      if (q.get("measure")) {
+        const MW = 120, MH = 150;
+        const mr = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
+        mr.setPixelRatio(1);
+        mr.setSize(MW, MH);
+        mr.outputColorSpace = THREE.SRGBColorSpace;
+        mr.toneMapping = THREE.ACESFilmicToneMapping;
+        const gl = mr.getContext();
+        const px = new Uint8Array(MW * MH * 4);
+        const bg = new THREE.Color(0x86b85a);
+        const hue = { player: 217, enemy: 1 };
+        const out = {};
+        for (const card of cards) {
+          const row = (out[card] = {});
+          for (const [label, team, yaw] of [["theirs front", "enemy", 0], ["yours front", "player", 0], ["theirs behind", "enemy", Math.PI], ["yours behind", "player", Math.PI]]) {
+            const u = makeKitTroop(card, team, edition, false);
+            if (!u) continue;
+            const one = new THREE.Scene();
+            one.background = bg;
+            for (const l of scene.children) if (l.isLight) one.add(l.clone());
+            const root = new THREE.Group();
+            root.rotation.y = yaw;
+            const lean = new THREE.Group();
+            leanQuaternion(DIR.x, DIR.z, yaw, lean.quaternion);
+            lean.add(u.group);
+            root.add(lean);
+            one.add(root);
+            for (let f = 0; f < 12; f++) animateKitTroop(u, { moving: false, attacking: false, cooldown: 1, hitSpeed: 1.2, rate: 1, frozen: false }, 0.033);
+            const half = 2.4;
+            const c3 = new THREE.OrthographicCamera(-half, half, (MH / MW) * half, -(MH / MW) * half, -100, 200);
+            const mid = new THREE.Vector3(0, 1.7, 0);
+            c3.position.copy(mid).addScaledVector(DIR, -60);
+            c3.lookAt(mid);
+            mr.render(one, c3);
+            gl.readPixels(0, 0, MW, MH, gl.RGBA, gl.UNSIGNED_BYTE, px);
+            let body = 0, tm = 0;
+            const hsl = { h: 0, s: 0, l: 0 };
+            const c = new THREE.Color();
+            for (let i = 0; i < px.length; i += 4) {
+              const r = px[i], g = px[i + 1], b = px[i + 2];
+              if (Math.abs(r - 0x86) + Math.abs(g - 0xb8) + Math.abs(b - 0x5a) < 18) continue;
+              body++;
+              c.setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace).getHSL(hsl, THREE.SRGBColorSpace);
+              const d = Math.abs(hsl.h * 360 - hue[team]) % 360;
+              if (Math.min(d, 360 - d) <= 14 && hsl.s > 0.4 && hsl.l > 0.22 && hsl.l < 0.85) tm++;
+            }
+            row[label] = body ? Math.round((tm / body) * 1000) / 10 : 0;
+          }
+        }
+        window.__measure = out;
+      }
       window.__done = true;
     </script>
   </body>

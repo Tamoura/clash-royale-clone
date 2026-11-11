@@ -4,13 +4,13 @@
  * none) and weapon (sword, axe, hammer, spear, bow, staff, none) maps onto
  * kit props or our primitives; the player's outfit and trim colours become
  * the signature palette, nudged out of the team hue families if they fall
- * in one; the team colour goes on the cape. Flying champions stay on the
+ * in one; the team colour goes on the cape and a tabard or sash. Flying champions stay on the
  * procedural rig (an explicit fallback: the cast has no wings).
  */
 import * as THREE from "three";
 import type { ChampionDef, Headgear, WeaponKind } from "../../game/customcard";
 import { THEME } from "../theme";
-import { ball, box, crown, cyl, inHand, scimitar, turban, turbanHelmet, x, HEAD_TOP } from "./props";
+import { ball, box, crown, cyl, inHand, scimitar, teamFront, turban, turbanHelmet, x, HEAD_TOP } from "./props";
 import { inTeamFamily, teamHues, TEAM_HUE_SPREAD } from "./rules";
 import type { Edition, Extra, FileId, Swatch, Variant } from "./types";
 
@@ -116,14 +116,16 @@ export function championVariant(def: ChampionDef, edition: Edition): Variant | n
   if (OUTFIT[file]) paint[OUTFIT[file]!] = body;
   if (TRIM[file]) paint[TRIM[file]!] = trim;
   if (file === "rogue_hooded") paint["1,1"] = body;
+  const allProps = [...props, ...w.props];
   return {
     file,
     scale: def.count >= 4 ? 0.72 : def.count >= 2 ? 0.85 : 0.98,
-    props: [...props, ...w.props],
+    props: allProps,
     team: /Cape/,
     paint,
     hairBack: file === "rogue_hooded" ? "1,1" : undefined,
-    extras: [...headgearExtras(look.headgear, body, trim, edition), ...w.extras],
+    // Its side shows from the front too (a team tabard or sash), as on every cast unit.
+    extras: [...headgearExtras(look.headgear, body, trim, edition), ...w.extras, ...teamFront({ file, props: allProps, team: /Cape/ })],
     idle: "Idle",
     walk: "Walking_A",
     attack: ATTACK[look.weapon] ?? "1H_Melee_Attack_Chop",

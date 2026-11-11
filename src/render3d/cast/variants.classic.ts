@@ -9,7 +9,7 @@
  * outside both team hue families (see rules.ts).
  */
 import * as THREE from "three";
-import { ball, beard, box, braids, cap, cone, crown, cyl, inHand, musket, pack, quiver, torus, x, HEAD_TOP } from "./props";
+import { ball, beard, box, braids, cap, capelet, cone, crown, cyl, dressTeamFront, inHand, musket, pack, quiver, sash, tabard, teamFront, torus, x, HEAD_TOP } from "./props";
 import type { Variant } from "./types";
 
 const GOLD = 0xf2c65a;
@@ -64,20 +64,19 @@ export const CLASSIC: Record<string, Variant> = {
     cape: 0.5,
     stretch: 1.16,
     headScale: 0.94,
-    paint: { "0,1": 0x8a6a4a, "1,1": 0x8a6a4a, "1,0": 0xc8701f, "7,0": 0x6a4a32, "2,1": 0xe8dcc0 },
-    // A ginger fringe from ear to ear and a big ginger beard: from behind a bare head reads as an egg.
+    // Pale, not orange: the bald scalp is most of what you see of your own Giant.
+    skin: 0xebb592,
+    paint: { "0,1": 0x8a6a4a, "1,1": 0x8a6a4a, "1,0": 0x8c4f12, "7,0": 0x6a4a32, "2,1": 0xe8dcc0 },
+    // A deep auburn fringe from ear to ear and a big ginger beard: from behind a bare head reads as an egg.
     extras: [
-      x("head", 0xc8701f, () => new THREE.SphereGeometry(0.58, 16, 6, Math.PI * 0.9, Math.PI * 1.2, Math.PI * 0.34, Math.PI * 0.38).translate(0, 1.7, 0.03), { open: true }),
+      x("head", 0x8c4f12, () => new THREE.SphereGeometry(0.58, 16, 6, Math.PI * 0.9, Math.PI * 1.2, Math.PI * 0.34, Math.PI * 0.38).translate(0, 1.7, 0.03), { open: true }),
       ...beard(0xc8701f, 1.05),
-      // A leather belt with a brass buckle.
-      x("hips", 0x5a3a22, () => torus(0.5, 0.07, 0, 1.0, 0.02, Math.PI / 2, 18)),
-      x("hips", 0xe2b23c, () => box(0.18, 0.16, 0.06, 0, 1.0, 0.52)),
     ],
     idle: "Unarmed_Idle",
     walk: "Walking_A",
     attack: "Unarmed_Melee_Attack_Punch_A",
     strike: 0.4,
-    back: ["bald head ringed by a ginger fringe", "broad bare shoulders under a short team mantle", "beard poking out past the cheeks"],
+    back: ["pale bald head ringed by a dark auburn fringe", "broad bare shoulders under a short team mantle", "beard poking out past the cheeks", "team sash"],
   },
   valkyrie: {
     file: "rogue",
@@ -307,8 +306,8 @@ Object.assign(CLASSIC, {
     extras: [
       // A leather executioner's hood with a tall peak.
       x("head", 0x4a3a35, () => cap(0.58, 0.62, 0, 1.78, 0, 1.15)),
-      x("head", 0x4a3a35, () => cone(0.24, 0.62, 0, HEAD_TOP + 0.34, -0.12, 0, -0.35, 8)),
-      x("head", 0xd8e2ec, () => ball(0.06, 0, HEAD_TOP + 0.66, -0.25, 1, 1, 1, 6)),
+      x("head", 0x4a3a35, () => cone(0.24, 0.48, 0, HEAD_TOP + 0.27, -0.14, 0, -0.45, 8)),
+      x("head", 0xd8e2ec, () => ball(0.06, 0, HEAD_TOP + 0.48, -0.25, 1, 1, 1, 6)),
     ],
     idle: "2H_Melee_Idle",
     walk: "Walking_A",
@@ -373,12 +372,12 @@ Object.assign(CLASSIC, {
       inHand(0x8a93a0, () => box(0.32, 0.26, 0.5, 0, 0.9, 0)),
       ...beard(0x3a2a20, 0.6),
     ],
-    mount: { kind: "hog", coat: 0x9a6a4a, mane: 0x4a3226, hoof: 0x3a2a20, cloth: "team", seat: 1.12, seatZ: -0.05, size: 1.3 },
+    mount: { kind: "hog", coat: 0xb07862, mane: 0x4a3226, hoof: 0x3a2a20, cloth: "team", seat: 1.1, seatZ: -0.05, size: 1.3 },
     idle: "Idle",
     walk: "2H_Melee_Idle",
     attack: "1H_Melee_Attack_Chop",
     strike: 0.42,
-    back: ["tall dark mohawk", "war hammer raised past the body", "brown hog under a team saddle cloth"],
+    back: ["tall dark mohawk", "war hammer raised past the body", "round hog with a curly tail under a team saddle cloth"],
   },
   "mega-knight": {
     file: "knight",
@@ -484,3 +483,18 @@ CLASSIC.duchess = {
   back: ["small gold crown", "dark hair bun", "team cape"],
 };
 
+/**
+ * Every variant also wears its side on the FRONT (the cape hides behind the
+ * body when a unit walks toward the camera): a team tabard or sash, see
+ * props.teamFront. The skeletons' team cloak already wraps their front; the
+ * Giant's sash sits high, under his beard, where his belt was.
+ */
+dressTeamFront(CLASSIC, {
+  skeletons: [],
+  giant: sash(0.92),
+  // A weapon held across the belly hides the tabard or sash: a team capelet shows on the shoulders too.
+  "mini-pekka": [...capelet(), ...tabard({ back: true })],
+  pekka: [...capelet(), ...tabard({ back: true })],
+  executioner: [...capelet(), ...teamFront(CLASSIC.executioner)],
+  "magic-archer": [...capelet(), ...teamFront(CLASSIC["magic-archer"])],
+});

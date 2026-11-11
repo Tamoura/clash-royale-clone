@@ -10,6 +10,7 @@
  */
 import * as THREE from "three";
 import { registerInkGeometry, smoothedNormals } from "../outlineMaterial";
+import { extraColor } from "./bake";
 import { box, cone, cyl, ball, torus } from "./props";
 import type { Paint } from "./types";
 
@@ -44,12 +45,12 @@ interface Part {
 /** Leg pivots (x, y, z) of each kind: front left, front right, back left, back right. */
 const LEG_AT: Record<MountKind, [number, number, number][]> = {
   horse: [[0.2, 0.95, 0.55], [-0.2, 0.95, 0.55], [0.2, 0.95, -0.52], [-0.2, 0.95, -0.52]],
-  hog: [[0.28, 0.55, 0.42], [-0.28, 0.55, 0.42], [0.28, 0.55, -0.42], [-0.28, 0.55, -0.42]],
+  hog: [[0.22, 0.46, 0.34], [-0.22, 0.46, 0.34], [0.22, 0.46, -0.34], [-0.22, 0.46, -0.34]],
   camel: [[0.22, 1.2, 0.55], [-0.22, 1.2, 0.55], [0.22, 1.2, -0.55], [-0.22, 1.2, -0.55]],
 };
 const HEAD_AT: Record<MountKind, [number, number, number]> = {
   horse: [0, 1.25, 0.72],
-  hog: [0, 0.78, 0.62],
+  hog: [0, 0.8, 0.6],
   camel: [0, 1.45, 0.78],
 };
 
@@ -80,21 +81,28 @@ function partsOf(spec: MountSpec): Part[] {
       add(LEGS[i], hoof, cyl(0.1, 0.11, 0.14, x, y - 0.86, z, 8));
     });
   } else if (spec.kind === "hog") {
-    add(BODY, coat, ball(0.42, 0, 0.78, 0, 0.95, 0.85, 1.3, 14));
-    add(BODY, mane, box(0.12, 0.16, 0.9, 0, 1.12, -0.05));
-    add(BODY, coat, torus(0.07, 0.03, 0, 0.86, -0.6, 0.3, 8));
-    add(HEAD, coat, ball(0.32, 0, 0.82, 0.66, 1.0, 0.95, 1.0, 12));
-    add(HEAD, 0xd99a86, cyl(0.15, 0.15, 0.14, 0, 0.74, 0.98, 10, Math.PI / 2));
-    add(HEAD, 0xf5efe0, cone(0.04, 0.2, 0.15, 0.72, 0.98, 0, -0.6, 5));
-    add(HEAD, 0xf5efe0, cone(0.04, 0.2, -0.15, 0.72, 0.98, 0, -0.6, 5));
-    add(HEAD, coat, cone(0.1, 0.22, 0.22, 1.1, 0.6, -0.5, 0, 5));
-    add(HEAD, coat, cone(0.1, 0.22, -0.22, 1.1, 0.6, 0.5, 0, 5));
-    add(BODY, cloth, box(0.7, 0.08, 0.56, 0, 1.18, -0.05));
-    add(BODY, cloth, box(0.06, 0.32, 0.52, 0.37, 1.0, -0.05));
-    add(BODY, cloth, box(0.06, 0.32, 0.52, -0.37, 1.0, -0.05));
+    // A HOG, not a pony: a round barrel low on short thick legs, a flat pink snout disc with up-curved tusks,
+    // floppy ears over the eyes, a bristle ridge and a curly tail.
+    add(BODY, coat, ball(0.5, 0, 0.76, -0.02, 1.0, 0.8, 1.18, 14));
+    add(BODY, coat, ball(0.36, 0, 0.8, -0.38, 1.12, 1.0, 0.9, 10));
+    add(BODY, mane, box(0.1, 0.12, 0.86, 0, 1.13, -0.06));
+    add(BODY, coat, torus(0.075, 0.03, 0, 0.92, -0.66, 0.4, 8));
+    add(HEAD, coat, ball(0.34, 0, 0.8, 0.62, 1.0, 0.9, 1.0, 12));
+    add(HEAD, 0xd4a196, cyl(0.18, 0.17, 0.14, 0, 0.74, 0.94, 12, Math.PI / 2));
+    add(HEAD, 0x5a2e2a, ball(0.035, 0.06, 0.75, 1.02, 1, 1.3, 0.6, 6));
+    add(HEAD, 0x5a2e2a, ball(0.035, -0.06, 0.75, 1.02, 1, 1.3, 0.6, 6));
+    add(HEAD, 0x2a2024, ball(0.04, 0.14, 0.92, 0.88, 1, 1, 0.6, 6));
+    add(HEAD, 0x2a2024, ball(0.04, -0.14, 0.92, 0.88, 1, 1, 0.6, 6));
+    for (const s of [1, -1]) {
+      add(HEAD, 0xf2e8d2, cone(0.05, 0.26, s * 0.17, 0.8, 0.9, -s * 0.35, 0.35, 6));
+      add(HEAD, coat, new THREE.SphereGeometry(0.14, 8, 6).scale(1, 0.3, 1.35).rotateX(0.75).rotateZ(-s * 0.55).translate(s * 0.24, 1.0, 0.68));
+    }
+    add(BODY, cloth, box(0.74, 0.08, 0.56, 0, 1.15, -0.05));
+    add(BODY, cloth, box(0.06, 0.32, 0.52, 0.43, 0.98, -0.05));
+    add(BODY, cloth, box(0.06, 0.32, 0.52, -0.43, 0.98, -0.05));
     legs.forEach(([x, y, z], i) => {
-      add(LEGS[i], coat, cyl(0.12, 0.1, 0.42, x, y - 0.22, z, 8));
-      add(LEGS[i], hoof, cyl(0.11, 0.12, 0.1, x, y - 0.48, z, 8));
+      add(LEGS[i], coat, cyl(0.14, 0.12, 0.34, x, y - 0.2, z, 8));
+      add(LEGS[i], hoof, cyl(0.12, 0.13, 0.1, x, y - 0.41, z, 8));
     });
   } else {
     add(BODY, coat, ball(0.38, 0, 1.38, 0, 0.8, 0.75, 1.9, 14));
@@ -113,6 +121,13 @@ function partsOf(spec: MountSpec): Part[] {
     });
   }
   return p;
+}
+
+/** Every fixed colour a mount wears (its team cloth aside): the team-rule test checks them. */
+export function mountColors(spec: MountSpec): number[] {
+  const parts = partsOf(spec);
+  for (const p of parts) p.geo.dispose();
+  return [...new Set(parts.map((p) => p.color).filter((c): c is number => typeof c === "number"))];
 }
 
 const baked = new Map<string, { geometry: THREE.BufferGeometry; bodyCount: number }>();
@@ -141,7 +156,7 @@ function bakeMount(key: string, spec: MountSpec, tiles: number, teamTile: number
     const pos = g.getAttribute("position");
     const nor = g.getAttribute("normal");
     const team = p.color === "team" ? 1 : p.color === "teamDark" ? 2 : 0;
-    if (typeof p.color === "number") c.setHex(p.color);
+    if (typeof p.color === "number") extraColor(p.color, c);
     for (let i = 0; i < pos.count; i++) {
       const o = at + i;
       position.set([pos.getX(i), pos.getY(i), pos.getZ(i)], o * 3);

@@ -116,6 +116,20 @@ export function gradeHsl(h: number, s: number, l: number, out: { h: number; s: n
 }
 const GRADE = { h: 0, s: 0, l: 0 };
 
+/**
+ * Lightness cap of our own primitives' colours (extras, mounts): they carry
+ * no palette grade, so a cream hat or veil would otherwise land near white
+ * and bloom under the sun. Nothing on a troop is opaque white (art bible 5).
+ */
+export const EXTRA_MAX_LIGHTNESS = 0.85;
+
+/** A primitive's vertex colour from its sRGB hex, its lightness capped (EXTRA_MAX_LIGHTNESS). */
+export function extraColor(hex: number, out = new THREE.Color()): THREE.Color {
+  out.setHex(hex).getHSL(HSL, THREE.SRGBColorSpace);
+  if (HSL.l > EXTRA_MAX_LIGHTNESS) out.setHSL(HSL.h, HSL.s, EXTRA_MAX_LIGHTNESS, THREE.SRGBColorSpace);
+  return out;
+}
+
 /** Swatch key of a palette UV. */
 export function swatchOf(u: number, v: number): Swatch {
   return `${Math.min(7, Math.max(0, Math.floor(u * 8)))},${Math.min(3, Math.max(0, Math.floor(v * 4)))}`;
@@ -361,7 +375,7 @@ export function bakeVariant(key: string, v: Variant): Baked {
       remap: null,
       tile: team ? -1 : -2,
       team,
-      color: typeof x.color === "number" ? new THREE.Color().setHex(x.color) : null,
+      color: typeof x.color === "number" ? extraColor(x.color) : null,
       twoSided: x.open === true,
       flat: true,
       head: bone === HEAD_BONE && !x.fixed,
