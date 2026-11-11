@@ -38,6 +38,9 @@ const FWD = new THREE.Vector3();
 const UPV = new THREE.Vector3();
 
 /** Dome layout in camera-up units: where the fog band ends, the horizon, the zenith. */
+/** Daylight sun strength (the living sky dims it toward night). */
+const SUN_INTENSITY = 1.95;
+
 const DOME_CENTRE_U = 14.8;
 const HORIZON_AT = 1.6;
 const ZENITH_AT = 6;
@@ -220,21 +223,29 @@ function qualityIndex(b: Battle3D): number {
 export function buildLights(b: Battle3D): void {
   b.hemi = new THREE.HemisphereLight(LOOK.hemiSky, LOOK.hemiGround, LOOK.hemiIntensity);
   b.lightGroup.add(b.hemi);
-  const sun = new THREE.DirectionalLight(LOOK.sun, 1.7);
+  const sun = new THREE.DirectionalLight(LOOK.sun, SUN_INTENSITY);
   b.sun = sun;
-  sun.position.set(10, 22, 8);
+  // A low sun over the viewer's left shoulder: the faces the camera sees are
+  // lit, right-hand faces fall into cool shade, and every tower and troop
+  // throws a soft shadow to the right, across the board.
+  sun.position.set(-9, 17, 11);
   sun.castShadow = true;
   const mobile =
     b.container.clientWidth < 720 || window.matchMedia("(pointer: coarse)").matches;
   const shadowSize = mobile ? 1024 : 2048;
   sun.shadow.mapSize.set(shadowSize, shadowSize);
-  sun.shadow.camera.left = -14;
-  sun.shadow.camera.right = 14;
-  sun.shadow.camera.top = 20;
-  sun.shadow.camera.bottom = -20;
+  // The shadow frustum's vertical axis lies along the board's length, so the
+  // map's texels are spent on the court instead of its diagonal.
+  sun.shadow.camera.up.set(0, 0, -1);
+  sun.shadow.camera.left = -15;
+  sun.shadow.camera.right = 15;
+  sun.shadow.camera.top = 21;
+  sun.shadow.camera.bottom = -21;
+  sun.shadow.camera.near = 2;
   sun.shadow.camera.far = 60;
-  sun.shadow.radius = 5; // softer contact shadows
-  sun.shadow.bias = -0.0004;
+  sun.shadow.radius = 4; // soft penumbra
+  sun.shadow.bias = -0.0006;
+  sun.shadow.normalBias = 0.02;
   b.lightGroup.add(sun);
   // Cool back-rim light to separate troops from the ground and pair
   // with the material rim highlight.
@@ -294,7 +305,7 @@ export function gradeSky(b: Battle3D, dt: number): void {
   // Sun: warm daylight -> amber sunset (mid) -> cool moonlight.
   if (p < 0.5) b.sun.color.set(LOOK.sun).lerp(SUNSET, p * 2);
   else b.sun.color.copy(SUNSET).lerp(MOON, (p - 0.5) * 2);
-  b.sun.intensity = 1.7 - 0.9 * p;
+  b.sun.intensity = SUN_INTENSITY - 0.9 * p;
   b.fillLight.intensity = 0.3 - 0.15 * p;
   // Lanterns/neon: dim by day (unless the look is already a night set),
   // fully lit by night.

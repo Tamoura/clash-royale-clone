@@ -15,6 +15,7 @@ import { getPrefs, onPrefs } from "../../ui/prefs";
 import { LOOK } from "./common";
 import { setOutlinesVisible } from "../outlineMaterial";
 import { outlinesEnabled, type QualityLevel } from "../quality";
+import { ARABIC } from "../theme";
 
 /** Display-space colour grade defaults: saturation, contrast, tint, vignette. */
 const DEFAULT_GRADE = { saturation: 1.1, contrast: 1.05, tint: [1, 1, 1] as [number, number, number], vignette: 0.3 };
@@ -66,6 +67,8 @@ export function finalFragmentShader(): string {
       vec3 col = mix( vec3( l ), c.rgb, saturation );
       col = ( col - 0.5 ) * contrast + 0.5;
       col *= tint;
+      // Split tone: shadows lean cool, highlights warm (a painted, sunlit read).
+      col *= mix( vec3( 0.93, 0.98, 1.08 ), vec3( 1.045, 1.01, 0.95 ), smoothstep( 0.12, 0.82, l ) );
       vec2 d = uv - 0.5;
       col *= 1.0 - vignette * smoothstep( 0.35, 0.95, dot( d, d ) * 2.2 );
       return vec4( clamp( col, 0.0, 1.0 ), c.a );
@@ -366,12 +369,44 @@ function applyLightQuality(b: Battle3D): void {
     sun.shadow.map = null; // reallocated at the new size on the next render
     markShadowsDirty(b);
   }
+  // Real troop shadows on the top two levels: the map re-renders every frame
+  // (see sampleQuality) and every troop mesh joins or leaves the casters.
+  const dyn = dynamicShadows(b);
+  if (dynState.get(b) !== dyn) {
+    dynState.set(b, dyn);
+    b.scene.traverse((o) => {
+      if (o.userData.troopCaster) o.castShadow = dyn;
+    });
+    markShadowsDirty(b);
+  }
   // The rim is the only directional light that is neither the sun nor the fill.
   for (const light of b.lightGroup.children) {
     if ((light as THREE.DirectionalLight).isDirectionalLight && light !== sun && light !== b.fillLight) {
       light.visible = level.rimLight;
     }
   }
+}
+
+const dynState = new WeakMap<Battle3D, boolean>();
+
+/**
+ * Whether troops cast real shadows at this quality: the top level only (a
+ * full-size shadow map and full bloom). The shadow pass then draws every
+ * troop a second time each frame, so the governor's first step down sheds
+ * it; lower levels keep the static map and the blob shadows.
+ */
+export function dynamicShadows(b: Battle3D): boolean {
+  return troopShadowLevel(b.quality.level);
+}
+
+/**
+ * The level test behind dynamicShadows, for code that has no scene at hand.
+ * Classic edition only for now: its set was rebuilt to fit the per-frame
+ * shadow pass in the draw-call budget; the Golden Age set has ~50 more
+ * static casters, which would take its 12-card fight past the budget.
+ */
+export function troopShadowLevel(level: Pick<QualityLevel, "shadowSize" | "bloom">): boolean {
+  return !ARABIC && level.shadowSize >= 2048 && level.bloom >= 1;
 }
 
 /** True for one more frame after a tower stops sinking, to drop its shadow. */
@@ -384,7 +419,7 @@ const sinkingLastFrame = new WeakSet<Battle3D>();
  */
 export function sampleQuality(b: Battle3D): void {
   const sinking = b.dying.some((d) => !d.view.isTroop);
-  if (sinking || sinkingLastFrame.has(b)) markShadowsDirty(b);
+  if (sinking || sinkingLastFrame.has(b) || dynamicShadows(b)) markShadowsDirty(b);
   if (sinking) sinkingLastFrame.add(b);
   else sinkingLastFrame.delete(b);
 

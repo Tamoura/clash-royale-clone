@@ -20,6 +20,8 @@ import { buildBackdrop, type Backdrop } from "./backdrop";
 import { groundTexture, hashString } from "./groundPaint";
 import { LightPools, type LightSpot } from "./lightPools";
 import { buildRiver, type RiverHandle } from "./river";
+import { buildClassicScenery } from "./scenery";
+import { Sculpt, sculptMaterial, tone } from "../views/towerCraft";
 
 /** Everything the arena art keeps per Battle3D between frames. */
 interface ArenaArt {
@@ -183,6 +185,9 @@ export function buildCrowd(b: Battle3D, seats: Array<{ x: number; z: number; gar
   b.arenaGroup.add(bodies, heads);
 }
 
+/** Classic spectators stand this much larger, so the terraces read as people, not beads. */
+const CROWD_SCALE = 1.75;
+
 /** Seat lifts of the crowd being posed (set by buildCrowd). */
 let lifts = new Float32Array(0);
 
@@ -198,9 +203,10 @@ export function poseCrowd(b: Battle3D, t: number, count = Infinity): void {
     const seat = c.seats[i];
     const hop = t >= 0 ? Math.abs(Math.sin(t * 11 + i * 2.6)) * 0.16 : 0;
     const lift = lifts[i] ?? 0;
-    CROWD_M.makeTranslation(seat.x, 1.06 + lift + hop, seat.y);
+    const k = arabic ? 1 : CROWD_SCALE;
+    CROWD_M.makeScale(k, k, k).setPosition(seat.x, 0.93 + 0.13 * k + lift + hop, seat.y);
     c.bodies.setMatrixAt(i, CROWD_M);
-    CROWD_M.makeTranslation(seat.x, 1.28 + lift + hop, seat.y);
+    CROWD_M.makeScale(k, k, k).setPosition(seat.x, 0.93 + 0.35 * k + lift + hop, seat.y);
     c.heads.setMatrixAt(i, CROWD_M);
   }
   c.bodies.instanceMatrix.needsUpdate = true;
@@ -219,12 +225,16 @@ type Seat = { x: number; z: number; garb: number; skin: number; lift?: number };
 export function decorate(b: Battle3D, lights: LightSpot[]): Seat[] {
   // Outer apron framing the arena.
   const apron = new THREE.Mesh(
-    new THREE.BoxGeometry(ARENA_WIDTH + 10, 0.36, ARENA_HEIGHT + 10),
+    new THREE.BoxGeometry(ARENA_WIDTH + (arabic ? 10 : 46), 0.36, ARENA_HEIGHT + 10),
     toon(LOOK.apron),
   );
   apron.position.y = -0.24;
   apron.receiveShadow = true;
   b.arenaGroup.add(apron);
+
+  // Classic edition: the sculpted surround (scenery.ts) replaces the fence,
+  // the slab stands, the corner tents and the lone trees and rocks below.
+  const classicSeats: Seat[] = arabic ? [] : buildClassicScenery(b.arenaGroup, LOOK);
 
   // Rustic fence ringing the apron.
   const fenceHw = ARENA_WIDTH / 2 + 4.6;
@@ -255,8 +265,10 @@ export function decorate(b: Battle3D, lights: LightSpot[]): Seat[] {
     b.arenaGroup.add(rail);
   };
   // Side runs only: the backdrop and the foreground lip close the ends.
-  addFenceRun([-fenceHw, -fenceHd], [-fenceHw, fenceHd], 16);
-  addFenceRun([fenceHw, -fenceHd], [fenceHw, fenceHd], 16);
+  if (arabic) {
+    addFenceRun([-fenceHw, -fenceHd], [-fenceHw, fenceHd], 16);
+    addFenceRun([fenceHw, -fenceHd], [fenceHw, fenceHd], 16);
+  }
 
   // Long spectator stands flanking the arena: stone galleries with
   // pitched roofs — red on the enemy half, blue on the player half
@@ -304,7 +316,7 @@ export function decorate(b: Battle3D, lights: LightSpot[]): Seat[] {
   // Pulled in to the court's edge: they frame wider screens, and sit just
   // off-frame on a portrait phone.
   const standLen = ARENA_HEIGHT / 2 - 2.5;
-  for (const sx of [-1, 1]) {
+  for (const sx of arabic ? [-1, 1] : []) {
     stand(sx * STAND_X, -ARENA_HEIGHT / 4 - 1, standLen, LOOK.standRoofEnemy); // enemy side
     stand(sx * STAND_X, ARENA_HEIGHT / 4 + 1, standLen, LOOK.standRoofPlayer); // player side
   }
@@ -340,10 +352,12 @@ export function decorate(b: Battle3D, lights: LightSpot[]): Seat[] {
   };
   const tHw = ARENA_WIDTH / 2 + 3.1;
   const tHd = ARENA_HEIGHT / 2 + 3.0;
-  tent(-tHw, tHd, 0x3b6fd4);
-  tent(tHw, tHd, 0x3b6fd4);
-  tent(-tHw, -tHd, 0xd44a3b);
-  tent(tHw, -tHd, 0xd44a3b);
+  if (arabic) {
+    tent(-tHw, tHd, 0x3b6fd4);
+    tent(tHw, tHd, 0x3b6fd4);
+    tent(-tHw, -tHd, 0xd44a3b);
+    tent(tHw, -tHd, 0xd44a3b);
+  }
 
   // Strings of glowing lanterns flanking the field (look-dependent).
   // Unlit glow material, so the bloom pass makes them softly radiate;
@@ -525,11 +539,11 @@ export function decorate(b: Battle3D, lights: LightSpot[]): Seat[] {
     [hw + 5.5, 3, 1.1], [hw + 4.8, 8, 1.0], [hw + 5.2, 13, 1.2],
     [-hw - 2.2, hd + 1.2, 1.0], [hw + 2.0, hd + 1.5, 0.9],
   ];
-  for (const [x, z, s] of treeSpots) tree(x, z, s);
+  if (arabic) for (const [x, z, s] of treeSpots) tree(x, z, s);
   const rockSpots: Array<[number, number, number]> = [
     [-hw - 3.6, 6.5, 0.8], [hw + 3.6, -4.5, 1.0], [-hw - 3.8, -9.5, 0.6], [hw + 3.5, 10.5, 0.7],
   ];
-  for (const [x, z, s] of rockSpots) rock(x, z, s);
+  if (arabic) for (const [x, z, s] of rockSpots) rock(x, z, s);
 
   // Flower dots on the playfield grass (meadow-type looks only).
   const flowerSpots: Array<[number, number, number]> = !LOOK.flowers ? [] : [
@@ -542,7 +556,7 @@ export function decorate(b: Battle3D, lights: LightSpot[]): Seat[] {
     f.position.set(x, 0.06, z);
     b.arenaGroup.add(f);
   }
-  return crowdSeats;
+  return arabic ? crowdSeats : classicSeats;
 }
 
 /** Flat golden crescent moon inlaid in the floor (arena centerpiece). */
@@ -631,7 +645,7 @@ export function buildArena(b: Battle3D): void {
     [-dhw, -11, 1.6], [-dhw, -3, 1.3], [-dhw, 6, 1.7], [-dhw, 13, 1.4],
     [dhw, -13, 1.5], [dhw, -5, 1.6], [dhw, 4, 1.3], [dhw, 12, 1.7],
   ];
-  for (const [x, z, sc] of driftSpots) {
+  for (const [x, z, sc] of arabic ? driftSpots : []) {
     b.arenaGroup.add(makeSnowDrift(x, z, sc));
   }
 
@@ -639,7 +653,7 @@ export function buildArena(b: Battle3D): void {
   const hw = ARENA_WIDTH / 2 + 0.45;
   const hd = ARENA_HEIGHT / 2 + 0.15;
   const stone = LOOK.edging;
-  for (const side of [-1, 1]) {
+  for (const side of arabic ? [-1, 1] : []) {
     const rail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.34, ARENA_HEIGHT + 0.9), toon(stone));
     rail.position.set(side * hw, 0.05, 0);
     rail.castShadow = true;
@@ -659,7 +673,7 @@ export function buildArena(b: Battle3D): void {
       );
       post.position.set(sx * hw, 0.18, sz * hd);
       post.castShadow = true;
-      b.arenaGroup.add(post);
+      if (arabic) b.arenaGroup.add(post);
       if (LOOK.neon) {
         // Neon cap on each corner post, picked up by the bloom pass.
         const neon = new THREE.Mesh(
@@ -839,44 +853,45 @@ export function finishArena(b: Battle3D): RiverHandle {
       }
     }
   } else if (LOOK.band.bridge === "timber") {
-    // Chunky golden timber decks with royal-blue braces and rope rails.
-    const WOOD = 0xc99032;
-    const WOOD_LIGHT = 0xe0ad45;
-    const BRACE = 0x315da8;
-    const ROPE = 0xd4a574;
+    // Hand-built timber crossings: uneven planks over dark bearers, stone
+    // abutments at both ends, and post-and-rope rails with capped posts.
+    const sc = new Sculpt((_x, y, _z, ny) => (0.74 + 0.26 * Math.min(1, Math.max(0, y / 0.5))) * (ny > 0.7 ? 1.05 : ny < -0.4 ? 0.7 : 1));
+    const WOODS = [0xc48a3c, 0xb47a30, 0xd29a48, 0xbb8236];
+    const BEARER = 0x6b4520;
+    const ABUT = tone(LOOK.cornerPost, 1.02, 0.5);
+    let seed = 77;
+    const rnd = (): number => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
     for (const bx of BRIDGE_XS) {
       const w = toWorld(bx, RIVER_Y);
-      const deck = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.22, 2.6), toon(WOOD));
-      deck.position.set(w.x, 0.1, 0);
-      deck.castShadow = true;
-      deck.receiveShadow = true;
-      b.arenaGroup.add(deck);
-      for (let i = -3; i <= 3; i++) {
-        const plank = new THREE.Mesh(
-          new THREE.BoxGeometry(1.92, 0.035, 0.32),
-          toon(i % 2 ? WOOD_LIGHT : WOOD),
-        );
-        plank.position.set(w.x, 0.225, i * 0.36);
-        plank.castShadow = true;
-        b.arenaGroup.add(plank);
+      sc.box(2.0, 0.2, 2.5, BEARER, w.x, 0.08, 0);
+      const planks = 10;
+      const pd = 2.56 / planks;
+      for (let i = 0; i < planks; i++) {
+        const z = -1.28 + pd * (i + 0.5);
+        sc.box(1.96 + (rnd() - 0.5) * 0.1, 0.06, pd - 0.035, WOODS[Math.floor(rnd() * WOODS.length)], w.x + (rnd() - 0.5) * 0.04, 0.21, z, (rnd() - 0.5) * 0.03);
+        for (const sx of [-1, 1]) sc.box(0.04, 0.02, 0.04, 0x3b2a1a, w.x + sx * 0.78, 0.245, z, 0, () => 1);
+      }
+      for (const sz of [-1, 1]) {
+        sc.box(2.5, 0.34, 0.34, ABUT, w.x, 0.1, sz * 1.42);
+        sc.box(2.56, 0.06, 0.4, tone(ABUT, 1.12), w.x, 0.29, sz * 1.42);
       }
       for (const side of [-1, 1]) {
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.22, 2.7), toon(0xf6c14e));
-        rail.position.set(w.x + side * 0.94, 0.34, 0);
-        rail.castShadow = true;
-        b.arenaGroup.add(rail);
-        const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.4, 6), toon(ROPE));
-        rope.rotation.x = Math.PI / 2;
-        rope.position.set(w.x + side * 0.94, 0.58, 0);
-        b.arenaGroup.add(rope);
-        for (const ez of [-1.0, -0.33, 0.33, 1.0]) {
-          const post = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.55, 0.22), toon(BRACE));
-          post.position.set(w.x + side * 0.94, 0.46, ez);
-          post.castShadow = true;
-          b.arenaGroup.add(post);
+        const x = w.x + side * 0.98;
+        sc.box(0.16, 0.14, 2.7, BEARER, x, 0.26, 0);
+        const rope = new THREE.CylinderGeometry(0.035, 0.035, 2.5, 6);
+        rope.rotateX(Math.PI / 2);
+        sc.add(rope, 0xe2c48a, x, 0.66, 0);
+        for (const ez of [-1.2, -0.4, 0.4, 1.2]) {
+          sc.box(0.2, 0.62, 0.2, 0x8a5a2a, x, 0.5, ez);
+          sc.box(0.26, 0.07, 0.26, 0xe8c15a, x, 0.84, ez);
         }
       }
     }
+    const bridges = sc.mesh(sculptMaterial(), "timber-bridges");
+    if (bridges) b.arenaGroup.add(bridges);
   } else {
     // Stone (or ice) arch crossings: a masonry deck with a low arched
     // parapet on each side, capped in the look's edging color.

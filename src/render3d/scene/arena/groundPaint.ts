@@ -351,12 +351,31 @@ function paintClassic(look: ArenaLook, p: Paint, P: number, seed: number, rand: 
     // Mown stripes across the court, two tiles wide, soft-edged.
     const sy = ay / 2;
     const sf = sy - Math.floor(sy);
-    const stripe = 1 + (Math.floor(sy) % 2 === 0 ? 1 : -1) * 0.05 * smoothstep(0, 0.12, Math.min(sf, 1 - sf));
+    const stripe = 1 + (Math.floor(sy) % 2 === 0 ? 1 : -1) * (turf ? 0.022 : 0.05) * smoothstep(0, 0.12, Math.min(sf, 1 - sf));
     for (let x = 0; x < w; x++) {
       const tx = colTile[x];
+      if (turf) {
+        // Painted meadow: broad sunlit and shaded patches (they shift hue as
+        // well as value), a soft two-tone checker with clean edges, and a
+        // deeper, cooler green toward the court's border.
+        const big = bigF.at(x, y);
+        const patch = smoothstep(0.25, 0.75, big);
+        const hueN = hueF.at(x, y);
+        const ax = (x + 0.5) / P;
+        const dEdge = Math.min(ax, ARENA_WIDTH - ax, ay, ARENA_HEIGHT - ay);
+        const border = smoothstep(0, 3.4, dEdge);
+        const f = (0.86 + patch * 0.2 + (smallF.at(x, y) - 0.5) * 0.07) * (0.72 + 0.28 * border);
+        const check = ((tx + ty) & 1) === 0 ? 1.045 : 0.955;
+        const k = (y * w + x) * 3;
+        const warmth = 0.35 + 0.65 * patch * hueN;
+        buf[k] = mid[0] * f * check * (0.9 + 0.2 * warmth) * (0.92 + 0.08 * border);
+        buf[k + 1] = mid[1] * f * check * stripe;
+        buf[k + 2] = mid[2] * f * check * (1.12 - 0.26 * warmth) * (1.1 - 0.1 * border);
+        continue;
+      }
       let f = 0.9 + bigF.at(x, y) * 0.16 + (smallF.at(x, y) - 0.5) * 0.08;
-      // Turf gets mown stripes; each flagstone keeps its own shade.
-      f *= turf ? stripe : tileShade[ty * ARENA_WIDTH + tx];
+      // Each flagstone keeps its own shade.
+      f *= tileShade[ty * ARENA_WIDTH + tx];
       const hueN = hueF.at(x, y);
       const pr = mid[0] * f * (cool[0] + (warm[0] - cool[0]) * hueN);
       const pg = mid[1] * f;
@@ -393,18 +412,25 @@ function paintClassic(look: ArenaLook, p: Paint, P: number, seed: number, rand: 
     }
   }
 
-  // 2) Grass strokes over the turf: thousands of short blades.
+  // 2) Turf texture: soft darker and lighter clumps, then sparse blades.
   if (turf) {
-    const light = mix3(mid, [1, 1, 0.8], 0.22);
-    const dark = mul3(mid, 0.78);
-    const blades = Math.round((w * h) / 110);
+    const light = mix3(mid, [1, 1, 0.7], 0.2);
+    const dark = mix3(mul3(mid, 0.72), [0.1, 0.4, 0.3], 0.25);
+    const clumps = Math.round((w * h) / 2600);
+    for (let i = 0; i < clumps; i++) {
+      const x = rand() * w;
+      const y = rand() * h;
+      const r = (0.2 + rand() * 0.4) * P;
+      p.disc(x, y, r, rand() < 0.35 ? dark : light, 0.03 + rand() * 0.04, 0.55 + rand() * 0.3, rand() * 3);
+    }
+    const blades = Math.round((w * h) / 520);
     for (let i = 0; i < blades; i++) {
       const x = rand() * w;
       const y = rand() * h;
-      const len = (3.5 + rand() * 4.5) * (P / 48);
+      const len = (2.5 + rand() * 3.5) * (P / 48);
       const ang = (rand() - 0.5) * 0.9;
-      const c = rand() < 0.55 ? dark : light;
-      p.line(x, y, x + Math.sin(ang) * len, y - Math.cos(ang) * len, 0.55 * (P / 48), c, 0.32 + rand() * 0.25);
+      const c = rand() < 0.4 ? dark : light;
+      p.line(x, y, x + Math.sin(ang) * len, y - Math.cos(ang) * len, 0.6 * (P / 48), c, 0.2 + rand() * 0.2);
     }
   }
 
@@ -486,12 +512,35 @@ function paintClassic(look: ArenaLook, p: Paint, P: number, seed: number, rand: 
       for (let x = xa; x < xb; x++) lanePixel(x, y, (x + 0.5) / P, ay);
     }
   }
-  // Edge pebbles, scattered along both sides of every lane.
+  // Edging: turf looks get a kerb of flat fieldstones along every lane;
+  // the others keep their scattered pebbles.
   const pebbleLight = mix3(lane, [1, 1, 1], 0.35);
   const pebbleDark = mul3(laneEdge, 0.85);
+  const kerbA: RGB = [0.78, 0.76, 0.7];
+  const kerbB: RGB = [0.66, 0.65, 0.62];
   for (const s of LANE_SEGMENTS) {
     const vertical = s[0] === s[2];
     const len = vertical ? s[3] - s[1] : s[2] - s[0];
+    if (turf) {
+      for (const side of [-1, 1]) {
+        for (let t = 0.12; t < len; t += 0.34 + rand() * 0.16) {
+          const off = side * (hw + 0.02 + (rand() - 0.5) * 0.1);
+          const ax = vertical ? s[0] + off : s[0] + t;
+          const ay = vertical ? s[1] + t : s[1] + off;
+          if (Math.abs(ay - RIVER_Y) < RIVER_HALF_WIDTH + 0.45) continue;
+          // Leave the crossings between lanes open.
+          if (vertical && (Math.abs(ay - ROW_Y[0]) < hw + 0.1 || Math.abs(ay - ROW_Y[1]) < hw + 0.1)) continue;
+          if (!vertical && (Math.abs(ax - BRIDGE_XS[0]) < hw + 0.1 || Math.abs(ax - BRIDGE_XS[1]) < hw + 0.1) && side * (ay - RIVER_Y) < 0) continue;
+          const r = (0.1 + rand() * 0.06) * P;
+          const rot = (vertical ? Math.PI / 2 : 0) + (rand() - 0.5) * 0.5;
+          const c = rand() < 0.5 ? kerbA : kerbB;
+          p.disc(ax * P + r * 0.18, ay * P + r * 0.3, r * 1.12, [0.12, 0.2, 0.1], 0.4, 0.72, rot);
+          p.disc(ax * P, ay * P, r, mul3(c, 0.9 + rand() * 0.15), 0.96, 0.7, rot);
+          p.disc(ax * P - r * 0.15, ay * P - r * 0.2, r * 0.55, [1, 1, 0.96], 0.22, 0.6, rot);
+        }
+      }
+      continue;
+    }
     const n = Math.round(len * 7);
     for (let i = 0; i < n; i++) {
       const t = rand();
@@ -503,6 +552,48 @@ function paintClassic(look: ArenaLook, p: Paint, P: number, seed: number, rand: 
       const r = (0.045 + rand() * 0.06) * P;
       p.disc(ax * P, ay * P + r * 0.25, r * 1.05, [0, 0, 0], 0.18, 0.7);
       p.disc(ax * P, ay * P, r, rand() < 0.6 ? pebbleDark : pebbleLight, 0.85, 0.75, rand() * 3);
+    }
+  }
+
+  // River banks (turf looks): the grass gives way to a strip of damp sand
+  // and shingle before the stone lip, with reeds here and there.
+  if (turf) {
+    const bankF = new NoiseField(w, h, 4, P, 0.7, seed + 53);
+    const sand: RGB = [0.8, 0.7, 0.48];
+    const wet: RGB = [0.5, 0.44, 0.3];
+    for (const sgn of [-1, 1]) {
+      const lip = RIVER_Y + sgn * RIVER_HALF_WIDTH;
+      const ya = Math.floor((sgn < 0 ? lip - 1.0 : lip) * P);
+      const yb = Math.ceil((sgn < 0 ? lip : lip + 1.0) * P);
+      for (let y = Math.max(0, ya); y < Math.min(h, yb); y++) {
+        const d = Math.abs((y + 0.5) / P - lip);
+        for (let x = 0; x < w; x++) {
+          const reach = 0.42 + (bankF.at(x, y) - 0.5) * 0.5;
+          if (d > reach + 0.12) continue;
+          const cover = 1 - smoothstep(reach - 0.14, reach + 0.1, d);
+          if (cover <= 0) continue;
+          const i = y * w + x;
+          p.blend(i, mix3(wet, sand, smoothstep(0.05, 0.3, d)), cover * 0.92);
+          const rim = Math.abs(d - reach);
+          if (rim < 0.05) p.scale(i, 1 - 0.14 * (1 - rim / 0.05));
+        }
+      }
+      for (let i = 0; i < 70; i++) {
+        const ax = rand() * ARENA_WIDTH;
+        const ay = lip + sgn * (0.08 + rand() * 0.34);
+        const r = (0.04 + rand() * 0.07) * P;
+        p.disc(ax * P + r * 0.2, ay * P + r * 0.3, r * 1.1, [0.2, 0.16, 0.1], 0.3, 0.7);
+        p.disc(ax * P, ay * P, r, rand() < 0.5 ? [0.72, 0.7, 0.66] : [0.56, 0.55, 0.54], 0.95, 0.7, rand() * 3);
+      }
+      for (let i = 0; i < 16; i++) {
+        const ax = rand() * ARENA_WIDTH;
+        const ay = lip + sgn * (0.3 + rand() * 0.25);
+        if (Math.abs(ax - BRIDGE_XS[0]) < 1.5 || Math.abs(ax - BRIDGE_XS[1]) < 1.5) continue;
+        for (let k = 0; k < 5; k++) {
+          const dx = (k - 2) * 0.05 * P;
+          p.line(ax * P + dx * 0.4, ay * P, ax * P + dx, ay * P - (0.22 + rand() * 0.16) * P, 0.03 * P, k % 2 ? [0.2, 0.46, 0.2] : [0.3, 0.58, 0.24], 0.9);
+        }
+      }
     }
   }
 
@@ -529,15 +620,34 @@ function paintClassic(look: ArenaLook, p: Paint, P: number, seed: number, rand: 
     case "pebbles":
       scatterDot(["rgba(148,132,104,1)", "rgba(120,102,78,1)", "rgba(170,156,128,1)"], 200, 1.5, 4.5, 0.55);
       break;
-    case "grass":
-      for (let i = 0; i < 280; i++) {
+    case "grass": {
+      const s = P / 48;
+      const tuftDark = mix3(mul3(mid, 0.66), [0.1, 0.35, 0.3], 0.2);
+      const tuftLight = mix3(mid, [1, 1, 0.6], 0.3);
+      for (let i = 0; i < 230; i++) {
         const x = rand() * w;
         const y = rand() * h;
-        const s = P / 32;
-        const c = mul3(mid, 0.62);
-        for (const dx of [-2, 0, 2]) p.line(x, y, x + dx * s, y - (5 + rand() * 3) * s, 0.8 * s, c, 0.55);
+        p.disc(x, y + 1.5 * s, 4.5 * s, tuftDark, 0.3, 0.5);
+        for (const dx of [-3.2, -1.2, 1, 3]) {
+          p.line(x + dx * 0.3 * s, y + s, x + dx * s, y - (5 + rand() * 4) * s, 0.9 * s, rand() < 0.5 ? tuftLight : tuftDark, 0.8);
+        }
+      }
+      const petals: RGB[] = [[1, 1, 1], [1, 0.93, 0.45], [1, 0.72, 0.82], [0.8, 0.86, 1]];
+      for (let i = 0; i < 90; i++) {
+        const cx = rand() * w;
+        const cy = rand() * h;
+        const c = petals[Math.floor(rand() * petals.length)];
+        const n = 2 + Math.floor(rand() * 4);
+        for (let k = 0; k < n; k++) {
+          const x = cx + (rand() - 0.5) * 22 * s;
+          const y = cy + (rand() - 0.5) * 16 * s;
+          p.disc(x + 0.8 * s, y + 1.2 * s, 2.6 * s, [0.1, 0.25, 0.1], 0.3);
+          p.disc(x, y, 2.3 * s, c, 0.95);
+          p.disc(x, y, 0.9 * s, [0.98, 0.7, 0.2], 0.9);
+        }
       }
       break;
+    }
     case "bones":
       scatterRect(["#f0e8d8", "#e2d8c0"], 88, 16, 3.5, 0.9);
       scatterDot(["#f0e8d8", "#d8ccb0"], 96, 2, 4, 0.9);

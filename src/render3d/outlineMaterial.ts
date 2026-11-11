@@ -14,9 +14,9 @@
 import * as THREE from "three";
 
 /** Outline width in CSS pixels (the device-pixel width scales with the DPR). */
-export const OUTLINE_CSS_PX = 2;
+export const OUTLINE_CSS_PX = 1.25;
 /** Near-black ink with a touch of blue, like the old hull. */
-export const OUTLINE_COLOR = 0x0b0e16;
+export const OUTLINE_COLOR = 0x1c1730;
 /** Parts whose bounding radius (in their node's units) is below this stay unlined. */
 export const OUTLINE_MIN_RADIUS = 0.05;
 
