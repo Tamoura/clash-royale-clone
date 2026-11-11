@@ -10,6 +10,7 @@ import {
   TOWER_SCALE,
   buildTowerMesh,
   crewKindOf,
+  kingSlumpTilt,
   repaintTowers,
   setTowerCrewProvider,
   towerKeepUniforms,
@@ -207,6 +208,20 @@ describe("tower crew seam", () => {
     setTowerCrewProvider({ make: () => null, animate: () => {}, dispose: () => {} });
     const v = buildTowerMesh(tower("enemy", "princess-tower", "cannoneer"));
     expect(v.defender).toBeTruthy();
+  });
+
+  it("a sleeping king nods toward the camera from both viewpoints (never back under his canopy)", () => {
+    for (const camSide of [1, -1]) {
+      for (const provider of [false, true]) {
+        const tilt = kingSlumpTilt(1, camSide, provider);
+        // The mount's idle yaw faces the camera, then the slump tilts it (Euler XYZ).
+        const head = new THREE.Vector3(0, 1, 0).applyEuler(new THREE.Euler(tilt, camSide > 0 ? 0 : Math.PI, 0));
+        expect(Math.sign(head.z)).toBe(camSide);
+        expect(Math.abs(tilt)).toBeCloseTo(provider ? 0.3 : 0.45, 6);
+        expect(kingSlumpTilt(0, camSide, provider)).toBeCloseTo(0, 9);
+      }
+    }
+    expect(towersSource).toMatch(/mount\.rotation\.x = kingSlumpTilt\(rig\.slump, rig\.camSide/);
   });
 
   it("names the crew kind from the tower", () => {

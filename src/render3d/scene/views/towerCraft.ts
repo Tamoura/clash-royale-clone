@@ -637,6 +637,13 @@ const KEEP_HIDE = /* glsl */ `uStage < aStage.x || uStage >= aStage.y`;
 export function keepMaterial(map: THREE.Texture, team: number): { material: THREE.MeshToonMaterial; depth: THREE.MeshDepthMaterial; uniforms: KeepUniforms } {
   const uniforms: KeepUniforms = { uTeam: { value: new THREE.Color(team) }, uStage: { value: 0 } };
   const mat = sculptMaterial(map);
+  // Both sides: the ink hull is an offset surface pushed back in depth, so
+  // only its rim past the silhouette shows, whichever way its faces turn.
+  // With back faces culled, a roof cone's grazing back faces flipped under
+  // the push and were culled, leaving ink at the tips only (the "whiskers").
+  // Shadows keep the usual back-face casting.
+  mat.side = THREE.DoubleSide;
+  mat.shadowSide = THREE.BackSide;
   const toonHook = mat.onBeforeCompile.bind(mat);
   mat.onBeforeCompile = (sh, r) => {
     toonHook(sh, r);
@@ -666,10 +673,15 @@ export function keepMaterial(map: THREE.Texture, team: number): { material: THRE
            if (uInkOn < 0.5) {
              gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
            } else {
+             // An offset surface: grow the hull along its smoothed normal
+             // in VIEW space by the ink width (CSS px turned into view
+             // units at this depth), then push it back in depth. It shows
+             // only where the normal lies in the screen plane (the
+             // silhouette), at full width, and a cone's tip stays a tip:
+             // a screen-space push fans the tip's vertices out into fins.
              vec3 inkN = normalize(normalMatrix * normal);
-             vec2 inkC = (projectionMatrix * vec4(inkN, 0.0)).xy;
-             float inkL = length(inkC);
-             if (inkL > 1e-5) gl_Position.xy += (inkC / inkL) * uInkPx * uInkScale * 2.0 / uInkViewport * gl_Position.w;
+             float inkU = 2.0 * gl_Position.w / (abs(projectionMatrix[1][1]) * uInkViewport.y);
+             gl_Position = projectionMatrix * (mvPosition + vec4(inkN * uInkPx * uInkScale * inkU, 0.0));
              gl_Position.z += uInkDepth * abs(projectionMatrix[2][2]) * gl_Position.w;
            }
          }`,
@@ -767,7 +779,7 @@ function bellCone(rb: number, h: number, seg = 16, rows = 5): THREE.LatheGeometr
   const pts = [new THREE.Vector2(rb + 0.05, -0.05)];
   for (let i = 0; i <= rows; i++) {
     const t = i / rows;
-    pts.push(new THREE.Vector2(Math.max(0.002, rb * Math.pow(1 - t, 1.15)), t * h));
+    pts.push(new THREE.Vector2(i === rows ? 0 : rb * Math.pow(1 - t, 1.15), t * h));
   }
   return new THREE.LatheGeometry(pts, seg);
 }
@@ -817,7 +829,28 @@ function horseshoe(w: number, h: number, inset = 0): THREE.Shape {
   return s;
 }
 
-/** Add an Object3D's meshes (baked to keep space at x, y, z, scaled) via `paint`, then dispose it. */
+/**
+ * A borrowed part at the keep's tessellation: spheres at most 12 x 10 (a
+ * dome bulb stays smooth, with at least 12 segments round) and tori at
+ * most 5 x 12 (crescent finials), so 26 onion domes fit the six-tower
+ * budget. Shapes, sizes and placement are the maker's own.
+ */
+function lighten(g: THREE.BufferGeometry): THREE.BufferGeometry {
+  if (g.type === "SphereGeometry") {
+    const p = (g as THREE.SphereGeometry).parameters;
+    if (p.widthSegments > 12 || p.heightSegments > 10) {
+      return new THREE.SphereGeometry(p.radius, Math.min(12, p.widthSegments), Math.min(10, p.heightSegments), p.phiStart, p.phiLength, p.thetaStart, p.thetaLength);
+    }
+  } else if (g.type === "TorusGeometry") {
+    const p = (g as THREE.TorusGeometry).parameters;
+    if (p.radialSegments > 5 || p.tubularSegments > 12) {
+      return new THREE.TorusGeometry(p.radius, p.tube, Math.min(5, p.radialSegments), Math.min(12, p.tubularSegments), p.arc);
+    }
+  }
+  return g.clone();
+}
+
+/** Add an Object3D's meshes (baked to keep space at x, y, z, scaled, see `lighten`) via `paint`, then dispose it. */
 function addObject(
   s: KeepSculpt,
   obj: THREE.Object3D,
@@ -837,7 +870,7 @@ function addObject(
   });
   for (const m of meshes) {
     const p = paint(i++, m);
-    if (p) s.add(m.geometry.clone().applyMatrix4(m.matrixWorld), p.color, 0, 0, 0, 0, p.shade ?? null, p.opts ?? {});
+    if (p) s.add(lighten(m.geometry).applyMatrix4(m.matrixWorld), p.color, 0, 0, 0, 0, p.shade ?? null, p.opts ?? {});
     m.geometry.dispose();
     const mats = Array.isArray(m.material) ? m.material : [m.material];
     for (const mm of mats) mm.dispose();
@@ -922,6 +955,18 @@ interface Ctx {
   crewH: number;
 }
 
+/** Stand-in dome when no maker is passed: onionDome's drum and bulb, in its child order. */
+function plainDome(r: number): THREE.Object3D {
+  const g = new THREE.Group();
+  const drum = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.92, r * 1.02, r * 0.5, 12));
+  drum.position.y = r * 0.25;
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10));
+  bulb.scale.set(1, 1.3, 1);
+  bulb.position.y = r * 1.22;
+  g.add(drum, bulb);
+  return g;
+}
+
 function ctxFor(spec: KeepSpec2): Ctx {
   const { king, radius: R, height: H, camSide, flair, style } = spec;
   const golden = style.edition === "golden";
@@ -954,7 +999,7 @@ function ctxFor(spec: KeepSpec2): Ctx {
     flair,
     style,
     golden,
-    dome: spec.dome ?? ((r) => new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12))),
+    dome: spec.dome ?? plainDome,
     gun: new KeepSculpt((_x, _y, _z, ny) => (ny < -0.4 ? 0.72 : ny > 0.7 ? 1.06 : 1)),
     gunAt: new THREE.Vector3(),
     crewH: spec.crewHeight ?? CREW_SLOT / TOWER_SCALE_HINT,
@@ -1097,12 +1142,12 @@ function buildBattlement(c: Ctx): { out: number; pTop: number; chips: THREE.Vect
     const d = along ? 0.2 : mW;
     if (golden && !broken) {
       // Stepped Moorish merlon: three courses, each narrower, and a pointed cap.
-      s.box(w, h * 0.5, d, stoneLt, x, pTop + h * 0.25, z, 0, null, { ...o, ink: true });
+      s.box(w, h * 0.5, d, stoneLt, x, pTop + h * 0.25, z, 0, null, o);
       s.box(w * 0.7 + (along ? 0 : 0.06), h * 0.3, d * 0.7 + (along ? 0.06 : 0), stoneLt, x, pTop + h * 0.65, z, 0, null, o);
       s.add(new THREE.ConeGeometry(Math.min(w, d) * 0.42, h * 0.32, 4), cap, x, pTop + h * 0.96, z, Math.PI / 4, null, o);
       return;
     }
-    s.box(w, h, d, stoneLt, x, pTop + h / 2, z, broken ? 0.3 : 0, null, { ...o, ink: !broken });
+    s.box(w, h, d, stoneLt, x, pTop + h / 2, z, broken ? 0.3 : 0, null, o);
     if (!broken) s.box(w + (along ? 0.05 : 0.05), 0.06, d + 0.05, cap, x, pTop + h + 0.03, z, 0, null, o);
   };
   const breakable = [
@@ -1408,7 +1453,7 @@ function buildCanopy(c: Ctx, at: THREE.Vector3, golden: boolean): YZ[] {
     const domeY = eave + 0.16;
     addObject(s, c.dome(dr, 0xffffff), at.x, domeY - dr * 0.5, at.z, 1, (i) => (i === 1 || i === 2 ? { color: 0xffffff, opts: { team: 1, tex: KEEP_TEX.roof, ink: true, uv: [6, 3] } } : i === 0 ? null : { color: GOLD, opts: {}, shade: lit }));
     if (flair.goldRoofBands) {
-      const ring = new THREE.TorusGeometry(dr * 0.98, 0.03, 6, 20);
+      const ring = new THREE.TorusGeometry(dr * 0.98, 0.03, 4, 16);
       ring.rotateX(Math.PI / 2);
       s.add(ring, GOLD, at.x, domeY + dr * 0.72, at.z, 0, lit);
     }
@@ -1705,12 +1750,12 @@ function craftGolden(spec: KeepSpec2): KeepBuild {
         i === 0 ? null : i === 1 || i === 2 ? { color: 0xffffff, opts: { team: 1, tex: KEEP_TEX.roof, ink: true, uv: [6, 3] } } : { color: i === 3 ? GOLD : flair.gildedFinials ? 0xffd34f : GOLD, opts: {}, shade: lit },
       );
       if (flair.goldRoofBands) {
-        const ring = new THREE.TorusGeometry(dr * 0.99, 0.025, 6, 20);
+        const ring = new THREE.TorusGeometry(dr * 0.99, 0.025, 4, 16);
         ring.rotateX(Math.PI / 2);
         s.add(ring, GOLD, x, domeY + dr * 0.72, z, 0, lit);
       }
       if (extras.has("snowCaps")) {
-        const snow = new THREE.SphereGeometry(dr * 1.02, 16, 6, 0, Math.PI * 2, 0, 0.6);
+        const snow = new THREE.SphereGeometry(dr * 1.02, 12, 4, 0, Math.PI * 2, 0, 0.6);
         snow.scale(1, 1.3, 1);
         s.add(snow, SNOW, x, domeY + dr * 0.72, z, 0, lit);
       }

@@ -18,6 +18,7 @@ import {
   type TowerEdition,
 } from "./towerStyles";
 import { KEEP_CHUNKS, STAGE_END, craftKeep, craftRuin } from "./towerCraft";
+import { onionDome } from "../arena/build";
 
 const ALL: { look: ArenaLook; edition: TowerEdition }[] = [
   ...Object.values(LOOKS).map((look) => ({ look, edition: "classic" as const })),
@@ -75,7 +76,7 @@ describe("tower styles cover every look", () => {
         for (const camSide of [1, -1]) {
           const k = craftKeep({
             king, radius: king ? 1.28 : 0.95, height: king ? 2.7 : 2.15, team: 0x3b82f6, enemyTeam: camSide < 0,
-            camSide, facing: -camSide, gun: king, flair: towerFlair(2), style,
+            camSide, facing: -camSide, gun: king, flair: towerFlair(2), style, dome: onionDome,
           });
           const g = k.mesh.geometry;
           const n = g.getAttribute("position").count;
@@ -123,6 +124,49 @@ describe("tower styles cover every look", () => {
     expect(stage2).toBeGreaterThan(0); // more cracks, roof hole, torn banner
     expect(k.chips[1]).toHaveLength(1);
     expect(k.chips[2]).toHaveLength(2);
+  });
+});
+
+describe("silhouette ink", () => {
+  const keep = (edition: TowerEdition, camSide: number) =>
+    craftKeep({
+      king: false, radius: 0.95, height: 2.15, team: 0x3b82f6, enemyTeam: false, camSide, facing: -camSide, gun: false,
+      flair: towerFlair(0), style: towerStyle(edition === "golden" ? ARABIC_LOOK : LOOKS.meadow, edition), dome: onionDome,
+    });
+
+  it("closes each roof cone to one tip whose hull grows straight up (no fins splaying from the tip)", () => {
+    for (const camSide of [1, -1]) {
+      const g = keep("classic", camSide).mesh.geometry;
+      const p = g.getAttribute("position");
+      const n = g.getAttribute("normal");
+      const f = g.getAttribute("aFlags");
+      let top = -Infinity;
+      for (let i = 0; i < p.count; i++) if (f.getZ(i) > 0.5) top = Math.max(top, p.getY(i));
+      const tips = new Set<string>();
+      for (let i = 0; i < p.count; i++) {
+        if (f.getZ(i) < 0.5 || p.getY(i) < top - 1e-4) continue;
+        tips.add(`${p.getX(i).toFixed(4)},${p.getZ(i).toFixed(4)}`);
+        expect(n.getY(i)).toBeGreaterThan(0.999);
+      }
+      expect(tips.size).toBe(4); // one point per turret cone
+    }
+  });
+
+  it("draws both faces (the depth-pushed hull shows only past the silhouette) and casts with back faces", () => {
+    for (const edition of ["classic", "golden"] as const) {
+      const m = keep(edition, 1).mesh.material as THREE.Material;
+      expect(m.side).toBe(THREE.DoubleSide);
+      expect(m.shadowSide).toBe(THREE.BackSide);
+    }
+  });
+
+  it("builds the Golden Age domes at a lighter tessellation, still at least 12 segments round", () => {
+    const g = keep("golden", 1).mesh.geometry;
+    const f = g.getAttribute("aFlags");
+    let roof = 0;
+    for (let i = 0; i < f.count; i++) if (Math.round(f.getY(i)) === 3 && f.getZ(i) < 0.5) roof++;
+    // Four bulbs at 12 x 10 (216 triangles) plus four 12-sided tips (24), three vertices each.
+    expect(roof).toBe(4 * (216 + 24) * 3);
   });
 });
 

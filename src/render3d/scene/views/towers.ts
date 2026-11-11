@@ -470,6 +470,19 @@ function updatePlate(b: Battle3D, rig: TowerRig, root: THREE.Object3D): void {
 }
 
 /**
+ * The sleeping king's forward slump (the crew mount's rotation.x) for a
+ * slump of 1 (asleep) easing to 0 (awake). The tilt turns about the
+ * tower's X axis after the mount's yaw (Euler XYZ), so its sign picks the
+ * world z it leans toward: always the camera's side, so the guest (camera
+ * at -z) also sees the king nod toward them, face and crown out from under
+ * the canopy, never leaning back under it. A provider's crew nods less.
+ */
+export function kingSlumpTilt(slump: number, camSide: number, provider: boolean): number {
+  const k = Math.max(0, Math.min(1, slump));
+  return camSide * (provider ? 0.3 : 0.45) * k * k * (3 - 2 * k);
+}
+
+/**
  * Per-frame tower and building work after the shared unit update: aim the
  * cannon and the tower crew, place the HP plate, refresh the HP number and
  * the king's sleep bubble, and degrade wounded crown towers.
@@ -510,18 +523,16 @@ export function updateTower(b: Battle3D, view: EntityView, e: Entity, dt: number
     } else {
       mount.rotation.y = rig.king ? (rig.camSide > 0 ? 0 : Math.PI) : e.side === "player" ? Math.PI : 0;
     }
-    const slump = rig.slump * rig.slump * (3 - 2 * rig.slump);
+    mount.rotation.x = kingSlumpTilt(rig.slump, rig.camSide, rig.crew.kind === "provider");
     if (rig.crew.kind === "fallback") {
       const swing = attackSwing(e, target !== undefined);
       animateTroop(rig.crew.rig, { moving: false, swing, time: b.syncState.time, phase: e.id * 1.7 });
-      mount.rotation.x = 0.45 * slump;
     } else {
       rig.crew.provider.animate(
         rig.crew.unit,
         { attacking: target !== undefined && !asleep, cooldown: e.cooldown, hitSpeed: e.hitSpeed, asleep, frozen: isFrozen(b, e) },
         dt,
       );
-      mount.rotation.x = 0.3 * slump;
     }
     updatePlate(b, rig, view.root);
   }
