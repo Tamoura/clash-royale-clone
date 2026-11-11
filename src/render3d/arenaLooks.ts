@@ -191,7 +191,7 @@ export const LOOKS: Record<string, ArenaLook> = {
     hemiSky: 0xf0d8ff, hemiGround: 0x5a4a3a, hemiIntensity: 1.0, sun: 0xffe0c8, fill: 0xd8b8ff,
     nightSky: 0x1a0f2a,
     skyTop: 0x2a0f3c, skyHorizon: 0xb07ab8, nightPools: false, backdrop: "bone", ambient: "fireflies",
-    floor: { a: "#c9b78f", b: "#bfad86", grid: "rgba(120,100,60,0.3)", lane: "rgba(180,150,100,0.9)", laneEdge: "rgba(110,85,50,0.5)", watermark: null, scatter: "bones" },
+    floor: { a: "#b0a07d", b: "#a79775", grid: "rgba(120,100,60,0.3)", lane: "rgba(150,122,80,0.9)", laneEdge: "rgba(110,85,50,0.5)", watermark: null, scatter: "bones" },
     band: { fill: "#3c2a4a", streak: "rgba(180,120,220,0.3)", glint: 0xc88aff, glintOpacity: 0.45, foam: 0x9a6fd0, foamOpacity: 0.25, bridge: "stone", kind: "water" },
     tower: { enemy: "bone", player: "bone", platformEnemy: 0xd3c7a6, platformPlayer: 0xd3c7a6, plinth: 0xa89a78, battlement: 0xa89a78 },
     fencePost: 0x6e5a3a, fenceRail: 0x7a6a4a, standWall: 0x8a7a5a, standRoofEnemy: 0x7a1e5a, standRoofPlayer: 0x2c3a8a, tentWall: 0xcbbc9a, cornerPost: 0xb3a890,
@@ -206,7 +206,7 @@ export const LOOKS: Record<string, ArenaLook> = {
     hemiSky: 0xe8f4ff, hemiGround: 0x8a9ab0, hemiIntensity: 1.05, sun: 0xfff6e8, fill: 0xd8e8ff,
     nightSky: 0x101a30,
     skyTop: 0x5f9ad0, skyHorizon: 0xe2eef8, nightPools: false, backdrop: "castle", ambient: "snow",
-    floor: { a: "#a8b7c8", b: "#a0afc1", grid: "rgba(150,170,190,0.3)", lane: "rgba(150,158,174,0.9)", laneEdge: "rgba(104,116,136,0.5)", watermark: null, scatter: "snow" },
+    floor: { a: "#93a0af", b: "#8c99a9", grid: "rgba(150,170,190,0.3)", lane: "rgba(120,128,146,0.9)", laneEdge: "rgba(104,116,136,0.5)", watermark: null, scatter: "snow" },
     band: { fill: "#5fb5e0", streak: WHITE_STREAK, glint: 0xffffff, glintOpacity: 0.7, foam: 0xe8f4ff, foamOpacity: 0.5, bridge: "ice", kind: "water" },
     tower: { enemy: "grey", player: "grey", platformEnemy: 0xd8dde4, platformPlayer: 0xd8dde4, plinth: 0x8d93a4, battlement: 0x8d93a4 },
     fencePost: 0x5a4a3a, fenceRail: 0x6a5a4a, standWall: 0x8a8a8a, standRoofEnemy: 0xc62828, standRoofPlayer: 0x2c55b8, tentWall: 0xe8e3d8, cornerPost: 0xb3b8c0,
@@ -223,7 +223,7 @@ export const LOOKS: Record<string, ArenaLook> = {
     skyTop: 0x14060a, skyHorizon: 0xc8501e, nightPools: false, backdrop: "forge", ambient: "embers",
     floor: { a: "#5c5660", b: "#534d58", grid: "rgba(255,140,60,0.18)", lane: "rgba(146,104,80,0.86)", laneEdge: "rgba(255,120,40,0.35)", watermark: "rgba(255,150,60,0.15)", scatter: "embers" },
     band: { fill: "#ff6a1a", streak: "rgba(255,230,120,0.5)", glint: 0xffe08a, glintOpacity: 0.8, foam: 0xff9a3a, foamOpacity: 0.35, bridge: "stone", kind: "lava" },
-    tower: { enemy: "dark", player: "dark", platformEnemy: 0x6a6470, platformPlayer: 0x6a6470, plinth: 0x6e6068, battlement: 0x968890 },
+    tower: { enemy: "dark", player: "dark", platformEnemy: 0x6a6470, platformPlayer: 0x6a6470, plinth: 0x84767e, battlement: 0x968890 },
     fencePost: 0x2a2226, fenceRail: 0x3a3236, standWall: 0x3a2a2a, standRoofEnemy: 0xd84e2a, standRoofPlayer: 0x2c55b8, tentWall: 0x4a3a3a, cornerPost: 0x3a3540,
     neon: { enemy: 0xff7a36, player: 0xffb04a }, lanterns: [0xff7a36, 0xff5340, 0xffb04a], torch: 0xff7a36,
     tree: { kind: "dead", trunk: 0x2a2226, leafA: 0x3a3236, leafB: 0x2a2226 }, rock: 0x4a4650, flowers: false,
@@ -266,7 +266,7 @@ export const LOOKS: Record<string, ArenaLook> = {
     hemiSky: 0xf0f6ff, hemiGround: 0x8a8070, hemiIntensity: 1.05, sun: 0xfff6e0, fill: 0xffe8c8,
     nightSky: 0x141a38,
     skyTop: 0x2f6fd0, skyHorizon: 0xdaeeff, nightPools: false, backdrop: "castle", ambient: "petals",
-    floor: { a: "#9ac271", b: "#91b868", grid: "rgba(160,140,110,0.3)", lane: "rgba(232,214,170,0.95)", laneEdge: "rgba(200,160,70,0.6)", watermark: "rgba(200,170,90,0.2)", scatter: "none" },
+    floor: { a: "#89ac64", b: "#81a35c", grid: "rgba(160,140,110,0.3)", lane: "rgba(232,214,170,0.95)", laneEdge: "rgba(200,160,70,0.6)", watermark: "rgba(200,170,90,0.2)", scatter: "none" },
     band: { fill: "#2f7fd0", streak: WHITE_STREAK, glint: 0xcff7ff, glintOpacity: 0.7, foam: 0xd8fff8, foamOpacity: 0.45, bridge: "stone", kind: "water" },
     tower: { enemy: "marble", player: "marble", platformEnemy: 0xe8e0d0, platformPlayer: 0xe8e0d0, plinth: 0xbdb4a2, battlement: 0xbdb4a2 },
     fencePost: 0xb3a890, fenceRail: 0xc8b898, standWall: 0xd0c8b8, standRoofEnemy: 0xc62828, standRoofPlayer: 0x2c55b8, tentWall: 0xf0e8d8, cornerPost: 0xd9a93f,
@@ -281,7 +281,7 @@ export const LOOKS: Record<string, ArenaLook> = {
     hemiSky: 0xd8ecff, hemiGround: 0x5a7a9a, hemiIntensity: 1.0, sun: 0xfff6e8, fill: 0xc8e0ff,
     nightSky: 0x0a1428,
     skyTop: 0x2a5aa8, skyHorizon: 0xcce6fa, nightPools: false, backdrop: "ice", ambient: "snow",
-    floor: { a: "#98b9d2", b: "#90b1ca", grid: "rgba(120,160,200,0.35)", lane: "rgba(200,218,236,0.9)", laneEdge: "rgba(90,130,170,0.5)", watermark: null, scatter: "snow" },
+    floor: { a: "#8ba9c0", b: "#84a2b9", grid: "rgba(120,160,200,0.35)", lane: "rgba(200,218,236,0.9)", laneEdge: "rgba(90,130,170,0.5)", watermark: null, scatter: "snow" },
     band: { fill: "#a8dcf4", streak: "rgba(255,255,255,0.6)", glint: 0xffffff, glintOpacity: 0.8, foam: 0xffffff, foamOpacity: 0.4, bridge: "ice", kind: "ice" },
     tower: { enemy: "ice", player: "ice", platformEnemy: 0xe0f0fa, platformPlayer: 0xe0f0fa, plinth: 0x9ab8d0, battlement: 0x9ab8d0 },
     fencePost: 0x5a6a7a, fenceRail: 0x6a7a8a, standWall: 0x8aa0b8, standRoofEnemy: 0xc62828, standRoofPlayer: 0x2c55b8, tentWall: 0xe8f0f8, cornerPost: 0xb8d0e0,
@@ -361,7 +361,7 @@ export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {
     hemiSky: 0xffffff, hemiGround: 0x8a7a5a, hemiIntensity: 0.98, sun: 0xfff6e0, fill: 0xfff0d0,
     nightSky: 0x1a2350, skyTop: 0x3a8ad8, skyHorizon: 0xd8eef8, nightPools: false, backdrop: "minaret", ambient: "petals", lanterns: [0xffd27a, 0x7fe3d6],
     band: { ...I.band, fill: "#2a8ee0" },
-    islamic: tiles({ plaster: "#cbb38a", lane: "186,146,82", laneWear: "140,104,52", star: "rgba(26,163,160,0.24)", diamond: "rgba(184,92,56,0.18)", domeKing: 0x1aa3a0, dome: 0x2bb7b0 }),
+    islamic: tiles({ plaster: "#b7a17c", lane: "168,131,74", laneWear: "140,104,52", star: "rgba(26,163,160,0.24)", diamond: "rgba(184,92,56,0.18)", domeKing: 0x1aa3a0, dome: 0x2bb7b0 }),
   },
   // Palm Oasis: green-and-turquoise tiles round a clear spring.
   oasis: {
@@ -372,7 +372,7 @@ export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {
     nightSky: 0x10304a, skyTop: 0x3aa0d0, skyHorizon: 0xd8f4ec, nightPools: false, backdrop: "oasis", ambient: "leaves", lanterns: [0xffe08a, 0x6fe0b0],
     band: { ...I.band, fill: "#1fb5b0", glint: 0xe0fff8, foam: 0xf0fffc },
     tree: { kind: "palm", trunk: 0x8a6a3e, leafA: 0x2f9a4a, leafB: 0x4cc05a },
-    islamic: tiles({ plaster: "#c2b58e", lane: "180,142,80", laneWear: "136,104,52", star: "rgba(40,160,90,0.26)", diamond: "rgba(26,163,160,0.2)", dome: 0x2f9a5a, domeKing: 0x1aa38a, emblem: 0xe8c04a }),
+    islamic: tiles({ plaster: "#aea380", lane: "162,128,72", laneWear: "136,104,52", star: "rgba(40,160,90,0.26)", diamond: "rgba(26,163,160,0.2)", dome: 0x2f9a5a, domeKing: 0x1aa38a, emblem: 0xe8c04a }),
   },
   // Sand Valley: hot ochre dunes and terracotta stars at noon.
   dunes: {
@@ -383,7 +383,7 @@ export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {
     nightSky: 0x2a1a38, skyTop: 0x5a9ad8, skyHorizon: 0xffe2b4, nightPools: false, backdrop: "dunes", ambient: "sand", lanterns: [0xffb050, 0xffe08a],
     band: { ...I.band, fill: "#2c9aa8" },
     tree: { kind: "palm", trunk: 0x7a5a32, leafA: 0x6a8a3a, leafB: 0x8aa048 },
-    islamic: tiles({ plaster: "#d0a873", star: "rgba(184,92,56,0.26)", diamond: "rgba(160,110,50,0.22)", lane: "184,138,80", laneWear: "140,96,48", dome: 0xc0703a, domeKing: 0xd08a3a, emblem: 0xf0c050 }),
+    islamic: tiles({ plaster: "#c19c6b", star: "rgba(184,92,56,0.26)", diamond: "rgba(160,110,50,0.22)", lane: "170,126,72", laneWear: "130,88,44", dome: 0xc0703a, domeKing: 0xd08a3a, emblem: 0xf0c050 }),
   },
   // Copper Citadel: dark red stone, copper domes, a molten copper channel.
   copper: {
@@ -395,7 +395,7 @@ export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {
     band: { fill: "#d9642a", streak: "rgba(255,210,120,0.6)", glint: 0xffe0a0, glintOpacity: 0.8, foam: 0xffb060, foamOpacity: 0.5, bridge: "stone", kind: "lava" },
     tower: { ...I.tower, enemy: "dark", player: "dark", platformEnemy: 0x8a5a48, platformPlayer: 0x8a5a48, plinth: 0x8a5e52, battlement: 0x9e7466 },
     tree: { kind: "dead", trunk: 0x4a2a20, leafA: 0x5a3a2a, leafB: 0x5a3a2a }, flowers: false,
-    islamic: tiles({ plaster: "#a88660", star: "rgba(184,90,40,0.18)", diamond: "rgba(120,50,30,0.14)", lane: "142,96,62", laneWear: "100,62,36", dome: 0xb87333, domeKing: 0xd08840, emblem: 0xe89048 }),
+    islamic: tiles({ plaster: "#9c7d59", star: "rgba(184,90,40,0.18)", diamond: "rgba(120,50,30,0.14)", lane: "142,96,62", laneWear: "100,62,36", dome: 0xb87333, domeKing: 0xd08840, emblem: 0xe89048 }),
   },
   // Andalusian Gardens: ivory arcades, green-and-blue tiles, cypresses.
   andalus: {
@@ -406,7 +406,7 @@ export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {
     nightSky: 0x142848, skyTop: 0x4a9ae0, skyHorizon: 0xe2f2fa, nightPools: false, backdrop: "alhambra", ambient: "petals", lanterns: [0xfff0b0, 0x8fe0c0],
     band: { ...I.band, fill: "#3aa0d8" },
     tree: { kind: "pine", trunk: 0x5a4028, leafA: 0x2a6a38, leafB: 0x357a42 },
-    islamic: tiles({ plaster: "#c0b59b", lane: "180,142,80", laneWear: "136,104,52", star: "rgba(40,130,70,0.26)", diamond: "rgba(40,90,170,0.22)", dome: 0x2a7a4a, domeKing: 0x2a8a6a, emblem: 0xdcb040 }),
+    islamic: tiles({ plaster: "#aba18a", lane: "160,127,71", laneWear: "136,104,52", star: "rgba(40,130,70,0.26)", diamond: "rgba(40,90,170,0.22)", dome: 0x2a7a4a, domeKing: 0x2a8a6a, emblem: 0xdcb040 }),
   },
   // Artisans' House: warm wood and brass inlay.
   artisans: {
@@ -417,7 +417,7 @@ export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {
     nightSky: 0x2a1c20, skyTop: 0x6a8ac0, skyHorizon: 0xf4d8a8, nightPools: false, backdrop: "minaret", ambient: "none", lanterns: [0xffc46b, 0xffe08a],
     band: { ...I.band, fill: "#2a7ab8" },
     tree: { kind: "topiary", trunk: 0x5a3a20, leafA: 0x5a7a38, leafB: 0x6a8a40 },
-    islamic: tiles({ plaster: "#cbb084", star: "rgba(140,90,40,0.26)", diamond: "rgba(202,162,63,0.26)", lane: "168,124,70", laneWear: "124,88,44", dome: 0xc9a04a, domeKing: 0xd8b050, emblem: 0xc9a04a }),
+    islamic: tiles({ plaster: "#b9a179", star: "rgba(140,90,40,0.26)", diamond: "rgba(202,162,63,0.26)", lane: "168,124,70", laneWear: "124,88,44", dome: 0xc9a04a, domeKing: 0xd8b050, emblem: 0xc9a04a }),
   },
   // Alhambra Palace: rose-ivory stucco, deep red and gold, royal domes.
   alhambra: {
@@ -429,7 +429,7 @@ export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {
     band: { ...I.band, fill: "#2a86d8" },
     tower: { ...I.tower, enemy: "marble", player: "marble", platformEnemy: 0xe8d8c8, platformPlayer: 0xe8d8c8 },
     tree: { kind: "pine", trunk: 0x5a4028, leafA: 0x2a6a38, leafB: 0x357a42 },
-    islamic: tiles({ plaster: "#c9ae9b", lane: "180,142,80", laneWear: "136,104,52", star: "rgba(170,40,40,0.22)", diamond: "rgba(202,162,63,0.28)", dome: 0xb8923a, domeKing: 0xd8aa3a, emblem: 0xe8b948 }),
+    islamic: tiles({ plaster: "#b49c8b", lane: "161,127,72", laneWear: "136,104,52", star: "rgba(170,40,40,0.22)", diamond: "rgba(202,162,63,0.28)", dome: 0xb8923a, domeKing: 0xd8aa3a, emblem: 0xe8b948 }),
   },
   // Atlas Peaks: snowbound kasbah, icy tiles, cedar forest.
   atlas: {
@@ -441,7 +441,7 @@ export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {
     band: { fill: "#8fd0f0", streak: WHITE_STREAK, glint: 0xffffff, glintOpacity: 0.8, foam: 0xffffff, foamOpacity: 0.6, bridge: "stone", kind: "ice" },
     tower: { ...I.tower, enemy: "grey", player: "grey", platformEnemy: 0xc8d0da, platformPlayer: 0xc8d0da, plinth: 0x8a94a4, battlement: 0x8a94a4 },
     tree: { kind: "pine", trunk: 0x4a3a2a, leafA: 0x2a5a48, leafB: 0x356a52 }, flowers: false,
-    islamic: tiles({ plaster: "#aab7c5", star: "rgba(40,110,190,0.24)", diamond: "rgba(26,163,160,0.2)", lane: "196,206,220", laneWear: "140,150,170", dome: 0x2a6ab0, domeKing: 0x3a88c8, emblem: 0xd8c070 }),
+    islamic: tiles({ plaster: "#97a2af", star: "rgba(40,110,190,0.24)", diamond: "rgba(26,163,160,0.2)", lane: "196,206,220", laneWear: "140,150,170", dome: 0x2a6ab0, domeKing: 0x3a88c8, emblem: 0xd8c070 }),
   },
   // Ghouta Orchards: Damascus rose and orchard green.
   ghouta: {
@@ -452,7 +452,7 @@ export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {
     nightSky: 0x241a3a, skyTop: 0x4a9ad8, skyHorizon: 0xf8e2ea, nightPools: false, backdrop: "oasis", ambient: "petals", lanterns: [0xffb0c8, 0xffe08a],
     band: { ...I.band, fill: "#2aa0c8" },
     tree: { kind: "topiary", trunk: 0x6a4a2a, leafA: 0x3f8f3a, leafB: 0x58a84a },
-    islamic: tiles({ plaster: "#c8b1a6", lane: "180,142,80", laneWear: "136,104,52", star: "rgba(200,70,110,0.24)", diamond: "rgba(60,140,60,0.22)", dome: 0x3a8a5a, domeKing: 0xc05a7a, emblem: 0xe0b048 }),
+    islamic: tiles({ plaster: "#b19d93", lane: "159,126,71", laneWear: "136,104,52", star: "rgba(200,70,110,0.24)", diamond: "rgba(60,140,60,0.22)", dome: 0x3a8a5a, domeKing: 0xc05a7a, emblem: 0xe0b048 }),
   },
   // Moonlit Medina: the legendary night city of lanterns and gold.
   medina: {
@@ -463,7 +463,7 @@ export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {
     nightSky: 0x06081a, skyTop: 0x03051a, skyHorizon: 0x2a2a6a, nightPools: true, backdrop: "minaret", ambient: "fireflies", lanterns: [0xffc46b, 0xffe08a, 0x9fd8ff, 0xff9ac0], torch: 0xffd27a,
     band: { fill: "#1a2a78", streak: "rgba(180,200,255,0.4)", glint: 0xffe8a0, glintOpacity: 0.7, foam: 0xc8d0ff, foamOpacity: 0.35, bridge: "stone", kind: "water" },
     tower: { ...I.tower, platformEnemy: 0xb8b0c8, platformPlayer: 0xb8b0c8, plinth: 0x7a7090, battlement: 0x7a7090 },
-    islamic: tiles({ plaster: "#8f86a6", star: "rgba(60,50,150,0.16)", diamond: "rgba(202,162,63,0.2)", lane: "176,158,116", laneWear: "128,112,76", dome: 0xcaa23f, domeKing: 0xe8c050, emblem: 0xf0c848 }),
+    islamic: tiles({ plaster: "#857d9a", star: "rgba(60,50,150,0.16)", diamond: "rgba(202,162,63,0.2)", lane: "176,158,116", laneWear: "128,112,76", dome: 0xcaa23f, domeKing: 0xe8c050, emblem: 0xf0c848 }),
   },
 };
 
@@ -471,19 +471,19 @@ export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {
 const STAGE_OVERRIDES: Record<string, Partial<StagePalette>> = {
   meadow: { bankNear: "#85734d", bankFar: "#d6c08a" },
   swamp: { bankNear: "#4a4630", bankFar: "#8a8458", awning: 0xe0d6b8 },
-  bone: { bankNear: "#6a5a48", bankFar: "#c4b28a" },
-  snow: { bankNear: "#c8dcec", bankFar: "#b8c6d6" },
+  bone: { bankNear: "#6a5a48", bankFar: "#b0a07d" },
+  snow: { bankNear: "#c8dcec", bankFar: "#a2afbe" },
   forge: { bankNear: "#28201f", bankFar: "#4a4246", awning: 0x3a3236, kerb: 0x4a4246 },
   mystic: { bankNear: "#3a2c62", bankFar: "#6a5a9a", awning: 0xd8ccf0 },
   workshop: { bankNear: "#6a4c2c", bankFar: "#b8925a" },
-  royal: { bankNear: "#8a7a5a", bankFar: "#c8c09a", awning: 0xfff6e0, kerb: 0xd8ccb0 },
-  ice: { bankNear: "#cfe2f2", bankFar: "#a8c4da" },
+  royal: { bankNear: "#8a7a5a", bankFar: "#b4ac88", awning: 0xfff6e0, kerb: 0xd8ccb0 },
+  ice: { bankNear: "#cfe2f2", bankFar: "#98b4ca" },
   jungle: { bankNear: "#5a4a2a", bankFar: "#b09a62" },
   neon: { bankNear: "#6a7092", bankFar: "#9298ba", awning: 0xe8e6f6, kerb: 0x4a4670 },
-  courtyard: { bankNear: "#a88a5a", bankFar: "#cbb38a" },
+  courtyard: { bankNear: "#9a7e52", bankFar: "#b7a17c" },
   souk: { bankNear: "#86684a", bankFar: "#a27e66" },
-  copper: { bankNear: "#6a4030", bankFar: "#a88660", awning: 0xf0d8b8 },
-  medina: { bankNear: "#5a5078", bankFar: "#8f86a6" },
+  copper: { bankNear: "#6a4030", bankFar: "#9c7d59", awning: 0xf0d8b8 },
+  medina: { bankNear: "#5a5078", bankFar: "#857d9a" },
 };
 
 function tintHex(hex: number, f: number): number {

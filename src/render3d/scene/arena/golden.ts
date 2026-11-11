@@ -125,7 +125,7 @@ const MIX_B = new THREE.Color();
 const mixHex = (a: number, b: number, t: number): number => MIX_A.set(a).lerp(MIX_B.set(b), t).getHex();
 
 /** How far the town's limewash lifts the court plaster toward cream. */
-const TOWN_LIFT = 0.65;
+const TOWN_LIFT = 0.72;
 /** Night sets: walls sit back in the dark (lamp-lit windows carry them). */
 const NIGHT_WALL = 0.56;
 

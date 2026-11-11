@@ -232,12 +232,13 @@ describe("toy tournament stage (all 22 looks)", () => {
     (_id, look) => {
       // Calm floor, loud actors: a near-white court sinks white and cream
       // units and erases the lanes (snow, neon and the Golden Age courts
-      // painted 0.83-0.93). The court stays at or under 0.72 painted luma
+      // painted 0.83-0.93). The lit court reads about 1.09x its paint on
+      // screen, so the paint stays at or under 0.65 (screen 0.70 at most)
       // and the lanes sit at least 0.06 away from it, darker or lighter.
       const img = groundPainter.paint(look, !!look.islamic);
       const field = patchLuma(img, FIELD_PTS);
       const lane = patchLuma(img, LANE_PTS);
-      expect(field).toBeLessThanOrEqual(0.72);
+      expect(field).toBeLessThanOrEqual(0.65);
       expect(Math.abs(field - lane)).toBeGreaterThanOrEqual(0.06);
     },
   );

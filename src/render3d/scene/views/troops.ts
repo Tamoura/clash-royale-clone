@@ -113,10 +113,17 @@ export function unitHpColor(side: Side, palette: TeamPalette = teamPalette()): n
   return palette === "cb" ? teamColor(side, "main", "cb") : HP_COLOR[side];
 }
 
+/**
+ * HP numerals: painted at 2x (256x96) so a 2x phone gets a crisp number, in
+ * a cream under the bloom threshold (pure white haloed) with the shared ink.
+ */
+export const HP_TEXT_FILL = "#f4ead6";
+const HP_TEXT_SCALE = 2;
+
 export function makeHpText(y: number): { sprite: THREE.Sprite; text: HpText } {
   const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 48;
+  c.width = 128 * HP_TEXT_SCALE;
+  c.height = 48 * HP_TEXT_SCALE;
   const ctx = c.getContext("2d")!;
   const tex = new THREE.CanvasTexture(c);
   const sprite = new THREE.Sprite(
@@ -132,16 +139,17 @@ export function updateHpText(t: HpText, hp: number): void {
   if (value === t.last) return;
   t.last = value;
   const ctx = t.ctx;
-  ctx.clearRect(0, 0, 128, 48);
-  ctx.font = `bold 30px ${GAME_FONT}`;
+  const k = HP_TEXT_SCALE;
+  ctx.clearRect(0, 0, 128 * k, 48 * k);
+  ctx.font = `bold ${30 * k}px ${GAME_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.lineJoin = "round";
-  ctx.lineWidth = 7;
-  ctx.strokeStyle = "rgba(10,14,22,0.9)";
-  ctx.strokeText(String(value), 64, 26);
-  ctx.fillStyle = "#ffffff";
-  ctx.fillText(String(value), 64, 26);
+  ctx.lineWidth = 7 * k;
+  ctx.strokeStyle = "rgba(31,26,46,0.92)";
+  ctx.strokeText(String(value), 64 * k, 26 * k);
+  ctx.fillStyle = HP_TEXT_FILL;
+  ctx.fillText(String(value), 64 * k, 26 * k);
   t.tex.needsUpdate = true;
 }
 

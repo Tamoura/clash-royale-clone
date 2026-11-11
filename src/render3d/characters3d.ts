@@ -888,7 +888,8 @@ function buildWarElephant(): TroopRig {
   const g = new THREE.Group();
   g.scale.setScalar(ELEPHANT_SCALE);
   root.add(g);
-  const GRAY = 0x8d8f96, GRAYDK = 0x6d6f77, IVORY = 0xf1e7cf;
+  // A warm elephant grey (a cool slate read as a boulder) with pink inner ears.
+  const GRAY = 0x9b938f, GRAYDK = 0x7a726f, IVORY = 0xf1e7cf, EAR_PINK = 0xd9a0a0;
   // Art bible 7: the ONE team slot is the saddle cloth (the caparison); the
   // howdah, canopy and medallion keep the edition's emerald, turquoise and gold.
   const GOLD = THEME.goldLight, CLOTH = THEME.emerald, CLOTH2 = THEME.turquoise;
@@ -912,6 +913,7 @@ function buildWarElephant(): TroopRig {
   const tail = cyl(0.05, 0.04, 0.5, GRAYDK, 0, 1.05, -1.5);
   tail.rotation.x = 0.35;
   g.add(tail);
+  g.add(cone(0.08, 0.2, 0x3a3432, 0, 0.78, -1.6)); // tail tuft: a back cue
 
   // Head + flapping ears at the front.
   const head = sphere(0.52, GRAY, 0, 1.42, 1.0);
@@ -920,12 +922,20 @@ function buildWarElephant(): TroopRig {
   g.add(box(0.5, 0.07, 0.06, 0x55575e, 0, 1.78, 1.28)); // brow ridge
   for (const s of [-1, 1]) {
     g.add(sphere(0.07, 0x1f2430, s * 0.22, 1.5, 1.36)); // small eye
+    // Big ears that stand out of the silhouette from the front and behind.
     const ear = new THREE.Group();
     ear.name = "ear";
-    ear.position.set(s * 0.44, 1.55, 0.85);
-    const flap = sphere(0.36, GRAYDK, s * 0.14, 0, 0);
-    flap.scale.set(0.28, 1.05, 1.1);
+    ear.position.set(s * 0.46, 1.55, 0.85);
+    // Flared forward: the pink inner face turns to the front, the grey back
+    // stands out past the body from behind.
+    ear.userData.flare = -s * 0.5;
+    ear.rotation.y = ear.userData.flare;
+    const flap = sphere(0.48, GRAYDK, s * 0.2, -0.04, -0.04);
+    flap.scale.set(0.24, 1.05, 1.1);
     ear.add(flap);
+    const inner = sphere(0.36, EAR_PINK, s * 0.27, -0.02, 0.02);
+    inner.scale.set(0.2, 0.95, 0.9);
+    ear.add(inner);
     g.add(ear);
   }
 
@@ -1038,7 +1048,7 @@ function buildWarElephant(): TroopRig {
     extras: (time, phase) => {
       trunk.rotation.x = Math.sin(time * 2 + phase) * 0.18;
       for (let i = 0; i < ears.length; i++) {
-        ears[i].rotation.y = Math.sin(time * 3 + phase + i) * 0.22 * (i === 0 ? 1 : -1);
+        ears[i].rotation.y = ((ears[i].userData.flare as number | undefined) ?? 0) + Math.sin(time * 3 + phase + i) * 0.22 * (i === 0 ? 1 : -1);
       }
     },
   };

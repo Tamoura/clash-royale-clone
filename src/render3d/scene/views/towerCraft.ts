@@ -165,10 +165,11 @@ const STONE_BASE: Record<BrickVariant, string> = {
   blue: "#93a9d1",
   grey: "#b4bac4",
   marble: "#dcd6ea",
-  // Basalt for forge and copper: warm and lifted (with the looks' lighter
-  // battlement tone it multiplies) to about 0.1 linear on the facade, so the
-  // keeps read their gate, quoins and banner instead of black boxes.
-  dark: "#86706a",
+  // Basalt for forge and copper: warm, and light enough in the texture (the
+  // walls are the texture alone, lit) to land a mid-dark brown facade on
+  // screen, so the keeps read their gate, quoins and banner instead of
+  // black boxes (it was #52525e: facades at about 2% linear luminance).
+  dark: "#9c8278",
   ice: "#cfe4f2",
   moss: "#8ba269",
   bone: "#e4dac4",
