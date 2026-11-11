@@ -266,7 +266,7 @@ export const PRESETS: Record<string, readonly Layer[]> = {
   // A broken war machine: streaky electric burst, a small core and a ring.
   "spark-burst": [
     { pool: "add", cell: CELL.STREAK, count: 10, life: [0.3, 0.45], dir: "sphere", speed: [3.5, 6], height: 0.7, drag: 2.5, gravity: 6, size0: [0.1, 0.14], size1: 0.05, stretch: 0.9, color0: 0x8c7bff, hdr0: 2, hdr1: 1, alpha0: 1, alpha1: 0 },
-    { pool: "add", cell: CELL.SOFT, count: 1, life: 0.16, dir: "none", speed: 0, height: 0.7, size0: 1.1, size1: 0.5, color0: 0x8c7bff, hdr0: 1.4, alpha0: 1, alpha1: 0, push: 1 },
+    { pool: "add", cell: CELL.SOFT, count: 1, life: 0.16, dir: "none", speed: 0, height: 0.7, size0: 0.9, size1: 0.45, color0: 0x8c7bff, hdr0: 1.4, alpha0: 1, alpha1: 0, push: 1 },
     { pool: "alpha", cell: CELL.RING, count: 1, life: 0.3, dir: "none", speed: 0, height: 0.06, size0: 0.4, size1: 1.8, ground: true, color0: 0x8c7bff, alpha0: 0.8, alpha1: 0 },
   ],
   // A balloon envelope venting: torn scraps spiralling down plus a sigh of smoke.
@@ -286,7 +286,7 @@ export const PRESETS: Record<string, readonly Layer[]> = {
   ],
   // Angry steam venting from a waking king.
   steam: [
-    { pool: "alpha", cell: SMOKE, count: 6, life: [0.6, 0.8], delay: [0, 0.3], dir: "up", spread: 0.5, speed: [1.4, 2.2], area: 0.7, edge: true, height: 2.6, drag: 1.2, size0: [0.35, 0.45], size1: [0.9, 1.2], spin: [-1, 1], color0: 0xffb0a8, color1: 0xff8a80, alpha0: 0.85, alpha1: 0, push: 0.5 },
+    { pool: "alpha", cell: SMOKE, count: 6, life: [0.6, 0.8], delay: [0, 0.3], dir: "up", spread: 0.5, speed: [1.4, 2.2], area: 0.7, edge: true, height: 2.6, drag: 1.2, size0: [0.35, 0.45], size1: [0.9, 1.2], spin: [-1, 1], color0: 0xf08a80, color1: 0xd9655a, alpha0: 0.85, alpha1: 0, push: 0.5 },
   ],
 };
 

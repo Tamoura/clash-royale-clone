@@ -329,3 +329,182 @@ describe("spell recipes", () => {
     expect(v.add.mesh.visible || v.alpha.mesh.visible).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Toy Tournament (art bible 5 and 8): the bloom contract, puffs, stars,
+// team rings, modelled projectiles and the damage numbers' merge and stack.
+// ---------------------------------------------------------------------------
+
+describe("bloom contract and toon FX", () => {
+  it("only cores and sparks carry hdr above 1; flames, rings and puffs stay under", async () => {
+    const { HOT_PRESETS, PLAIN_HDR_MAX } = await import("./presets");
+    const over: string[] = [];
+    for (const name of PRESET_NAMES) {
+      for (const L of PRESETS[name]) {
+        const hdr = Math.max(L.hdr0 ?? 1, L.hdr1 ?? L.hdr0 ?? 1);
+        if (hdr <= PLAIN_HDR_MAX) continue;
+        // A hot layer must be additive, belong to a core/spark preset and be small.
+        if (!HOT_PRESETS.has(name) || L.pool !== "add") over.push(`${name}:${L.cell}`);
+        else expect(Math.max(min(L.size0), min(L.size1)), name).toBeLessThanOrEqual(1.0);
+        expect(hdr, name).toBeLessThanOrEqual(2.4);
+      }
+    }
+    expect(over).toEqual([]);
+  });
+
+  it("puffs are outlined toon clouds, never opaque white", async () => {
+    const { SMOKE_CELLS, CELL } = await import("./atlas");
+    const hsl = { h: 0, s: 0, l: 0 };
+    for (const name of PRESET_NAMES) {
+      for (const L of PRESETS[name]) {
+        const cells = typeof L.cell === "number" ? [L.cell] : L.cell;
+        if (!cells.some((c) => SMOKE_CELLS.includes(c) || c === CELL.PUFF)) continue;
+        expect(L.pool, name).toBe("alpha");
+        new THREE.Color(L.color0).getHSL(hsl, THREE.SRGBColorSpace);
+        // Light puffs (snowy frost) are see-through; nothing is an opaque white blob.
+        if (hsl.l > 0.8) expect(L.alpha0 ?? 1, name).toBeLessThanOrEqual(0.6);
+        expect(hsl.l, name).toBeLessThan(0.9);
+      }
+    }
+  });
+
+  it("single-target impact puffs stay at or under 1.2 tiles", async () => {
+    const { IMPACT_PUFF_MAX } = await import("./presets");
+    const sizes: number[] = [];
+    const sp = {
+      spawn: (_k: PoolKind, s: ParticleSpec) => sizes.push(Math.max(s.size0, s.size1)),
+      rand: Math.random,
+      scale: () => 1,
+    };
+    for (const name of ["dust", "dust-kick", "hitSpark"]) emitPreset(sp, name, 0, 0, 0, { radius: 1.3 });
+    expect(Math.max(...sizes)).toBeLessThanOrEqual(IMPACT_PUFF_MAX);
+  });
+
+  it("a hit throws 4-6 inked star sprites", async () => {
+    const { CELL } = await import("./atlas");
+    const { hitStars } = await import("./effects");
+    for (const p of [1, 4, 10, 18]) {
+      const n = hitStars(p);
+      expect(n).toBeGreaterThanOrEqual(4);
+      expect(n).toBeLessThanOrEqual(6);
+      const stars: number[] = [];
+      emitPreset({ spawn: (_k, s) => s.cell === CELL.STAR5 && stars.push(1), rand: Math.random, scale: () => 1 }, "hitSpark", 0, 0, 0, { count: n });
+      expect(stars.length).toBe(n);
+    }
+  });
+
+  it("floor dust takes the arena's floor colour", () => {
+    const got: number[] = [];
+    const sp = {
+      spawn: (_k: PoolKind, s: ParticleSpec) => got.push(s.r0),
+      rand: Math.random,
+      scale: () => 1,
+      floorColor: () => 0x00ff00,
+    };
+    emitPreset(sp, "dust", 0, 0, 0);
+    expect(got.every((r) => r === 0)).toBe(true); // green: no red at all
+  });
+
+  it("screen flashes never pass 0.25", async () => {
+    const { FX_MAX_FLASH } = await import("./pool");
+    setPrefs({ reduceMotion: "off" });
+    const h = host();
+    const v = new VfxPool(h);
+    v.flash(1, 2);
+    castSpell(v, "zap", 9, 12, "player");
+    for (let f = 0; f < 5; f++) v.update(1 / 60);
+    expect(Math.max(...h.flashes)).toBeLessThanOrEqual(FX_MAX_FLASH);
+    expect(FX_MAX_FLASH).toBeLessThanOrEqual(0.25);
+  });
+
+  it("every spell lays a ring in the caster's team colour at the true radius", async () => {
+    const { fxTeamColor } = await import("./spells");
+    for (const side of ["player", "enemy"] as const) {
+      for (const id of Object.keys(CARDS) as CardId[]) {
+        const card = getCard(id);
+        if (card.kind !== "spell" || id === "comet") continue;
+        const v = new VfxPool(host());
+        const rings: Array<{ r: number; color?: number }> = [];
+        const decal = v.decal.bind(v);
+        v.decal = (kind, x, y, r, opts) => {
+          if (kind === "ring") rings.push({ r, color: opts?.color });
+          decal(kind, x, y, r, opts);
+        };
+        castSpell(v, id, 9, 12, side);
+        expect(rings.length, `${id} ${side}`).toBeGreaterThanOrEqual(1);
+        expect(rings[0].r, id).toBe(spellRadius(id));
+        expect(rings[0].color, id).toBe(fxTeamColor(side));
+      }
+    }
+    expect(fxTeamColor("player")).not.toBe(fxTeamColor("enemy"));
+  });
+});
+
+describe("modelled projectiles", () => {
+  it("the fireball is a hot core in flame petals: no cone primitive, core above the bloom threshold", async () => {
+    const { buildProjectileView } = await import("./effects");
+    const { projectileStyle } = await import("../../projectiles");
+    for (const id of ["wizard", "baby-dragon", "firecracker"] as CardId[]) {
+      const view = buildProjectileView(projectileStyle(id, "troop"));
+      let cones = 0;
+      let core: THREE.Mesh | null = null;
+      view.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        if (m.geometry.type === "ConeGeometry") cones++;
+        if (m.name === "core") core = m;
+      });
+      expect(cones, id).toBe(0);
+      expect(core, id).not.toBeNull();
+      const c = ((core as unknown as THREE.Mesh).material as THREE.MeshBasicMaterial).color;
+      expect(0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, id).toBeGreaterThan(1);
+      expect(view.getObjectByName("petals"), id).toBeDefined();
+    }
+  });
+
+  it("arrows carry fletching in one draw; every form builds", async () => {
+    const { buildProjectileView } = await import("./effects");
+    const { projectileStyle } = await import("../../projectiles");
+    const arrow = buildProjectileView(projectileStyle("archers", "troop"));
+    let meshes = 0;
+    arrow.traverse((o) => (meshes += (o as THREE.Mesh).isMesh ? 1 : 0));
+    expect(meshes).toBe(1);
+    for (const id of ["musketeer", "electro-wizard", "ice-wizard", "witch", "cannon", "magic-archer", "princess"] as CardId[]) {
+      expect(buildProjectileView(projectileStyle(id, "troop")), id).toBeDefined();
+    }
+  });
+});
+
+describe("damage numbers merge and stack", () => {
+  it("a second hit on the same target within 150 ms merges into one number", async () => {
+    const { MERGE_WINDOW } = await import("./glyphs");
+    const v = new VfxPool(host());
+    v.popup(0, 1, 0, "160", 1, "#ffd23f");
+    v.update(MERGE_WINDOW / 2);
+    v.popup(0, 1, 0, "80", 1, "#ffd23f");
+    expect(v.glyphs.live).toHaveLength(1);
+    expect(v.glyphs.live[0].value).toBe(240);
+    v.update(MERGE_WINDOW * 2);
+    v.popup(0, 1, 0, "80", 1, "#ffd23f");
+    expect(v.glyphs.live).toHaveLength(2);
+  });
+
+  it("numbers on neighbouring targets stack instead of overlapping", async () => {
+    const { stackLift } = await import("./glyphs");
+    const { POPUP_LIFE, popupRise } = await import("../../popups");
+    const v = new VfxPool(host());
+    v.popup(0, 1, 0, "160", 1, "#ffd23f");
+    v.update(0.2);
+    v.popup(0.4, 1, 0, "80", 1, "#ffd23f"); // a different target, close by
+    const [a, b] = v.glyphs.live;
+    expect(b.lift).toBeGreaterThan(0);
+    // For the rest of both lives the two never come closer than their heights allow.
+    for (let t = 0; t <= POPUP_LIFE - 0.2; t += 0.02) {
+      const ya = a.vy + a.lift + popupRise((t + 0.2) / POPUP_LIFE);
+      const yb = b.vy + b.lift + popupRise(t / POPUP_LIFE);
+      if (t + 0.2 < POPUP_LIFE - 0.15) expect(Math.abs(ya - yb)).toBeGreaterThanOrEqual(0.4 * (a.h + b.h) - 1e-6);
+    }
+    // Far apart on screen: no lift needed.
+    expect(stackLift(v.glyphs.live, 9, 1.3, 0.8, 1.25, v.now, 1)).toBe(0);
+  });
+});
