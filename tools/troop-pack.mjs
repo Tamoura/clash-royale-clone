@@ -272,8 +272,10 @@ function paletteTable({ json, bin }) {
     rows.push(row);
   }
   const meshes = {};
+  const verts = {};
   for (const n of json.nodes) {
     if (n.mesh === undefined) continue;
+    verts[n.name] = json.meshes[n.mesh].primitives.reduce((sum, p) => sum + json.accessors[p.attributes.POSITION].count, 0);
     const set = new Set();
     for (const p of json.meshes[n.mesh].primitives) {
       const acc = json.accessors[p.attributes.TEXCOORD_0];
@@ -289,7 +291,7 @@ function paletteTable({ json, bin }) {
     }
     meshes[n.name] = [...set].sort();
   }
-  return { rows, meshes };
+  return { rows, meshes, verts };
 }
 
 // ------------------------------------------------------------------ pack
@@ -377,6 +379,13 @@ function readGlbRaw(file) {
   for (const [id, t] of Object.entries(tables)) {
     lines.push(`  ${id}: {`);
     for (const [mesh, sw] of Object.entries(t.meshes)) lines.push(`    ${/^[A-Za-z_]\w*$/.test(mesh) ? mesh : JSON.stringify(mesh)}: [${sw.map((s) => JSON.stringify(s)).join(", ")}],`);
+    lines.push("  },");
+  }
+  lines.push("};", "", "/** Vertex count of each node's mesh, per character file (the bake budget test). */");
+  lines.push("export const MESH_VERTS: Record<string, Record<string, number>> = {");
+  for (const [id, t] of Object.entries(tables)) {
+    lines.push(`  ${id}: {`);
+    for (const [mesh, n] of Object.entries(t.verts)) lines.push(`    ${/^[A-Za-z_]\w*$/.test(mesh) ? mesh : JSON.stringify(mesh)}: ${n},`);
     lines.push("  },");
   }
   lines.push("};", "");

@@ -11,13 +11,19 @@ import {
   toon,
   type TroopRig,
 } from "./characters3d";
+import { animateKitTroop, hasKitTroop, loadKitTroops, makeKitTroop, type KitUnit } from "./cast/index";
 
 /**
  * Character portrait studio (dev tool): `?gallery=<id>` renders one
  * character posed on a pedestal. Accepts any troop card id plus
- * "tower-princess" and "tower-king".
+ * "tower-princess" and "tower-king". Humanoids show the modelled cast once
+ * its pack is in (`&troops=rigs` shows the procedural roster instead).
  */
 export function startGallery(container: HTMLElement, subject: string): void {
+  void loadKitTroops().then(() => showGallery(container, subject));
+}
+
+function showGallery(container: HTMLElement, subject: string): void {
   // Audit-tool extras: ?pose=front|back|<degrees> parks the turntable at an
   // exact angle with a frozen idle pose, and ?bg=chroma strips the set
   // (pedestal, floor, label) to a solid keyable green for masking.
@@ -41,7 +47,12 @@ export function startGallery(container: HTMLElement, subject: string): void {
 
   let rig: TroopRig;
   let title: string;
-  if (subject === "tower-princess") {
+  const crewId = subject === "tower-cannoneer" ? "cannoneer" : subject === "tower-duchess" ? "duchess" : subject;
+  const kit: KitUnit | null = hasKitTroop(crewId) ? makeKitTroop(crewId, "player", undefined, false) : null;
+  if (kit) {
+    rig = { group: kit.group, height: kit.height, armRest: 0, swingAmp: 0 } as unknown as TroopRig;
+    title = crewId.startsWith("tower-") || crewId === "cannoneer" || crewId === "duchess" ? crewId : getCard(subject as CardId).name;
+  } else if (subject === "tower-princess") {
     rig = buildTowerPrincess();
     outlineRig(rig.group);
     title = "Tower Princess";
@@ -61,7 +72,7 @@ export function startGallery(container: HTMLElement, subject: string): void {
     rig = buildTroop(subject as CardId, "player"); // throws on unknown/spell ids
     title = getCard(subject as CardId).name;
   }
-  if (rig.arm) rig.arm.rotation.x = rig.armRest;
+  if (!kit && rig.arm) rig.arm.rotation.x = rig.armRest;
 
   // Pose: three-quarter turn on a stone pedestal.
   const stage = new THREE.Group();
@@ -126,10 +137,12 @@ export function startGallery(container: HTMLElement, subject: string): void {
   window.addEventListener("resize", resize);
 
   const t0 = performance.now();
+  let kitFrozen = 0;
   const frame = (): void => {
     // Fixed poses freeze the idle clock too, so shots are deterministic.
     const t = poseAngle !== null ? 0.35 : (performance.now() - t0) / 1000;
-    animateTroop(rig, { moving: false, swing: 0, time: t, phase: 0 });
+    if (kit) animateKitTroop(kit, { moving: false, attacking: false, cooldown: 1, hitSpeed: 1, rate: 1, frozen: poseAngle !== null && t > 0 && kitFrozen++ > 2 }, 1 / 60);
+    else animateTroop(rig, { moving: false, swing: 0, time: t, phase: 0 });
     if (poseAngle === null) {
       stage.rotation.y = 0.55 + Math.sin(t * 0.5) * 0.12; // slow showcase sway
     }

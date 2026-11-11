@@ -14,7 +14,7 @@ import type { Variant } from "./types";
 
 const GOLD = 0xf2c65a;
 const STEEL = 0xb4c0d0;
-const LEATHER = 0x7a4a2a;
+const LEATHER = 0x6b4a32;
 
 export const CLASSIC: Record<string, Variant> = {
   knight: {
@@ -146,9 +146,8 @@ export const CLASSIC: Record<string, Variant> = {
     props: ["Knight_Helmet", "2H_Sword"],
     paint: {
       "3,0": 0x5d5a6e, "7,0": 0x8d8aa0, "7,1": 0x34323f, "1,1": 0x8d8aa0, "2,1": 0x5d5a6e, "3,1": 0xd6dde6,
-      "0,0": 0x1b1a22, "1,0": 0x1b1a22, "6,0": 0x34323f, "4,0": 0x34323f, "0,1": "team",
+      "0,0": 0x1b1a22, "1,0": 0x1b1a22, "6,0": 0x34323f, "4,0": 0x34323f, "0,1": "team", "2,2": 0x34323f,
     },
-    propPaint: { "2,2": 0x34323f },
     extras: [
       // Curled horns and a glowing cyan visor slit.
       x("head", 0xe8e0d0, () => cone(0.13, 0.55, 0.52, HEAD_TOP + 0.08, 0.02, -0.8, 0, 8)),
@@ -198,9 +197,8 @@ Object.assign(CLASSIC, {
     girth: 1.1,
     paint: {
       "3,0": 0x4e4a66, "7,0": 0x7e78a6, "7,1": 0x2a2838, "1,1": 0x7e78a6, "2,1": 0x4e4a66, "3,1": 0xd6dde6,
-      "0,0": 0x12121a, "1,0": 0x12121a, "6,0": 0x2a2838, "4,0": 0x2a2838, "0,1": "team",
+      "0,0": 0x12121a, "1,0": 0x12121a, "6,0": 0x2a2838, "4,0": 0x2a2838, "0,1": "team", "2,2": 0x2a2838,
     },
-    propPaint: { "2,2": 0x2a2838 },
     extras: [
       x("head", 0xe8e0d0, () => cone(0.16, 0.75, 0.56, HEAD_TOP + 0.14, 0.02, -0.7, 0, 8)),
       x("head", 0xe8e0d0, () => cone(0.16, 0.75, -0.56, HEAD_TOP + 0.14, 0.02, 0.7, 0, 8)),
@@ -477,7 +475,7 @@ CLASSIC.duchess = {
   scale: 0.95,
   props: ["Mage_Cape"],
   team: /Cape/,
-  paint: { "0,1": 0x8a48c8, "1,1": 0x8a48c8, "7,1": 0x43206e, "1,0": 0x3a2420, "2,1": "team" },
+  paint: { "0,1": 0x8a48c8, "1,1": 0x8a48c8, "7,1": 0x43206e, "1,0": 0x3a2420, "2,1": "team", "5,0": GOLD },
   extras: [...crown(0xffcf3a, 0.3, HEAD_TOP - 0.02), x("head", 0x3a2420, () => ball(0.22, 0, 2.15, -0.38, 1, 1, 1, 10))],
   idle: "Idle",
   walk: "Walking_A",

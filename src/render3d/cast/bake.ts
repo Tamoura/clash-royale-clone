@@ -20,7 +20,7 @@ import type { TeamPalette } from "../../ui/prefs";
 import { INK_FRAGMENT, OUTLINE_CSS_PX, fitInk, installInk, registerInkGeometry, smoothedNormals } from "../outlineMaterial";
 import { teamColor, teamPalette } from "../teamColors";
 import { BONE_INDEX, HEAD_BONE, sources, type Source } from "./loader";
-import { CLOTH_SWATCHES, HAIR_SWATCH, SKIN_SWATCHES } from "./rules";
+import { CLOTH_SWATCHES, HAIR_SWATCH, SKIN_SWATCHES, TEAM_HUE_SPREAD, teamHues } from "./rules";
 import type { FileId, Paint, Swatch, Variant } from "./types";
 
 /** Kit heads are scaled up this much about the neck (art bible 1). */
@@ -86,6 +86,36 @@ function hslOf(hex: number): { h: number; s: number; l: number } {
 /** Skin, repainted a warm peach (the lift alone washes the packs' skin to egg white). */
 export const SKIN = 0xee9c68;
 
+let HUES: number[] | null = null;
+
+/**
+ * The grade of an unrepainted palette colour (HSL in 0..1, written back into
+ * `out`): brighter and more saturated, steel greys lifted cool, and the TEAM
+ * RULE enforced: a colour the boost would push into a team hue family (a
+ * leather brown next to red) keeps its saturation at 0.44, below the family.
+ */
+export function gradeHsl(h: number, s: number, l: number, out: { h: number; s: number; l: number }): { h: number; s: number; l: number } {
+  if (s < 0.12) {
+    out.h = 0.6;
+    out.s = 0.08 + s;
+    out.l = Math.min(0.95, Math.pow(l, 0.72));
+    return out;
+  }
+  out.h = h;
+  out.s = Math.min(1, s * ALBEDO_SATURATION + 0.03);
+  out.l = Math.min(0.9, Math.pow(l, 0.86));
+  if (out.s > 0.45 && out.l >= 0.25 && out.l <= 0.75) {
+    HUES ??= teamHues();
+    const deg = h * 360;
+    for (const t of HUES) {
+      const d = Math.abs(deg - t) % 360;
+      if (Math.min(d, 360 - d) <= TEAM_HUE_SPREAD) out.s = Math.min(out.s, 0.44);
+    }
+  }
+  return out;
+}
+const GRADE = { h: 0, s: 0, l: 0 };
+
 /** Swatch key of a palette UV. */
 export function swatchOf(u: number, v: number): Swatch {
   return `${Math.min(7, Math.max(0, Math.floor(u * 8)))},${Math.min(3, Math.max(0, Math.floor(v * 4)))}`;
@@ -135,11 +165,10 @@ function gradeTile(
           COL.setRGB(1, 1, 1).multiplyScalar(Math.min(1, 0.1 + 0.9 * k));
         } else if (t) {
           COL.setHSL(t.h, t.s, Math.min(0.94, t.l * (0.52 + 0.56 * k)));
-        } else if (HSL.s < 0.12) {
-          // Steel, bone and cloth greys: lifted, a touch cool.
-          COL.setHSL(0.6, 0.08 + HSL.s, Math.min(0.95, Math.pow(HSL.l, 0.72)));
         } else {
-          COL.setHSL(HSL.h, Math.min(1, HSL.s * ALBEDO_SATURATION + 0.03), Math.min(0.9, Math.pow(HSL.l, 0.86)));
+          // Brighter and more saturated, greys lifted cool, never into a team hue family.
+          gradeHsl(HSL.h, HSL.s, HSL.l, GRADE);
+          COL.setHSL(GRADE.h, GRADE.s, GRADE.l);
         }
         px[i] = Math.round(COL.r * 255);
         px[i + 1] = Math.round(COL.g * 255);

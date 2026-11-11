@@ -54,3 +54,10 @@ Branch art/cast-kit from art/base (b7ae4ce). Worktree /home/user/wt-art-cast-kit
   smaller head and a beard under the chin, hat/hood "V" marks removed with hairBack, witch hair box dropped).
   Team discs thicker (ring from r*0.5) and more saturated (discColor). Troop flash capped (troopFlashTint).
   troops.test.ts updated for damage-only bars. vitest + tsc green.
+- Riders (prince, hog-rider; golden cataphract, camel raider) on procedural mounts (cast/mounts.ts); Mega
+  Knight, Digger; Golden Age roster complete (variants.golden.ts); champion from the Studio look
+  (cast/champion.ts). Team rule enforced in the grade (gradeHsl caps saturation inside a team hue family).
+  cast/cast.test.ts: bake budget, team rule (data + every shown swatch), coverage (both editions, crews,
+  every Studio headgear x weapon), lean math (home, guest, diagonal), mixer rates, dispose, swarm sharing.
+  Portraits come from the cast per edition (softer light for the cast: the "pale knight"); gallery.ts
+  shows the cast. Full vitest green (137 files).
