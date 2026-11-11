@@ -364,7 +364,7 @@ function paintClassic(look: ArenaLook, p: Paint, P: number, seed: number, rand: 
         const ax = (x + 0.5) / P;
         const dEdge = Math.min(ax, ARENA_WIDTH - ax, ay, ARENA_HEIGHT - ay);
         const border = smoothstep(0, 3.4, dEdge);
-        const f = (0.86 + patch * 0.2 + (smallF.at(x, y) - 0.5) * 0.07) * (0.8 + 0.2 * border);
+        const f = (0.86 + patch * 0.2 + (smallF.at(x, y) - 0.5) * 0.07) * (0.72 + 0.28 * border);
         const check = ((tx + ty) & 1) === 0 ? 1.045 : 0.955;
         const k = (y * w + x) * 3;
         const warmth = 0.35 + 0.65 * patch * hueN;

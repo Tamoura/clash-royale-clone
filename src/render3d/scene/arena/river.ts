@@ -100,18 +100,25 @@ const RIVER_FRAG = /* glsl */ `
     if (uMode < 0.5) {
       float n1 = rFbm(vec2(p.x * 0.7 - t * 0.45, p.y * 2.2));
       float n2 = rFbm(vec2(p.x * 1.6 - t * 0.8, p.y * 3.4 + t * 0.1) + 7.3);
-      float shallow = smoothstep(0.15, 1.0, across);
-      col = mix(uDeep, uShallow, clamp(shallow * 0.85 + (n1 - 0.5) * 0.3, 0.0, 1.0));
-      float streak = smoothstep(0.58, 0.66, n1 * 0.55 + n2 * 0.45) * (1.0 - shallow * 0.6);
-      col = mix(col, uGlint, streak * 0.35);
+      float shallow = smoothstep(0.3, 1.0, across);
+      col = mix(uDeep, uShallow, clamp(shallow * 0.9 + (n1 - 0.5) * 0.28, 0.0, 1.0));
+      float streak = smoothstep(0.6, 0.66, n1 * 0.55 + n2 * 0.45) * (1.0 - shallow * 0.6);
+      col = mix(col, uGlint, streak * 0.26);
       float c = abs(sin(p.x * 2.6 + n2 * 6.0 - t * 1.2) * sin(p.y * 5.2 + n1 * 5.0 + t * 0.7));
-      col += uGlint * pow(1.0 - c, 10.0) * 0.24 * (1.0 - uNight * 0.6);
-      col = mix(col, uSky, 0.1 + 0.1 * shallow);
+      col += uGlint * pow(1.0 - c, 10.0) * 0.16 * (1.0 - uNight * 0.6);
+      col = mix(col, uSky, 0.05);
       float edgeN = rNoise(vec2(p.x * 3.0 - t * 1.4, p.y * 6.0));
-      float foam = smoothstep(0.72, 0.97, across + (edgeN - 0.5) * 0.24);
-      foam = max(foam, (1.0 - smoothstep(0.0, 0.3 + edgeN * 0.18, pier)) * 0.95);
+      float foam = smoothstep(0.8, 0.98, across + (edgeN - 0.5) * 0.2);
+      foam = max(foam, (1.0 - smoothstep(0.0, 0.26 + edgeN * 0.16, pier)) * 0.95);
       foam *= 0.6 + 0.4 * rNoise(vec2(p.x * 7.0 - t * 2.0, p.y * 9.0));
-      col = mix(col, uFoam, clamp(foam * uFoamA * 1.9, 0.0, 1.0));
+      // The far bank throws its shade on the water, and its earth wall shows
+      // above the waterline: the river sits below the grass.
+      col *= 1.0 - 0.42 * smoothstep(-uHalf * 0.3, -uHalf * 0.78, p.y);
+      col = mix(col, uFoam, clamp(foam * uFoamA * 1.5, 0.0, 1.0));
+      float wall = smoothstep(-uHalf * 0.76, -uHalf * 0.8, p.y);
+      vec3 earth = mix(vec3(0.085, 0.055, 0.03), vec3(0.2, 0.135, 0.07), smoothstep(-uHalf * 0.8, -uHalf, p.y));
+      earth *= 0.82 + 0.3 * rNoise(vec2(p.x * 5.0, p.y * 11.0));
+      col = mix(col, earth, wall);
     } else if (uMode < 1.5) {
       vec2 q = vec2(p.x * 0.9 - t * 0.16, p.y * 1.6);
       vec2 v = rVoronoi(q * 1.4);
@@ -193,8 +200,8 @@ export interface RiverHandle {
 export function buildRiver(parent: THREE.Object3D, look: ArenaLook): RiverHandle {
   const kind = look.band.kind;
   const fill = colorOf(look.band.fill);
-  const deep = fill.clone().multiplyScalar(kind === "lava" ? 0.18 : kind === "ice" ? 0.42 : 0.55);
-  const shallow = fill.clone().lerp(new THREE.Color(1, 1, 1), kind === "lava" || kind === "neon" ? 0 : 0.18);
+  const deep = fill.clone().multiplyScalar(kind === "lava" ? 0.18 : kind === "ice" ? 0.42 : kind === "water" ? 0.42 : 0.55);
+  const shallow = fill.clone().lerp(new THREE.Color(1, 1, 1), kind === "lava" || kind === "neon" ? 0 : kind === "water" ? 0.1 : 0.18);
   const piers = BRIDGE_XS.map((bx) => new THREE.Vector2(toWorld(bx, RIVER_Y).x, PIER_HALF));
   const material = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([

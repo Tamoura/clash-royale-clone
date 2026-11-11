@@ -1,0 +1,334 @@
+/**
+ * Layered set dressing for the classic edition ("handcrafted plus"
+ * prototype). Everything here is sculpted into ONE vertex-coloured mesh
+ * (see views/towerCraft.ts: Sculpt), so the whole surround costs a single
+ * draw call however many props it holds:
+ *
+ *  - a kerb of dressed stone blocks around the court, with capped piers;
+ *  - stepped spectator terraces down both long sides (three rows deep, so
+ *    the crowd has depth), their ends faced with a team shield;
+ *  - striped pavilions and tall team banners behind each terrace;
+ *  - a forest edge: round-crowned trees and pines in clusters, bushes,
+ *    boulders, ground patches and flower beds, denser away from the court.
+ *
+ * The camera looks from the south at ~49 degrees and is orthographic, so
+ * only top faces and south (+z) faces are ever seen: detail is put there.
+ */
+import * as THREE from "three";
+import { ARENA_HEIGHT, ARENA_WIDTH, RIVER_HALF_WIDTH } from "../../../game/arena";
+import type { ArenaLook } from "../../arenaLooks";
+import { Sculpt, frustum, sculptMaterial, tone } from "../views/towerCraft";
+
+export interface ScenerySeat {
+  x: number;
+  z: number;
+  garb: number;
+  skin: number;
+  lift?: number;
+}
+
+function smooth(e0: number, e1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+}
+
+function mulberry(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const CROWD_SKIN = [0xf6c9a0, 0x9c6644, 0xcfa07a, 0xe0ac7e] as const;
+const CROWD_GARB = [0xe53935, 0x3b82f6, 0xf2c14e, 0x66bb6a, 0xab47bc, 0xff8a3a, 0xf5f0e6] as const;
+const GOLD = 0xf2c14e;
+
+/** Top faces a touch lighter, undersides darker. */
+const lit = (_x: number, _y: number, _z: number, ny: number): number => (ny > 0.7 ? 1.06 : ny < -0.4 ? 0.7 : 1);
+
+/** A round-crowned tree: a trunk and a clump of leafy blobs, lit from above. */
+function roundTree(s: Sculpt, x: number, z: number, k: number, look: ArenaLook, rand: () => number): void {
+  const trunkH = 0.9 * k;
+  s.cyl(0.11 * k, 0.17 * k, trunkH, tone(look.tree.trunk, 0.9), x, trunkH / 2, z, 7, (_x, y) => 0.7 + 0.3 * smooth(0, trunkH, y));
+  const leafA = tone(look.tree.leafA, 1.0, 1.05);
+  const leafB = tone(look.tree.leafB, 1.12, 1.05);
+  const y0 = trunkH * 0.75;
+  const top = y0 + 1.75 * k;
+  const crown = (dx: number, dy: number, dz: number, r: number, c: number): void => {
+    const g = new THREE.IcosahedronGeometry(r, 1);
+    g.scale(1, 0.86, 1);
+    // Painted from a shaded underside up to a sunlit top, warmer at the crest.
+    s.add(g, c, x + dx, y0 + dy, z + dz, rand() * 3, (_x, y, _z, ny) => (0.62 + 0.46 * smooth(y0, top, y)) * (ny < -0.3 ? 0.8 : 1));
+  };
+  crown(0, 0.75 * k, 0, 0.82 * k, leafA);
+  crown(-0.5 * k, 0.5 * k, 0.25 * k, 0.56 * k, leafA);
+  crown(0.48 * k, 0.55 * k, 0.2 * k, 0.6 * k, leafB);
+  crown(0.1 * k, 1.18 * k, -0.1 * k, 0.56 * k, leafB);
+  crown(-0.1 * k, 0.42 * k, 0.55 * k, 0.5 * k, tone(look.tree.leafB, 1.2, 1.05));
+}
+
+/** A pine: tiers of drooping cones, each tier lighter toward its rim. */
+function pineTree(s: Sculpt, x: number, z: number, k: number, look: ArenaLook): void {
+  s.cyl(0.1 * k, 0.15 * k, 0.6 * k, tone(look.tree.trunk, 0.85), x, 0.3 * k, z, 6);
+  const dark = tone(look.tree.leafA, 0.8, 1.0);
+  const light = tone(look.tree.leafA, 1.05, 1.0);
+  const tiers = 4;
+  for (let i = 0; i < tiers; i++) {
+    const r = (0.78 - i * 0.17) * k;
+    const h = 0.82 * k;
+    const y = (0.42 + i * 0.5) * k;
+    const g = new THREE.ConeGeometry(r, h, 9, 1, true);
+    s.add(g, i % 2 ? light : dark, x, y + h / 2, z, i * 0.5, (_x, yy) => 0.74 + 0.34 * smooth(y, y + h, yy));
+  }
+}
+
+function bush(s: Sculpt, x: number, z: number, k: number, look: ArenaLook, rand: () => number): void {
+  const c = tone(look.tree.leafB, 1.08, 1.05);
+  for (const [dx, dz, r] of [[0, 0, 0.5], [0.42, 0.12, 0.36], [-0.4, 0.1, 0.34]] as const) {
+    const g = new THREE.IcosahedronGeometry(r * k, 1);
+    g.scale(1, 0.72, 1);
+    s.add(g, rand() < 0.5 ? c : tone(look.tree.leafA, 1.05), x + dx * k, r * k * 0.5, z + dz * k, rand() * 3, (_x, y) => 0.66 + 0.42 * smooth(0, r * k * 1.1, y));
+  }
+}
+
+function boulder(s: Sculpt, x: number, z: number, k: number, look: ArenaLook, rand: () => number): void {
+  const base = tone(look.rock, 1.0, 0.8);
+  for (const [dx, dz, r] of [[0, 0, 0.42], [0.36, 0.14, 0.26], [-0.3, 0.2, 0.2]] as const) {
+    const g = new THREE.IcosahedronGeometry(r * k, 0);
+    g.scale(1, 0.72, 0.9);
+    g.rotateY(rand() * 3);
+    s.add(g, tone(base, 0.92 + rand() * 0.2), x + dx * k, r * k * 0.42, z + dz * k, 0, (_x, y, _z, ny) => (0.7 + 0.3 * smooth(0, r * k, y)) * (ny > 0.4 ? 1.12 : ny < -0.2 ? 0.75 : 0.95));
+  }
+}
+
+/** A team banner hung from a pole: the cloth faces the camera. */
+function bannerPole(s: Sculpt, x: number, z: number, h: number, cloth: number): void {
+  s.cyl(0.045, 0.06, h, 0x6e4a28, x, h / 2, z, 6);
+  s.add(new THREE.SphereGeometry(0.09, 8, 6), GOLD, x, h + 0.05, z);
+  const bw = 0.62;
+  const bh = 1.25;
+  const rod = new THREE.CylinderGeometry(0.025, 0.025, bw + 0.12, 6);
+  rod.rotateZ(Math.PI / 2);
+  s.add(rod, GOLD, x, h - 0.12, z + 0.05);
+  s.box(bw, bh, 0.03, cloth, x, h - 0.14 - bh / 2, z + 0.05, 0, (_x, y) => 0.82 + 0.2 * smooth(h - 0.14 - bh, h - 0.14, y));
+  s.box(bw - 0.16, bh - 0.3, 0.035, tone(cloth, 1.18, 0.9), x, h - 0.2 - bh / 2 + 0.1, z + 0.055, 0, lit);
+  const gem = new THREE.OctahedronGeometry(0.13);
+  gem.scale(0.9, 1.15, 0.2);
+  s.add(gem, GOLD, x, h - 0.14 - bh * 0.45, z + 0.08, 0, lit);
+  for (const sx of [-1, 1]) {
+    const tail = new THREE.ConeGeometry(bw / 4, 0.26, 4);
+    tail.rotateX(Math.PI);
+    tail.rotateY(Math.PI / 4);
+    tail.scale(1, 1, 0.16);
+    s.add(tail, cloth, x + (sx * bw) / 4, h - 0.14 - bh - 0.12, z + 0.05, 0, lit);
+  }
+}
+
+/** A round striped pavilion with a pennant. */
+function pavilion(s: Sculpt, x: number, z: number, k: number, cloth: number, look: ArenaLook): void {
+  const canvas = tone(look.tentWall, 1.04, 0.7);
+  const wallH = 0.85 * k;
+  const r = 1.05 * k;
+  s.cyl(r * 0.92, r, wallH, canvas, x, wallH / 2, z, 12, (_x, y) => 0.72 + 0.28 * smooth(0, wallH, y));
+  // Door flap facing the camera.
+  s.box(0.42 * k, wallH * 0.8, 0.05, tone(cloth, 0.7), x, wallH * 0.4, z + r * 0.97, 0, lit);
+  // Striped roof: twelve gores alternating cloth and canvas, over a scalloped eave.
+  const seg = 12;
+  const roofH = 1.15 * k;
+  for (let i = 0; i < seg; i++) {
+    const g = new THREE.CylinderGeometry(0.04, r * 1.14, roofH, 1, 1, true, (i / seg) * Math.PI * 2, (Math.PI * 2) / seg);
+    s.add(g, i % 2 ? canvas : cloth, x, wallH + roofH / 2, z, 0, (_x, y) => 0.8 + 0.24 * smooth(wallH, wallH + roofH, y));
+  }
+  s.cyl(r * 1.16, r * 1.16, 0.09 * k, tone(cloth, 0.72), x, wallH + 0.02, z, 12, lit);
+  s.cyl(0.03, 0.03, 0.7 * k, 0x6e4a28, x, wallH + roofH + 0.3 * k, z, 5);
+  s.add(new THREE.SphereGeometry(0.07 * k, 8, 6), GOLD, x, wallH + roofH + 0.02, z);
+  s.box(0.5 * k, 0.26 * k, 0.02, cloth, x + 0.27 * k, wallH + roofH + 0.5 * k, z, 0, lit);
+}
+
+/** The stone kerb around the court: dressed blocks, a cap, piers with pyramid caps. */
+function kerb(s: Sculpt, look: ArenaLook): void {
+  const stone = tone(look.cornerPost, 1.0, 0.55);
+  const dark = tone(stone, 0.8);
+  const hw = ARENA_WIDTH / 2 + 0.45;
+  const hd = ARENA_HEIGHT / 2 + 0.2;
+  const rand = mulberry(911);
+  const ao = (_x: number, y: number, _z: number, ny: number): number => (0.68 + 0.32 * smooth(-0.1, 0.34, y)) * (ny > 0.7 ? 1.06 : 1);
+  // Long sides: blocks of uneven length, leaving the river mouths open.
+  for (const sx of [-1, 1]) {
+    let z = -hd;
+    while (z < hd) {
+      const len = Math.min(hd - z, 0.8 + rand() * 0.7);
+      const mid = z + len / 2;
+      if (Math.abs(mid) > RIVER_HALF_WIDTH + 0.35) {
+        const h = 0.36 + rand() * 0.07;
+        s.box(0.56, h, len - 0.05, tone(stone, 0.93 + rand() * 0.14), sx * hw, h / 2 - 0.08, mid, 0, ao);
+      }
+      z += len;
+    }
+    // River mouths: a low culvert arch stone each side of the water.
+    for (const sz of [-1, 1]) s.box(0.7, 0.5, 0.36, dark, sx * hw, 0.14, sz * (RIVER_HALF_WIDTH + 0.3), 0, ao);
+  }
+  for (const sz of [-1, 1]) {
+    let x = -hw;
+    while (x < hw) {
+      const len = Math.min(hw - x, 0.8 + rand() * 0.7);
+      const h = 0.36 + rand() * 0.07;
+      s.box(len - 0.05, h, 0.56, tone(stone, 0.93 + rand() * 0.14), x + len / 2, h / 2 - 0.08, sz * hd, 0, ao);
+      x += len;
+    }
+  }
+  // Piers at the corners and along the sides, capped with little pyramids.
+  const pier = (x: number, z: number, team: number | null): void => {
+    s.add(frustum(0.44, 0.38, -0.1, 0.72), stone, x, 0, z, 0, ao);
+    s.add(frustum(0.46, 0.46, 0.72, 0.8), dark, x, 0, z, 0, lit);
+    s.add(frustum(0.42, 0.04, 0.8, 1.06), team ?? tone(stone, 1.1), x, 0, z, 0, lit);
+    if (team !== null) s.add(new THREE.SphereGeometry(0.08, 8, 6), GOLD, x, 1.1, z);
+  };
+  for (const sx of [-1, 1]) {
+    for (const z of [-hd, -8.2, 8.2, hd]) pier(sx * hw, z, z < 0 ? look.standRoofEnemy : look.standRoofPlayer);
+  }
+}
+
+/** One spectator terrace: three rising rows, faced ends, pavilions and banners behind. */
+function terrace(s: Sculpt, sx: number, zc: number, len: number, cloth: number, look: ArenaLook, seats: ScenerySeat[], rand: () => number): void {
+  const stone = tone(look.standWall, 1.12, 0.6);
+  const x0 = ARENA_WIDTH / 2 + 2.3;
+  const rows = 3;
+  const depth = 0.78;
+  const ao = (_x: number, y: number, _z: number, ny: number): number => (0.7 + 0.3 * smooth(0, 1.2, y)) * (ny > 0.7 ? 1.05 : 1);
+  for (let k = 0; k < rows; k++) {
+    const h = 0.5 + k * 0.44;
+    const x = sx * (x0 + k * depth);
+    s.box(depth, h, len, tone(stone, k % 2 ? 0.94 : 1.04), x, h / 2 - 0.06, zc, 0, ao);
+    // Bench plank along each row.
+    s.box(depth * 0.5, 0.07, len - 0.3, 0x9a6a3a, x + sx * 0.1, h - 0.03, zc, 0, lit);
+    const n = Math.floor((len - 0.6) / 0.72);
+    for (let i = 0; i < n; i++) {
+      if (rand() < 0.12) continue; // an empty seat here and there
+      seats.push({
+        x: x - sx * 0.12,
+        z: zc - len / 2 + 0.5 + i * 0.72 + (rand() - 0.5) * 0.2,
+        garb: CROWD_GARB[Math.floor(rand() * CROWD_GARB.length)],
+        skin: CROWD_SKIN[Math.floor(rand() * CROWD_SKIN.length)],
+        lift: h - 0.06 - 0.93,
+      });
+    }
+  }
+  // Team-coloured front rail and end caps (the south end faces the camera).
+  const railX = sx * (x0 - depth / 2 - 0.06);
+  s.box(0.14, 0.62, len + 0.2, tone(cloth, 0.9), railX, 0.25, zc, 0, ao);
+  s.box(0.2, 0.07, len + 0.24, GOLD, railX, 0.58, zc, 0, lit);
+  const backX = sx * (x0 + (rows - 0.5) * depth + 0.14);
+  const backH = 0.5 + rows * 0.44 + 0.25;
+  s.box(0.28, backH, len + 0.2, tone(stone, 0.86), backX, backH / 2 - 0.06, zc, 0, ao);
+  s.box(0.36, 0.09, len + 0.26, tone(cloth, 0.9), backX, backH - 0.02, zc, 0, lit);
+  for (const end of [-1, 1]) {
+    const z = zc + end * (len / 2 + 0.16);
+    const w = rows * depth + 0.5;
+    const cx = sx * (x0 + ((rows - 1) * depth) / 2 + 0.05);
+    s.box(w, backH, 0.3, tone(stone, 0.96), cx, backH / 2 - 0.06, z, 0, ao);
+    s.box(w + 0.1, 0.1, 0.38, tone(cloth, 0.9), cx, backH - 0.02, z, 0, lit);
+    if (end > 0) {
+      // Shield on the camera-facing end wall.
+      s.box(0.62, 0.7, 0.05, cloth, cx, backH * 0.52, z + 0.17, 0, lit);
+      const gem = new THREE.OctahedronGeometry(0.2);
+      gem.scale(0.9, 1.1, 0.16);
+      s.add(gem, GOLD, cx, backH * 0.52, z + 0.2, 0, lit);
+    }
+  }
+  // Behind the top row: banners between striped pavilions.
+  const bx = sx * (x0 + rows * depth + 1.5);
+  const spots = Math.max(2, Math.round(len / 4.2));
+  for (let i = 0; i < spots; i++) {
+    const z = zc - len / 2 + (len * (i + 0.5)) / spots;
+    pavilion(s, bx + sx * (i % 2) * 0.5, z, 0.92 + (i % 2) * 0.12, cloth, look);
+  }
+  for (let i = 0; i <= spots; i++) {
+    const z = zc - len / 2 + (len * i) / spots;
+    bannerPole(s, sx * (x0 + rows * depth + 0.55), z, 3.0 + (i % 2) * 0.25, cloth);
+  }
+}
+
+/**
+ * Build the classic surround into `parent`; returns the terrace crowd seats.
+ * `phoneReach` is how far past the court a portrait phone sees (bushes there).
+ */
+export function buildClassicScenery(parent: THREE.Object3D, look: ArenaLook): ScenerySeat[] {
+  const s = new Sculpt(lit);
+  const rand = mulberry(20261111);
+  const seats: ScenerySeat[] = [];
+  const hw = ARENA_WIDTH / 2;
+  const hd = ARENA_HEIGHT / 2;
+
+  kerb(s, look);
+
+  // Terraces: red on the enemy half, blue on the player's, both long sides.
+  const tLen = hd - 4.2;
+  for (const sx of [-1, 1]) {
+    terrace(s, sx, -hd / 2 - 0.9, tLen, look.standRoofEnemy, look, seats, rand);
+    terrace(s, sx, hd / 2 + 0.9, tLen, look.standRoofPlayer, look, seats, rand);
+  }
+
+  // Ground patches on the apron: worn earth by the terraces, lighter and
+  // darker turf further out, so the surround is not one flat green.
+  const apron = tone(look.apron, 1.0, 1.0);
+  const patch = (x: number, z: number, rx: number, rz: number, c: number): void => {
+    const g = new THREE.CylinderGeometry(1, 1, 0.012, 18);
+    g.scale(rx, 1, rz);
+    s.add(g, c, x, -0.052, z, rand() * 3, () => 1);
+  };
+  for (const sx of [-1, 1]) {
+    patch(sx * (hw + 1.0), 0, 0.9, 2.6, tone(look.fieldSide, 1.15, 0.8));
+    for (let i = 0; i < 14; i++) {
+      patch(sx * (hw + 3 + rand() * 9), (rand() - 0.5) * 40, 1.2 + rand() * 2.2, 1 + rand() * 1.8, tone(apron, rand() < 0.5 ? 0.86 : 1.13));
+    }
+  }
+
+  // Shrubs, stones and flowers hugging the kerb: what a portrait phone sees
+  // of the surround, so it gets the closest attention.
+  for (const sx of [-1, 1]) {
+    for (let z = -hd + 0.6; z < hd; z += 1.5 + rand() * 1.3) {
+      if (Math.abs(z) < 1.9) continue; // keep the river mouth clear
+      const x = sx * (hw + 1.02 + rand() * 0.2);
+      const roll = rand();
+      if (roll < 0.55) bush(s, x, z, 0.7 + rand() * 0.45, look, rand);
+      else if (roll < 0.8) boulder(s, x, z, 0.7 + rand() * 0.5, look, rand);
+      else {
+        for (let k = 0; k < 4; k++) {
+          s.add(new THREE.SphereGeometry(0.09, 6, 5), [0xffffff, 0xfff176, 0xf48fb1][k % 3], x + (rand() - 0.5) * 0.5, 0.05, z + (rand() - 0.5) * 0.7, 0, () => 1);
+        }
+      }
+    }
+    // Reeds and a boulder where the river leaves the court.
+    boulder(s, sx * (hw + 1.2), -1.7, 1.0, look, rand);
+    boulder(s, sx * (hw + 1.5), 1.75, 0.8, look, rand);
+  }
+
+  // The forest edge: clusters that thicken away from the court. Kept clear
+  // of the terraces' front so their shadows stay off the playfield.
+  const pine = look.tree.kind === "pine";
+  for (const sx of [-1, 1]) {
+    const inner = hw + 7.9;
+    for (let i = 0; i < 46; i++) {
+      const band = rand();
+      const x = sx * (inner + band * band * 9 + rand() * 1.5);
+      const z = (rand() - 0.5) * 46;
+      const k = 0.95 + rand() * 0.75 + band * 0.3;
+      if (pine && rand() < 0.45) pineTree(s, x, z, k * 1.15, look);
+      else roundTree(s, x, z, k, look, rand);
+      if (rand() < 0.5) bush(s, x + (rand() - 0.5) * 2.2, z + 1.0 + rand(), 0.8 + rand() * 0.5, look, rand);
+      if (rand() < 0.22) boulder(s, x + (rand() - 0.5) * 2.4, z + 1.2, 0.9 + rand() * 0.8, look, rand);
+    }
+    // A few trees by the corners, in front of and behind the terraces' ends.
+    for (const [dx, z, k] of [[5.4, -hd - 2.2, 1.2], [6.2, hd + 1.6, 1.1], [5.2, -0.4, 1.0], [6.4, 0.9, 1.25]] as const) {
+      roundTree(s, sx * (hw + dx), z, k, look, rand);
+    }
+  }
+
+  const mesh = s.mesh(sculptMaterial(), "classic-scenery");
+  if (mesh) parent.add(mesh);
+  return seats;
+}

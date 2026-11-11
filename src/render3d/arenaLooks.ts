@@ -145,7 +145,7 @@ export const LOOKS: Record<string, ArenaLook> = {
     hemiSky: 0xcfe2ff, hemiGround: 0x5f8a4c, hemiIntensity: 0.95, sun: 0xffedc8, fill: 0xffe2b8,
     nightSky: 0x1a2450,
     skyTop: 0x3d8fe0, skyHorizon: 0xc4e8ff, nightPools: false, backdrop: "castle", ambient: "leaves",
-    floor: { a: "#74c043", b: "#68b33c", grid: "rgba(60,110,40,0.3)", lane: "rgba(226,194,128,0.94)", laneEdge: "rgba(128,92,44,0.6)", watermark: null, scatter: "grass" },
+    floor: { a: "#6ebb40", b: "#62ae39", grid: "rgba(60,110,40,0.3)", lane: "rgba(226,194,128,0.94)", laneEdge: "rgba(128,92,44,0.6)", watermark: null, scatter: "grass" },
     band: { fill: "#2f97d6", streak: WHITE_STREAK, glint: 0xcff7ff, glintOpacity: 0.72, foam: 0xe4fffa, foamOpacity: 0.6, bridge: "timber", kind: "water" },
     tower: { enemy: "sand", player: "sand", platformEnemy: 0xd4cec2, platformPlayer: 0xd4cec2, plinth: 0x9a9388, battlement: 0xa8a092 },
     fencePost: 0x6e4a28, fenceRail: 0x7d5a36, standWall: 0x9c8a6a, standRoofEnemy: 0xc62828, standRoofPlayer: 0x2c55b8, tentWall: 0xe8e3d8, cornerPost: 0xb3a890,
