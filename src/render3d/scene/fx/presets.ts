@@ -98,6 +98,15 @@ export interface EmitOpts {
 
 const SMOKE = SMOKE_CELLS;
 
+/** A ribbon puff's birth size per unit of radius (the "ribbon-puff" preset's smallest size0). */
+export const RIBBON_PUFF0 = 0.24;
+/** Most ribbon puffs one frame sheds: a very slow frame leaves a gap rather than a flood. */
+export const RIBBON_MAX_STEPS = 8;
+/** How far apart ribbon puffs are shed, as a share of their birth size (at most half: a ribbon, not beads). */
+export const RIBBON_SPACING = 0.5;
+/** Seconds a fireball's ribbon outlives the impact. */
+export const RIBBON_LINGER = 0.16;
+
 /**
  * Bloom contract (art bible 5): the bloom threshold is a linear luminance
  * of 0.9, so only emissive CORES and SPARKS may carry hdr above 1 (fireball
@@ -235,9 +244,10 @@ export const PRESETS: Record<string, readonly Layer[]> = {
   "flame-lick": [
     { pool: "alpha", cell: CELL.FLAME3, count: 3, life: [0.22, 0.32], dir: "up", spread: 0.6, speed: [0.6, 1.2], area: 0.12, drag: 2, size0: [0.32, 0.42], size1: 0.12, spin: [-2, 2], color0: 0xffffff, alpha0: 1, alpha1: 0, push: 0.6, tint: false },
   ],
-  // A ribbon puff of smoke (tinted by the effect), shed along a path.
-  "smoke-puff": [
-    { pool: "alpha", cell: CELL.PUFF, count: 1, life: [0.4, 0.55], dir: "up", spread: 0.4, speed: [0.2, 0.5], drag: 1.5, size0: [0.16, 0.2], size1: [0.36, 0.46], spin: [-1, 1], color0: 0x7a6c62, alpha0: 0.8, alpha1: 0, push: 0.3 },
+  // A shot's smoke ribbon: shed at most half a puff apart along the flight
+  // (effects.ts shedRibbon), short-lived so it never hangs after the shot lands.
+  "ribbon-puff": [
+    { pool: "alpha", cell: CELL.PUFF, count: 1, life: [0.26, 0.34], dir: "up", spread: 0.4, speed: [0.15, 0.35], drag: 1.5, size0: [0.24, 0.28], size1: [0.4, 0.48], spin: [-1, 1], color0: 0x7a6c62, alpha0: 0.6, alpha1: 0, push: 0.3 },
   ],
   // Electric crackle sparks.
   "zap-sparks": [

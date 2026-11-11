@@ -23,6 +23,7 @@ import { LOOK_AT, PREV_POS, arabic, disposeDeep, toWorld, viewSide, type EntityV
 import { addShake } from "../camera";
 import { CELL } from "./atlas";
 import { VfxPool } from "./pool";
+import { RIBBON_MAX_STEPS, RIBBON_PUFF0, RIBBON_SPACING } from "./presets";
 import { castAbility, castSpell, fxTeamColor, megaSlam as slamRecipe, spellRadius, type SpellContext } from "./spells";
 import { cometImpact } from "./comet";
 import { diggerEmerge } from "./burrow";
@@ -268,6 +269,20 @@ function coreColor(hex: number, out: THREE.Color): THREE.Color {
 
 /** A fireball's petals and core are drawn this much larger than the style's orb size. */
 export const FIREBALL_SCALE = 1.4;
+/** The fireball core's radius as a share of its size: small, so the three petals read round it. */
+export const FIREBALL_CORE = 0.38;
+/** Scales the fireball core's colour to linear luminance about 1.16 (it was 1.74, a white bloom star). */
+export const FIREBALL_CORE_HDR = 1.85;
+/**
+ * The fireball core's colour: a warm orange-gold at linear luminance about
+ * 1.16, over the bloom threshold (it is a core) but only just, so it glows
+ * orange instead of blooming into a white star over its petals.
+ */
+export function fireballCoreColor(out: THREE.Color): THREE.Color {
+  out.setHex(0xffb347).getHSL(HSL);
+  out.setHSL(HSL.h, 1, 0.62);
+  return out.multiplyScalar(FIREBALL_CORE_HDR);
+}
 
 /** Three-tone toon flame petals (red-orange shell, orange body) round a core, pointing back. */
 function fireballGeometry(size: number): THREE.BufferGeometry {
@@ -376,8 +391,8 @@ function buildProjectile(style: ProjectileStyle): THREE.Object3D {
       // Shots read at phone size: the fireball flies a size up from the old orb.
       const size = style.size * FIREBALL_SCALE;
       const core = new THREE.Mesh(
-        sharedGeo(`core|${size}`, () => new THREE.SphereGeometry(size * 0.5, 12, 9)),
-        sharedMat(`fire-core|${style.color}`, () => new THREE.MeshBasicMaterial({ color: coreColor(0xffc04a, new THREE.Color()), toneMapped: false })),
+        sharedGeo(`core|${size}`, () => new THREE.SphereGeometry(size * FIREBALL_CORE, 12, 9)),
+        sharedMat(`fire-core|${style.color}`, () => new THREE.MeshBasicMaterial({ color: fireballCoreColor(new THREE.Color()), toneMapped: false })),
       );
       core.name = "core";
       const petals = new THREE.Mesh(fireballGeometry(size), vcMat("plain", false));
@@ -406,6 +421,27 @@ function buildProjectile(style: ProjectileStyle): THREE.Object3D {
   }
 }
 
+/**
+ * A smoke ribbon from `prev` to (x, y, z): puffs at most RIBBON_SPACING of
+ * their birth size apart whatever the frame rate, so the trail reads as one
+ * ribbon and never as a dotted chain of beads. A lower quality sheds fewer,
+ * each born bigger, so the ribbon stays whole.
+ */
+function shedRibbon(v: VfxPool, preset: string, x: number, y: number, z: number, prev: THREE.Vector3, color: number, radius: number): void {
+  if (prev.lengthSq() === 0) {
+    v.emitWorld(preset, x, y, z, { color, radius });
+    return;
+  }
+  const d = Math.hypot(x - prev.x, y - prev.y, z - prev.z);
+  const want = Math.max(1, Math.ceil(d / (RIBBON_PUFF0 * radius * RIBBON_SPACING)));
+  const n = Math.min(RIBBON_MAX_STEPS, Math.max(1, Math.round(want * Math.max(0.05, v.scale()))));
+  const r = radius * Math.min(2, want / n);
+  for (let i = 1; i <= n; i++) {
+    const f = i / n;
+    v.emitWorld(preset, prev.x + (x - prev.x) * f, prev.y + (y - prev.y) * f, prev.z + (z - prev.z) * f, { color, radius: r });
+  }
+}
+
 /** What a shot sheds this frame at world point (x, y, z), moving from `prev`. */
 function shedTrail(v: VfxPool, style: ProjectileStyle, x: number, y: number, z: number, prev: THREE.Vector3): void {
   // Trails shed per frame: the quality's particle scale thins them like every preset.
@@ -413,7 +449,7 @@ function shedTrail(v: VfxPool, style: ProjectileStyle, x: number, y: number, z: 
   switch (style.trail) {
     case "embers": {
       // The smoke ribbon, with a lick of flame and the odd ember.
-      if (roll < 0.75) v.emitWorld("smoke-puff", x, y, z, { color: 0x6e5a4c, radius: style.size / 0.22 });
+      shedRibbon(v, "ribbon-puff", x, y, z, prev, 0x6e5a4c, style.size / 0.22);
       if (roll < 0.35) v.emitWorld("flame-lick", x, y, z, { radius: style.size / 0.3, count: 1 });
       if (roll > 0.7 && roll < 1) {
         const s = clearSpec(S);
@@ -440,10 +476,10 @@ function shedTrail(v: VfxPool, style: ProjectileStyle, x: number, y: number, z: 
       return;
     }
     case "smoke":
-      if (roll < 0.6) v.emitWorld("smoke-puff", x, y, z, { color: 0x6f6a64 });
+      shedRibbon(v, "ribbon-puff", x, y, z, prev, 0x6f6a64, 0.9);
       return;
     case "frost":
-      if (roll < 0.6) v.emitWorld("smoke-puff", x, y, z, { color: 0xbfe6fb, radius: 0.8 });
+      shedRibbon(v, "ribbon-puff", x, y, z, prev, 0xbfe6fb, 0.7);
       return;
     case "sparkle": {
       if (roll > 0.55) return;

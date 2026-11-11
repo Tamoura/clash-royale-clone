@@ -23,7 +23,7 @@ import { LOOK, toWorld } from "../common";
 import type { ArenaLook } from "../../arenaLooks";
 import type { DecalKindName, FxApi } from "./api";
 import { ATLAS_GRID, makeParticleAtlas } from "./atlas";
-import { DecalLayer, type DecalOpts } from "./decals";
+import { DecalLayer, SCORCH_ALPHA, scorchColor, type DecalOpts } from "./decals";
 import { GlyphLayer } from "./glyphs";
 import { IceDomes } from "./iceDome";
 import { emitPreset, type EmitOpts, type PoolKind, type Spawner } from "./presets";
@@ -480,7 +480,9 @@ export class VfxPool implements FxApi, Spawner {
   /** FxApi: a ground mark of radius `r` tiles at arena (x, y). */
   decal(kind: DecalKindName, x: number, y: number, r: number, opts?: DecalOpts): void {
     const w = toWorld(x, y);
-    this.decals.add(kind, w.x, w.z, r, this.uTime.value, opts);
+    // A scorch takes a warm brown leaning toward this floor's dust unless the caller picks.
+    const o = kind === "scorch" && opts?.color === undefined ? { alpha: SCORCH_ALPHA, ...opts, color: scorchColor(this.floorColor()) } : opts;
+    this.decals.add(kind, w.x, w.z, r, this.uTime.value, o);
   }
 
   /** Floating damage number at a world point. */

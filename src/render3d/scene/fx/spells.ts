@@ -15,6 +15,7 @@ import { teamColor as teamHex, teamPalette } from "../../teamColors";
 import { CELL, SMOKE_CELLS } from "./atlas";
 import type { VfxPool } from "./pool";
 import { cometCast } from "./comet";
+import { RIBBON_LINGER, RIBBON_SPACING } from "./presets";
 import * as THREE from "three";
 
 /** battle.ts deployCard: the Electro Wizard lands with a zap of this radius. */
@@ -23,6 +24,10 @@ export const EWIZ_ZAP_RADIUS = 2.5;
 export const MEGA_SLAM_RADIUS = 3;
 /** Seconds the fireball takes to fall before it bursts. */
 export const FIREBALL_FALL = 0.32;
+/** The falling comet's orange glow stays at the bloom threshold's edge (a halo, not a core). */
+export const COMET_GLOW_HDR = 1;
+/** The comet's small hot core: the one part over the threshold. */
+export const COMET_CORE_HDR = 1.8;
 /** Seconds an arrow volley flies. */
 export const ARROW_FLIGHT = 0.55;
 /** Seconds a Mega Knight drop takes to land (matches the spawn hop). */
@@ -114,15 +119,46 @@ export function fireball(v: VfxPool, x: number, y: number, r: number): void {
     s.push = push;
     v.spawn(pool, s);
   };
-  // Three petals, 120 degrees apart, spinning; the core in front of them.
+  // Three petals, 120 degrees apart, spinning; an orange glow under the
+  // bloom threshold and a small hot core in front of them, so the petals
+  // read round the core instead of under a white bloom star.
   const r0 = v.rand() * 6;
   for (let i = 0; i < 3; i++) comet("alpha", CELL.FPETAL, 1.25 * k + 0.45, 0xffffff, 1, r0 + (i * Math.PI * 2) / 3, 9, 0.8);
-  comet("add", CELL.SOFT, 0.95 * k + 0.3, 0xffc04a, 2.2, 0, 0, 1.4);
-  comet("add", CELL.EMBER, 0.55 * k + 0.2, 0xfff1c4, 2.4, 0, 0, 1.6);
-  // The smoke ribbon (and a few embers) shed along the flight path.
-  const n = Math.max(5, Math.round(14 * v.scale()));
+  comet("add", CELL.SOFT, 0.7 * k + 0.2, 0xff9a3c, COMET_GLOW_HDR, 0, 0, 1.4);
+  comet("add", CELL.EMBER, 0.4 * k + 0.14, 0xffd27a, COMET_CORE_HDR, 0, 0, 1.6);
+  // The smoke ribbon shed along the flight path: puffs at most half their
+  // birth size apart (one ribbon, not beads), each gone soon after the comet
+  // lands. A lower quality sheds fewer, bigger puffs.
+  const path = Math.hypot(w.x - sx, 0.35 - sy, w.z - sz);
+  const puff0 = 0.42 * k + 0.12;
+  const want = Math.ceil(path / (puff0 * RIBBON_SPACING));
+  const n = Math.max(6, Math.round(want * v.scale()));
+  const grow = Math.max(1, want / n);
   for (let i = 0; i < n; i++) {
     const f = i / n;
+    const s = clearSpec(S);
+    s.x = sx + (w.x - sx) * f;
+    s.y = sy + (0.35 - sy) * f;
+    s.z = sz + (w.z - sz) * f;
+    s.vx = (v.rand() - 0.5) * 0.5;
+    s.vy = 0.25 + v.rand() * 0.4;
+    s.vz = (v.rand() - 0.5) * 0.5;
+    s.drag = 1.5;
+    s.delay = f * FIREBALL_FALL;
+    // Fades by RIBBON_LINGER after the impact, wherever on the path it was born.
+    s.life = Math.min(0.45 + v.rand() * 0.15, (1 - f) * FIREBALL_FALL + RIBBON_LINGER);
+    s.rot = v.rand() * 6;
+    s.spin = (v.rand() - 0.5) * 2;
+    s.size0 = puff0 * grow;
+    s.size1 = (0.85 * k + 0.25) * grow;
+    s.push = 0.3;
+    color(s, 0x7b6252, 1, 0.78, 0x544a44, 1, 0);
+    s.cell = CELL.PUFF;
+    v.spawn("alpha", s);
+  }
+  // A few embers along it.
+  for (let i = 0; i < 4; i++) {
+    const f = (i + 0.5) / 4;
     const s = clearSpec(S);
     s.x = sx + (w.x - sx) * f;
     s.y = sy + (0.35 - sy) * f;
@@ -132,23 +168,12 @@ export function fireball(v: VfxPool, x: number, y: number, r: number): void {
     s.vz = (v.rand() - 0.5) * 0.6;
     s.drag = 1.5;
     s.delay = f * FIREBALL_FALL;
-    s.life = 0.45 + v.rand() * 0.2;
-    s.rot = v.rand() * 6;
-    s.spin = (v.rand() - 0.5) * 2;
-    if (i % 4 === 3) {
-      s.size0 = 0.24 * k + 0.08;
-      s.size1 = 0.04;
-      color(s, 0xffc061, 1.8, 1, 0xff3d00, 1, 0);
-      s.cell = CELL.EMBER;
-      v.spawn("add", s);
-    } else {
-      s.size0 = 0.42 * k + 0.12;
-      s.size1 = 0.85 * k + 0.25;
-      s.push = 0.3;
-      color(s, 0x7b6252, 1, 0.85, 0x544a44, 1, 0);
-      s.cell = CELL.PUFF;
-      v.spawn("alpha", s);
-    }
+    s.life = Math.min(0.4, (1 - f) * FIREBALL_FALL + RIBBON_LINGER);
+    s.size0 = 0.24 * k + 0.08;
+    s.size1 = 0.04;
+    color(s, 0xffc061, 1.8, 1, 0xff3d00, 1, 0);
+    s.cell = CELL.EMBER;
+    v.spawn("add", s);
   }
   // Impact.
   const d = FIREBALL_FALL;
@@ -162,7 +187,16 @@ export function fireball(v: VfxPool, x: number, y: number, r: number): void {
   v.shake(k >= 0.9 ? 0.45 : 0.22, d);
 }
 
-/** One jagged lightning path from the sky to (gx, gz), plus forks. */
+/** How high a zap bolt starts: low, so the strike reads inside its ring on screen. */
+export const ZAP_TOP = 4.2;
+/** The zap bolt's core: an electric blue under the bloom threshold (never a pure white stroke). */
+export const ZAP_CORE = 0x86c8ff;
+export const ZAP_CORE_HDR = 0.8;
+
+/**
+ * One jagged lightning path from the sky to (gx, gz), plus forks, kept
+ * within `r` of the spell's centre (cx, cz) so no stroke strays past the ring.
+ */
 function bolt(
   v: VfxPool,
   rnd: () => number,
@@ -170,11 +204,26 @@ function bolt(
   gz: number,
   width: number,
   delay: number,
+  cx: number,
+  cz: number,
+  r: number,
 ): void {
-  const SEG = 9;
-  const top = 7.5;
-  let px = gx + (rnd() - 0.5) * 1.6;
-  let pz = gz - 1.2 + (rnd() - 0.5) * 1.6;
+  const SEG = 8;
+  const top = ZAP_TOP;
+  const inside = (p: { x: number; z: number }): void => {
+    const dx = p.x - cx;
+    const dz = p.z - cz;
+    const d = Math.hypot(dx, dz);
+    const max = r * 0.9;
+    if (d > max) {
+      p.x = cx + (dx / d) * max;
+      p.z = cz + (dz / d) * max;
+    }
+  };
+  const P = { x: gx + (rnd() - 0.5) * 0.8, z: gz + (rnd() - 0.5) * 0.8 };
+  inside(P);
+  let px = P.x;
+  let pz = P.z;
   let py = top;
   const seg = (ax: number, ay: number, az: number, bx: number, by: number, bz: number, wMul: number, life: number): void => {
     // Core, halo and a dark under-stroke (keeps the bolt legible on pale sand).
@@ -197,52 +246,54 @@ function bolt(
         v.spawn("alpha", s);
         continue;
       }
-      // A white-hot core in a saturated blue halo, so it reads on pale sand too.
-      if (layer === 0) color(s, 0xeefaff, 1.05, 1, 0xbfe9ff, 0.85, 0);
-      else color(s, 0x2f8dff, 0.32, 0.2, 0x2f8dff, 0.25, 0);
+      // An electric-blue core in a saturated blue halo, under the threshold, so it reads on pale sand too.
+      if (layer === 0) color(s, ZAP_CORE, ZAP_CORE_HDR, 1, 0x6fb8ff, 0.7, 0);
+      else color(s, 0x2f8dff, 0.28, 0.2, 0x2f8dff, 0.22, 0);
       v.spawn("add", s);
     }
   };
   for (let i = 1; i <= SEG; i++) {
     const f = i / SEG;
     // Wander narrows toward the strike point so every bolt lands true.
-    const wander = 0.75 * (1 - f * 0.85);
-    const nx = i === SEG ? gx : px + (gx - px) / (SEG - i + 1) + (rnd() - 0.5) * wander * 2;
-    const nz = i === SEG ? gz : pz + (gz - pz) / (SEG - i + 1) + (rnd() - 0.5) * wander * 2;
+    const wander = 0.5 * (1 - f * 0.85);
+    const N = {
+      x: i === SEG ? gx : px + (gx - px) / (SEG - i + 1) + (rnd() - 0.5) * wander * 2,
+      z: i === SEG ? gz : pz + (gz - pz) / (SEG - i + 1) + (rnd() - 0.5) * wander * 2,
+    };
+    inside(N);
     const ny = top * (1 - f);
-    seg(px, py, pz, nx, ny, nz, 1 - f * 0.25, 0.24);
-    // Forks: short branches that die in the air.
+    seg(px, py, pz, N.x, ny, N.z, 1 - f * 0.25, 0.24);
+    // Forks: short branches that die in the air, inside the ring.
     if (i > 1 && i < SEG - 1 && rnd() < 0.42) {
-      let bx = nx;
+      const B = { x: N.x, z: N.z };
       let by = ny;
-      let bz = nz;
       const dir = rnd() < 0.5 ? -1 : 1;
       for (let j = 0; j < 3; j++) {
-        const fx = bx + dir * (0.35 + rnd() * 0.45);
-        const fy = by - (0.45 + rnd() * 0.4);
-        const fz = bz + (rnd() - 0.5) * 0.6;
-        seg(bx, by, bz, fx, fy, fz, 0.55 - j * 0.12, 0.18);
-        bx = fx;
+        const F = { x: B.x + dir * (0.25 + rnd() * 0.3), z: B.z + (rnd() - 0.5) * 0.4 };
+        inside(F);
+        const fy = by - (0.3 + rnd() * 0.3);
+        seg(B.x, by, B.z, F.x, fy, F.z, 0.55 - j * 0.12, 0.18);
+        B.x = F.x;
+        B.z = F.z;
         by = fy;
-        bz = fz;
       }
     }
-    px = nx;
+    px = N.x;
     py = ny;
-    pz = nz;
+    pz = N.z;
   }
-  // A hot spot where it lands.
+  // A blue glow where it lands (under the threshold: a halo, not a core).
   const s = clearSpec(S);
   s.x = gx;
   s.y = 0.25;
   s.z = gz;
   s.life = 0.2;
   s.delay = delay;
-  s.size0 = 0.9;
-  s.size1 = 0.5;
+  s.size0 = 0.8;
+  s.size1 = 0.45;
   s.cell = CELL.SOFT;
   s.push = 1.5;
-  color(s, 0xeefcff, 1.4, 0.8, 0x9fe7ff, 0.8, 0);
+  color(s, 0x9fe7ff, 0.85, 0.8, 0x6fb8ff, 0.7, 0);
   v.spawn("add", s);
 }
 
@@ -260,10 +311,10 @@ export function zap(v: VfxPool, x: number, y: number, r: number): void {
   for (let i = 0; i < bolts; i++) {
     const a = rnd() * Math.PI * 2;
     const d = i === 0 ? 0 : r * (0.35 + rnd() * 0.3);
-    bolt(v, rnd, w.x + Math.cos(a) * d, w.z + Math.sin(a) * d, width, i * 0.035);
+    bolt(v, rnd, w.x + Math.cos(a) * d, w.z + Math.sin(a) * d, width, i * 0.035, w.x, w.z, r);
   }
   // A re-strike flicker down the middle.
-  bolt(v, rnd, w.x, w.z, width * 0.8, 0.11);
+  bolt(v, rnd, w.x, w.z, width * 0.8, 0.11, w.x, w.z, r);
   v.emitWorld("zap-ring", w.x, 0, w.z, { radius: r });
   v.emitWorld("zap-sparks", w.x, 0, w.z, { radius: r / 2 });
   v.decal("crack", x, y, r * 0.55, { life: 3.5, alpha: 0.7 });

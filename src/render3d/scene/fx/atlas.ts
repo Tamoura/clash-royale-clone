@@ -595,36 +595,33 @@ export function paintParticleAtlas(ctx: Ctx): void {
 // --- decal cells -----------------------------------------------------------
 
 function paintScorch(ctx: Ctx, cx: number, cy: number, s: number): void {
+  // Painted white: the decal shader multiplies it by the mark's colour (a
+  // warm dark brown leaning toward the floor's dust, decals.ts scorchColor),
+  // so the alpha alone draws the shape. A soft, lobed burn with a few faint
+  // short streaks: it sits on the floor, it is not a black starburst.
   const rnd = makeRng(91);
-  // Soot streaks radiating out of the blast.
   ctx.save();
   ctx.lineCap = "round";
-  for (let i = 0; i < 22; i++) {
+  for (let i = 0; i < 12; i++) {
     const a = rnd() * Math.PI * 2;
-    const len = s * (0.3 + rnd() * 0.17);
-    ctx.strokeStyle = `rgba(28,18,12,${(0.25 + rnd() * 0.3).toFixed(3)})`;
-    ctx.lineWidth = 3 + rnd() * 6;
+    const len = s * (0.26 + rnd() * 0.12);
+    ctx.strokeStyle = `rgba(255,255,255,${(0.08 + rnd() * 0.1).toFixed(3)})`;
+    ctx.lineWidth = 8 + rnd() * 8;
     ctx.beginPath();
     ctx.moveTo(cx + Math.cos(a) * s * 0.1, cy + Math.sin(a) * s * 0.1);
     ctx.lineTo(cx + Math.cos(a) * len, cy + Math.sin(a) * len);
     ctx.stroke();
   }
   ctx.restore();
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 12; i++) {
     const a = rnd() * Math.PI * 2;
-    const d = rnd() * s * 0.2;
-    const r = s * (0.12 + rnd() * 0.16);
+    const d = s * (0.06 + rnd() * 0.16);
+    const r = s * (0.12 + rnd() * 0.12);
     const x = cx + Math.cos(a) * d;
     const y = cy + Math.sin(a) * d;
-    disc(ctx, x, y, r, radial(ctx, x, y, r, [[0, "rgba(22,14,10,0.55)"], [1, "rgba(22,14,10,0)"]]));
+    disc(ctx, x, y, r, radial(ctx, x, y, r, [[0, "rgba(255,255,255,0.3)"], [1, "rgba(255,255,255,0)"]]));
   }
-  disc(ctx, cx, cy, s * 0.24, radial(ctx, cx, cy, s * 0.24, [[0, "rgba(12,8,6,0.85)"], [1, "rgba(12,8,6,0)"]]));
-  // Glowing cinders left in the middle.
-  for (let i = 0; i < 9; i++) {
-    const a = rnd() * Math.PI * 2;
-    const d = rnd() * s * 0.16;
-    disc(ctx, cx + Math.cos(a) * d, cy + Math.sin(a) * d, 2 + rnd() * 3, "rgba(255,140,40,0.85)");
-  }
+  disc(ctx, cx, cy, s * 0.3, radial(ctx, cx, cy, s * 0.3, [[0, "rgba(255,255,255,0.62)"], [0.6, "rgba(255,255,255,0.4)"], [1, "rgba(255,255,255,0)"]]));
 }
 
 function paintFrost(ctx: Ctx, cx: number, cy: number, s: number): void {
@@ -738,17 +735,17 @@ function paintCrater(ctx: Ctx, cx: number, cy: number, s: number): void {
 
 /**
  * The spell-area and deploy ring, two-tone (art bible 8): the decal shader
- * reads red as the tinted band (the team colour), green as the white inner
- * rim and blue as a faint tinted fill. The band's outer edge sits at the
+ * reads red as the tinted band (the team colour), green as the cream inner
+ * rim (RING_RIM, under the bloom threshold) and blue as a faint tinted fill. The band's outer edge sits at the
  * cell's edge, so the ring is drawn at the true radius.
  */
 function paintDecalRing(ctx: Ctx, cx: number, cy: number, s: number): void {
   const R = s * 0.5;
-  // Faint fill toward the band.
+  // Faint fill toward the band (light: the units inside must stay clear).
   disc(ctx, cx, cy, R * 0.86, radial(ctx, cx, cy, R * 0.86, [
-    [0, "rgba(0,0,255,0.05)"],
-    [0.75, "rgba(0,0,255,0.12)"],
-    [1, "rgba(0,0,255,0.24)"],
+    [0, "rgba(0,0,255,0.03)"],
+    [0.75, "rgba(0,0,255,0.07)"],
+    [1, "rgba(0,0,255,0.15)"],
   ]));
   ctx.save();
   // Team band: the outer 12% of the radius.

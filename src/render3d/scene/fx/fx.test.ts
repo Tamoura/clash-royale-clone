@@ -438,6 +438,106 @@ describe("bloom contract and toon FX", () => {
     }
     expect(fxTeamColor("player")).not.toBe(fxTeamColor("enemy"));
   });
+
+  it("the spell ring's inner rim is a cream under the bloom threshold, and its fill is faint", async () => {
+    const { RING_RIM, linearLuminance } = await import("./decals");
+    expect(linearLuminance(RING_RIM)).toBeLessThan(0.85);
+    const layer = new DecalLayer({ value: 0 }, false);
+    const frag = (layer.mesh.material as THREE.ShaderMaterial).fragmentShader;
+    expect(frag).not.toMatch(/mix\(col, vec3\(1\.0\), w\)/);
+    const rim = new THREE.Color(RING_RIM);
+    expect(frag).toContain(`vec3(${rim.r.toFixed(4)}, ${rim.g.toFixed(4)}, ${rim.b.toFixed(4)})`);
+  });
+
+  it("the fireball comet's ribbon is one ribbon (puffs at most half their size apart) gone soon after impact; its glow stays under the threshold", async () => {
+    const { CELL } = await import("./atlas");
+    const { FIREBALL_FALL, COMET_GLOW_HDR, COMET_CORE_HDR } = await import("./spells");
+    const { RIBBON_LINGER, RIBBON_SPACING } = await import("./presets");
+    expect(COMET_GLOW_HDR).toBeLessThanOrEqual(1);
+    expect(COMET_CORE_HDR).toBeLessThanOrEqual(2.4);
+    for (const scale of [1, 0.75, 0.5]) {
+      q.scale = scale;
+      const v = new VfxPool(host());
+      const puffs: Array<{ x: number; y: number; z: number; size0: number; delay: number; end: number }> = [];
+      const glows: Array<{ lum: number; size: number; cell: number }> = [];
+      const spawn = v.spawn.bind(v);
+      v.spawn = (pool, s) => {
+        if (pool === "alpha" && s.cell === CELL.PUFF) puffs.push({ x: s.x, y: s.y, z: s.z, size0: s.size0, delay: s.delay, end: s.delay + s.life });
+        if (pool === "add" && s.delay === 0 && s.life === FIREBALL_FALL) glows.push({ lum: 0.2126 * s.r0 + 0.7152 * s.g0 + 0.0722 * s.b0, size: s.size0, cell: s.cell });
+        spawn(pool, s);
+      };
+      castSpell(v, "fireball", 9, 12, "player");
+      puffs.sort((a, b) => a.delay - b.delay);
+      expect(puffs.length).toBeGreaterThan(8);
+      for (let i = 1; i < puffs.length; i++) {
+        const gap = Math.hypot(puffs[i].x - puffs[i - 1].x, puffs[i].y - puffs[i - 1].y, puffs[i].z - puffs[i - 1].z);
+        expect(gap, `scale ${scale}`).toBeLessThanOrEqual(RIBBON_SPACING * puffs[i].size0 + 1e-6);
+      }
+      for (const p of puffs) expect(p.end).toBeLessThanOrEqual(FIREBALL_FALL + RIBBON_LINGER + 1e-6);
+      // The comet's glow halo is under the threshold; only its small core is over it.
+      const glow = glows.find((g) => g.cell === CELL.SOFT)!;
+      const core = glows.find((g) => g.cell === CELL.EMBER)!;
+      expect(glow.lum).toBeLessThanOrEqual(0.9);
+      expect(core.lum).toBeGreaterThan(1);
+      expect(core.lum).toBeLessThan(1.4);
+    }
+  });
+
+  it("zap bolts are electric blue under the threshold and stay inside the spell's radius", async () => {
+    const { MODE_SEGMENT } = await import("../../particles");
+    const r = spellRadius("zap");
+    for (const [x, y] of [[9, 12], [4, 20], [14, 7]]) {
+      const v = new VfxPool(host());
+      const out: string[] = [];
+      const w = { x: x - 9, z: y - 16 };
+      let cores = 0;
+      const spawn = v.spawn.bind(v);
+      v.spawn = (pool, s) => {
+        if (s.mode === MODE_SEGMENT) {
+          for (const e of [-0.5, 0.5]) {
+            const d = Math.hypot(s.x + s.vx * e - w.x, s.z + s.vz * e - w.z);
+            if (d > r + 1e-6) out.push(d.toFixed(2));
+          }
+          if (pool === "add" && s.b0 > s.r0 * 1.3) {
+            cores++;
+            expect(0.2126 * s.r0 + 0.7152 * s.g0 + 0.0722 * s.b0).toBeLessThan(0.9);
+          }
+          if (pool === "add") expect(s.b0, "blue, not white").toBeGreaterThan(s.r0 * 1.3);
+        }
+        spawn(pool, s);
+      };
+      castSpell(v, "zap", x, y, "player");
+      expect(cores).toBeGreaterThan(5);
+      expect(out).toEqual([]);
+    }
+  });
+
+  it("a fireball scorch is a warm brown leaning toward the floor, never a near-black hole", async () => {
+    const { SCORCH_ALPHA, scorchColor, linearLuminance } = await import("./decals");
+    const v = new VfxPool(host());
+    const colors: number[] = [];
+    const alphas: number[] = [];
+    const add = v.decals.add.bind(v.decals);
+    v.decals.add = (kind, wx, wz, r, now, o) => {
+      if (kind === "scorch") {
+        colors.push(o?.color ?? 0xffffff);
+        alphas.push(o?.alpha ?? 1);
+      }
+      return add(kind, wx, wz, r, now, o);
+    };
+    castSpell(v, "fireball", 9, 12, "player");
+    expect(colors).toEqual([scorchColor(v.floorColor())]);
+    expect(alphas[0]).toBe(SCORCH_ALPHA);
+    expect(SCORCH_ALPHA).toBeLessThanOrEqual(0.75);
+    const hsl = { h: 0, s: 0, l: 0 };
+    for (const dust of [0xc9b99c, 0xd6b25e, 0x9aa7b8, 0x6f8f4a]) {
+      const c = scorchColor(dust);
+      new THREE.Color(c).getHSL(hsl, THREE.SRGBColorSpace);
+      expect(hsl.l, dust.toString(16)).toBeGreaterThan(0.15); // not near-black
+      expect(hsl.l, dust.toString(16)).toBeLessThan(0.4); // still a burn
+      expect(linearLuminance(c)).toBeLessThan(0.2);
+    }
+  });
 });
 
 describe("modelled projectiles", () => {
@@ -457,8 +557,53 @@ describe("modelled projectiles", () => {
       expect(cones, id).toBe(0);
       expect(core, id).not.toBeNull();
       const c = ((core as unknown as THREE.Mesh).material as THREE.MeshBasicMaterial).color;
-      expect(0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, id).toBeGreaterThan(1);
+      const lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+      expect(lum, id).toBeGreaterThan(1);
+      // Only just over: an orange glow, not a white bloom star over its petals.
+      expect(lum, id).toBeLessThan(1.3);
       expect(view.getObjectByName("petals"), id).toBeDefined();
+      // The core is small next to the petals, so they read round it.
+      const coreR = (core as unknown as THREE.Mesh).geometry.boundingSphere ?? ((core as unknown as THREE.Mesh).geometry.computeBoundingSphere(), (core as unknown as THREE.Mesh).geometry.boundingSphere!);
+      const petals = view.getObjectByName("petals") as THREE.Mesh;
+      petals.geometry.computeBoundingBox();
+      const pb = petals.geometry.boundingBox!;
+      expect(coreR.radius * 2, id).toBeLessThan(0.5 * Math.max(pb.max.x - pb.min.x, pb.max.y - pb.min.y));
+    }
+  });
+
+  it("a shot's smoke ribbon is shed at most half a puff apart at 60 or 30 fps and on lower qualities", async () => {
+    const { shedProjectileTrail } = await import("./effects");
+    const { projectileStyle } = await import("../../projectiles");
+    const { RIBBON_PUFF0, RIBBON_SPACING } = await import("./presets");
+    expect(min(PRESETS["ribbon-puff"][0].size0)).toBeCloseTo(RIBBON_PUFF0);
+    // Short-lived: the ribbon never hangs in the air after the shot lands.
+    expect(Math.max(...([PRESETS["ribbon-puff"][0].life].flat() as number[]))).toBeLessThanOrEqual(0.35);
+    for (const id of ["wizard", "baby-dragon", "firecracker", "cannon", "ice-wizard"] as CardId[]) {
+      const style = projectileStyle(id, "troop");
+      for (const scale of [1, 0.5]) {
+        for (const step of [0.15, 0.3, 0.45]) {
+          q.scale = scale;
+          const v = new VfxPool(host());
+          const puffs: Array<{ x: number; y: number; z: number; r: number }> = [];
+          const emit = v.emitWorld.bind(v);
+          v.emitWorld = (preset, x, y, z, opts) => {
+            if (preset === "ribbon-puff") puffs.push({ x, y, z, r: opts?.radius ?? 1 });
+            emit(preset, x, y, z, opts);
+          };
+          const b = { fx: v } as unknown as Parameters<typeof shedProjectileTrail>[0];
+          const prev = new THREE.Vector3(0, 1, 0);
+          for (let f = 1; f <= 4; f++) {
+            shedProjectileTrail(b, style, f * step, 1, 0, prev);
+            prev.set(f * step, 1, 0);
+          }
+          if (style.trail !== "embers" && style.trail !== "smoke" && style.trail !== "frost") continue;
+          expect(puffs.length, `${id} ${step}`).toBeGreaterThan(3);
+          for (let i = 1; i < puffs.length; i++) {
+            const gap = Math.hypot(puffs[i].x - puffs[i - 1].x, puffs[i].y - puffs[i - 1].y, puffs[i].z - puffs[i - 1].z);
+            expect(gap, `${id} step ${step} scale ${scale}`).toBeLessThanOrEqual(RIBBON_SPACING * RIBBON_PUFF0 * puffs[i].r + 1e-6);
+          }
+        }
+      }
     }
   });
 
