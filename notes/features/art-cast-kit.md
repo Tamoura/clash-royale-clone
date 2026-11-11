@@ -92,6 +92,25 @@ hood-and-cape swatch, the mage's cape swatch, and the discs.
 
 ## Screenshots
 
+All under /tmp/claude-0/art/cast-kit/ (iteration shots in it/).
+
+- Contact sheets (battle camera angle WITH the lean; rows: yours behind, yours front, theirs front,
+  theirs behind, attack; the phone-size strip top right, two cards per unit, ~40 px tall):
+  sheet-classic.png, sheet-golden.png. Rendered by tools/troopview.html (`?edition=golden&bands=2`).
+- Standard matrix (shared rules 9): {classic,golden}-{training-camp,barbarian-bowl,pekka-playhouse,
+  legendary-peak}-{390x844,1440x900}.png, {classic,golden}-training-camp-390x844-low.png,
+  classic-training-camp-390x844-viewpoint-enemy.png (guest camera set after the battle starts),
+  golden-courtyard-extras-390x844.png (janissary, duelist, alchemist, militia on both sides).
+- Colour-blind palette switched mid-battle: classic-cb-before.png / classic-cb-after.png (the enemy's
+  capes, cloaks and discs go from red to orange on units already on the field).
+- Walk strip: walk-knight-{0,1,2}.png (the walk clip runs at speed / (clip ground speed x scale), the
+  clip ground speed measured from the planted foot at load: loader.measureWalks).
+- HP bars mid-fight: it/bars-dbg6.png (outlined pill, team fill, level pip, numbers above).
+- Baseline for comparison: /tmp/claude-0/proto/baseline/{phone,desk}.png.
+
+Dev-server note: the fonts 403 in these dev captures (the worktree's symlinked node_modules is outside
+Vite's fs allow list), so text uses a fallback face; the production build bundles them.
+
 ## Known gaps
 
 - The tower crews come from the cast only once ship wires the provider; until then towers keep the
@@ -139,3 +158,6 @@ hood-and-cape swatch, the mage's cape swatch, and the discs.
   every Studio headgear x weapon), lean math (home, guest, diagonal), mixer rates, dispose, swarm sharing.
   Portraits come from the cast per edition (softer light for the cast: the "pale knight"); gallery.ts
   shows the cast. Full vitest green (137 files).
+- Matrix, contact sheets (banded), colour-blind before/after, guest viewpoint, walk strip captured.
+  HP bars fixed: they now ride above the LEANED head and draw on top; popups start above cast units.
+  Rim follows the quality level. Perf 259 / 248 fight calls. Build ok, initial JS +17.6 KB gz.
