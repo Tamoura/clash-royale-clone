@@ -408,13 +408,14 @@ function buildProjectile(style: ProjectileStyle): THREE.Object3D {
 
 /** What a shot sheds this frame at world point (x, y, z), moving from `prev`. */
 function shedTrail(v: VfxPool, style: ProjectileStyle, x: number, y: number, z: number, prev: THREE.Vector3): void {
-  const roll = v.rand();
+  // Trails shed per frame: the quality's particle scale thins them like every preset.
+  const roll = v.rand() / Math.max(0.05, v.scale());
   switch (style.trail) {
     case "embers": {
       // The smoke ribbon, with a lick of flame and the odd ember.
       if (roll < 0.75) v.emitWorld("smoke-puff", x, y, z, { color: 0x6e5a4c, radius: style.size / 0.22 });
       if (roll < 0.35) v.emitWorld("flame-lick", x, y, z, { radius: style.size / 0.3, count: 1 });
-      if (roll > 0.7) {
+      if (roll > 0.7 && roll < 1) {
         const s = clearSpec(S);
         s.x = x;
         s.y = y;
