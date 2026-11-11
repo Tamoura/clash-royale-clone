@@ -1480,14 +1480,14 @@ function buildExtras(c: Ctx, out: number): void {
         const hw0 = hwAt(y0) + 0.04;
         const hw1 = hwAt(y1) + 0.04;
         const len = Math.hypot(y1 - y0, (hw0 - hw1) * Math.SQRT2);
-        const g = new THREE.BoxGeometry(0.05, len, 0.05);
+        const g = new THREE.BoxGeometry(0.07, len, 0.07);
         g.rotateX(-Math.atan2(hw0 - hw1, y1 - y0) * sz);
         g.rotateZ(Math.atan2(hw0 - hw1, y1 - y0) * sx);
         s.chunk = "upper";
-        s.add(g, 0xffffff, sx * (hw0 + hw1) / 2, (y0 + y1) / 2, sz * (hw0 + hw1) / 2, 0, () => 1, { team: 1, glow: 0.6 });
+        s.add(g, 0xffffff, sx * (hw0 + hw1) / 2, (y0 + y1) / 2, sz * (hw0 + hw1) / 2, 0, () => 1, { team: 0.5, glow: 0.7 });
       }
     }
-    s.add(frustum(out + 0.05, out + 0.05, H - 0.1, H - 0.06, 0, false), 0xffffff, 0, 0, 0, 0, () => 1, { team: 1, glow: 0.6 });
+    s.add(frustum(out + 0.05, out + 0.05, H - 0.11, H - 0.05, 0, false), 0xffffff, 0, 0, 0, 0, () => 1, { team: 0.5, glow: 0.7 });
   }
 }
 
