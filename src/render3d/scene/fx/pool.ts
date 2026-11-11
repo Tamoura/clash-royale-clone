@@ -485,9 +485,9 @@ export class VfxPool implements FxApi, Spawner {
     this.decals.add(kind, w.x, w.z, r, this.uTime.value, o);
   }
 
-  /** Floating damage number at a world point. */
-  popup(wx: number, wy: number, wz: number, text: string, scale: number, color: string, crit = false): void {
-    this.glyphs.popup(wx, wy, wz, text, scale, color, crit, this.uTime.value, this.host.camera.matrixWorldInverse);
+  /** Floating damage number at a world point (`target`: the entity hit, so merges go by it). */
+  popup(wx: number, wy: number, wz: number, text: string, scale: number, color: string, crit = false, target?: number): void {
+    this.glyphs.popup(wx, wy, wz, text, scale, color, crit, this.uTime.value, this.host.camera.matrixWorldInverse, target);
   }
 
   /** Freeze dome over arena (x, y). */

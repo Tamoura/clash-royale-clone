@@ -803,6 +803,9 @@ function teamSlots(root: THREE.Object3D): { slots: Set<string>; parents: Set<THR
   return { slots, parents };
 }
 
+/** Rig units squared: a part whose largest face is at least this big is a body surface, not trim. */
+const BIG_SURFACE = 0.3;
+
 for (const edition of ["classic", "islamic"] as const) {
   describe(`creatures (${edition} edition)`, () => {
     it("each creature wears its team colour on ONE slot, on one node", async () => {
@@ -829,6 +832,37 @@ for (const edition of ["classic", "islamic"] as const) {
           mat.color.getHSL(hsl, THREE.SRGBColorSpace);
           const out = gradeRigHsl(hsl.h, hsl.s, hsl.l, { h: 0, s: 0, l: 0 });
           if (inTeamFamily(out.h, out.s, out.l)) hits.push(`${id}:${o.name || "unnamed"}#${mat.color.getHexString(THREE.SRGBColorSpace)}`);
+        });
+      }
+      expect(hits).toEqual([]);
+    });
+
+    // Classic only: the Golden Age's own gold and sandstone sit next to the
+    // colour-blind orange by design (notes: Known gaps, Requests for ship).
+    if (edition === "classic") it("no big creature surface falls in the colour-blind palette's team families either", async () => {
+      // The colour-blind enemy is orange (#FF8A00): a body, envelope, sail or
+      // wing that sits next to it hides the enemy's team slot. Gold and bronze
+      // TRIM is allowed (small parts); big surfaces are not.
+      const build = await editionBuilder(edition);
+      const { gradeRigHsl, inTeamFamily } = await import("./rigBake");
+      const hits: string[] = [];
+      const box = new THREE.Box3();
+      const size = new THREE.Vector3();
+      for (const id of Object.keys(CREATURE_SLOTS[edition]) as CardId[]) {
+        const rig = build(id, "player");
+        rig.group.updateMatrixWorld(true);
+        rig.group.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh || isTeamPart(m) || o.name === "outline") return;
+          const mat = m.material as THREE.Material & { color?: THREE.Color; isMeshToonMaterial?: boolean };
+          if (!mat.color || !mat.isMeshToonMaterial) return;
+          box.setFromObject(m).getSize(size);
+          const area = [size.x * size.y, size.y * size.z, size.x * size.z].sort((a, b) => b - a)[0];
+          if (area < BIG_SURFACE) return;
+          const hsl = { h: 0, s: 0, l: 0 };
+          mat.color.getHSL(hsl, THREE.SRGBColorSpace);
+          const out = gradeRigHsl(hsl.h, hsl.s, hsl.l, { h: 0, s: 0, l: 0 });
+          if (inTeamFamily(out.h, out.s, out.l, "cb")) hits.push(`${id}:${o.name || "unnamed"}#${mat.color.getHexString(THREE.SRGBColorSpace)} ${area.toFixed(2)}`);
         });
       }
       expect(hits).toEqual([]);

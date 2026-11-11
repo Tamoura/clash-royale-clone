@@ -79,6 +79,8 @@ export interface LivePopup {
   scale: number;
   crit: boolean;
   color: string;
+  /** The entity the number is about, when the caller knows it (merges go by it). */
+  target?: number;
 }
 
 /**
@@ -342,7 +344,9 @@ export class GlyphLayer {
   /**
    * A number rising from world (x, y, z); `scale` 1 is a normal hit. `view`
    * (the camera's matrixWorldInverse) places the merge and stack rules in
-   * screen terms; without it they work in world x/y.
+   * screen terms; without it they work in world x/y. `target` is the entity
+   * hit: two numbers merge only when they are about the same target (both
+   * given), or, when either has no target, when they sit on the same spot.
    */
   popup(
     x: number,
@@ -354,6 +358,7 @@ export class GlyphLayer {
     crit: boolean,
     now: number,
     view?: THREE.Matrix4,
+    target?: number,
   ): void {
     // Forget numbers that are gone.
     for (let i = this.live.length - 1; i >= 0; i--) if (now - this.live[i].birth > POPUP_LIFE) this.live.splice(i, 1);
@@ -361,12 +366,16 @@ export class GlyphLayer {
     if (view) V.applyMatrix4(view);
     const riseK = view ? view.elements[5] : 1;
     const value = /^\d+$/.test(text) ? Number(text) : NaN;
-    // Merge: the same target (same spot on screen) hit again within the window.
+    // Merge: the same target hit again within the window (by id when both
+    // numbers know their target, else by the same spot on screen).
     let birth = now;
     let lift = 0;
     for (const p of this.live) {
       if (Number.isNaN(value) || Number.isNaN(p.value)) continue;
-      if (now - p.birth > MERGE_WINDOW || Math.abs(V.x - p.vx) > 0.5 || Math.abs(V.y - p.vy) > 0.5) continue;
+      if (now - p.birth > MERGE_WINDOW) continue;
+      if (target !== undefined && p.target !== undefined) {
+        if (p.target !== target) continue;
+      } else if (Math.abs(V.x - p.vx) > 0.5 || Math.abs(V.y - p.vy) > 0.5) continue;
       const sum = p.value + value;
       const label = damageLabel(sum);
       text = String(Math.round(sum));
@@ -387,7 +396,7 @@ export class GlyphLayer {
     const w = run * h;
     if (birth === now) lift = stackLift(this.live, V.x, V.y, w, h, now, riseK);
     const id = this.nextId++;
-    this.live.push({ id, vx: V.x, vy: V.y, lift, birth, value: Number.isNaN(value) ? NaN : Number(text), h, w, scale, crit, color });
+    this.live.push({ id, vx: V.x, vy: V.y, lift, birth, value: Number.isNaN(value) ? NaN : Number(text), h, w, scale, crit, color, target });
     if (this.live.length > LIVE_CAP) this.live.shift();
     TMP.set(color);
     const A = this.anchor.array as Float32Array;

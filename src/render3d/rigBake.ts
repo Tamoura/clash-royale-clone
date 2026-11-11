@@ -52,6 +52,7 @@ import { bake as bakeWorld } from "./staticBatch";
 import { ARABIC } from "./theme";
 import { TEAM, TEAM_MESH } from "./teamColors";
 import { type CardId, getCard } from "../game/cards";
+import type { TeamPalette } from "../ui/prefs";
 
 /** Names that never fold into a node's baked mesh. */
 const FACE_NAMES = new Set(["eye", "eyerim", "pupil", "brow", "mouth", "xeyes"]);
@@ -488,19 +489,30 @@ export const TEAM_HUE_SPREAD = 25;
 export const TEAM_FAMILY_S = 0.45;
 export const TEAM_FAMILY_L: readonly [number, number] = [0.25, 0.75];
 
-const TEAM_HUES = ((): number[] => {
+/** The two team hues (degrees) of each team palette: red and blue, or the colour-blind orange and blue. */
+export const TEAM_HUES: Readonly<Record<TeamPalette, readonly number[]>> = ((): Record<TeamPalette, number[]> => {
   const hsl = { h: 0, s: 0, l: 0 };
-  return (["player", "enemy"] as const).map((side) => {
-    new THREE.Color().setHex(TEAM.default[side].main).getHSL(hsl, THREE.SRGBColorSpace);
-    return hsl.h * 360;
-  });
+  const hues = (p: TeamPalette): number[] =>
+    (["player", "enemy"] as const).map((side) => {
+      new THREE.Color().setHex(TEAM[p][side].main).getHSL(hsl, THREE.SRGBColorSpace);
+      return hsl.h * 360;
+    });
+  return { default: hues("default"), cb: hues("cb") };
 })();
 
-/** Whether an sRGB colour falls in a team hue family (the forbidden signature colours). */
-export function inTeamFamily(h: number, sat: number, l: number): boolean {
+/**
+ * Whether an sRGB colour falls in a team hue family (the forbidden signature
+ * colours) of `palette`; "any" checks both the default and the colour-blind
+ * palette (a signature colour must stay clear of both, art bible 6). The
+ * bake grade guards the default palette only: the colour-blind orange sits
+ * next to every gold, so trim golds are judged by eye and by the creature
+ * test's list of small accents, not desaturated.
+ */
+export function inTeamFamily(h: number, sat: number, l: number, palette: TeamPalette | "any" = "default"): boolean {
   if (sat <= TEAM_FAMILY_S || l < TEAM_FAMILY_L[0] || l > TEAM_FAMILY_L[1]) return false;
   const deg = h * 360;
-  return TEAM_HUES.some((t) => {
+  const hues = palette === "any" ? [...TEAM_HUES.default, ...TEAM_HUES.cb] : TEAM_HUES[palette];
+  return hues.some((t) => {
     const d = Math.abs(deg - t) % 360;
     return Math.min(d, 360 - d) <= TEAM_HUE_SPREAD;
   });

@@ -658,11 +658,15 @@ function onTower(b: Battle3D, x: number, z: number): boolean {
   return false;
 }
 
-/** Floating combat text that rises and fades (pooled glyph quads). */
-export function damagePopup(b: Battle3D, x: number, y: number, z: number, label: DamageLabel): void {
+/**
+ * Floating combat text that rises and fades (pooled glyph quads). `target`
+ * (the entity's id) makes hits merge only on the same target; without it,
+ * numbers on the same spot merge.
+ */
+export function damagePopup(b: Battle3D, x: number, y: number, z: number, label: DamageLabel, target?: number): void {
   const v = V(b);
   if (onTower(b, x, z)) label = towerHitLabel(label);
-  v.popup(x, y, z, label.text, label.scale, label.color, label.crit === true);
+  v.popup(x, y, z, label.text, label.scale, label.color, label.crit === true, target);
   if (label.crit) v.emitWorld("crit", x, y * 0.6, z, { radius: 0.8 });
 }
 

@@ -634,6 +634,24 @@ describe("damage numbers merge and stack", () => {
     expect(v.glyphs.live).toHaveLength(2);
   });
 
+  it("with target ids, only hits on the same target merge (arrows on a packed group stay apart)", async () => {
+    const { MERGE_WINDOW } = await import("./glyphs");
+    const v = new VfxPool(host());
+    // Two packed units, same spot on screen, hit on the same tick.
+    v.popup(0, 1, 0, "48", 1, "#ffd23f", false, 7);
+    v.popup(0.1, 1, 0, "48", 1, "#ffd23f", false, 8);
+    expect(v.glyphs.live.map((p) => p.value)).toEqual([48, 48]);
+    // The same target again inside the window merges, even after it moved a little.
+    v.update(MERGE_WINDOW / 2);
+    v.popup(0.7, 1, 0, "30", 1, "#ffd23f", false, 7);
+    expect(v.glyphs.live.map((p) => [p.target, p.value]).sort()).toEqual([[7, 78], [8, 48]]);
+    // Without ids (an older caller), the same spot still merges.
+    const w = new VfxPool(host());
+    w.popup(0, 1, 0, "10", 1, "#ffd23f");
+    w.popup(0.1, 1, 0, "20", 1, "#ffd23f");
+    expect(w.glyphs.live.map((p) => p.value)).toEqual([30]);
+  });
+
   it("numbers on neighbouring targets stack instead of overlapping", async () => {
     const { stackLift } = await import("./glyphs");
     const { POPUP_LIFE, popupRise } = await import("../../popups");

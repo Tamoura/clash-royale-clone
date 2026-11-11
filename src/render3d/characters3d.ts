@@ -1674,28 +1674,31 @@ function featherWing(s: number, span: number, depth: number, feather: number, ti
 }
 
 /**
- * BALLOON (art bible 7): a panelled sunflower-yellow hot-air envelope with cream ribs
+ * BALLOON (art bible 7): a panelled parchment hot-air envelope with tan ribs
  * and ONE team stripe round its middle, a wicker basket and a skeleton pilot
  * in an aviator cap and goggles (the cast's skeleton look), dropping a bomb.
  */
 function buildBalloon(): TroopRig {
   const g = new THREE.Group();
-  // Sunflower yellow (clear of red, blue and the colour-blind orange) with dark-gold trim.
-  const OCHRE = 0xedc53f, OCHREDK = 0xb39a3e, CREAM = 0xf2e4c0, WICKER = 0x8f6c4a, WICKERDK = 0x6a5038;
+  // Parchment with tan ribs and trim: a light neutral clear of every team
+  // family in both palettes (a sunflower envelope sat 14 degrees from the
+  // colour-blind orange and swallowed the enemy's stripe), so blue, red and
+  // orange stripes all pop on it.
+  const PARCH = 0xefe2c2, TRIM = 0x9c7a55, TAN = 0xb08a5e, WICKER = 0x8f6c4a, WICKERDK = 0x6a5038;
   const BONE = 0xece4cf, LEATHER = 0x7a4e2c, BRASS = 0xd9b04a;
-  const envelope = sphere(0.62, OCHRE, 0, 1.55, 0);
+  const envelope = sphere(0.62, PARCH, 0, 1.55, 0);
   envelope.scale.set(1, 1.15, 1);
   envelope.name = "envelope";
   g.add(envelope);
-  // Cream ribs: four meridians, so the envelope reads as sewn panels.
+  // Tan ribs: four meridians, so the envelope reads as sewn panels.
   for (const ry of [0, Math.PI / 2]) {
-    const rib = new THREE.Mesh(cachedGeo("balloon-rib", () => new THREE.TorusGeometry(0.625, 0.03, 6, 32)), toon(CREAM));
+    const rib = new THREE.Mesh(cachedGeo("balloon-rib", () => new THREE.TorusGeometry(0.625, 0.03, 6, 32)), toon(TAN));
     rib.scale.set(1, 1.15, 1);
     rib.rotation.y = ry;
     shadowed(rib, 0, 1.55, 0);
     g.add(rib);
   }
-  const crown = sphere(0.26, OCHREDK, 0, 2.22, 0);
+  const crown = sphere(0.26, TRIM, 0, 2.22, 0);
   crown.scale.set(1, 0.45, 1);
   g.add(crown);
   // The ONE team slot: a broad stripe round the envelope's upper shoulder,
@@ -1703,10 +1706,10 @@ function buildBalloon(): TroopRig {
   const stripe = cyl(0.555, 0.64, 0.34, 0xffffff, 0, 1.76, 0);
   stripe.name = "envelope-stripe";
   g.add(teamPart(stripe));
-  g.add(cyl(0.2, 0.13, 0.22, OCHREDK, 0, 0.84, 0)); // skirt
+  g.add(cyl(0.2, 0.13, 0.22, TRIM, 0, 0.84, 0)); // skirt
   for (const s of [-1, 1]) {
     for (const z of [-1, 1]) {
-      const rope = cyl(0.015, 0.015, 0.4, CREAM, s * 0.17, 0.72, z * 0.12);
+      const rope = cyl(0.015, 0.015, 0.4, TAN, s * 0.17, 0.72, z * 0.12);
       rope.rotation.z = -s * 0.32;
       g.add(rope);
     }
