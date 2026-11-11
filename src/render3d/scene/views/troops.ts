@@ -16,6 +16,8 @@ import { makeTeamDisc, refreshTeamDisc } from "../../teamBase";
 import { applyTeam, teamColor, teamCss, teamPalette } from "../../teamColors";
 import { onPrefs, type TeamPalette } from "../../../ui/prefs";
 import { ARABIC } from "../../theme";
+import { currentQuality } from "../../quality";
+import { troopShadowLevel } from "../post";
 import { kaykitOptIn } from "../../modelsOptIn";
 import {
   BAR_TILT,
@@ -641,6 +643,9 @@ export function buildBuildingMesh(e: Entity): EntityView {
   };
 }
 
+/** Every troop stands this much larger than its old size, so faces and weapons read on a phone. */
+const TROOP_POP = 1.14;
+
 export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
   const root = new THREE.Group();
   const team = teamSide(e.side);
@@ -658,12 +663,12 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
     // CR readability comes from silhouette CONTRAST: tanks tower, swarm
     // units stay small, everyone else sits between.
     const scale =
-      e.cardId === "mega-knight" ? 1.6
+      (e.cardId === "mega-knight" ? 1.6
       : e.cardId === "pekka" ? 1.5
       : e.cardId === "giant" ? 1.48
       : e.cardId === "royal-giant" ? 1.42
       : e.radius <= 0.32 ? 1.08 // skeletons, bats, minions — spindly packs
-      : 1.25;
+      : 1.25) * TROOP_POP;
     rig.group.scale.setScalar(scale);
     root.add(rig.group);
     lift = (rig.hover ?? 0) + rig.height * scale;
@@ -707,9 +712,19 @@ export function buildTroopMesh(e: Entity, withLabel: boolean): EntityView {
     if (rig?.hover) blobShadow = contact;
   }
 
-  // Units are grounded by the contact shadow above, as in CR; skipping
-  // the shadow-map pass for ~40 parts per unit halves a busy fight's cost.
+  // Units are grounded by the contact shadow above; on the top quality
+  // levels their bodies also cast into the sun's shadow map (post.ts flips
+  // the troopCaster meshes when the level changes).
+  const dyn = troopShadowLevel(currentQuality());
   root.traverse((o) => (o.castShadow = false));
+  rig?.group.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh || mesh.name === "outline") return;
+    const mat = mesh.material as THREE.Material;
+    if (Array.isArray(mat) || mat.transparent) return;
+    mesh.userData.troopCaster = true;
+    mesh.castShadow = dyn;
+  });
 
   const bar = makeHpBar(0.9, unitHpColor(team), lift + 0.25, 0.2, false);
   bar.group.visible = team === "enemy" && !isSwarmSized(e); // opponents always (swarms once hurt); yours once damaged
