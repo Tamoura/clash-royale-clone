@@ -135,12 +135,11 @@ export const TOWER_FLASH_PEAK = 0.25;
 export const TOWER_FLASH_TIME = 0.22;
 
 /**
- * The emissive tint of a hit flash, written into `out` (r, g, b). A troop
- * jumps to HIT_FLASH_PEAK of a warm white (#FFF4E0) on the frame the blow
- * lands and fades over FLASH_TIME (80 ms); a tower or building swells to a
- * soft warm tint (peak 0.25) and back over TOWER_FLASH_TIME. Never white,
- * never past the bloom threshold. `left` is the flash time left; `fresh`
- * is kept for callers (the peak is the same either way).
+ * The emissive tint of a hit flash, written into `out` (r, g, b). A tower
+ * or building swells to a soft warm tint (peak TOWER_FLASH_PEAK, 0.25) and
+ * back over TOWER_FLASH_TIME. The troop branch is the LEGACY white snap,
+ * kept only for an older test: the game tints troops with troopFlashTint.
+ * `left` is the flash time left.
  */
 export function hitFlashTint(structure: boolean, left: number, fresh: boolean, out: number[]): number[] {
   if (structure) {
@@ -151,7 +150,27 @@ export function hitFlashTint(structure: boolean, left: number, fresh: boolean, o
     out[2] = TOWER_FLASH[2] * k;
     return out;
   }
-  void fresh;
+  if (fresh) {
+    out[0] = out[1] = out[2] = 1;
+    return out;
+  }
+  const k = Math.max(0, left / LEGACY_FLASH_TIME);
+  out[0] = LEGACY_FLASH_WARM[0] * k;
+  out[1] = LEGACY_FLASH_WARM[1] * k;
+  out[2] = LEGACY_FLASH_WARM[2] * k;
+  return out;
+}
+const LEGACY_FLASH_TIME = 0.12;
+const LEGACY_FLASH_WARM = [1, 0.85, 0.7] as const;
+
+/**
+ * A troop's hit flash (art bible 6), written into `out`: it jumps to
+ * HIT_FLASH_PEAK (0.35) of a warm white (#FFF4E0) when the blow lands and
+ * fades over FLASH_TIME (80 ms). The cast's shader MIXES toward it; the
+ * procedural rigs add it as emissive. Never white, never past the bloom
+ * threshold. `left` is the flash time left.
+ */
+export function troopFlashTint(left: number, out: number[]): number[] {
   const k = HIT_FLASH_PEAK * Math.min(1, Math.max(0, left / FLASH_TIME));
   out[0] = HIT_FLASH[0] * k;
   out[1] = HIT_FLASH[1] * k;
@@ -663,11 +682,11 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
   const raged = e.kind === "troop" && isRaged(state, e);
   const charging = e.chargeDistance > 0 && e.chargeProgress >= e.chargeDistance;
   if (view.flashT > 0) {
-    // A troop: one frame of pure white sells the impact, then a warm glow
-    // dies away. A tower or building: a soft warm throb (see hitFlashTint).
-    const fresh = view.flashT === FLASH_TIME && !structure; // the blow landed this frame
+    // A troop: a capped warm flash that dies away in 80 ms. A tower or
+    // building: a soft warm throb (see hitFlashTint).
     view.flashT = Math.max(0, view.flashT - dt);
-    hitFlashTint(structure, view.flashT, fresh, TINT);
+    if (structure) hitFlashTint(true, view.flashT, false, TINT);
+    else troopFlashTint(view.flashT, TINT);
     for (const f of view.flashMats) f.mat.emissive.setRGB(TINT[0], TINT[1], TINT[2]);
     view.glowing = true;
   } else if (frozen) {

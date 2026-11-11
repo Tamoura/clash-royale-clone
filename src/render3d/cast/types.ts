@@ -62,6 +62,16 @@ export interface Variant {
   brim?: number;
   /** Body widened by this factor in x and z (the head keeps its size): the big guys. */
   girth?: number;
+  /** Body below the neck stretched this much in height (the head rides up with it): giants stand tall, not round. */
+  stretch?: number;
+  /** Head scale about the neck (default HEAD_SCALE, 1.12). */
+  headScale?: number;
+  /**
+   * Hair at the BACK of the head is repainted from this swatch (the hat or
+   * hood's own): under a hat brim or a hood the packs' hair pokes out as a
+   * "V" mark that reads as an emblem from behind.
+   */
+  hairBack?: Swatch;
   /** Skin tone (default SKIN, a warm peach). */
   skin?: number;
   idle: string;

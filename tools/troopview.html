@@ -17,11 +17,15 @@
   <body>
     <script type="module">
       import * as THREE from "three";
-      import { loadKitTroops, makeKitTroop, animateKitTroop, kitTroopCards, leanQuaternion, setCastPalette, variantOf } from "/src/render3d/cast/index.ts";
+      import { loadKitTroops, makeKitTroop, animateKitTroop, kitTroopCards, leanQuaternion, setCastPalette, variantOf, bakedOf } from "/src/render3d/cast/index.ts";
+      const bakedSize = (c) => { const b = bakedOf(c, edition); const v = variantOf(c, edition); return b && v ? (b.halfWidth * 2 * v.scale).toFixed(2) : "?"; };
       const q = new URLSearchParams(location.search);
       const edition = q.get("edition") === "golden" ? "golden" : "classic";
       if (q.get("palette") === "cb") setCastPalette("cb");
       await loadKitTroops();
+      // ?probe=3,0 paints that palette swatch magenta on every variant (to find what a swatch is).
+      const probe = q.get("probe");
+      if (probe) for (const c of kitTroopCards(edition)) { const v = variantOf(c, edition); if (v) v.paint = { ...v.paint, [probe]: 0xff00ff }; }
       const cards = (q.get("cards") || kitTroopCards(edition).filter((c) => c !== "skeleton-army").join(",")).split(",");
       const zoom = Number(q.get("zoom") || 1);
       const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -90,7 +94,7 @@
           root.add(ring);
           scene.add(root);
           units.push([u, pose]);
-          if (r === 0) tags.push({ name: `${card} h${u.height.toFixed(2)}`, p: new THREE.Vector3(x, 0, -1.7) });
+          if (r === 0) tags.push({ name: `${card} h${u.height.toFixed(2)} w${bakedSize(card)}`, p: new THREE.Vector3(x, 0, -1.7) });
         });
       });
       for (const [u, pose] of units) {

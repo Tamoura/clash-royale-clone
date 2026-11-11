@@ -8,6 +8,7 @@ import {
   FILL_ALPHA,
   NOTCH_ANGLES,
   RING_INNER,
+  discColor,
   discPixels,
   makeTeamDisc,
   refreshTeamDisc,
@@ -65,7 +66,7 @@ describe("team disc texture", () => {
 
   it("draws a translucent team fill, a solid team ring and a dark outer edge", () => {
     for (const [side, px] of [["player", player], ["enemy", enemy]] as [Side, Uint8ClampedArray][]) {
-      const main = TEAM.default[side].main;
+      const main = discColor(side, "default");
       const fill = probe(px, RING_INNER * 0.5, 0.3);
       expect(fill[3]).toBeCloseTo(FILL_ALPHA * 255, -1);
       expect(fill.slice(0, 3)).toEqual([(main >> 16) & 255, (main >> 8) & 255, main & 255]);
@@ -82,8 +83,18 @@ describe("team disc texture", () => {
   it("follows the colour-blind palette", () => {
     const cb = discPixels("enemy", "cb");
     const fill = probe(cb, RING_INNER * 0.5, 1);
-    expect(fill.slice(0, 3)).toEqual([0xff, 0x8a, 0x00]);
+    const c = discColor("enemy", "cb");
+    expect(fill.slice(0, 3)).toEqual([(c >> 16) & 255, (c >> 8) & 255, c & 255]);
     expect(ringGaps(cb, nearOuter)).toBe(3);
+  });
+
+  it("is the team colour, more saturated", () => {
+    for (const side of ["player", "enemy"] as const) {
+      const base = new THREE.Color().setHex(TEAM.default[side].main).getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace);
+      const disc = new THREE.Color().setHex(discColor(side, "default")).getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace);
+      expect(Math.abs(disc.h - base.h)).toBeLessThan(0.01);
+      expect(disc.s).toBeGreaterThanOrEqual(base.s - 1e-3);
+    }
   });
 
   it("caches one shared texture per side and palette", () => {

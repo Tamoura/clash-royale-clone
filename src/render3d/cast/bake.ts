@@ -20,7 +20,7 @@ import type { TeamPalette } from "../../ui/prefs";
 import { INK_FRAGMENT, OUTLINE_CSS_PX, fitInk, installInk, registerInkGeometry, smoothedNormals } from "../outlineMaterial";
 import { teamColor, teamPalette } from "../teamColors";
 import { BONE_INDEX, HEAD_BONE, sources, type Source } from "./loader";
-import { CLOTH_SWATCHES, SKIN_SWATCHES } from "./rules";
+import { CLOTH_SWATCHES, HAIR_SWATCH, SKIN_SWATCHES } from "./rules";
 import type { FileId, Paint, Swatch, Variant } from "./types";
 
 /** Kit heads are scaled up this much about the neck (art bible 1). */
@@ -335,6 +335,8 @@ export function bakeVariant(key: string, v: Variant): Baked {
 
   // The head grows about the neck: the head bone's rest position in skin space.
   PIVOT.setFromMatrixPosition(M.copy(src.inverses[HEAD_BONE]).invert());
+  const hairBack = v.hairBack;
+  const hairSwatch = HAIR_SWATCH[v.file];
 
   let verts = 0;
   for (const p of parts) verts += p.geo.getAttribute("position").count;
@@ -398,27 +400,38 @@ export function bakeVariant(key: string, v: Variant): Baked {
         skinIndex[o * 4] = p.bone;
         skinWeight[o * 4] = 1;
       }
+      const restZ = V3.z;
       if (headW > 0) {
-        const s = 1 + (HEAD_SCALE - 1) * Math.min(1, headW);
+        const s = 1 + ((v.headScale ?? HEAD_SCALE) - 1) * Math.min(1, headW);
         V3.sub(PIVOT).multiplyScalar(s).add(PIVOT);
       }
       if (v.girth && headW < 0.5) {
         V3.x *= v.girth;
         V3.z *= v.girth;
       }
+      if (v.stretch) {
+        // Taller below the neck; the head (and everything above the neck) rides up rigidly.
+        V3.y = V3.y <= PIVOT.y ? V3.y * v.stretch : V3.y + PIVOT.y * (v.stretch - 1);
+      }
       position.set([V3.x, V3.y, V3.z], o * 3);
       normal.set([N3.x, N3.y, N3.z], o * 3);
       top = Math.max(top, V3.y);
       halfWidth = Math.max(halfWidth, Math.abs(V3.x));
       const tile = p.tile === -1 ? files.length : p.tile === -2 ? files.length + 1 : p.tile;
-      const u = p.tile < 0 || !tex ? 0.5 : tex.getX(i);
-      const w = p.flat ? 0.3 : p.tile === -2 || !tex ? 0.5 : tex.getY(i);
+      let u = p.tile < 0 || !tex ? 0.5 : tex.getX(i);
+      let w = p.flat ? 0.3 : p.tile === -2 || !tex ? 0.5 : tex.getY(i);
+      // Hair poking out at the back under a hat or hood takes the hat's swatch (no "V" mark).
+      if (hairBack && p.remap && p.tile === 0 && tex && restZ < PIVOT.z - 0.05 && swatchOf(u, w) === hairSwatch) {
+        const [hc, hr] = hairBack.split(",").map(Number);
+        u = (hc + 0.5) / 8;
+        w = (hr + (w * 4 - Math.floor(w * 4))) / 4;
+      }
       uv.set([(tile + u) / tiles, w], o * 2);
       if (p.color) color.set([p.color.r, p.color.g, p.color.b], o * 3);
       // Team code: the whole part (capes, team primitives), or a cloth swatch painted team.
       let team = p.team;
       if (!team && p.tile === 0 && tex) {
-        const k = swatchOf(tex.getX(i), tex.getY(i));
+        const k = swatchOf(u, w);
         const want = teamCode(v.paint?.[k]);
         if (want && cloth.has(k)) team = want;
       }
@@ -535,7 +548,7 @@ export function castMaterial(map: THREE.Texture, side: Side): THREE.MeshToonMate
            if (_sat < 0.06) {
              vec3 _base = vTeam > 1.5 ? uTeamDark : uTeamMain;
              float _t = clamp((_tx.g - 0.25) / 0.75, 0.0, 1.0);
-             vec3 _c = mix(_base * 0.62, mix(_base, vec3(1.0), 0.1), _t);
+             vec3 _c = mix(_base * 0.8, mix(_base, vec3(1.0), 0.08), _t);
              diffuseColor.rgb = _c * vec3(vColor);
            }
          }`,

@@ -16,8 +16,9 @@ function troop(side: "player" | "enemy", hp = 100, kind: Entity["kind"] = "troop
 }
 
 describe("troop HP bars", () => {
-  it("opponent troops always show a bar, even at full health", () => {
-    expect(hpBarVisible(view(), troop("enemy"))).toBe(true);
+  it("troops of either side show a bar only once hurt (art bible: no clutter at full health)", () => {
+    expect(hpBarVisible(view(), troop("enemy"))).toBe(false);
+    expect(hpBarVisible(view(), troop("enemy", 99))).toBe(true);
   });
 
   it("your own troops show one only once hurt, and keep it", () => {
@@ -49,10 +50,10 @@ describe("viewer-relative team (online guest)", () => {
     setViewSide("enemy");
     try {
       // The guest's own units (sim 'enemy') wear the player team: blue,
-      // plain disc, bar only once hurt; the host's wear the opponent team.
+      // plain disc; the host's wear the opponent team. Bars show once hurt.
       expect(teamSide("enemy")).toBe("player");
       expect(teamSide("player")).toBe("enemy");
-      expect(hpBarVisible(view(), troop("player"))).toBe(true);
+      expect(hpBarVisible(view(), troop("player"))).toBe(false);
       expect(hpBarVisible(view(), troop("enemy"))).toBe(false);
       expect(hpBarVisible(view(), troop("enemy", 99))).toBe(true);
     } finally {
@@ -86,11 +87,11 @@ describe("viewer-relative team (online guest)", () => {
 });
 
 describe("swarm HP bars and the single-draw bar", () => {
-  it("swarm-sized opponents show a bar only once hurt", () => {
+  it("swarm-sized and big opponents alike show a bar only once hurt", () => {
     const small = (hp: number) => ({ ...troop("enemy", hp), radius: 0.28 }) as Entity;
     expect(hpBarVisible(view(), small(100))).toBe(false);
     expect(hpBarVisible(view(), small(40))).toBe(true);
-    expect(hpBarVisible(view(), { ...troop("enemy"), radius: 0.6 } as Entity)).toBe(true);
+    expect(hpBarVisible(view(), { ...troop("enemy"), radius: 0.6 } as Entity)).toBe(false);
   });
 
   it("a troop bar is one mesh whose fraction and colour are uniforms", () => {

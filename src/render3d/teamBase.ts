@@ -14,14 +14,16 @@ import { teamColor, teamPalette } from "./teamColors";
  */
 
 export const DISC_SIZE = 64;
-/** Ring inner edge as a fraction of the disc's outer radius (r*0.62 / r*1.08). */
-export const RING_INNER = 0.62 / 1.08;
+/** Ring inner edge as a fraction of the disc's outer radius (r*0.5 / r*1.08): a thick band. */
+export const RING_INNER = 0.5 / 1.08;
 /** World radius of the ring's outer edge, as a multiple of the unit radius. */
 export const DISC_OUTER = 1.08;
 /** Swarm units still get a disc big enough to read at phone size. */
 export const DISC_MIN_RADIUS = 0.45;
 /** Opacity of the inner fill. */
-export const FILL_ALPHA = 0.35;
+export const FILL_ALPHA = 0.42;
+/** Disc colours are the team colour pushed this much more saturated (they sit on busy floors). */
+export const DISC_SATURATION = 1.18;
 const RING_ALPHA = 0.95;
 /** Notch centres (radians, texture space) on enemy discs. */
 export const NOTCH_ANGLES: readonly number[] = [Math.PI / 2, Math.PI / 2 + (2 * Math.PI) / 3, Math.PI / 2 + (4 * Math.PI) / 3];
@@ -36,6 +38,15 @@ type Rgba = readonly [number, number, number, number];
 
 function rgb(hex: number): [number, number, number] {
   return [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
+}
+
+const HSL = { h: 0, s: 0, l: 0 };
+const COL = new THREE.Color();
+
+/** The disc's own team colour: the side's main colour, more saturated (sRGB hex). */
+export function discColor(side: Side, palette: TeamPalette): number {
+  COL.setHex(teamColor(side, "main", palette)).getHSL(HSL, THREE.SRGBColorSpace);
+  return COL.setHSL(HSL.h, Math.min(1, HSL.s * DISC_SATURATION), HSL.l * 0.96, THREE.SRGBColorSpace).getHex(THREE.SRGBColorSpace);
 }
 
 function scaled(c: readonly number[], f: number): [number, number, number] {
@@ -61,7 +72,7 @@ export function discSample(
   edge = 1.25 / (DISC_SIZE / 2),
 ): Rgba {
   if (u > 1) return [0, 0, 0, 0];
-  const main = rgb(teamColor(side, "main", palette));
+  const main = rgb(discColor(side, palette));
   const rim = scaled(rgb(teamColor(side, "dark", palette)), 0.45);
   const fill: Rgba = [main[0], main[1], main[2], FILL_ALPHA * 255];
   if (u < RING_INNER) return fill;

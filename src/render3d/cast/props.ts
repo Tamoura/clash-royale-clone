@@ -81,11 +81,11 @@ export function braids(color: number): Extra[] {
   return out;
 }
 
-/** A full beard under the chin, in front of the face (the Giant, the Executioner...). */
-export function beard(color: number, size = 1): Extra[] {
+/** A full beard hanging under the chin, clear of the eyes (the Giant, the King, the Wizard...). */
+export function beard(color: number, size = 1, y = 1.36): Extra[] {
   return [
-    x("head", color, () => ball(0.36 * size, 0, 1.5, 0.3, 1.25, 0.95, 0.75, 12)),
-    x("head", color, () => cone(0.2 * size, 0.42 * size, 0, 1.2, 0.36, Math.PI, 0, 8)),
+    x("head", color, () => ball(0.3 * size, 0, y, 0.36, 1.3, 0.8, 0.7, 12)),
+    x("head", color, () => cone(0.18 * size, 0.36 * size, 0, y - 0.3 * size, 0.4, Math.PI, 0, 8)),
   ];
 }
 

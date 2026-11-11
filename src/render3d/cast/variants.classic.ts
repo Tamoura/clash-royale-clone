@@ -19,7 +19,7 @@ const LEATHER = 0x7a4a2a;
 export const CLASSIC: Record<string, Variant> = {
   knight: {
     file: "knight",
-    scale: 1.0,
+    scale: 0.92,
     props: ["Knight_Helmet", "Knight_Cape", "1H_Sword", "Badge_Shield"],
     team: /Cape/,
     paint: { "0,1": "team", "1,0": GOLD, "3,0": 0xa9b7cc, "7,0": 0xd3dcea },
@@ -36,7 +36,7 @@ export const CLASSIC: Record<string, Variant> = {
   },
   archers: {
     file: "rogue",
-    scale: 0.95,
+    scale: 1.0,
     props: ["Rogue_Cape"],
     team: /Cape/,
     paint: { "1,0": 0xff5fa8, "0,1": 0x2fa86a, "1,1": "team" },
@@ -62,7 +62,8 @@ export const CLASSIC: Record<string, Variant> = {
     props: ["Barbarian_Cape"],
     team: /Cape/,
     cape: 0.5,
-    girth: 1.18,
+    stretch: 1.16,
+    headScale: 0.94,
     paint: { "0,1": 0x8a6a4a, "1,1": 0x8a6a4a, "1,0": 0xc8701f, "7,0": 0x6a4a32, "2,1": 0xe8dcc0 },
     // A ginger fringe from ear to ear and a big ginger beard: from behind a bare head reads as an egg.
     extras: [
@@ -100,10 +101,11 @@ export const CLASSIC: Record<string, Variant> = {
   },
   wizard: {
     file: "mage",
-    scale: 1.0,
+    scale: 0.88,
     props: ["Mage_Hat", "Mage_Cape"],
     team: /Cape/,
     brim: 0.74,
+    hairBack: "1,1",
     paint: { "0,1": 0x1f8f86, "1,1": 0x1f8f86, "7,1": 0x125a55, "5,0": 0xffb52e, "1,0": 0x6b4a2f, "2,1": "team" },
     extras: [
       // A crooked hat tip and a flame-orange orb on a short staff in the casting hand.
@@ -120,7 +122,7 @@ export const CLASSIC: Record<string, Variant> = {
   },
   musketeer: {
     file: "rogue",
-    scale: 1.0,
+    scale: 0.96,
     props: ["Rogue_Cape"],
     team: /Cape/,
     paint: { "1,0": 0x7a52e0, "0,1": 0x55606e, "1,1": "team" },
@@ -173,19 +175,16 @@ export const CLASSIC: Record<string, Variant> = {
   },
   witch: {
     file: "mage",
-    scale: 1.0,
+    scale: 0.92,
     props: ["Mage_Hat", "Mage_Cape", "2H_Staff"],
     team: /Cape/,
+    hairBack: "1,1",
     paint: { "0,1": 0x8a48c8, "1,1": 0x7a3ab8, "7,1": 0x43206e, "1,0": 0xe9dcff, "6,2": 0xff5fe0, "5,0": GOLD, "2,2": 0x5a2d91, "2,1": "team" },
-    extras: [
-      // Long white hair down the back.
-      x("head", 0xe9dcff, () => box(0.62, 0.7, 0.2, 0, 1.55, -0.4, -0.15)),
-    ],
     idle: "Idle",
     walk: "Walking_A",
     attack: "Spellcast_Shoot",
     strike: 0.45,
-    back: ["tall purple hat", "long white hair", "skull staff out past the body"],
+    back: ["tall purple hat", "pink-gem staff out past the body", "team cape"],
   },
 };
 CLASSIC["skeleton-army"] = CLASSIC.skeletons;
@@ -217,6 +216,7 @@ Object.assign(CLASSIC, {
   },
   "ice-wizard": {
     file: "mage",
+    hairBack: "1,1",
     scale: 1.0,
     props: ["Mage_Hat", "Mage_Cape"],
     team: /Cape/,
@@ -248,6 +248,7 @@ Object.assign(CLASSIC, {
   },
   "magic-archer": {
     file: "rogue_hooded",
+    hairBack: "1,1",
     scale: 1.0,
     props: ["Rogue_Cape", "2H_Crossbow"],
     team: /Cape/,
@@ -278,6 +279,7 @@ Object.assign(CLASSIC, {
   },
   firecracker: {
     file: "rogue_hooded",
+    hairBack: "1,1",
     scale: 0.95,
     props: ["Rogue_Cape", "2H_Crossbow"],
     team: /Cape/,
@@ -334,6 +336,7 @@ Object.assign(CLASSIC, {
 /** Crown-tower crews (not cards): a hooded archer on each princess tower, the king on the keep. */
 CLASSIC["tower-princess"] = {
   file: "rogue_hooded",
+  hairBack: "1,1",
   scale: 0.95,
   props: ["Rogue_Cape", "2H_Crossbow"],
   team: /Cape/,

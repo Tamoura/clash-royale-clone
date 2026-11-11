@@ -37,6 +37,15 @@ export const SKIN_SWATCHES: Partial<Record<FileId, Swatch[]>> = {
   rogue_hooded: ["0,0"],
 };
 
+/** The hair swatch of each body (its back is repainted under hats and hoods, see Variant.hairBack). */
+export const HAIR_SWATCH: Partial<Record<FileId, Swatch>> = {
+  knight: "1,0",
+  barbarian: "1,0",
+  mage: "1,0",
+  rogue: "1,0",
+  rogue_hooded: "1,0",
+};
+
 /** Degrees either side of a team hue that a signature colour must stay out of. */
 export const TEAM_HUE_SPREAD = 25;
 
