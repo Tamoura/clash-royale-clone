@@ -28,6 +28,17 @@ up to the board. Nothing under `src/game/` changed.
   (`HAND_ART_ZOOM`), the cost droplet 24px at the bottom edge. No caption on
   the art any more: on laptops the cost droplet sat on top of it; the hover
   tip and the long-press bubble name the card.
+- The "+N elixir needed" badge sits midway down the card (2px over the
+  middle), between the level chip on the top corner and the cost droplet's
+  tip. At the card's top (where it was) the "Lv.11" chip covered it on the
+  smaller cards, and hid it almost entirely with the large text setting.
+- The edition's ornament stays on the tray's top frame (Golden Age's gold
+  star and seal, Classic's diamonds), above the rail; the wide panel has
+  none, as before.
+- Under 299px wide (a foldable's 280px cover screen) the tray's gutters and
+  gaps give way, only as far as four 44px cards need (`--gutter-w`,
+  `--gap-w`): 280x653 gets 44px cards (56px before this work, 39px without
+  the squeeze). Below about 274px nothing is promised.
 - A picked or dragged card lifts out of the tray, over the rail.
 - The long-press bubble opens right above the tray (it used to clear the
   floating controls, 64px up); the emote faces open above the tray's start.
@@ -90,19 +101,27 @@ Honest reading of the table:
   1000x1000 +10%, a foldable's 884x768 +10% (`layout.test.ts`).
 - 360x640 and 375x667 land at 17.3% and 16.6% of the height, a little over
   the 16% target: their cards stop at the 56px floor (`TALL_CARD_MIN`), which
-  matters more for a kid's finger than the last 6px of board.
+  matters more for a kid's finger than the last 6px of board. The chrome
+  around the cards (42px: frame, rail, gaps, the padding the cost droplets
+  hang into) would have to drop to 34px for 16% at 360x640, which puts the
+  28px elixir droplet on the Next card and the cost droplets on the screen's
+  edge, for a board 1.7% bigger. Not worth it.
+- Small landscape windows that were panel-bound pay for their bigger board
+  with smaller cards: 640x480 draws a board 23% bigger with 45px cards (were
+  59px), 568x320 19% bigger with 51px cards. Still above the 44px touch
+  minimum; real landscape phones (640x360 to 932x430) get 62 to 72px cards.
 
 ## How it is built
 
 - `src/ui/layout.ts` is still the one place the sizes come from. New in the
-  result: `cardH`, `nextW`, `kingW`, `tray`. Tall: cards are
+  result: `cardH`, `nextW`, `kingW`, `gutter`, `gap`, `tray`. Tall: cards are
   `min(by width, max(56px, 10% of the height), 96px)`; Next and KING keep
   36px and 46px columns on phones and grow with the cards where there is
   width to spare (tablets). `trayHeight()` is what the camera is promised.
   Wide: `wideCardCap`, `sideMax`, `SIDE_MIN = 144`, and the arrangement score
   (bigger cards, a readable elixir bar, the 2x2 block over a column).
-- `src/ui/layoutWire.ts` sets `--card-w`, `--card-h`, `--next-w`, `--king-w`
-  (tall), `--band` (tall: the measured scoreboard band) and `data-slim` next
+- `src/ui/layoutWire.ts` sets `--card-w`, `--card-h`, `--next-w`, `--king-w`,
+  `--gutter-w`, `--gap-w` (tall), `--band` (tall: the measured scoreboard band) and `data-slim` next
   to the old variables, and clears them all between battles, when the tray
   falls back to a phone's sizes (it keeps its layout under the home screen,
   hidden; the home diorama fits itself to the stage it is given, so the home
@@ -160,17 +179,23 @@ Honest reading of the table:
 - `src/ui/layout.test.ts`: the old layout's maths kept verbatim as a
   reference; the board is never smaller than before on any screen
   (320..2000 x 320..1400, three safe-area sets); the acceptance screens'
-  gains; tall cards never under 44px (56px from 360px wide up), tray at most
+  gains; tall cards never under 44px from 280px wide (56px from 360px up;
+  the gutters and gaps squeeze under 299px, with no jump), tray at most
   a sixth of a phone; the row fits the width; wide hands fit their panel both
   ways and are a 2x2 on every common landscape screen; no cliff.
 - `src/ui/layoutCss.test.ts`: the tray's and panel's numbers in `hud.css`
-  against `layout.ts`.
+  against `layout.ts` (the gutter and gap defaults too), and the "+N" badge
+  at the card's middle.
 - `src/render3d/scene/fit.test.ts`: `alignY` (centred by default, clamps,
   never changes the scale, no effect when height-bound) and pointer picks at
   the new frames.
 
 ## Not done here
 
+- For the owner: on the most common phones (390x844, 412x915) the play
+  field itself is the same size as before; what they gain is more arena
+  around it and no HUD over a tile. The bigger field there needs the camera
+  change below.
 - A width-bound phone's board can only grow with a steeper battle camera
   (about 55 degrees instead of 49 would turn the spare 60px into a field 8%
   deeper). That is a camera change across the scene modules (HP bar tilt,
