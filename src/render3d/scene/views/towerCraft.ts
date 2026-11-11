@@ -22,6 +22,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { paintedToon } from "../../characters3d";
 import type { BrickVariant } from "../../arenaLooks";
 import { INK, OUTLINE_CSS_PX, fitInk, smoothedNormals } from "../../outlineMaterial";
+import { INK_COLOR, INK_PX } from "../../look/material";
 import { TOWER_GOLD, TOWER_GOLD_DARK, type TowerFlair, type TowerStyle, type YZ } from "./towerStyles";
 
 const C = new THREE.Color();
@@ -283,8 +284,8 @@ export const KEEP_TEX = { none: 0, ashlar: 1, crack: 2, roof: 3, band: 4 } as co
 export const STAGE_END = 99;
 
 /** Silhouette ink (art bible: #1F1A2E, 1.6 CSS px, depth-pushed so only the outline survives). */
-export const TOWER_INK = 0x1f1a2e;
-export const TOWER_INK_PX = 1.6;
+export const TOWER_INK = INK_COLOR;
+export const TOWER_INK_PX = INK_PX;
 /** How far (world units) the ink hull is pushed away from the camera. */
 export const TOWER_INK_DEPTH = 0.45;
 

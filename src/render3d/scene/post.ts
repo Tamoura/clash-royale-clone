@@ -14,6 +14,7 @@ import type { Battle3D } from "../scene3d";
 import { getPrefs, onPrefs } from "../../ui/prefs";
 import { LOOK } from "./common";
 import { setOutlinesVisible } from "../outlineMaterial";
+import { SCREEN_FLASH_MAX } from "../look/material";
 import { currentQuality, outlinesEnabled, type QualityLevel } from "../quality";
 import { applyArenaQuality } from "./arena/build";
 
@@ -35,7 +36,7 @@ export const SPLIT_TONE = { shadows: [0.96, 0.98, 1.04], highlights: [1.03, 1.0,
  */
 export const BLOOM = { threshold: 0.92, strength: 0.32, radius: 0.3 } as const;
 /** setFlash never whites out more than this. */
-export const MAX_FLASH = 0.25;
+export const MAX_FLASH = SCREEN_FLASH_MAX;
 
 const clampTo = (v: number, [lo, hi]: readonly [number, number]): number => Math.min(hi, Math.max(lo, v));
 
@@ -438,8 +439,8 @@ function syncTroopCasters(b: Battle3D): void {
 }
 
 /**
- * Whether troops cast real shadows at this quality: the top level only (a
- * full-size shadow map and full bloom). The shadow pass then draws every
+ * Whether troops cast real shadows at this quality: the top level only
+ * (QualityLevel.troopShadows). The shadow pass then draws every
  * troop a second time each frame, so the governor's first step down sheds
  * it; lower levels keep the static map and the blob shadows. Both editions.
  */
@@ -451,14 +452,14 @@ export function dynamicShadows(b: Battle3D): boolean {
 export const TROOP_CASTERS_PER_UNIT = 1;
 
 /**
- * The level test behind dynamicShadows, for code that has no scene at hand.
- * With no argument it reads the live level (quality.currentQuality()), so a
- * troop built after a step-down never casts a frozen shadow.
+ * The level test behind dynamicShadows, for code that has no scene at hand:
+ * the level's own troopShadows flag (L0 only), on a level that has a shadow
+ * map at all. With no argument it reads the live level
+ * (quality.currentQuality()), so a troop built after a step-down never casts
+ * a frozen shadow.
  */
-export function troopShadowLevel(
-  level: Pick<QualityLevel, "shadowSize" | "bloom"> & Partial<Pick<QualityLevel, "troopShadows">> = currentQuality(),
-): boolean {
-  return (level.troopShadows ?? true) && level.shadowSize >= 2048 && level.bloom >= 1;
+export function troopShadowLevel(level: Pick<QualityLevel, "shadowSize" | "troopShadows"> = currentQuality()): boolean {
+  return level.troopShadows && level.shadowSize > 0;
 }
 
 /**

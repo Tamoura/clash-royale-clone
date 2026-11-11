@@ -4,7 +4,22 @@ import type { CardId } from "../game/cards";
 import { loadChampion, normalizeChampion, type ChampionDef } from "../game/customcard";
 import type { Side } from "../game/arena";
 import { applyTeam, teamPart } from "./teamColors";
-import { INK_FRAGMENT, OUTLINE_CSS_PX, OUTLINE_MIN_RADIUS, installInk, outlineHull } from "./outlineMaterial";
+import { INK_FRAGMENT, OUTLINE_MIN_RADIUS, installInk, outlineHull } from "./outlineMaterial";
+import {
+  ALBEDO_SATURATION,
+  GROUND_AO,
+  INK_DEPTH,
+  INK_PX,
+  RIM_COLOR,
+  RIM_STRENGTH,
+  RIM_UNIFORM,
+  TINT_MAX,
+  TOON_RAMP,
+  TROOP_FLASH_MAX,
+  rimGlsl,
+  syncRim,
+  toonRampGlsl,
+} from "./look/material";
 import { currentQuality } from "./quality";
 import { ARABIC, THEME } from "./theme";
 import { cameraZForView } from "./scene/common";
@@ -125,24 +140,24 @@ function grainMap(): THREE.DataTexture {
  *   flash can never cross the bloom threshold.
  * Each wave-1 package holds these constants locally; ship unifies them.
  */
-export const RIG_RAMP = [0.62, 0.86, 1.0] as const;
-export const RIG_RIM = { color: 0xbfe3ff, strength: 0.35 } as const;
-export const RIG_INK_PX = 1.6;
+export const RIG_RAMP = TOON_RAMP;
+export const RIG_RIM = { color: RIM_COLOR, strength: RIM_STRENGTH } as const;
+export const RIG_INK_PX = INK_PX;
 /** World units the ink shell sits behind the body (silhouette-only ink). */
-export const RIG_INK_DEPTH = 0.3;
-export const RIG_AO = { share: 0.18, dark: 0.15 } as const;
+export const RIG_INK_DEPTH = INK_DEPTH;
+export const RIG_AO = GROUND_AO;
 /** Albedo saturation multiplier applied when a rig is baked. */
-export const RIG_SATURATION = 1.12;
+export const RIG_SATURATION = ALBEDO_SATURATION;
 /** The most a status tint (freeze, rage, slow) may pull a pixel toward its colour. */
-export const RIG_TINT_MAX = 0.6;
+export const RIG_TINT_MAX = TINT_MAX;
 /** The most a hit flash (a near-white tint) may: art bible 6, 0.35 on troops. */
-export const RIG_FLASH_MAX = 0.35;
-/** Rim strength (1 on, 0 off) shared by every rig material; follows the quality level. */
-export const RIG_RIM_UNIFORM = { value: 1 };
+export const RIG_FLASH_MAX = TROOP_FLASH_MAX;
+/** Rim on (1) or off (0): the SAME uniform object as the cast's (look/material.ts RIM_UNIFORM). */
+export const RIG_RIM_UNIFORM = RIM_UNIFORM;
 
 /** Keep the shared rim switch in step with the live quality level (called per animated rig). */
 function syncRigRim(): void {
-  RIG_RIM_UNIFORM.value = currentQuality().rimLight ? 1 : 0;
+  syncRim(currentQuality());
 }
 
 /** The vertex and fragment changes that give a baked rig material the art bible's language. */
@@ -158,18 +173,11 @@ function installRigLanguage(sh: THREE.WebGLProgramParametersWithUniforms): void 
       `vec3 _back = projectionMatrix[3][3] > 0.5 ? vec3(0.0, 0.0, -${RIG_INK_DEPTH.toFixed(3)}) : normalize(mvPosition.xyz) * ${RIG_INK_DEPTH.toFixed(3)};
            gl_Position = projectionMatrix * vec4(mvPosition.xyz + _back, 1.0);
            vec3 nView = normalize(normalMatrix * outlineNormal);`,
-    )
-    .replace("* uInkPx * 2.0 / uInkViewport", `* uInkPx * ${((2 * RIG_INK_PX) / OUTLINE_CSS_PX).toFixed(4)} / uInkViewport`);
+    );
+  // The line is RIG_INK_PX wide: the shared ink's own width (INK_PX), no rescale.
   sh.fragmentShader = sh.fragmentShader
     .replace("#include <common>", "#include <common>\n varying float vGroundY;\n uniform float uRigRim;\n uniform float uAoTop;")
-    .replace(
-      "#include <gradientmap_pars_fragment>",
-      `vec3 getGradientIrradiance( vec3 normal, vec3 lightDirection ) {
-         float x = dot( normal, lightDirection ) * 0.5 + 0.5;
-         float k = ${RIG_RAMP[0].toFixed(2)} + ${(RIG_RAMP[1] - RIG_RAMP[0]).toFixed(2)} * smoothstep(0.40, 0.44, x) + ${(RIG_RAMP[2] - RIG_RAMP[1]).toFixed(2)} * smoothstep(0.68, 0.72, x);
-         return vec3(k);
-       }`,
-    )
+    .replace("#include <gradientmap_pars_fragment>", toonRampGlsl())
     .replace(
       "#include <emissivemap_fragment>",
       "#include <emissivemap_fragment>\n vec3 _tint = totalEmissiveRadiance;\n totalEmissiveRadiance = vec3(0.0);",
@@ -178,9 +186,7 @@ function installRigLanguage(sh: THREE.WebGLProgramParametersWithUniforms): void 
       "#include <dithering_fragment>",
       `${INK_FRAGMENT}
          gl_FragColor.rgb *= 1.0 - ${RIG_AO.dark.toFixed(2)} * (1.0 - smoothstep(0.0, uAoTop, vGroundY));
-         float _rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
-         _rim = smoothstep(0.62, 1.0, _rim) * ${RIG_RIM.strength.toFixed(2)} * uRigRim;
-         gl_FragColor.rgb += _rim * vec3(0.749, 0.890, 1.0);
+         ${rimGlsl("uRigRim")}
          float _k = max(_tint.r, max(_tint.g, _tint.b));
          // A white or warm-white tint is a hit flash: art bible 6 caps it at RIG_FLASH_MAX.
          float _cap = min(_tint.r, min(_tint.g, _tint.b)) >= 0.6 * _k ? ${RIG_FLASH_MAX.toFixed(2)} : ${RIG_TINT_MAX.toFixed(2)};

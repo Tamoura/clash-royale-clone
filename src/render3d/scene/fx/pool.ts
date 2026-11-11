@@ -27,9 +27,10 @@ import { DecalLayer, SCORCH_ALPHA, scorchColor, type DecalOpts } from "./decals"
 import { GlyphLayer } from "./glyphs";
 import { IceDomes } from "./iceDome";
 import { emitPreset, type EmitOpts, type PoolKind, type Spawner } from "./presets";
+import { SCREEN_FLASH_MAX } from "../../look/material";
 
 /** Bloom contract (art bible 5): a screen flash never asks for more than this. */
-export const FX_MAX_FLASH = 0.25;
+export const FX_MAX_FLASH = SCREEN_FLASH_MAX;
 
 /** Pool capacities before the quality scale. */
 export const ADD_CAP = 1024;

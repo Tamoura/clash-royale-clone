@@ -11,7 +11,6 @@ import * as THREE from "three";
 import type { Side } from "../../../game/arena";
 import type { Entity } from "../../../game/battle";
 import type { CardId } from "../../../game/cards";
-import { cardDisplayName } from "../../../render/cardNames";
 import { buildBuildingRig, buildTroop, type TroopRig } from "../../characters3d";
 import { bakeRig } from "../../rigBake";
 import { spawnRecipe } from "../../spawnfx";
@@ -66,7 +65,7 @@ function pruneTeamLive(): void {
   for (const t of teamLive) if (!t.root.parent) teamLive.delete(t);
 }
 
-/** Repaint every live unit, label and level shield for a palette. */
+/** Repaint every live unit and level shield for a palette. */
 function repaintTeams(palette: TeamPalette): void {
   setCastPalette(palette); // every cast unit's cloth, live
   pruneTeamLive();
@@ -76,7 +75,6 @@ function repaintTeams(palette: TeamPalette): void {
     if (t.hpFill) setHpFillColor(t.hpFill, t.hpFill.userData.troopBar ? troopHpColor(t.side, palette) : unitHpColor(t.side, palette));
   }
   for (const b of levelBadges.values()) drawLevelBadge(b, palette);
-  for (const l of nameLabels.values()) drawNameLabel(l, palette);
 }
 
 function trackTeam(entry: TeamLive): void {
@@ -329,64 +327,6 @@ export function setHpFill(view: EntityView, frac: number, width: number): void {
   view.hpFill.position.x = (-(1 - f) * (width - 0.06)) / 2;
 }
 
-/** A cached unit name label: its tint follows the team palette. */
-interface NameLabel {
-  name: string;
-  side: Side;
-  ctx: CanvasRenderingContext2D;
-  tex: THREE.CanvasTexture;
-  mat: THREE.SpriteMaterial;
-}
-/** One shared sprite material per card+side; only the palette tint changes. */
-const nameLabels = new Map<string, NameLabel>();
-
-/** Light team tint for name text (pale blue / pale red, or pale orange). */
-function labelTint(side: Side, palette: TeamPalette): string {
-  if (side === "player") return "#aecdff";
-  return palette === "cb" ? "#ffcf94" : "#ffb9b3";
-}
-
-function drawNameLabel(l: NameLabel, palette: TeamPalette): void {
-  const { ctx, name } = l;
-  ctx.clearRect(0, 0, 256, 64);
-  let size = 34;
-  ctx.font = `bold ${size}px ${GAME_FONT}`;
-  while (ctx.measureText(name).width > 236 && size > 16) {
-    size -= 2;
-    ctx.font = `bold ${size}px ${GAME_FONT}`;
-  }
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.lineJoin = "round";
-  ctx.lineWidth = 8;
-  ctx.strokeStyle = "rgba(10,14,22,0.9)";
-  ctx.strokeText(name, 128, 34);
-  ctx.fillStyle = labelTint(l.side, palette);
-  ctx.fillText(name, 128, 34);
-  l.tex.needsUpdate = true;
-}
-
-export function nameSpriteMaterial(cardId: CardId, side: Side): THREE.SpriteMaterial {
-  // Edition-aware: Arabic-script names in the Arabic edition.
-  const name = cardDisplayName(cardId);
-  // Keyed by name too: renaming the Studio champion must not reuse a
-  // stale label from an earlier battle.
-  const key = `${cardId}:${side}:${name}`;
-  let label = nameLabels.get(key);
-  if (!label) {
-    const c = document.createElement("canvas");
-    c.width = 256;
-    c.height = 64;
-    const tex = new THREE.CanvasTexture(c);
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
-    mat.userData.shared = true; // cached across every unit label
-    label = { name, side, ctx: c.getContext("2d")!, tex, mat };
-    drawNameLabel(label, teamPalette());
-    nameLabels.set(key, label);
-  }
-  return label.mat;
-}
-
 /** Shared soft radial contact-shadow texture (dark centre, feathered edge). */
 let contactShadowTexture: THREE.CanvasTexture | null = null;
 export function contactShadowTex(): THREE.CanvasTexture {
@@ -596,12 +536,8 @@ function leanNode(root: THREE.Object3D, body: THREE.Object3D, pivotY: number): T
   return lean;
 }
 
-/**
- * A troop view. `withLabel` is kept for the scene's call but no name tag
- * is drawn any more (the art bible: no floating name tags).
- */
-export function buildTroopMesh(e: Entity, withLabel = false): EntityView {
-  void withLabel;
+/** A troop view (no floating name tag: art bible 6). */
+export function buildTroopMesh(e: Entity): EntityView {
   const root = new THREE.Group();
   const team = teamSide(e.side);
 

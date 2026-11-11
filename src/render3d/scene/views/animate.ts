@@ -62,7 +62,8 @@ import { addShake } from "../camera";
 import { contactRing, damagePopup, emitSparks, megaSlam } from "../fx/effects";
 import { fxTeamColor } from "../fx/spells";
 import { hpBarVisible, makeStunSprite, setHpFill } from "./troops";
-import { animateKitTroop, LEAN, leanQuaternion, RIM_UNIFORM, setLeanCamera, startKitDeath, stepKitDeath, VIEW_DIR } from "../../cast/index";
+import { animateKitTroop, LEAN, leanQuaternion, startKitDeath, stepKitDeath, VIEW_DIR } from "../../cast/index";
+import { TOWER_FLASH_MAX, TROOP_FLASH_MAX, syncRim } from "../../look/material";
 import { currentQuality } from "../../quality";
 
 /** A troop view's animation state (created on its first frame). */
@@ -125,7 +126,7 @@ const FROZEN_TINT = [0.25, 0.45, 0.6] as const;
 const SLOW_TINT = [0.12, 0.04, 0.17] as const;
 /** Hit flash on troops: a mix toward #FFF4E0 of at most HIT_FLASH_PEAK (art bible 6: never white, never blooms). */
 export const HIT_FLASH = [1, 0.957, 0.878] as const;
-export const HIT_FLASH_PEAK = 0.35;
+export const HIT_FLASH_PEAK = TROOP_FLASH_MAX;
 /**
  * Towers and buildings take many hits: a full-white emissive frame turned
  * the whole tower into a solid white block on every one. They get a soft
@@ -133,7 +134,7 @@ export const HIT_FLASH_PEAK = 0.35;
  * TOWER_FLASH_TIME, a little longer than a troop's snap so it reads as a throb.
  */
 export const TOWER_FLASH = [1, 0.82, 0.62] as const;
-export const TOWER_FLASH_PEAK = 0.25;
+export const TOWER_FLASH_PEAK = TOWER_FLASH_MAX;
 export const TOWER_FLASH_TIME = 0.22;
 
 /**
@@ -249,7 +250,6 @@ export function beginDeath(b: Battle3D, view: EntityView): void {
   const anim = view.anim;
   view.root.visible = true;
   view.hpGroup.visible = false;
-  if (view.label) view.label.visible = false;
   if (view.stunStars) view.stunStars.visible = false;
   if (view.deployRing) view.deployRing.visible = false;
   if (anim?.ice) for (const m of anim.ice) m.visible = false;
@@ -466,8 +466,7 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
   sa.clock = animClock(sa.clock, state.time, alpha, b.hitStop.active);
   const w = toWorld(e.x, e.y);
   VIEW_OF.set(e, view);
-  setLeanCamera(b.camera);
-  RIM_UNIFORM.value = currentQuality().rimLight ? 1 : 0; // the cast's cool rim follows the live quality level
+  syncRim(currentQuality()); // the shared cool rim (cast and rigs) follows the live quality level
 
   if (view.isTroop && !view.anim) view.anim = initTroopAnim(b, view, e);
   const anim = view.anim;
@@ -496,17 +495,6 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
   view.root.position.x = POS.x;
   view.root.position.z = POS.z;
 
-  // Deploy name tag: readable for two seconds, then it shrinks away so
-  // a crowded field shows troops, not captions.
-  if (view.label) {
-    view.labelAge = (view.labelAge ?? 0) + dt;
-    const k = Math.max(0, 1 - Math.max(0, view.labelAge - 2) / 0.35);
-    view.label.scale.set(1.7 * k, 0.42 * k, 1);
-    if (k === 0) {
-      view.label.visible = false;
-      view.label = undefined;
-    }
-  }
 
   // Entrance: risers climb out of the ground, the Mega Knight plummets,
   // everyone else drops in from just overhead.

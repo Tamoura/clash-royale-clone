@@ -71,7 +71,7 @@ describe("viewer-relative team (online guest)", () => {
     setViewSide("enemy");
     try {
       const e = { ...troop("enemy"), cardId: "knight", radius: 0.5 } as Entity;
-      const v = buildTroopMesh(e, false);
+      const v = buildTroopMesh(e);
       const colours = new Set<number>();
       v.root.traverse((o) => {
         if (isTeamPart(o) && o.userData.team === "main") {
