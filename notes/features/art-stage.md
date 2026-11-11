@@ -7,14 +7,17 @@ worktree /home/user/wt-art-stage, dev server port 3204.
 
 perf-budget, `?quality=high`, first arena (training-camp: meadow / courtyard).
 
-| View | Edition | Start empty calls / tris | Start fight calls / tris | End empty | End fight |
+| View | Edition | Start empty calls / tris | Start fight calls / tris | End empty calls / tris | End fight calls / tris |
 |---|---|---|---|---|---|
-| 390x844@2 | Classic | 178 / 266,074 | 435 / 769,710 | see below | see below |
-| 390x844@2 | Golden Age | 167 / 137,566 | 402 / 509,438 (no troop shadows) | | |
-| 1440x900@1 | Classic | 176 / 266,048 | 433 / 769,692 | | |
-| 1440x900@1 | Golden Age | 167 / 137,566 | 399 / 509,382 (no troop shadows) | | |
+| 390x844@2 | Classic | 178 / 266,074 | 435 / 769,710 | 174 / 202,954 | 433 / 706,610 |
+| 390x844@2 | Golden Age | 167 / 137,566 | 402 / 509,438 (no troop shadows) | 170 / 191,668 | 436 / 702,184 (troop shadows on) |
+| 1440x900@1 | Classic | 176 / 266,048 | 433 / 769,692 | 178 / 226,100 | 431 / 729,780 |
+| 1440x900@1 | Golden Age | 167 / 137,566 | 399 / 509,382 (no troop shadows) | 174 / 200,350 | 440 / 710,846 (troop shadows on) |
 
-End numbers: filled in by the final quality-bar run (section "Final numbers").
+Acceptance: empty <= 185 calls and <= 230k triangles, fight <= 450 calls: all four pass
+(`node tools/perf-budget.mjs --url http://127.0.0.1:3204 [--edition arabic] [--view 1440x900@1]
+--max-empty-calls 185`, exit 0). Textures 49 in the fight. The Golden Age triangle rise is the
+per-frame troop-shadow pass it now has.
 
 Golden Age now casts dynamic troop shadows at L0 too (C's `!ARABIC` gate is gone); its fight stays
 under 450 because the lit toon props are tint-batched (one vertex-coloured mesh per shadow setting):
@@ -111,17 +114,37 @@ the per-frame shadow pass draws ~30 static casters instead of 50.
    sit in the toon mid band; if they read dull next to the roofs, brighten the wall albedo rather
    than moving the sun. Flagstone aprons are painted to `TOWER_FOOTPRINT + APRON` (groundPaint.ts).
 
-## Screenshots
+## Screenshots and checks
 
-- Start: /tmp/claude-0/art/stage/start/
-- Iterations: /tmp/claude-0/art/stage/it*.png
-- Contact sheet: /tmp/claude-0/art/stage/looks-22.png
-- Ladder sheet: /tmp/claude-0/art/stage/ladder.png
-- Matrix: /tmp/claude-0/art/stage/<edition>-<arena>-<viewport>.png
+- Start: /tmp/claude-0/art/stage/start/; iterations: /tmp/claude-0/art/stage/it*.png.
+- Matrix (fight, 6 s after the standard spawns): /tmp/claude-0/art/stage/<edition>-<arena>-390x844@2.png,
+  -1440x900.png and <edition>-training-camp-390x844-low.png; montages matrix-normal-phone.png,
+  matrix-normal-desk.png, matrix-arabic-phone.png, matrix-arabic-desk.png. By eye against the
+  baseline: no checkerboard, pebble-edged paths, banks and bridges per look, a festive far band
+  (awnings, crowd, pennants) above the enemy king on the phone, people not pawns, no haze.
+- Contact sheet (1440x900, medium, empty battle): /tmp/claude-0/art/stage/looks-22.png (rows 1-2
+  Classic, rows 3-4 Golden Age, arena order of the trophy road); every look complete.
+- Ladder sheet: /tmp/claude-0/art/stage/ladder.png (L0, L2, L4; Classic then Golden Age). L4 keeps
+  the painted floor, aprons and occlusion, the set and the crowd: it still looks finished.
+- Mid-fight wash: /tmp/claude-0/art/stage/midfight-normal.png, and midfight-normal-bloomx10.png with
+  the bloom strength forced to 3: lit grass, towers and troops never glow; only spell impacts do.
+- Governor step-down (Settings High, troops spawned, then Medium; /tmp/claude-0/stage-tools/governor.cjs):
+  Classic casters 6 on -> 0 on, shadow map re-rendered once, a troop spawned afterwards casts none;
+  Golden Age the same. Unit test in post.test.ts too.
+- Outer ring pop-in: /tmp/claude-0/art/stage/outer-popin.png (0.5 s and 3 s after battle start,
+  identical). No kit props: public/models/kit does not exist.
+- Console: no errors from the game. The only failed requests in dev captures are 403s for the
+  @fontsource woff files, because this worktree's node_modules is a symlink outside Vite's allowed
+  fs root (a worktree artefact; the production build bundles the fonts).
 
 ## Known gaps
 
-(filled in at the end)
+- The crowd shares one body: everyone cheers with raised arms (a second arm pose is a third draw).
+- Golden Age outer ring is one town for all eleven looks (palette, palms or cypresses vary);
+  domed houses are simple boxes. Snow-capped cypresses only in the Atlas.
+- The one-caster-per-unit rule and the mixer rates need cast-kit's side (requests 1-3).
+- Classic outer ring is procedural; KayKit hexagon props were not used.
+- Sun direction is a compromise (see Decisions): shadows fall right and only slightly down.
 
 ## Progress log
 
@@ -136,4 +159,7 @@ the per-frame shadow pass draws ~30 static casters instead of 50.
 - tufts, outer ring per theme, per-side strips + region culling (7349a45).
 - 42cc97e: StagePalette on all 22 looks; set tests (no checker, all looks build).
 - fbba6f7: far-band crowd terrace on every kit. Full vitest suite green at 42cc97e.
-- Next: contact sheet, ladder sheet, matrix, governor test in the browser, final quality bar.
+- c9ad5ef..194e933: canal tile coping, snow floor toned, cypresses for non-palm Golden Age looks,
+  calmer forge seams. Contact sheet, matrix, ladder sheet, governor and wash checks done.
+- Final quality bar at 194e933: tsc clean, vitest 136 files / 1609 tests pass, npm run build ok,
+  perf-budget passes in all four configurations (table above). Package complete.
