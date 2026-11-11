@@ -68,6 +68,8 @@ export interface Layer {
   tint?: boolean;
   /** Whether opts.radius scales this layer (default true). */
   scales?: boolean;
+  /** Upper bound on size0/size1 after radius scaling (impact puffs stay small, tiles). */
+  maxSize?: number;
   /**
    * Dust kicked off the floor: without opts.color the layer takes the arena
    * floor's dust colour (Spawner.floorColor), fading to a deeper shade.
@@ -119,7 +121,7 @@ const CREAM = 0xfff1c4;
 export const PRESETS: Record<string, readonly Layer[]> = {
   // Footstep dust: two tiny scuffs in the floor's colour.
   dust: [
-    { pool: "alpha", cell: SMOKE, count: 2, life: [0.35, 0.5], dir: "up", spread: 1.2, speed: [0.3, 0.6], area: 0.15, height: 0.1, drag: 2, size0: [0.12, 0.18], size1: [0.35, 0.45], spin: [-1, 1], color0: 0xc9b99c, alpha0: 0.75, alpha1: 0, push: 0.5, floor: true },
+    { pool: "alpha", cell: SMOKE, count: 2, life: [0.35, 0.5], dir: "up", spread: 1.2, speed: [0.3, 0.6], area: 0.15, height: 0.1, drag: 2, size0: [0.12, 0.18], size1: [0.35, 0.45], spin: [-1, 1], color0: 0xc9b99c, alpha0: 0.75, alpha1: 0, push: 0.5, floor: true, maxSize: IMPACT_PUFF_MAX },
   ],
   // Smouldering billows (damaged towers, death puffs): tinted by the caller.
   smoke: [
@@ -146,7 +148,7 @@ export const PRESETS: Record<string, readonly Layer[]> = {
   ],
   // Contact: 4-6 inked star sprites flying off the struck target, plus a small hot core.
   hitSpark: [
-    { pool: "alpha", cell: CELL.STAR5, count: 5, min: 4, life: [0.3, 0.42], dir: "sphere", speed: [2.4, 4.2], height: 0, drag: 3.5, gravity: 6, size0: [0.46, 0.56], size1: 0.22, spin: [-11, 11], color0: CREAM, alpha0: 1, alpha1: 0.3, push: 0.8, scales: false },
+    { pool: "alpha", cell: CELL.STAR5, count: 5, min: 4, life: [0.32, 0.45], dir: "sphere", speed: [2.4, 4.2], height: 0, drag: 3.5, gravity: 6, size0: [0.66, 0.78], size1: 0.34, spin: [-11, 11], color0: CREAM, alpha0: 1, alpha1: 0.3, push: 0.8, scales: false },
     { pool: "add", cell: CELL.SOFT, count: 1, life: 0.1, dir: "none", speed: 0, size0: 0.55, size1: 0.25, color0: 0xfff1c4, hdr0: 1.3, hdr1: 0.6, alpha0: 0.9, alpha1: 0, push: 1, tint: false, scales: false },
   ],
   // A huge hit: gold stars, a small hot core and a gold ring.
@@ -248,12 +250,12 @@ export const PRESETS: Record<string, readonly Layer[]> = {
   ],
   // Arrow landing kick: a little floor dust and two quick sparks.
   "dust-kick": [
-    { pool: "alpha", cell: SMOKE, count: 2, life: [0.4, 0.55], dir: "up", spread: 1.1, speed: [0.8, 1.4], height: 0.1, drag: 3, size0: 0.28, size1: [0.6, 0.75], spin: [-1, 1], color0: 0xb9a582, alpha0: 0.85, alpha1: 0, push: 0.5, floor: true },
+    { pool: "alpha", cell: SMOKE, count: 2, life: [0.4, 0.55], dir: "up", spread: 1.1, speed: [0.8, 1.4], height: 0.1, drag: 3, size0: 0.28, size1: [0.6, 0.75], spin: [-1, 1], color0: 0xb9a582, alpha0: 0.85, alpha1: 0, push: 0.5, floor: true, maxSize: IMPACT_PUFF_MAX },
     { pool: "add", cell: CELL.STREAK, count: 2, life: 0.18, dir: "up", spread: 0.8, speed: [2.5, 4], gravity: 10, size0: 0.07, size1: 0.03, stretch: 0.8, color0: 0xfff1c4, hdr0: 1.4, alpha0: 1, alpha1: 0, tint: false },
   ],
   // Tornado debris whipped around (the spiral is placed by the recipe).
   "tornado-dust": [
-    { pool: "alpha", cell: SMOKE, count: 6, life: [0.7, 1], dir: "out", speed: [0.6, 1], vy: [1.2, 2], area: 0.9, edge: true, height: 0.2, drag: 1, size0: [0.5, 0.7], size1: [1, 1.3], spin: [-3, -1.5], color0: 0xb7c0cc, color1: 0x8d96a3, alpha0: 0.75, alpha1: 0, push: 0.4 },
+    { pool: "alpha", cell: SMOKE, count: 6, life: [0.7, 1], dir: "out", speed: [0.6, 1], vy: [1.2, 2], area: 0.9, edge: true, height: 0.2, drag: 1, size0: [0.5, 0.7], size1: [1, 1.3], spin: [-3, -1.5], color0: 0xb7c0cc, color1: 0x8d96a3, alpha0: 0.75, alpha1: 0, push: 0.4, maxSize: 1.2 },
   ],
   // Dark summoning disc for risers.
   portal: [
@@ -360,8 +362,8 @@ export function emitPreset(sp: Spawner, name: string, wx: number, wy: number, wz
       s.drag = L.drag ?? 0;
       s.delay = (opts?.delay ?? 0) + (L.delay === undefined ? 0 : pick(L.delay, rand));
       s.life = pick(L.life, rand);
-      s.size0 = pick(L.size0, rand) * k;
-      s.size1 = pick(L.size1, rand) * k;
+      s.size0 = Math.min(L.maxSize ?? Infinity, pick(L.size0, rand) * k);
+      s.size1 = Math.min(L.maxSize ?? Infinity, pick(L.size1, rand) * k);
       s.rot = rand() * Math.PI * 2;
       s.spin = L.spin === undefined ? 0 : pick(L.spin, rand);
       // Colours: linear, scaled into HDR by hdr0/hdr1. Floor dust takes the

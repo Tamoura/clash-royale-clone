@@ -198,8 +198,8 @@ function bolt(
         continue;
       }
       // A white-hot core in a saturated blue halo, so it reads on pale sand too.
-      if (layer === 0) color(s, 0xeefaff, 1.3, 1, 0xbfe9ff, 1, 0);
-      else color(s, 0x2f8dff, 0.4, 0.3, 0x2f8dff, 0.3, 0);
+      if (layer === 0) color(s, 0xeefaff, 1.05, 1, 0xbfe9ff, 0.85, 0);
+      else color(s, 0x2f8dff, 0.32, 0.2, 0x2f8dff, 0.25, 0);
       v.spawn("add", s);
     }
   };

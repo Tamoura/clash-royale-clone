@@ -1630,12 +1630,12 @@ function membraneWing(s: number, span: number, depth: number, skin: number, rib:
   for (let i = 0; i < 3; i++) {
     const a = -0.42 + i * 0.42;
     const len = span * (1 - i * 0.16);
-    const lobe = sphere(0.5, skin, 0, 0, 0);
-    lobe.scale.set(len, 0.06, depth * 0.62);
-    lobe.position.set(s * len * 0.5 * Math.cos(a), -i * 0.012, -Math.sin(Math.abs(a) + 0.2) * depth * 0.42);
-    lobe.rotation.y = s * a;
-    lobe.name = "wing-membrane";
-    wing.add(lobe);
+    const m = lobe(skin);
+    m.scale.set(len, 0.06, depth * 0.62);
+    m.position.set(s * len * 0.5 * Math.cos(a), -i * 0.012, -Math.sin(Math.abs(a) + 0.2) * depth * 0.42);
+    m.rotation.y = s * a;
+    m.name = "wing-membrane";
+    wing.add(m);
   }
   const bone = box(round3(span * 0.9), 0.07, 0.07, rib, s * span * 0.45, 0.03, depth * 0.24);
   bone.name = "wing-rib";
@@ -1646,19 +1646,24 @@ function membraneWing(s: number, span: number, depth: number, skin: number, rib:
   return wing;
 }
 
+/** A flattened wing lobe: a low-poly sphere (it is squashed flat, so 12 x 8 segments read smooth). */
+function lobe(color: number): THREE.Mesh {
+  return shadowed(new THREE.Mesh(cachedGeo("lobe", () => new THREE.SphereGeometry(0.5, 12, 8)), toon(color)), 0, 0, 0);
+}
+
 /** A feathered wing: three long rounded feathers fanned from the shoulder, darker at the tips. */
 function featherWing(s: number, span: number, depth: number, feather: number, tip: number, name: string): THREE.Group {
   const wing = new THREE.Group();
   for (let i = 0; i < 3; i++) {
     const a = -0.3 + i * 0.32;
     const len = span * (1 - i * 0.14);
-    const f = sphere(0.5, feather, 0, 0, 0);
+    const f = lobe(feather);
     f.scale.set(len, 0.07, depth * 0.42);
     f.position.set(s * len * 0.5 * Math.cos(a), -i * 0.015, -Math.sin(a + 0.3) * depth * 0.5);
     f.rotation.y = s * a;
     f.name = name;
     wing.add(f);
-    const t = sphere(0.5, tip, 0, 0, 0);
+    const t = lobe(tip);
     t.scale.set(len * 0.34, 0.075, depth * 0.36);
     t.position.set(s * len * 0.84 * Math.cos(a), -i * 0.015 + 0.004, -Math.sin(a + 0.3) * depth * 0.5);
     t.rotation.y = s * a;
