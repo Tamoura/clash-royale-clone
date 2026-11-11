@@ -7,6 +7,7 @@ import { applyTeam, teamPart } from "./teamColors";
 import { INK_FRAGMENT, OUTLINE_CSS_PX, OUTLINE_MIN_RADIUS, installInk, outlineHull } from "./outlineMaterial";
 import { currentQuality } from "./quality";
 import { ARABIC, THEME } from "./theme";
+import { cameraZForView } from "./scene/common";
 import { rigArchetype, type AttackStyle, type QuadGait, type Weight } from "./anim/archetypes";
 import { BASE_CADENCE, hopScale, legPhase, stepSquash } from "./anim/gait";
 
@@ -2233,6 +2234,24 @@ function buildCamelRaider(): TroopRig {
 /** How far the fire kite's sail tips back from upright (radians). */
 const KITE_TILT = 1.0;
 
+const KITE_FWD = new THREE.Vector3();
+
+/**
+ * The yaw (in `rig`'s own frame) that turns a child toward the camera's
+ * horizontal view direction, whichever way the unit faces: the host's camera
+ * sits at +z, an online guest's at -z (cameraZForView). Reads the rig's live
+ * world transform, so the lean, the body twist and the facing all count.
+ */
+export function yawTowardCamera(rig: THREE.Object3D): number {
+  rig.getWorldDirection(KITE_FWD);
+  const worldYaw = Math.atan2(KITE_FWD.x, KITE_FWD.z);
+  const camYaw = cameraZForView() >= 0 ? 0 : Math.PI;
+  let d = camYaw - worldYaw;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
 function buildFireKite(): TroopRig {
   const g = new THREE.Group();
   // Turquoise silk on gold spars (the edition's colours, never a team hue);
@@ -2248,16 +2267,24 @@ function buildFireKite(): TroopRig {
   canopy.scale.set(0.8, 1.1, 0.26);
   canopy.castShadow = true;
   canopy.receiveShadow = true;
-  // The sail flies tipped back, so the battle camera sees its face from
-  // either end of the arena (an upright kite was a thin edge from above).
+  // The sail flies tipped back toward the sky, and its mount turns it to the
+  // camera every frame (yawTowardCamera), so the battle camera sees its face
+  // whichever way the kite flies: your own kite flies away from you, and a
+  // sail tipped in the rig's frame showed you its edge. An upright sail was
+  // a thin edge from above. The mount carries the sail and its tails.
+  const mount = new THREE.Group();
+  mount.name = "kite-mount";
+  mount.position.set(0, 1.5, 0);
+  mount.userData.animated = true; // the bake keeps it a node of its own
+  g.add(mount);
   const sail = new THREE.Group();
-  sail.position.set(0, 1.5, 0);
+  sail.name = "kite-sail";
   sail.rotation.x = -KITE_TILT;
   sail.add(canopy);
   sail.add(box(0.06, 1.5, 0.05, GOLD, 0, 0, 0.1)); // vertical spar
   sail.add(box(1.1, 0.06, 0.05, GOLD, 0, 0, 0.1)); // cross spar
   sail.add(diamond(0.12, GOLD, 0, 0, 0.16)); // center boss
-  g.add(sail);
+  mount.add(sail);
   // Crescent finial at the kite's crown.
   const finial = new THREE.Mesh(
     cachedGeo("crescent:0.12", () => {
@@ -2281,12 +2308,12 @@ function buildFireKite(): TroopRig {
     [0, 0.6, GOLD],
     [0.17, 0.82, CLOTH],
   ] as const) {
-    // From the sail's lower point (tipped forward by KITE_TILT).
-    const tail = box(color === CLOTH ? 0.15 : 0.08, len, 0.04, color, dx, 1.5 - 0.79 * Math.cos(KITE_TILT) - len / 2, 0.79 * Math.sin(KITE_TILT));
+    // From the sail's lower point (tipped forward by KITE_TILT), in the mount's frame.
+    const tail = box(color === CLOTH ? 0.15 : 0.08, len, 0.04, color, dx, -0.79 * Math.cos(KITE_TILT) - len / 2, 0.79 * Math.sin(KITE_TILT));
     tail.name = "kite-tail";
     if (color === CLOTH) teamPart(tail); // the two cloth tails fly team colours
     tails.push(tail);
-    g.add(tail);
+    mount.add(tail);
   }
 
   // Hanging brazier basket on ropes below the canopy.
@@ -2317,6 +2344,7 @@ function buildFireKite(): TroopRig {
   return {
     group: g, arm, armRest: -0.3, swingAmp: 1.4, height: 2.3, hover: 1.7,
     extras: (time, phase) => {
+      mount.rotation.y = yawTowardCamera(g);
       for (let i = 0; i < tails.length; i++) {
         tails[i].rotation.x = Math.sin(time * 6 + phase + i * 1.1) * 0.35;
       }

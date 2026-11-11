@@ -356,6 +356,52 @@ describe("islamic reskins (ARABIC mode)", () => {
     expect(rig.arm).not.toBeNull(); // fire-pot dropping arm
   });
 
+  it("the fire-kite's sail shows its face to the camera whichever way the kite flies, baked or not", async () => {
+    const { CAM_HOME, setViewSide } = await import("./scene/common");
+    const { bakeRig } = await import("./rigBake");
+    const LEAN = (14 * Math.PI) / 180;
+    const q = new THREE.Quaternion();
+    /** |sail normal . direction to the camera| for a kite flying at `yaw`, with or without the cast's lean. */
+    const faceShown = (baked: boolean, yaw: number, lean: number, camZ: number): number => {
+      const rig = buildTroop("balloon", "player");
+      if (baked) bakeRig(rig, "balloon:player:arabic:default");
+      // Lean toward the camera about the axis across its view (pivot at the feet), then the facing.
+      const leanNode = new THREE.Group();
+      leanNode.rotation.x = Math.sign(camZ) * lean;
+      const root = new THREE.Group();
+      root.rotation.y = yaw;
+      root.add(rig.group);
+      leanNode.add(root);
+      leanNode.updateMatrixWorld(true);
+      animateTroop(rig, { moving: true, swing: 0, time: 1.3, phase: 0.4 });
+      leanNode.updateMatrixWorld(true);
+      let sail: THREE.Object3D | undefined;
+      rig.group.traverse((o) => {
+        if (o.name === "kite-sail") sail = o;
+      });
+      expect(sail, "kite-sail").toBeDefined();
+      sail!.getWorldQuaternion(q);
+      const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+      const toCam = new THREE.Vector3(CAM_HOME.x, CAM_HOME.y, camZ).normalize();
+      return Math.abs(normal.dot(toCam));
+    };
+    try {
+      for (const baked of [false, true]) {
+        for (const [camZ, side] of [[CAM_HOME.z, "player"], [-CAM_HOME.z, "enemy"]] as const) {
+          setViewSide(side);
+          for (const yaw of [0, Math.PI, Math.PI / 2, -Math.PI / 2, 2.4]) {
+            for (const lean of [0, LEAN]) {
+              const shown = faceShown(baked, yaw, lean, camZ);
+              expect(shown, `baked ${baked}, view ${side}, yaw ${yaw.toFixed(2)}, lean ${lean.toFixed(2)}`).toBeGreaterThanOrEqual(0.6);
+            }
+          }
+        }
+      }
+    } finally {
+      setViewSide("player");
+    }
+  });
+
   it("the musketeer is a janissary with a tall börk hat", () => {
     const names = new Set<string>();
     buildTroop("musketeer").group.traverse((o) => names.add(o.name));
