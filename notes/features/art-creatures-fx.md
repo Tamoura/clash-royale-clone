@@ -102,6 +102,12 @@ Measured with `node tools/perf-budget.mjs --url http://127.0.0.1:3202 [--edition
 | start (b7ae4ce) | golden | 167 | 137,566 | 399 | 509,394 | 49 |
 | mid (7c3800b) | classic | 178 | 266,074 | 429 | 788,828 | 49 |
 | mid (7c3800b) | golden | 167 | 137,566 | 395 | 530,052 | 49 |
+| end (low-poly wing lobes) | classic | 178 | 266,074 | 429 | 781,056 (+1.5%) | 49 |
+| end | golden | 167 | 137,566 | 396 | 514,552 (+1.0%) | 49 |
+| end, 1440x900@1 | classic | 176 | 266,048 | 427 | 781,022 | 49 |
+
+Both editions sit under the package ceiling (calls at or below the base, triangles within +1.5%).
+Initial JS: index chunk 299,544 B gzipped vs 292,619 B on the base (+6.9 KB).
 
 Package ceiling: fight calls <= base + 10 (classic 445, golden 409); fight triangles <= base + 5% (classic 808k, golden 535k).
 
@@ -115,7 +121,12 @@ All in `/tmp/claude-0/art/creatures-fx/`:
 - `midfight-{classic,golden}-{training-camp,pekka-playhouse}-390x844[-b].png`: bot fed elixir.
 - Standard matrix: `{classic,golden}-{training-camp,barbarian-bowl,pekka-playhouse,legendary-peak}-{390x844,1440x900}.png`
   and `{classic,golden}-training-camp-390x844-low.png`.
+- `before-after-phone.png`: the same fight on art/base and on this branch, side by side
+  (`before-classic-training-camp-390x844.png` is the full before frame).
 - Baseline for comparison: `/tmp/claude-0/proto/baseline/{phone,desk}.png`.
+- Every capture ran without console errors or warnings from this package (the harness filters only the
+  dev server's 403s on blocked font hosts). One matrix run (golden legendary-peak phone) timed out reaching
+  the battle under CPU load and was re-shot cleanly.
 
 ## Known gaps
 - Creatures get the 14 degree lean from cast-kit's troops.ts `leanNode` once merged; this branch has no lean
@@ -168,4 +179,8 @@ All in `/tmp/claude-0/art/creatures-fx/`:
 - 7da480f + 6fb5376 Creatures with one team slot each, bake grade, rune glows, card buildings (buildBuildingRig), slimmer elephant, wings, creatureview tool, tests.
 - 7c3800b hit-stop and shake retune, flash cap in the rig shader, billow colours; 96e7a05 FX tests; flash cap broadened to warm-white tints.
 - Mid-fight shots (both editions, training-camp and pekka-playhouse) taken and checked by eye.
-- NEXT: standard matrix (running), creatures.png and fx.png sheets, end perf, quality bar (tsc, vitest, build, perf both editions).
+- be42d7d trails thin with particleScale; Golden Age floor dust from the court's own lane sand (+ test).
+- Standard matrix (4 arenas x 2 editions x phone and desk, plus low phone per edition), creatures.png,
+  fx.png, fx-golden.png and before-after-phone.png done and checked by eye.
+- Quality bar at the end: tsc clean; vitest 136 files / 1565 tests pass (golden and bot tests unchanged);
+  npm run build ok; perf-budget both editions under the ceiling (table above). DONE.
