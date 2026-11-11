@@ -1,18 +1,17 @@
 /**
- * Layered set dressing for the classic edition ("handcrafted plus"
- * prototype). Everything here is sculpted into ONE vertex-coloured mesh
- * (see views/towerCraft.ts: Sculpt), so the whole surround costs a single
- * draw call however many props it holds:
+ * The Classic surround (Toy Tournament): a court ring sculpted into ONE
+ * vertex-coloured mesh that casts (see views/towerCraft.ts: Sculpt), plus
+ * per-side meshes that never cast and are region-culled (build.ts):
  *
- *  - a kerb of dressed stone blocks around the court, with capped piers;
- *  - stepped spectator terraces down both long sides (three rows deep, so
- *    the crowd has depth), their ends faced with a team shield;
- *  - striped pavilions and tall team banners behind each terrace;
- *  - a forest edge: round-crowned trees and pines in clusters, bushes,
- *    boulders, ground patches and flower beds, denser away from the court.
+ *  - ring: the dressed-stone kerb with team pier caps, three-row terraces
+ *    with team rails, pennant strings, striped pavilions and team banners,
+ *    shrubs, stones and flowers along the kerb;
+ *  - forest (per side): round-crowned trees and pines in clusters, bushes,
+ *    boulders and ground patches, denser away from the court;
+ *  - outer ring (per side, 'full' dressing only): themed set pieces per
+ *    look (village, chalets, spires, basalt, crystal, city).
  *
- * The camera looks from the south at ~49 degrees and is orthographic, so
- * only top faces and south (+z) faces are ever seen: detail is put there.
+ * The crowd seats are returned for crowd.ts.
  */
 import * as THREE from "three";
 import { ARENA_HEIGHT, ARENA_WIDTH, RIVER_HALF_WIDTH } from "../../../game/arena";
@@ -20,15 +19,6 @@ import { stagePalette, type ArenaLook } from "../../arenaLooks";
 import { teamColor } from "../../teamColors";
 import { Sculpt, frustum, sculptMaterial, tone } from "../views/towerCraft";
 import type { CrowdSeat } from "./crowd";
-
-/** @deprecated The crowd now takes CrowdSeat (crowd.ts). */
-export interface ScenerySeat {
-  x: number;
-  z: number;
-  garb: number;
-  skin: number;
-  lift?: number;
-}
 
 /** Team cloth for the stands: the live team colour, a touch deeper on the set. */
 export function setTeam(side: "player" | "enemy"): number {

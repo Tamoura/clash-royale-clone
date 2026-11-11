@@ -1,18 +1,18 @@
 /**
  * The painted playfield. A DOM-free pixel painter (pure JS, so it is
  * deterministic, byte-identical run to run and testable in node) that
- * lays down, per arena look:
+ * lays down, per arena look (art bible section 3: a calm floor, loud actors):
  *
- *  - turf or flagstone: two-scale seeded colour noise, mown stripes and
- *    grass strokes, with the classic checker kept at ~30% so the court
- *    still reads as tiles without looking like a bathroom floor;
- *  - feathered dirt lanes with wheel ruts and pebbles along their edges
- *    (classic), or opaque Islamic lane strips with gold borders;
- *  - the Islamic zellige (eight-point khatam stars and diamonds) at
- *    48 px per tile with a glazed sheen;
- *  - look-specific scatter (confetti, pebbles, bones, embers, snow...);
+ *  - Classic: a recipe per look (FLOOR_RECIPES): no checker, 2-tile mow
+ *    stripes at +-3% on grass, an 8-tile value noise at +-4%, and the look's
+ *    texture and scatter (clover and flowers, puddles, bones, drifts, basalt
+ *    with ember seams, planks, cracks, glow-seamed tiles...) kept off the
+ *    lanes; packed-dirt lanes with ruts and a pebble kerb; banks per band
+ *    kind; flagstone aprons under the towers;
+ *  - Golden Age: flagstones in a running bond, zellige border bands round
+ *    the court and the canal, ochre sand lanes with pebble edging, aprons;
  *  - baked ambient occlusion under all six tower footprints, at the bridge
- *    ends, along the river lips and where the court meets its walls.
+ *    ends, along the river lips and where the court meets its kerb.
  *
  * Images are cached per look id (a small LRU), so the home diorama and
  * the battle that follows share one paint.
