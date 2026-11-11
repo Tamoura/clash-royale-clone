@@ -60,6 +60,7 @@ import {
 import { addShake } from "../camera";
 import { contactRing, damagePopup, emitSparks, megaSlam } from "../fx/effects";
 import { glbModels, hpBarVisible, makeStunSprite, setHpFill } from "./troops";
+import { animateKitTroop } from "../../kitTroops";
 
 /** A troop view's animation state (created on its first frame). */
 export interface TroopAnim {
@@ -276,11 +277,11 @@ export function beginDeath(b: Battle3D, view: EntityView): void {
   const da = startDeath({
     motion,
     root: view.root,
-    body: rig?.group ?? view.root,
+    body: rig?.group ?? view.kit?.group ?? view.root,
     dirX: DIR.x,
     dirZ: DIR.z,
     fall,
-    height: rig ? rig.height * rig.group.scale.y : 1.5,
+    height: rig ? rig.height * rig.group.scale.y : view.kit ? view.kit.height : 1.5,
     face: anim?.face ?? null,
     marks,
     ax: view.root.position.x - origin.x,
@@ -801,6 +802,52 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
     }
     // Face the attack target, or the spot being walked toward —
     // turning smoothly rather than snapping (frozen units can't turn).
+    if (!stunned) turnToward(view, e, target, inRange, w, dt);
+  } else if (view.kit) {
+    // KIT TROOPS: a modelled character plays its real clips, the attack locked to the sim's timer.
+    const kit = view.kit;
+    const target = targetOf(b, e);
+    const inRange =
+      !!target &&
+      distance(e, target) - e.radius - target.radius <= e.attackRange + 0.05;
+    const acting = e.deployTimer <= 0 && !stunned;
+    const pace = (slowed ? 0.5 : 1) * (raged ? RAGE_BOOST : 1);
+    animateKitTroop(
+      kit,
+      {
+        moving: !inRange && acting,
+        attacking: inRange && acting,
+        cooldown: Math.max(0, e.cooldown - clampAlpha(alpha) * SIM_DT * pace),
+        hitSpeed: e.hitSpeed,
+        rate: pace,
+        frozen: stunned,
+      },
+      dt,
+    );
+    // The entrance drop and the hit squash ride the model, like the rigs'.
+    const s0 = kit.scale;
+    kit.group.scale.set(s0 * dsx * (1 + 0.1 * jig), s0 * dsy * (1 - 0.14 * jig), s0 * dsz * (1 + 0.1 * jig));
+    kit.group.position.y = dropY;
+    kit.group.rotation.set(0, 0, 0);
+    if (recoil > 0 && anim && (anim.jigX !== 0 || anim.jigZ !== 0)) {
+      const yaw = view.root.rotation.y;
+      const c = Math.cos(yaw);
+      const sn = Math.sin(yaw);
+      const lx = anim.jigX * c - anim.jigZ * sn;
+      const lz = anim.jigX * sn + anim.jigZ * c;
+      const tilt = RECOIL_TILT[anim.arch.weight] * recoil;
+      kit.group.rotation.x = tilt * lz;
+      kit.group.rotation.z = -tilt * lx;
+      view.root.position.x += anim.jigX * RECOIL_KNOCK * recoil;
+      view.root.position.z += anim.jigZ * RECOIL_KNOCK * recoil;
+    }
+    if (!inRange && acting) {
+      view.dustT = (view.dustT ?? Math.random() * DUST_INTERVAL) - dt;
+      if (view.dustT <= 0) {
+        view.dustT = DUST_INTERVAL;
+        b.fx.emit("dust", e.x, e.y);
+      }
+    }
     if (!stunned) turnToward(view, e, target, inRange, w, dt);
   } else if (view.glb) {
     // Real glTF model: drive its mixer + clip from the same combat state.

@@ -1,0 +1,2 @@
+Characters and animations: KayKit Adventurers Character Pack 1.0 and KayKit Skeletons Character Pack 1.0
+by Kay Lousberg (www.kaylousberg.com), CC0. Packed by tools/troop-pack.mjs.

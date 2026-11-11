@@ -9,6 +9,7 @@ import type { Entity } from "../../game/battle";
 import type { TroopRig } from "../characters3d";
 import type { Battle3D } from "../scene3d";
 import type { GlbUnit } from "../glbModels";
+import type { KitUnit } from "../kitTroops";
 import type { InterpTrack } from "../anim/interp";
 import type { DeathAnim } from "../anim/deaths";
 import type { TroopAnim } from "./views/animate";
@@ -132,6 +133,10 @@ export interface EntityView extends InterpTrack {
   hopFromZ?: number;
   /** Real glTF model (KayKit) + animation mixer, when this card uses one. */
   glb?: GlbUnit & { current?: string };
+  /** KIT TROOPS: a modelled KayKit character baked to one skinned mesh. */
+  kit?: KitUnit;
+  /** KIT TROOPS: the modelled tower crew standing in for `defender`. */
+  kitCrew?: KitUnit;
   /** Deploy name tag: shown briefly, then shrinks away (CR shows none). */
   label?: THREE.Object3D;
   labelAge?: number;
@@ -181,6 +186,8 @@ export function disposeDeep(root: THREE.Object3D): void {
     const mesh = o as THREE.Mesh;
     const isSprite = (o as THREE.Sprite).isSprite === true;
     if (!mesh.isMesh && !isSprite) return;
+    // A kit troop owns its skeleton (and so its bone texture).
+    if ((mesh as THREE.SkinnedMesh).isSkinnedMesh) (mesh as THREE.SkinnedMesh).skeleton.dispose();
     if (!isSprite) {
       // Sprites share one global plane geometry — never dispose it.
       const geo = mesh.geometry as THREE.BufferGeometry;

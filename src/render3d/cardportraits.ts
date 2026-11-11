@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { getCard, type CardId } from "../game/cards";
 import { animateTroop, buildCometRock, buildTroop, outlineRig } from "./characters3d";
 import { disposeDeep } from "./scene/common";
+import { hasKitTroop, makeKitTroop } from "./kitTroops";
 
 /**
  * Pre-rendered 3D card portraits: each troop/building character is
@@ -100,6 +101,18 @@ function cometSubject(): { group: THREE.Group; height: number } {
 
 /** The posed rig for a troop or building card (the HUD shows your own side). */
 function troopSubject(id: CardId): { group: THREE.Group; height: number } {
+  // KIT TROOPS: the card shows the modelled character the battle fields.
+  const kit = hasKitTroop(id) ? makeKitTroop(id, "player") : null;
+  if (kit) {
+    kit.actions.idle.time = 0.2;
+    kit.mixer.update(0);
+    kit.group.rotation.y = 0.45;
+    // Framed from the knees up: the big head and the weapon are the card.
+    kit.group.position.y = -kit.height * 0.16;
+    const holder = new THREE.Group();
+    holder.add(kit.group);
+    return { group: holder, height: kit.height * 0.8 };
+  }
   const rig = buildTroop(id, "player");
   // Portraits are not baked (one capture, then gone): per-mesh ink hulls.
   outlineRig(rig.group);
