@@ -184,6 +184,57 @@ Screens (looked at, against /tmp/claude-0/proto/baseline/), all in /tmp/claude-0
 - Production build: prod-{classic,golden}-{phone,desk}-{home,start,battle}.png.
 - No page or console errors in any capture, and no failed requests in production.
 
+### 4. towers
+
+`art/towers` merged with --no-ff on top of creatures-fx. No conflicts: it touches only its own files (towers.ts, towerCraft.ts, towerStyles.ts, towerCollapse.ts, their tests and its notes).
+
+- Wired (scene3d.ts): the Battle3D constructor calls `setTowerCrewProvider(castTowerCrews)`. That provider is cast-kit's `towerCrewProvider` with one change: `make` returns null unless `castActiveForBattle()`. Towers are built on the first sync after the battle latches its roster, so a battle that fell back to the procedural roster keeps the hand-built crews, even if the pack lands a moment later.
+- Integration fix-ups (towers.ts, animate.ts):
+  - Tower damage numbers start at the HP plate again. The towers float the plate toward the camera, so `hpGroup.position.y` was about 3 world units above where the plate shows. `placePlate` now stores `popupY`, the height above the tower's foot where the plate shows on screen. animate.ts reads it and falls back to `hpGroup.position.y` for card buildings. This closes the creatures-fx item "tower damage numbers read hpGroup.position.y".
+  - A provider crew registers its one mesh through `registerTroopCaster`. It casts on the top level and stops casting below it, like a field troop, so the static shadow map of L1 to L4 never freezes a crew's pose. The hand-built crew still casts no shadow.
+- Towers notes: the qubba line under Decisions now gives the shipped sizes (review minor).
+- Towers requests:
+  - 1 (crew provider): done, see above.
+  - 3 (crew shadows): done, as a registered caster (see above).
+  - 4 (no change needed): the plate keeps its glossy pill. Measured: the empty battle is down 64 to 74 calls.
+  - 2 (shadow cost): not changed. On the top level the shadow map re-renders every frame for the troop casters (post.ts `dynamicShadows`), so the static keeps are drawn twice per frame. The lower levels already render the map on demand. Measured: empty 251k to 274k triangles, under the 300k gate but above the 260k target at 1440x900. The fix (a split static/dynamic shadow map, or keeping the keeps out of the per-frame pass) goes to the final integrator.
+  - 4 (far king at landscape sizes): open, for the final integrator. It needs extra top margin in wide mode (`WIDE_BOX` in fit.ts and layout.ts, compact-hand's framing). At 1440x900 the far king's roofs are cut in both editions, and his plate flips under his gate. Before this merge his roofs were cut there too.
+  - 5 (`?viewpoint=enemy` in bot battles): open. It needs main.ts outside the battle-start gate exception.
+  - 6 (far king plate with the cast's taller king), re-checked on 390x844 in the dev build and the production build:
+    - Classic: the plate sits above the canopy, with 5.1 CSS px to spare under the HUD inset.
+    - Golden Age: the plate misses by 0.5 px, so it flips under his gate, where flyers pass (a baby dragon covered the number in one capture).
+    - Open, for the final integrator. Options: let far plates rise into the gap between the scoreboard chips and the clock (layoutWire passes a smaller plate inset), or lower the qubba by about 2 px. A 0.5 px tweak would only move the problem to the next phone size.
+- Gate checks (dev server, phone):
+  - Pack in before the tap: 6 cast crews in both editions.
+  - Pack held back 15 s: the battle starts on the procedural roster with hand-built crews. After the pack lands there are still 0 cast crews, and a wave spawned then is procedural too.
+- Size: initial JS `index-*.js` 339.1 KB gz. That is +7.8 KB over the creatures-fx merge and +45.0 KB over art/base (294.1), so about 5 KB of the +50 KB budget is left. dist/ is 2.9 MB.
+
+perf-budget after the merge (`?quality=high`, training-camp, dev server, cast measured in every run). Gates: empty <= 220 calls, fight <= 450 calls.
+
+| View | Edition | Empty calls / tris | Fight calls / tris | Fight textures |
+|---|---|---|---|---|
+| 390x844@2 | Classic | 102 / 251,230 | 180 / 626,446 | 76 |
+| 390x844@2 | Golden Age | 106 / 256,182 | 200 / 657,694 | 75 |
+| 1440x900@1 | Classic | 106 / 274,378 | 183 / 649,522 | 76 |
+| 1440x900@1 | Golden Age | 114 / 272,102 | 204 / 673,398 | 75 |
+
+Against the creatures-fx merge:
+- Calls: empty -64 to -74 (one mesh per keep, one skinned draw per crew); fight -60 to -73.
+- Triangles: +48k (Classic) and +64k (Golden Age). Most of it is the detailed keeps drawn twice under per-frame shadows (request 2 above).
+- Textures: +11 in the fight. That is the roof tile, crack and zellige sheets, plus the crews' atlases and bone textures.
+
+Still open for the final integrator (in addition to the lists above):
+- Towers requests 2, 4, 5 and 6, as above.
+- The Golden Age tower-king turban (cast-kit item above) now shows in battle. At phone size it reads white with shading and no visible halo. The bloom probe is still to do.
+
+Screens (looked at, against /tmp/claude-0/proto/baseline/), all in /tmp/claude-0/art/ship-towers/:
+- Dev standard scene: dev-{classic,golden}-{phone,desk}-battle.png.
+- Zooms: zoom-{classic,golden}-phone-{far,near}.png and zoom-golden-phone-{far,near}king.png.
+- Tower damage numbers at the plates: hp-sheet-classic.png (zoom-hp-{far,near}.png) and hit-sheet-{a,b}.png.
+- Slow pack: dev-classic-phone-slowpack[-wave].png.
+- Production build: prod-{classic,golden}-{phone,desk}-{home,start,battle}.png.
+- No page or console errors in any capture, and no failed requests in production.
+
 
 ## Art bible
 
