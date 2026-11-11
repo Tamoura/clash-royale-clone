@@ -42,6 +42,6 @@ None (this is the ship package).
 
 ## Requests for the publish step
 
-- Push `art/ship` (fast-forward of `claude/game-visuals-character-balance-w122wb`, 12 commits on top of `29f6451`).
+- Push `art/ship` (a fast-forward of `claude/game-visuals-character-balance-w122wb`: every commit sits on top of `29f6451`).
 - Frozen-file follow-ups for their owners (not art changes): wide-mode top margin for the far king (`WIDE_BOX` in `scene/fit.ts` and `ui/layout.ts`, compact-hand), and keeping `?viewpoint=enemy` across bot-battle starts in main.ts (DEV aid).
 
