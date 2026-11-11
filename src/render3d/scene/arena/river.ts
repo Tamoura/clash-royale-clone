@@ -240,7 +240,8 @@ export function buildRiver(parent: THREE.Object3D, look: ArenaLook): RiverHandle
   // Bank lips by band kind (the floor paint bakes their banks and AO):
   // dressed stone over water, basalt over lava, snow over ice, a rocky cliff
   // edge over a chasm and a chrome kerb over neon.
-  const lipColor = LIP_COLOR[kind] ?? look.edging;
+  // Golden Age canals: a glazed turquoise tile coping.
+  const lipColor = look.islamic && kind === "water" ? 0x1aa3a0 : (LIP_COLOR[kind] ?? look.edging);
   for (const side of [-1, 1]) {
     const lip = new THREE.Mesh(new THREE.BoxGeometry(span, 0.16, 0.22), toon(lipColor));
     lip.position.set(0, 0.05, side * (RIVER_HALF_WIDTH + 0.1));
