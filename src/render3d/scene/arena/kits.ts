@@ -615,10 +615,39 @@ const KITS: Record<BackdropKind, (k: Kit) => void> = {
 };
 
 /** Build the kit for `kind`, dressed in the look's palette. */
+/**
+ * The far band's crowd terrace (art bible section 4) for every kit but the
+ * castle (which builds its own): two short tiers of spectators either side
+ * of the gate, a gold rail, a striped awning (team and the look's awning
+ * stripe) and a pennant string. Stone and trim follow the kit's look.
+ */
+function farTerrace(k: Kit): void {
+  const L = k.look;
+  const islamic = !!L.islamic;
+  const stone = islamic ? L.edging : L.standWall;
+  const stoneDk = shade(stone, 0.82);
+  const awningLt = L.stage?.awning ?? 0xf3ead6;
+  for (const sx of [-1, 1]) {
+    for (let tier = 0; tier < 2; tier++) {
+      const h = 0.45 + 0.45 * tier;
+      const z = -17.75 - 0.95 * tier;
+      k.part("far tier", box(4.6, h, 0.95), tier % 2 ? stoneDk : stone, { x: sx * 7.2, y: h / 2 - 0.06, z });
+      for (let i = 0; i < 6; i++) k.seat(sx * (5.3 + i * 0.75 + (tier % 2) * 0.3), z, h - 0.06);
+    }
+    k.part("far rail", box(4.6, 0.1, 0.08), GOLD, { x: sx * 7.2, y: 0.52, z: -17.24 });
+    for (let i = 0; i < 6; i++) {
+      k.part("far awning", box(0.78, 0.1, 1.3), i % 2 ? awningLt : TEAM, { x: sx * 7.2 - 1.95 + i * 0.78, y: 2.4, z: -19.0, rx: 0.3 }, { team: i % 2 === 0 });
+    }
+    for (const dx of [-2.3, 2.3]) k.part("far pole", cyl(0.05, 0.05, 2.4, 4), L.fencePost, { x: sx * 7.2 + dx, y: 1.15, z: -18.4 });
+    kitBunting(k, sx * 4.9, 2.3, -18.4, sx * 9.5, 2.3, -18.4, "team", GOLD, 0.3);
+  }
+}
+
 export function buildKit(kind: BackdropKind, look: ArenaLook): Kit {
   const k = new Kit(look);
   k.zShift = KIT_SHIFT;
   KITS[kind](k);
+  if (kind !== "castle") farTerrace(k);
   k.zShift = 0;
   return k;
 }
