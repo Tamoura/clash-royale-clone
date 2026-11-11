@@ -37,6 +37,8 @@ export const sources = new Map<FileId, Source>();
 export const clips = new Map<string, THREE.AnimationClip>();
 /** Ground speed of each walk clip at time scale 1, rig units per second (feet planted). */
 export const clipSpeed = new Map<string, number>();
+/** Hip height (rig units) of the riders' sitting pose, measured from Sit_Chair_Idle. */
+export let sitHipY = 0.6;
 
 let loading: Promise<boolean> | null = null;
 let ready = false;
@@ -167,5 +169,32 @@ function measureWalks(rig: THREE.Object3D): void {
     action.stop();
     clipSpeed.set(name, travel / clip.duration);
   }
+  const sit = clips.get("Sit_Chair_Idle");
+  const hips = rig.getObjectByName("hips");
+  if (sit && hips) {
+    const a = mixer.clipAction(sit);
+    a.play();
+    mixer.setTime(0);
+    rig.updateMatrixWorld(true);
+    sitHipY = hips.getWorldPosition(new THREE.Vector3()).y;
+    a.stop();
+  }
   mixer.stopAllAction();
+}
+
+/** Bones of the lower body (a rider's legs keep the sitting pose while the upper body acts). */
+export const LOWER_BODY = new Set(["root", "hips", "upperlegl", "lowerlegl", "footl", "toesl", "upperlegr", "lowerlegr", "footr", "toesr"]);
+const split = new Map<string, THREE.AnimationClip>();
+
+/** A clip cut to the upper or lower body (cached). */
+export function bodyClip(name: string, part: "upper" | "lower"): THREE.AnimationClip {
+  const key = `${name}:${part}`;
+  let clip = split.get(key);
+  if (!clip) {
+    const src = clips.get(name) ?? clips.get("Idle")!;
+    const tracks = src.tracks.filter((t) => LOWER_BODY.has(t.name.split(".")[0]) === (part === "lower"));
+    clip = new THREE.AnimationClip(key, src.duration, tracks);
+    split.set(key, clip);
+  }
+  return clip;
 }

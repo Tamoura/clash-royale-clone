@@ -854,6 +854,7 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
         frozen: stunned,
         speed: e.speed * pace,
         hit: lost > 0.5,
+        charging,
       },
       dt,
     );

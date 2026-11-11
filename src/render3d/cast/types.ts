@@ -4,6 +4,7 @@
  * unit is baked from.
  */
 import type * as THREE from "three";
+import type { MountSpec } from "./mounts";
 
 /** Character files packed by tools/troop-pack.mjs into public/models/troops/. */
 export const FILES = ["knight", "barbarian", "mage", "rogue", "rogue_hooded", "skeleton_minion"] as const;
@@ -79,6 +80,8 @@ export interface Variant {
   attack: string;
   /** Where in the attack clip the blow lands (0..1). */
   strike: number;
+  /** A rider: the procedural mount it sits on (idle / walk / attack then drive the upper body only; the legs keep Sit_Chair_Idle). */
+  mount?: MountSpec;
   /**
    * At least two silhouette features that read from BEHIND (how you see
    * your own troops): documentation the coverage test checks for.

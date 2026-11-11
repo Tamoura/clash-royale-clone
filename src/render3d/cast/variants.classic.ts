@@ -9,7 +9,7 @@
  * outside both team hue families (see rules.ts).
  */
 import * as THREE from "three";
-import { ball, beard, box, braids, cap, cone, crown, cyl, inHand, musket, quiver, torus, x, HEAD_TOP } from "./props";
+import { ball, beard, box, braids, cap, cone, crown, cyl, inHand, musket, pack, quiver, torus, x, HEAD_TOP } from "./props";
 import type { Variant } from "./types";
 
 const GOLD = 0xf2c65a;
@@ -193,7 +193,7 @@ CLASSIC["skeleton-army"] = CLASSIC.skeletons;
 Object.assign(CLASSIC, {
   pekka: {
     file: "knight",
-    scale: 1.38,
+    scale: 1.24,
     props: ["Knight_Helmet", "2H_Sword"],
     girth: 1.1,
     paint: {
@@ -205,8 +205,8 @@ Object.assign(CLASSIC, {
       x("head", 0xe8e0d0, () => cone(0.16, 0.75, 0.56, HEAD_TOP + 0.14, 0.02, -0.7, 0, 8)),
       x("head", 0xe8e0d0, () => cone(0.16, 0.75, -0.56, HEAD_TOP + 0.14, 0.02, 0.7, 0, 8)),
       x("head", 0xff5fe0, () => box(0.56, 0.12, 0.08, 0, 1.78, 0.5)),
-      x("chest", 0x4e4a66, () => ball(0.3, 0.62, 1.65, 0, 1, 0.7, 1, 10)),
-      x("chest", 0x4e4a66, () => ball(0.3, -0.62, 1.65, 0, 1, 0.7, 1, 10)),
+      x("chest", 0x4e4a66, () => ball(0.24, 0.55, 1.62, 0, 1, 0.7, 1, 10)),
+      x("chest", 0x4e4a66, () => ball(0.24, -0.55, 1.62, 0, 1, 0.7, 1, 10)),
     ],
     idle: "2H_Melee_Idle",
     walk: "Walking_A",
@@ -217,7 +217,7 @@ Object.assign(CLASSIC, {
   "ice-wizard": {
     file: "mage",
     hairBack: "1,1",
-    scale: 1.0,
+    scale: 0.88,
     props: ["Mage_Hat", "Mage_Cape"],
     team: /Cape/,
     paint: { "0,1": 0xbfe9f5, "1,1": 0xd8f3fb, "7,1": 0x7cc6d8, "5,0": 0xffffff, "1,0": 0xf2f8ff, "2,1": "team" },
@@ -252,13 +252,13 @@ Object.assign(CLASSIC, {
     scale: 1.0,
     props: ["Rogue_Cape", "2H_Crossbow"],
     team: /Cape/,
-    paint: { "1,0": 0xffe9a8, "1,1": "team", "0,1": 0x1f8f86 },
-    extras: [...quiver(0x3a6a64, 0x7df9ff)],
+    paint: { "1,0": 0xffe9a8, "1,1": 0x1f9e8f, "0,1": 0x2b4a48 },
+    extras: [...quiver(0x3a6a64, 0x7df9ff), x("chest", 0x7df9ff, () => ball(0.08, 0.27, 1.82, -0.5, 1, 1, 1, 8))],
     idle: "2H_Ranged_Aiming",
     walk: "Walking_A",
     attack: "2H_Ranged_Shoot",
     strike: 0.3,
-    back: ["pointed team hood", "glowing-cyan quiver", "crossbow out past the body"],
+    back: ["pointed teal hood", "glowing-cyan quiver", "crossbow out past the body", "team cape"],
   },
   princess: {
     file: "rogue",
@@ -278,39 +278,45 @@ Object.assign(CLASSIC, {
     back: ["gold crown", "long blonde plait", "bow out past the body"],
   },
   firecracker: {
-    file: "rogue_hooded",
-    hairBack: "1,1",
+    file: "rogue",
     scale: 0.95,
-    props: ["Rogue_Cape", "2H_Crossbow"],
+    props: ["Rogue_Cape"],
     team: /Cape/,
-    paint: { "1,0": 0xff9a3a, "1,1": "team", "0,1": 0x8a4fe0 },
+    paint: { "1,0": 0xffb52e, "1,1": "team", "0,1": 0x8a4fe0 },
     extras: [
-      // A firework tube over the shoulder.
-      x("chest", 0x8a4fe0, () => cyl(0.16, 0.16, 0.9, 0.25, 1.55, -0.35, 10, -0.6, -0.2)),
-      x("chest", 0xffd23f, () => cyl(0.17, 0.17, 0.08, 0.25, 1.92, -0.6, 10, -0.6, -0.2)),
+      // Goggles on the forehead, an amber ponytail and a big firework launcher over the shoulder.
+      x("head", 0x2b2f3a, () => torus(0.5, 0.06, 0, 2.06, 0, Math.PI / 2 - 0.15, 16)),
+      x("head", 0x45e0ff, () => ball(0.1, 0.17, 2.12, 0.46, 1, 1, 0.6, 8)),
+      x("head", 0x45e0ff, () => ball(0.1, -0.17, 2.12, 0.46, 1, 1, 0.6, 8)),
+      x("head", 0xffb52e, () => ball(0.16, 0, 1.8, -0.55, 1, 1.5, 1, 10)),
+      x("chest", 0x8a4fe0, () => cyl(0.2, 0.2, 1.25, 0.3, 1.75, -0.32, 12, -0.75, -0.25)),
+      x("chest", 0xffd23f, () => cyl(0.215, 0.215, 0.1, 0.3, 2.12, -0.65, 12, -0.75, -0.25)),
+      x("chest", 0x2b2f3a, () => cyl(0.14, 0.14, 0.06, 0.3, 2.2, -0.72, 12, -0.75, -0.25)),
     ],
     idle: "2H_Ranged_Aiming",
     walk: "Walking_A",
     attack: "2H_Ranged_Shoot",
     strike: 0.3,
-    back: ["purple firework tube over the shoulder", "team hood"],
+    back: ["purple firework launcher towering over the shoulder", "amber ponytail", "team cape"],
   },
   executioner: {
     file: "barbarian",
-    scale: 1.1,
-    props: ["Barbarian_Cape", "1H_Axe"],
+    scale: 1.0,
+    props: ["Barbarian_Cape", "2H_Axe"],
     team: /Cape/,
     paint: { "0,1": 0x3a3f4a, "1,1": 0x3a3f4a, "7,0": 0x2e2a2a, "1,0": 0x2e2a2a },
+    propPaint: { "2,2": 0x6a4a3a },
     extras: [
-      // The black executioner's hood over the head, eye holes at the front.
-      x("head", 0x2a2630, () => cap(0.58, 0.62, 0, 1.78, 0, 1.15)),
-      x("head", 0x2a2630, () => cone(0.2, 0.4, 0, HEAD_TOP + 0.24, -0.1, 0, -0.4, 8)),
+      // A leather executioner's hood with a tall peak.
+      x("head", 0x4a3a35, () => cap(0.58, 0.62, 0, 1.78, 0, 1.15)),
+      x("head", 0x4a3a35, () => cone(0.24, 0.62, 0, HEAD_TOP + 0.34, -0.12, 0, -0.35, 8)),
+      x("head", 0xd8e2ec, () => ball(0.06, 0, HEAD_TOP + 0.66, -0.25, 1, 1, 1, 6)),
     ],
-    idle: "Idle",
+    idle: "2H_Melee_Idle",
     walk: "Walking_A",
-    attack: "1H_Melee_Attack_Chop",
-    strike: 0.42,
-    back: ["pointed black hood", "big axe"],
+    attack: "2H_Melee_Attack_Spin",
+    strike: 0.45,
+    back: ["tall peaked leather hood", "double axe held out past the body", "team mantle"],
   },
   "royal-giant": {
     file: "barbarian",
@@ -330,6 +336,95 @@ Object.assign(CLASSIC, {
     attack: "2H_Ranged_Shoot",
     strike: 0.3,
     back: ["gold crown on a bald head", "cannon barrel out past the body", "broad shoulders under a team mantle"],
+  },
+} satisfies Record<string, Variant>);
+
+/** The rest of the roster: the riders, the Mega Knight and the Digger. */
+Object.assign(CLASSIC, {
+  prince: {
+    file: "knight",
+    scale: 0.74,
+    props: ["Knight_Helmet", "Knight_Cape"],
+    team: /Cape/,
+    paint: { "0,1": "team", "3,0": 0xe8c25a, "7,0": 0xf6dc8a, "1,0": 0x6b4a2f },
+    extras: [
+      x("head", 0xf5f0e6, () => ball(0.12, 0, HEAD_TOP + 0.22, -0.1, 1, 1.9, 1.7, 10)),
+      // The lance: a long shaft with a steel point and a pennant, couched under the arm.
+      inHand(0x8a5a2e, () => cyl(0.05, 0.06, 2.3, 0, 0.75, 0, 8)),
+      inHand(0xd8e2ec, () => cone(0.11, 0.42, 0, 2.05, 0, 0, 0, 8)),
+      inHand(0xe8c25a, () => cyl(0.13, 0.08, 0.16, 0, 0.0, 0, 10)),
+      inHand(0xf5f0e6, () => box(0.02, 0.24, 0.36, 0, 1.6, -0.2)),
+    ],
+    mount: { kind: "horse", coat: 0xf2ede4, mane: 0xcfc6b8, hoof: 0x4a3a2e, cloth: "team", seat: 1.42, seatZ: -0.05, size: 1.3 },
+    idle: "Idle",
+    walk: "2H_Melee_Idle",
+    attack: "1H_Melee_Attack_Stab",
+    strike: 0.4,
+    back: ["white horse under a team saddle cloth", "long lance with a pennant", "white-plumed gold helm"],
+  },
+  "hog-rider": {
+    file: "barbarian",
+    scale: 0.76,
+    props: ["Barbarian_Cape"],
+    team: /Cape/,
+    paint: { "0,1": 0x6a4a32, "1,1": 0x6a4a32, "1,0": 0x3a2a20, "7,0": 0x6a4a32 },
+    extras: [
+      // A tall dark mohawk and a war hammer.
+      x("head", 0x3a2a20, () => box(0.14, 0.42, 0.9, 0, HEAD_TOP + 0.02, -0.05)),
+      inHand(0x6a4a32, () => cyl(0.05, 0.05, 1.0, 0, 0.35, 0, 8)),
+      inHand(0x8a93a0, () => box(0.32, 0.26, 0.5, 0, 0.9, 0)),
+      ...beard(0x3a2a20, 0.6),
+    ],
+    mount: { kind: "hog", coat: 0x9a6a4a, mane: 0x4a3226, hoof: 0x3a2a20, cloth: "team", seat: 1.12, seatZ: -0.05, size: 1.3 },
+    idle: "Idle",
+    walk: "2H_Melee_Idle",
+    attack: "1H_Melee_Attack_Chop",
+    strike: 0.42,
+    back: ["tall dark mohawk", "war hammer raised past the body", "brown hog under a team saddle cloth"],
+  },
+  "mega-knight": {
+    file: "knight",
+    scale: 1.3,
+    props: ["Knight_Helmet", "Knight_Cape"],
+    team: /Cape/,
+    girth: 1.15,
+    paint: { "0,1": "team", "3,0": 0x50566a, "7,0": 0x7a8296, "6,0": 0x30343f, "4,0": 0x30343f, "1,0": 0x2a2a30 },
+    extras: [
+      // Spikes along the helm crest and huge spiked pauldrons.
+      ...[-0.25, 0, 0.25].map((z) => x("head", 0xd8e2ec, () => cone(0.09, 0.32, 0, HEAD_TOP + 0.14, z - 0.05, 0, 0, 6))),
+      x("chest", 0x50566a, () => ball(0.28, 0.58, 1.66, 0, 1, 0.75, 1, 10)),
+      x("chest", 0x50566a, () => ball(0.28, -0.58, 1.66, 0, 1, 0.75, 1, 10)),
+      x("chest", 0xd8e2ec, () => cone(0.08, 0.28, 0.72, 1.86, 0, -0.6, 0, 6)),
+      x("chest", 0xd8e2ec, () => cone(0.08, 0.28, -0.72, 1.86, 0, 0.6, 0, 6)),
+      x("chest", 0xe2b23c, () => box(0.5, 0.12, 0.06, 0, 1.25, 0.46)),
+    ],
+    idle: "Unarmed_Idle",
+    walk: "Walking_A",
+    attack: "Unarmed_Melee_Attack_Punch_A",
+    strike: 0.4,
+    back: ["crest of steel spikes on the helm", "huge spiked pauldrons", "team cape"],
+  },
+  digger: {
+    file: "barbarian",
+    scale: 0.98,
+    props: ["Barbarian_Cape"],
+    team: /Cape/,
+    cape: 0.42,
+    paint: { "0,1": 0x7a6a4a, "1,1": 0x7a6a4a, "1,0": 0x6b4a2f, "7,0": 0x5a4a3a },
+    extras: [
+      // A yellow mining helmet with a lamp, a shovel and a pack.
+      x("head", 0xffc83a, () => cap(0.54, 0.45, 0, 1.92, 0, 1.0)),
+      x("head", 0xffc83a, () => torus(0.54, 0.05, 0, 1.94, 0, Math.PI / 2, 16)),
+      x("head", 0xfff3a0, () => cyl(0.1, 0.1, 0.1, 0, 2.18, 0.48, 10, Math.PI / 2)),
+      inHand(0x8a5a2e, () => cyl(0.045, 0.045, 1.25, 0, 0.45, 0, 8)),
+      inHand(0x9aa3ad, () => box(0.32, 0.38, 0.05, 0, 1.18, 0)),
+      ...pack(0x8a6a3a),
+    ],
+    idle: "Idle",
+    walk: "Walking_A",
+    attack: "1H_Melee_Attack_Chop",
+    strike: 0.42,
+    back: ["yellow mining helmet", "shovel out past the body", "round pack on the back"],
   },
 } satisfies Record<string, Variant>);
 

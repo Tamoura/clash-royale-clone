@@ -766,8 +766,8 @@ export function buildTroopMesh(e: Entity, withLabel = false): EntityView {
   const dyn = troopShadowLevel(currentQuality());
   root.traverse((o) => (o.castShadow = false));
   if (kitUnit) {
-    kitUnit.mesh.userData.troopCaster = true;
-    kitUnit.mesh.castShadow = dyn;
+    kitUnit.caster.userData.troopCaster = true;
+    kitUnit.caster.castShadow = dyn;
   } else if (rig) {
     rig.group.updateMatrixWorld(true);
     const box = new THREE.Box3();

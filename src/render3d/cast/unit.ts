@@ -6,8 +6,9 @@
  */
 import * as THREE from "three";
 import type { Side } from "../../game/arena";
-import { castBeforeRender, castMaterial, type Baked } from "./bake";
-import { BONE_INDEX, clipSpeed, clips, type Source } from "./loader";
+import { atlasFiles, castBeforeRender, castMaterial, type Baked } from "./bake";
+import { BONE_INDEX, bodyClip, clipSpeed, clips, sitHipY, type Source } from "./loader";
+import { makeMount, type Mount } from "./mounts";
 import type { Variant } from "./types";
 
 export interface KitUnit {
@@ -20,7 +21,15 @@ export interface KitUnit {
     attack: THREE.AnimationAction;
     hit?: THREE.AnimationAction;
     death?: THREE.AnimationAction;
+    /** A rider's sitting legs (always on). */
+    lower?: THREE.AnimationAction;
   };
+  /** A rider's mount (its own small skinned draw, sharing the material). */
+  mount?: Mount;
+  /** The one mesh that casts into the shadow map (the mount for a rider). */
+  caster: THREE.Mesh;
+  /** Seconds this unit has animated (the mount's breathing clock). */
+  clock: number;
   /** Blend weights of idle / walk / attack. */
   weights: [number, number, number];
   /** Head-top height of the scaled model, for the HP bar and stars. */
@@ -65,21 +74,45 @@ export function makeUnit(cardId: string, v: Variant, b: Baked, src: Source, side
     else group.add(bones[i]);
   });
   const skeleton = new THREE.Skeleton(bones, src.inverses.map((m) => m.clone()));
-  const mesh = new THREE.SkinnedMesh(b.geometry, castMaterial(b.atlas, side));
+  const material = castMaterial(b.atlas, side);
+  const mesh = new THREE.SkinnedMesh(b.geometry, material);
   mesh.name = "kitBody";
   mesh.bind(skeleton, new THREE.Matrix4());
   mesh.frustumCulled = false;
   mesh.onBeforeRender = castBeforeRender;
   group.add(mesh);
 
+  // A rider sits on its mount: the body moves up to the seat, the mount (in world units) goes under it.
+  let mount: Mount | undefined;
+  if (v.mount) {
+    const seat = new THREE.Group();
+    seat.name = "seat";
+    const size = v.mount.size ?? 1;
+    seat.position.set(0, (v.mount.seat * size) / v.scale - sitHipY, ((v.mount.seatZ ?? 0) * size) / v.scale);
+    for (const o of [...group.children]) seat.add(o);
+    group.add(seat);
+    const tiles = atlasFiles(v).length + 2;
+    mount = makeMount(cardId, v.mount, material, tiles, tiles - 2, tiles - 1);
+    mount.group.scale.setScalar(size / v.scale);
+    group.add(mount.group);
+  }
+
   const mixer = new THREE.AnimationMixer(group);
+  const used = new Set<string>();
   const action = (name: string, play = true): THREE.AnimationAction => {
-    const clip = clips.get(name) ?? clips.get("Idle")!;
+    let clip = v.mount && name !== "Death_A" ? bodyClip(name, "upper") : (clips.get(name) ?? clips.get("Idle")!);
+    // Two roles on one clip (a rider's idle and walk) need two actions: the mixer keeps one per clip.
+    if (used.has(clip.name)) clip = roleCopy(clip, used.size);
+    used.add(clip.name);
     const a = mixer.clipAction(clip);
     if (play) a.play();
     return a;
   };
   const actions: KitUnit["actions"] = { idle: action(v.idle), walk: action(v.walk), attack: action(v.attack) };
+  if (v.mount) {
+    actions.lower = mixer.clipAction(bodyClip("Sit_Chair_Idle", "lower"));
+    actions.lower.play();
+  }
   actions.attack.paused = true; // posed from the sim's attack timer, never by the mixer clock
   actions.walk.setEffectiveWeight(0);
   actions.attack.setEffectiveWeight(0);
@@ -111,9 +144,25 @@ export function makeUnit(cardId: string, v: Variant, b: Baked, src: Source, side
     hitT: 0,
     acc: 0,
     dying: false,
+    mount,
+    caster: mount ? mount.mesh : mesh,
+    clock: 0,
   };
   group.userData.kitUnit = unit; // disposeDeep frees its skeleton and swarm slot
   return unit;
 }
 
 let mixerSeed = 1;
+
+const copies = new Map<string, THREE.AnimationClip>();
+/** A shared, renamed copy of a clip for a second role (cached: every unit reuses it). */
+function roleCopy(clip: THREE.AnimationClip, role: number): THREE.AnimationClip {
+  const key = `${clip.name}#${role}`;
+  let c = copies.get(key);
+  if (!c) {
+    c = clip.clone();
+    c.name = key;
+    copies.set(key, c);
+  }
+  return c;
+}

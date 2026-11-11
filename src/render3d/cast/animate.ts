@@ -10,6 +10,7 @@
 import * as THREE from "three";
 import { QUALITY_LEVELS, currentQuality } from "../quality";
 import type { KitUnit } from "./unit";
+import { animateMount } from "./mounts";
 
 /** Characters lean this far toward the camera (render-only, pivot at the feet). */
 export const LEAN_DEG = 14;
@@ -78,6 +79,8 @@ export interface KitPose {
   speed?: number;
   /** A blow landed on this unit this frame (starts the hit react). */
   hit?: boolean;
+  /** Fully charged (the Prince): the weapon is couched at its strike pose. */
+  charging?: boolean;
 }
 
 // ---------------------------------------------------------------- swarms
@@ -131,6 +134,8 @@ export function animateKitTroop(u: KitUnit, s: KitPose, dt: number): void {
   if (u.dying) return;
   if (s.hit) u.hitT = HIT_REACT_TIME;
   if (s.frozen) return; // frozen or stunned: the whole body holds its pose
+  u.clock += dt;
+  if (u.mount) animateMount(u.mount, s.moving, s.speed ?? 1.2, dt, u.clock);
 
   const leader = swarmLeader(u);
   if (leader) {
@@ -142,7 +147,7 @@ export function animateKitTroop(u: KitUnit, s: KitPose, dt: number): void {
     return;
   }
 
-  const want = s.attacking ? 2 : s.moving ? 1 : 0;
+  const want = s.attacking || s.charging ? 2 : s.moving ? 1 : 0;
   const k = Math.min(1, dt / 0.14);
   let sum = 0;
   for (let i = 0; i < 3; i++) {
@@ -173,7 +178,8 @@ export function animateKitTroop(u: KitUnit, s: KitPose, dt: number): void {
   const post = ((1 - u.strike) * d) / speed;
   const since = hs - s.cooldown;
   let t = 0;
-  if (s.attacking) {
+  if (s.charging && !s.attacking) t = u.strike * d;
+  else if (s.attacking) {
     if (s.cooldown <= pre) t = u.strike * d - s.cooldown * speed;
     else if (since <= post) t = u.strike * d + since * speed;
   }
@@ -188,7 +194,7 @@ export function startKitDeath(u: KitUnit): void {
   leaveSwarm(u);
   const death = u.actions.death;
   if (!death) return;
-  for (const a of [u.actions.idle, u.actions.walk, u.actions.attack, u.actions.hit]) a?.setEffectiveWeight(0);
+  for (const a of [u.actions.idle, u.actions.walk, u.actions.attack, u.actions.hit, u.actions.lower]) a?.setEffectiveWeight(0);
   death.reset();
   death.setLoop(THREE.LoopOnce, 1);
   death.clampWhenFinished = true;
