@@ -170,6 +170,64 @@ describe("silhouette ink", () => {
   });
 });
 
+describe("plate tops and damage parts", () => {
+  const build = (look: ArenaLook, edition: TowerEdition, king: boolean, camSide: number, flair: number) =>
+    craftKeep({
+      king, radius: king ? 1.28 : 0.95, height: king ? 2.7 : 2.15, team: 0x3b82f6, enemyTeam: camSide < 0, camSide,
+      facing: -camSide, gun: king, flair: towerFlair(flair), style: towerStyle(look, edition), dome: onionDome, crewHeight: king ? 1.4 : 1.2,
+    });
+  const topOf = (k: ReturnType<typeof craftKeep>, camSide: number): number => Math.max(...k.tops.map((t) => screenUp(t.y, t.z, camSide)));
+
+  it("the plate's tops reach the highest point of the whole keep on screen (flag and finials included)", () => {
+    const looks: [ArenaLook, TowerEdition][] = [[LOOKS.meadow, "classic"], [LOOKS.snow, "classic"], [ARABIC_LOOK, "golden"], [ISLAMIC_LOOKS.atlas, "golden"]];
+    for (const [look, edition] of looks) {
+      for (const flair of [0, 2]) {
+        for (const king of [false, true]) {
+          for (const camSide of [1, -1]) {
+            const k = build(look, edition, king, camSide, flair);
+            const g = k.mesh.geometry;
+            const p = g.getAttribute("position");
+            const st = g.getAttribute("aStage");
+            let body = -Infinity;
+            for (let i = 0; i < (g.userData.bodyCount as number); i++) {
+              if (st.getX(i) === 0) body = Math.max(body, screenUp(p.getY(i), p.getZ(i), camSide));
+            }
+            // A finial ball's rim shows a hair over its top point (about 1 CSS px).
+            expect(body - topOf(k, camSide), `${look.id} f${flair} ${king ? "king" : "princess"} ${camSide}`).toBeLessThanOrEqual(0.05);
+          }
+        }
+      }
+    }
+  });
+
+  it("the Golden Age king stands about as tall on screen as the Classic king (his plate fits over him on a phone)", () => {
+    for (const camSide of [1, -1]) {
+      const golden = topOf(build(ARABIC_LOOK, "golden", true, camSide, 0), camSide);
+      const classic = topOf(build(LOOKS.meadow, "classic", true, camSide, 0), camSide);
+      // At most 0.3 local units (about 8 CSS px on a 390 px phone) over the Classic king.
+      expect(golden - classic).toBeLessThanOrEqual(0.3);
+    }
+  });
+
+  it("stage 1 knocks out the camera row's middle merlon (in view, over the banner)", () => {
+    for (const camSide of [1, -1]) {
+      const k = build(LOOKS.meadow, "classic", false, camSide, 0);
+      expect(k.chips[1]).toHaveLength(1);
+      expect(k.chips[1][0].x).toBeCloseTo(0, 6);
+      expect(k.chips[1][0].z * camSide).toBeGreaterThan(0);
+    }
+  });
+
+  it("the ruin leaves a scorched ring on the ground past its paving", () => {
+    const R = 0.95;
+    const ruin = craftRuin({ king: false, radius: R, team: 0xe53935, enemyTeam: true, camSide: 1, style: towerStyle(LOOKS.meadow, "classic"), seed: 5 });
+    const p = ruin.stump.geometry.getAttribute("position");
+    let far = 0;
+    for (let i = 0; i < p.count; i++) if (p.getY(i) < 0.05 && Math.hypot(p.getX(i), p.getZ(i)) > R * 1.9) far++;
+    expect(far).toBeGreaterThan(20);
+  });
+});
+
 describe("flair tiers", () => {
   it("0 plain, 1 gilded trim and finials, 2 adds the jewel crest and gold roof bands", () => {
     expect(towerFlair(0)).toEqual({ tier: 0, gildedTrim: false, gildedFinials: false, jewelCrest: false, goldRoofBands: false });
