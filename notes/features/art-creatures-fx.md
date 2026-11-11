@@ -13,7 +13,10 @@ Branch `art/creatures-fx` from `art/base` (b7ae4ce). Worktree `/home/user/wt-art
   One texture still serves every colour. Golden Age digits are unchanged (the same Western digits).
 - Size says how big the hit was: 1.0 / 1.12 / 1.3 (crit, with a star). Tower hits print at least 1.3x
   (`towerHitLabel`; effects.ts finds the tower under the popup by position, since animate.ts passes no kind).
-- Hits on the same target (same screen spot) within MERGE_WINDOW = 150 ms merge into one number.
+- Hits on the same target within MERGE_WINDOW = 150 ms merge into one number. `damagePopup(b, x, y, z, label, target?)`
+  (and `VfxPool.popup` / `GlyphLayer.popup`) take an optional target id: with ids on both numbers only the same
+  target merges (arrows on a packed group stay separate numbers); without one, the same screen spot merges
+  (animate.ts passes no id yet: Requests for ship 7).
   A new number that would overlap one still rising stacks above it for the rest of both lives
   (`stackLift`, a view-space lift in the spare `aG.w` attribute). Legible on lime grass, snow, lava
   and courtyard plaster (see the mid-fight shots).
@@ -40,17 +43,26 @@ Branch `art/creatures-fx` from `art/base` (b7ae4ce). Worktree `/home/user/wt-art
   (`floorDust(LOOK)`: 90% lane, 10% floor or plaster, held mid-light and muted). Smoke takes the effect's
   colour. Impact puffs are capped at IMPACT_PUFF_MAX = 1.2 tiles (Layer.maxSize).
 - Hit sparks are 4-6 inked gold stars (`hitStars`) plus a tiny hot core; impact colours are warm golds.
-- Projectiles are modelled (projectiles.ts `form`): fireball (wizard, baby dragon, firecracker) = a hot core
-  above the threshold in a pinwheel of three toon flame petals, shedding a smoke ribbon, flame licks and
-  embers (no cone anywhere); fletched arrows in one draw (shaft, steel head, three feathers; magic and
+- Projectiles are modelled (projectiles.ts `form`): fireball (wizard, baby dragon, firecracker) = a small core
+  (FIREBALL_CORE 0.38 of the size) just over the threshold (linear luminance 1.16, FIREBALL_CORE_HDR) in a pinwheel
+  of three toon flame petals, shedding a smoke ribbon, flame licks and embers (no cone anywhere); fletched arrows in one draw (shaft, steel head, three feathers; magic and
   flaming arrows add a small hot tip); a musket tracer (hot head fading to a tail); an electric bolt that
   crackles segments along its path; an ice shard shedding frost; orbs keep their hue (the witch's purple).
-- Spells: a two-tone team ring (team band, white inner rim, faint fill; the band ends at the decal's edge,
-  so the ring is at the true radius) for every spell (`spellRing`, colour `fxTeamColor`: viewer-relative
+- Smoke ribbons (effects.ts `shedRibbon`, preset "ribbon-puff"): puffs are shed along the path from the last
+  frame's position, at most RIBBON_SPACING (half) of their birth size apart at any frame rate (at most
+  RIBBON_MAX_STEPS a frame; a lower quality sheds fewer, bigger puffs), and live 0.26-0.34 s, so a trail is one
+  ribbon, never a chain of beads, and never hangs after the shot lands. Smoke (cannon) and frost trails too.
+- Spells: a two-tone team ring (team band, cream inner rim RING_RIM #F2EBDD at luminance 0.83, under the
+  threshold, and a light fill; the band ends at the decal's edge, so the ring is at the true radius) for every spell (`spellRing`, colour `fxTeamColor`: viewer-relative
   and colour-blind aware); lasting spells keep it for their life; the king's rally and restore too.
-  Fireball: comet = core + three spinning FPETAL petals + smoke ribbon; impact = toon flame tongues over
-  fire-lit billows cooling to ash, embers, a few chips, scorch. Arrows: fletched arrow sprites turned along
-  their flight. Zap and freeze glints toned down. Tornado puffs capped.
+  Fireball: comet = three spinning FPETAL petals round an orange glow under the threshold (COMET_GLOW_HDR 1) and a
+  small hot core (COMET_CORE_HDR 1.8) + a smoke ribbon at most half a puff apart, every puff gone by RIBBON_LINGER
+  0.16 s after impact; impact = toon flame tongues over fire-lit billows cooling to ash, embers, a few chips and a
+  scorch. The scorch is painted soft and white and tinted per floor (`scorchColor`: #3A2A22 a third of the way to
+  the floor's dust, alpha SCORCH_ALPHA 0.7), so it sits on grass, plaster and snow instead of punching a black
+  hole (the comet's scorch too). Arrows: fletched arrow sprites turned along their flight. Zap: electric-blue
+  bolts (core ZAP_CORE #86C8FF at 0.8, luminance 0.43) from ZAP_TOP 4.2 up, every point and fork clamped inside
+  the spell radius, a blue landing glow under the threshold. Freeze glints toned down. Tornado puffs capped.
 - Deploy: the telegraph ring is the two-tone team ring; the landing throws floor dust plus a team-colour
   burst (ring and stars). The local deploy flash is a soft team-colour ground glow, not white.
 - Deaths are tinted (creature colours, a dusty violet-grey default); dull death colours throw ramp chips
@@ -74,7 +86,7 @@ Branch `art/creatures-fx` from `art/base` (b7ae4ce). Worktree `/home/user/wt-art
 | Card | Classic | Golden Age |
 |---|---|---|
 | baby-dragon | green dragon, ivory horns, spine ridge, spade tail, leafy wings; team **scarf** (tails fly behind) | roc hatchling, feathered gold wings; team **scarf** |
-| balloon | sunflower envelope with cream ribs, team **stripe** on the upper shoulder, goggled skeleton pilot, bomb | fire kite, turquoise sail tipped back to face the camera; team **tails** |
+| balloon | parchment envelope with tan ribs and trim (clear of both palettes' team families), team **stripe** on the upper shoulder, goggled skeleton pilot, bomb | fire kite, turquoise sail tipped back on a mount that turns it to the camera every frame (`yawTowardCamera`, host or guest view), so your own kite shows its face too; team **tails** (on the mount) |
 | bats | violet, big ears, membrane wings; team **collar** | (same card art) |
 | minions | purple-grey imps (never blue), ivory horn, snub nose; team **bandana** | war falcon, barred wings; team **hood** |
 | gargoyles | stone imps, curled horns, stone wings; team **collar** | war falcon; team **hood** |
@@ -88,9 +100,15 @@ Branch `art/creatures-fx` from `art/base` (b7ae4ce). Worktree `/home/user/wt-art
 
 Buildings are new `buildBuildingRig(cardId, side)` rigs (BUILDING_IDS) that bake like troops; the cannon's
 barrel is an animated node the scene aims. They need wiring in troops.ts (Requests for ship 1).
-`tools/creatureview.html` (dev only) is the creature and building contact sheet through the battle camera
-with the cast's 14 degree lean, both teams, front and back, plus a 40 px strip (`?edition=golden`,
-`?cards=a,b`, `?palette=cb`).
+`tools/creatureview.html` (dev only, a NEW file outside the owned list: ship, please accept it; it conflicts with
+no branch) is the creature and building contact sheet through the battle camera with the cast's 14 degree lean,
+both teams, front and back, posed in place (so the kite's sail turns as in battle), plus a phone strip at 21.7 px
+a tile whose cells fit a head-top of 6 and are as wide as each unit (`?edition=golden`, `?cards=a,b`, `?palette=cb`).
+
+Team families: rigBake `TEAM_HUES` holds both palettes' hues and `inTeamFamily(h, s, l, palette)` takes
+"default", "cb" or "any". The bake grade still guards the default palette only (the colour-blind orange sits
+next to every gold, so desaturating golds would mud them); a test keeps every big Classic creature surface out of
+the colour-blind families too.
 
 ## Perf budget
 
@@ -136,6 +154,12 @@ All in `/tmp/claude-0/art/creatures-fx/`:
 - Bats' team collar is a few pixels at phone size; their team disc carries the side.
 - The arrows spell volley is drawn as fletched arrow sprites (2D, turned along the flight), not meshes.
 - Stone golems show their team crystal from the front only (the disc carries it from behind).
+- Colour-blind palette in the Golden Age: the edition's gold (#F1C73C), sandstone, the roc's tan body and the
+  elephant's saddle leather sit within 25 degrees of the colour-blind enemy orange (#FF8A00). The enemy's slot
+  (scarf, tails, saddle cloth) still reads by shape and saturation, but less well than in Classic. Not
+  recoloured: gold and sandstone ARE the edition. See Requests for ship 8.
+- The card buildings' restyle shows in battle only once Requests for ship 1 is applied (today only the
+  contact sheet and tests build them).
 
 ## Requests for ship
 
@@ -170,6 +194,16 @@ All in `/tmp/claude-0/art/creatures-fx/`:
 5. **animate.ts damage popup lift**: towers have no rig, so their numbers spawn at 2.4, inside the keep; pass
    the tower top (the HP plate height) instead. Tower hits already print 1.3x (effects.ts finds the tower).
 6. **post.ts** (stage): stage caps setFlash at MAX_FLASH 0.25; VfxPool also caps at FX_MAX_FLASH, keep both.
+7. **animate.ts damage popup target** (cast-kit's file): pass the entity id so merges go by target, not by
+   screen spot: `damagePopup(b, w.x, lift, w.z, label, e.id);` (the 6th argument is optional; without it two
+   packed units hit on the same tick can merge into one number).
+8. **Golden Age colour-blind enemy hue** (teamColors.ts, cast-kit's file): consider a colour-blind enemy hue for
+   the Golden Age that clears its gold and sandstone (a magenta or violet, about 300 degrees), or accept the
+   orange with the by-eye check in Known gaps. Ship decides; creatures need no change either way.
+9. **Building wiring check** (with request 1): after wiring, look at the cannon (barrel aims at its target),
+   tombstone and elixir collector in a battle in BOTH editions and both palettes, with HP bars at `rig.barY`,
+   and confirm the palette repaint re-runs `applyTeam` on them.
+10. **tools/creatureview.html** is a new dev-only file outside this package's owned list; accept it as is.
 
 ## Progress log
 
@@ -184,3 +218,19 @@ All in `/tmp/claude-0/art/creatures-fx/`:
   fx.png, fx-golden.png and before-after-phone.png done and checked by eye.
 - Quality bar at the end: tsc clean; vitest 136 files / 1565 tests pass (golden and bot tests unchanged);
   npm run build ok; perf-budget both editions under the ceiling (table above). DONE.
+
+### Fix round (review findings)
+- 162fedd MAJOR fire kite: the sail and tails ride a mount `yawTowardCamera` turns to the camera every frame
+  (kept a bake node by userData.animated). Your own kite showed 14% of its sail face (dot 0.145), now >= 0.6 at
+  every yaw, baked or not, lean or not, host or guest (test). creatureview poses rigs in place; strip cells fit
+  a head-top of 6 and each unit's width (golems no longer overlap).
+- 34dae94 FX minors: ribbons shed at most half a puff apart (projectile trails and the fireball comet), short
+  lives; fireball core luminance 1.74 -> 1.16 and smaller; comet glow 1.31 -> 0.45, core 2.12 -> 1.24; ring rim
+  cream (0.83) and lighter fill; zap bolts blue (0.99 -> 0.43), from 4.2 up, inside the radius; scorch a soft
+  floor-tinted brown. Tests for each.
+- ae001fa Classic balloon parchment envelope (clear of both palettes), palette-aware team families and a
+  colour-blind test for big Classic creature surfaces; popups merge by target id when given (test).
+- Rejected: none. Noted for ship: requests 7-10.
+- Harness note: tools that call VfxPool.update several times before one render (the FX sheet steps the clock)
+  must re-upload the pools before the shot; each flush replaces the last one's upload ranges. The game flushes
+  once per rendered frame, so it never hits this.
