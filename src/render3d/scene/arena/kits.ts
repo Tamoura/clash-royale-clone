@@ -351,16 +351,19 @@ function ice(k: Kit): void {
 
 function forge(k: Kit): void {
   const L = k.look;
-  const stone = shade(L.standWall, 0.9);
-  const metal = 0x4a4650;
+  // The phone's far band sits right under the HUD chips: no near-black
+  // slab there (the forge wall was 0x342626), so a dark set lifts its stone.
+  const wall = shade(L.standWall, 0.9);
+  const stone = (wall >> 16) < 0x58 ? 0x6a5654 : wall;
+  const metal = 0x5a5660;
   const lava = L.band.kind === "lava" ? L.torch : 0xff7a36;
   const Z = KIT_BACK_Z - 0.5;
   k.part("forge wall", box(26, 1.6, 1), stone, { y: 0.74, z: Z });
   for (let i = -3; i <= 3; i++) k.part("buttress", box(0.8, 2.1, 1.4), shade(stone, 0.8), { x: i * 3.8, y: 0.99, z: Z + 0.1 });
-  // The furnace: a glowing mouth under a pyramid hood.
-  k.part("furnace", box(3.6, 2.6, 1.8), shade(stone, 0.75), { y: 1.24, z: Z + 0.7 });
-  k.part("furnace mouth", box(1.6, 1.0, 0.1), lava, { y: 0.86, z: Z + 1.64 }, { glow: true });
-  k.part("furnace hood", cone(2.1, 1.3, 4), metal, { y: 3.2, z: Z + 0.7, ry: Math.PI / 4 });
+  // The furnace: a glowing mouth under a pyramid hood, kept low behind the clock.
+  k.part("furnace", box(3.6, 2.0, 1.8), shade(stone, 0.8), { y: 0.94, z: Z + 0.7 });
+  k.part("furnace mouth", box(1.6, 0.9, 0.1), lava, { y: 0.7, z: Z + 1.64 }, { glow: true });
+  k.part("furnace hood", cone(2.1, 1.0, 4), metal, { y: 2.42, z: Z + 0.7, ry: Math.PI / 4 });
   k.light(0, 0.9, Z + 2.0, lava, 3.0);
   for (const sx of [-1, 1]) {
     const x = sx * 3.4;
@@ -493,8 +496,13 @@ function minaret(k: Kit): void {
   k.part("gate recess", box(2.6, 2.0, 0.08), shade(sand, 0.4), { y: 0.96, z: Z + 0.53 });
   k.part("gate head", archHead(1.3, 0.08, 10), shade(sand, 0.4), { y: 1.96, z: Z + 0.53 });
   k.part("gate rim", arc(1.42, 0.1, 3, 10), GOLD, { y: 1.96, z: Z + 0.6 });
-  k.part("drum", cyl(1.6, 1.6, 0.8, 10), plaster, { y: 2.6, z: Z - 0.6 });
-  k.part("great dome", dome(1.7), domeC, { y: 3.0, z: Z - 0.6, sy: 1.15 });
+  // Two domes either side of the gate (the one great dome sat centred,
+  // straight behind the phone HUD's clock chip, and was cut by it).
+  for (const sx of [-1, 1]) {
+    k.part("drum", cyl(1.0, 1.0, 0.5, 10), plaster, { x: sx * 3.2, y: 2.45, z: Z - 0.6 });
+    k.part("great dome", dome(1.05), domeC, { x: sx * 3.2, y: 2.7, z: Z - 0.6, sy: 1.15 });
+    k.part("dome finial", cone(0.08, 0.36, 6), GOLD, { x: sx * 3.2, y: 4.05, z: Z - 0.6 });
+  }
   // Two minarets.
   for (const sx of [-1, 1]) {
     const x = sx * 5.6;

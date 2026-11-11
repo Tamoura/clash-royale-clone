@@ -14,7 +14,7 @@ import type { CardId } from "../../../game/cards";
 import { buildBuildingRig, buildTroop, type TroopRig } from "../../characters3d";
 import { bakeRig } from "../../rigBake";
 import { spawnRecipe } from "../../spawnfx";
-import { makeTeamDisc, refreshTeamDisc } from "../../teamBase";
+import { FLYER_DISC_OPACITY, FLYER_DISC_SCALE, makeTeamDisc, refreshTeamDisc } from "../../teamBase";
 import { applyTeam, teamColor, teamCss, teamPalette } from "../../teamColors";
 import { onPrefs, type TeamPalette } from "../../../ui/prefs";
 import { ARABIC } from "../../theme";
@@ -576,6 +576,10 @@ export function buildTroopMesh(e: Entity): EntityView {
   // that" read, so it has to pop off grass and cream tile alike. Enemy
   // discs are notched, so the side also reads by shape.
   const disc = makeTeamDisc(team, e.radius);
+  if (rig?.hover) {
+    (disc.material as THREE.MeshBasicMaterial).opacity = FLYER_DISC_OPACITY;
+    disc.scale.multiplyScalar(FLYER_DISC_SCALE);
+  }
   root.add(disc);
 
   // Soft contact shadow under every unit (CR grounds everything with one);

@@ -17,7 +17,7 @@ import { stagePalette, type ArenaLook } from "../../arenaLooks";
 import { THEME } from "../../theme";
 import { Sculpt, sculptMaterial, tone } from "../views/towerCraft";
 import type { CrowdSeat } from "./crowd";
-import { bunting, setTeam } from "./scenery";
+import { bunting, contactShadow, setTeam } from "./scenery";
 
 const lit = (_x: number, _y: number, _z: number, ny: number): number => (ny > 0.7 ? 1.06 : ny < -0.4 ? 0.7 : 1);
 const ao = (_x: number, y: number, _z: number, ny: number): number => (0.72 + 0.28 * Math.min(1, Math.max(0, y / 1.4))) * (ny > 0.7 ? 1.05 : 1);
@@ -194,6 +194,9 @@ export function townLots(sx: number, rand: () => number, count = 15): TownLot[] 
   return lots;
 }
 
+/** Door awnings: saffron, teal, green and plum stripes with cream (never a team colour off the court). */
+const AWNINGS = [0xd99a2b, 0x1a8a84, 0x3f7a3a, 0x7a4a7a];
+
 /** A small arched window on a south face, with a sill. */
 function archWindow(s: Sculpt, trim: Sculpt, x: number, y: number, z: number, w: number, h: number, glass: number, sill: number): void {
   s.box(w, h, 0.02, glass, x, y, z, 0, () => 1);
@@ -243,6 +246,22 @@ function house(s: Sculpt, glow: Sculpt, lot: TownLot, pal: TownPalette, look: Ar
   const south = z + d / 2;
   const doorX = x + (rand() < 0.5 ? -1 : 1) * w * 0.18;
   horseshoe(s, doorX, 0.4 * k, south, 0.19 * k, pal.trim, pal.doors[Math.floor(rand() * pal.doors.length)]);
+  if (rand() < 0.55) {
+    // A striped cloth awning over the door, on two thin rods.
+    const stripe = AWNINGS[Math.floor(rand() * AWNINGS.length)];
+    const aw = 0.62 * k;
+    const n = 4;
+    for (let i = 0; i < n; i++) {
+      const g = new THREE.BoxGeometry(aw / n, 0.03, 0.42 * k);
+      g.rotateX(0.42);
+      const c = i % 2 ? 0xf3ead6 : stripe;
+      s.add(g, pal.night ? tone(c, 0.6) : c, doorX - aw / 2 + (i + 0.5) * (aw / n), 0.78 * k, south + 0.18 * k, 0, lit);
+    }
+  } else if (roll >= 0.75 && w > 1.1) {
+    // Rooftop clutter on a plain flat roof: a stair hut and a water jar.
+    s.box(0.36 * k, 0.32 * k, 0.36 * k, wall, x - w * 0.22, h + 0.2 * k, z - d * 0.15, 0, lit);
+    s.cyl(0.09 * k, 0.12 * k, 0.24 * k, 0xa0603a, x + w * 0.25, h + 0.16 * k, z + d * 0.1, 8, lit);
+  }
   const wx = x + (doorX < x ? 1 : -1) * w * 0.2;
   const wy = Math.max(0.62 * k, h * 0.62);
   for (const dx of [-0.16, 0.16]) {
@@ -329,14 +348,31 @@ export function buildGoldenSurround(parent: THREE.Object3D, look: ArenaLook, glo
     gallery(s, sx, -hd / 2 - 1.1, len, "enemy", look, seats, rand);
     gallery(s, sx, hd / 2 + 1.1, len, "player", look, seats, rand);
     // Souk stalls by the gallery ends, near the river.
+    for (const sz of [-1, 1]) contactShadow(s, sx * (GAL_X + 1), sz * 2.6, 0.9, 0.55, look.apron, 1.3);
     stall(s, sx * (GAL_X + 1), -2.6, "enemy", rand);
     stall(s, sx * (GAL_X + 1), 2.6, "player", rand);
+    // The ground first: a packed-earth street along the galleries, alleys
+    // out to the edge, and broad soft patches, so the town is not one flat plane.
+    const streetX = sx * (GAL_X + GAL_DEPTH + 0.95);
+    const street = tone(look.apron, 0.86, 0.85);
+    town[sx].box(1.5, 0.02, 40, street, streetX, -0.05, 0, 0, () => 1);
+    for (const az of [-12.5, -6.8, 6.8, 12.5]) {
+      town[sx].box(9.5, 0.02, 0.9, street, sx * (GAL_X + GAL_DEPTH + 5.6), -0.051, az, 0, () => 1);
+    }
+    for (let i = 0; i < 10; i++) {
+      const g = new THREE.CircleGeometry(1, 14);
+      g.rotateX(-Math.PI / 2);
+      g.scale(1.4 + rand() * 2.2, 1, 1 + rand() * 1.6);
+      town[sx].add(g, tone(look.apron, rand() < 0.5 ? 0.9 : 1.08), sx * (GAL_X + GAL_DEPTH + 2 + rand() * 9), -0.054, (rand() - 0.5) * 40, rand() * 3, () => 1);
+    }
     // The town edge beyond: houses that never overlap, then palms between them.
     const glowTo = glow ? lamps[sx] : town[sx];
     const lots = townLots(sx, mulberry(7919 + sx));
-    for (const lot of lots) house(town[sx], glowTo, lot, pal, look, rand);
+    for (const lot of lots) {
+      contactShadow(town[sx], lot.x, lot.z, lot.hw * 1.12 + 0.2, lot.hd * 1.12 + 0.2, look.apron, 1.4);
+      house(town[sx], glowTo, lot, pal, look, rand);
+    }
     // Street lanterns along the lane between the galleries and the houses.
-    const streetX = sx * (GAL_X + GAL_DEPTH + 0.95);
     [-15.5, -10, -4.6, 4.6, 10, 15.5].forEach((z, i) => streetLantern(town[sx], glowTo, streetX, z, -sx, lampColors[i % lampColors.length]));
     for (let i = 0; i < 12; i++) {
       const x = sx * (GAL_X + GAL_DEPTH + 0.8 + rand() * 7.5);
@@ -345,6 +381,7 @@ export function buildGoldenSurround(parent: THREE.Object3D, look: ArenaLook, glo
       if (Math.abs(z) < 1.6) continue;
       if (Math.abs(x - streetX) < 0.5) continue;
       if (lots.some((o) => Math.abs(o.x - x) < o.hw + 0.3 && Math.abs(o.z - z) < o.hd + 0.3)) continue;
+      contactShadow(palms[sx], x, z, 0.62 * k, 0.5 * k, look.apron, 2 * k);
       if (look.tree.kind === "palm") palm(palms[sx], x, z, k, look, rand);
       else cypress(palms[sx], x, z, k, look);
     }

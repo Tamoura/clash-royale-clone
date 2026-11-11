@@ -128,6 +128,10 @@ export function makeLantern(s = 1): THREE.Group {
   return g;
 }
 
+/** Golden Age bridge deck: pale laid sandstone, and the darker brass of its lip. */
+export const BRIDGE_SANDSTONE = 0xc4b08e;
+export const BRIDGE_BRASS = 0xa8843e;
+
 /** A horseshoe-arch gateway straddling a bridge, crescent + hanging lantern. */
 export function archGateway(): THREE.Group {
   const g = new THREE.Group();
@@ -531,15 +535,17 @@ export function finishArena(b: Battle3D): RiverHandle {
   if (arabic) {
     // Ornate sandstone bridges with a horseshoe-arch gateway, parapets,
     // gold rim, and teal cupola finials at each end.
+    // The deck is laid sandstone (pale, desaturated, with grout joints and
+    // a shaded skirt) under a brass lip: a flat saturated yellow slab read as
+    // a UI block, not a bridge. One sculpted mesh for both decks.
+    const deckSc = new Sculpt((_x, _y, _z, ny) => (ny > 0.7 ? 1.04 : ny < -0.4 ? 0.7 : 0.8));
     for (const bx of BRIDGE_XS) {
       const w = toWorld(bx, RIVER_Y);
-      const deck = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.2, 2.6), toon(THEME.sand));
-      deck.position.set(w.x, 0.1, 0);
-      deck.castShadow = true;
-      deck.receiveShadow = true;
-      b.arenaGroup.add(deck);
-      const rim = new THREE.Mesh(new THREE.BoxGeometry(2.06, 0.06, 2.66), toon(THEME.gold));
-      rim.position.set(w.x, 0.21, 0);
+      deckSc.box(2.0, 0.2, 2.6, BRIDGE_SANDSTONE, w.x, 0.1, 0);
+      for (let i = 1; i < 6; i++) deckSc.box(1.78, 0.012, 0.035, tone(BRIDGE_SANDSTONE, 0.78, 0.9), w.x, 0.206, -1.3 + i * (2.6 / 6), 0, () => 1);
+      for (const jx of [-0.45, 0.45]) deckSc.box(0.035, 0.012, 2.5, tone(BRIDGE_SANDSTONE, 0.8, 0.9), w.x + jx, 0.205, 0, 0, () => 1);
+      const rim = new THREE.Mesh(new THREE.BoxGeometry(2.06, 0.06, 2.66), toon(BRIDGE_BRASS));
+      rim.position.set(w.x, 0.17, 0);
       b.arenaGroup.add(rim);
       const gate = archGateway();
       gate.position.set(w.x, 0.2, 0);
@@ -558,6 +564,11 @@ export function finishArena(b: Battle3D): RiverHandle {
           b.arenaGroup.add(post);
         }
       }
+    }
+    const decks = deckSc.mesh(sculptMaterial(), "golden-bridge-decks");
+    if (decks) {
+      decks.castShadow = decks.receiveShadow = true;
+      b.arenaGroup.add(decks);
     }
   } else if (LOOK.band.bridge === "timber") {
     // Hand-built timber crossings: uneven planks over dark bearers, stone

@@ -365,8 +365,10 @@ export function floorRecipe(look: ArenaLook): FloorRecipe {
 /** Recipes painted as mown grass (stripes, blades); these also grow 3D tufts. */
 export const GRASSY: ReadonlySet<FloorRecipe> = new Set<FloorRecipe>(["lawn", "royal", "jungle", "moss", "violet"]);
 
-/** Flagstone aprons reach this far (tiles) past each tower platform. */
-export const APRON = 0.62;
+/** Flagstone aprons reach this far (tiles) past each tower platform (0.62 read as heavy concrete pads). */
+export const APRON = 0.5;
+/** How far a Classic apron's stone leans toward the lane dirt (warm, not a cold grey slab). */
+export const APRON_TO_LANE = 0.4;
 
 // Voronoi scratch (no per-pixel allocation): nearest distance, edge gap, cell hash.
 let vorD1 = 0;
@@ -1198,7 +1200,9 @@ export const groundPainter = {
     } else {
       paintClassic(look, p, P, seed, rand);
       paintBanks(look, p, P, seed, rand);
-      paintAprons(p, P, seed, mixHex(look.tower.platformPlayer, look.tower.plinth, 0.45));
+      const lane = parseColor(look.floor.lane);
+      const laneHex = (Math.round(lane[0] * 255) << 16) | (Math.round(lane[1] * 255) << 8) | Math.round(lane[2] * 255);
+      paintAprons(p, P, seed, mixHex(mixHex(look.tower.platformPlayer, look.tower.plinth, 0.45), laneHex, APRON_TO_LANE));
     }
     paintOcclusion(p, P);
     return p.toImage(P);
