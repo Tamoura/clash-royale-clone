@@ -11,6 +11,9 @@ Branch art/cast-kit from art/base (b7ae4ce). Worktree /home/user/wt-art-cast-kit
 | Start (art/base) | Golden Age | 167 / 137,566 | 399 / 509,370 | 49 |
 | Cast in (b72599d) | Classic | 178 / 266,074 | 259 / 617,388 | 65 |
 | Cast in (b72599d) | Golden Age | 167 / 137,566 | 248 / 353,084 | 64 |
+| End (fe867fe) | Classic | 178 / 266,074 | 259 / 617,388 | 65 |
+| End (fe867fe) | Golden Age | 167 / 137,566 | 244 / 353,144 | 64 |
+| End (fe867fe), 1440x900@1 | Classic | 176 / 266,048 | 256 / 617,466 | 65 |
 
 Acceptance ceiling for this branch: fight at most 330 calls, empty at most 200: met in both editions.
 Downloads: public/models/troops 808 KB on disk (7 GLBs + CREDITS, budget 1.0 MB). Initial JS bundle
@@ -161,3 +164,6 @@ Vite's fs allow list), so text uses a fallback face; the production build bundle
 - Matrix, contact sheets (banded), colour-blind before/after, guest viewpoint, walk strip captured.
   HP bars fixed: they now ride above the LEANED head and draw on top; popups start above cast units.
   Rim follows the quality level. Perf 259 / 248 fight calls. Build ok, initial JS +17.6 KB gz.
+- Final quality bar: tsc clean, vitest 137 files / 1562 tests green, npm run build ok, perf-budget
+  passes --max-calls 330 --max-empty-calls 200 in both editions (table above). Second matrix run captured
+  after the HP-bar fix.
