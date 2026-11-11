@@ -123,9 +123,13 @@ Measured with `node tools/perf-budget.mjs --url http://127.0.0.1:3202 [--edition
 | end (low-poly wing lobes) | classic | 178 | 266,074 | 429 | 781,056 (+1.5%) | 49 |
 | end | golden | 167 | 137,566 | 396 | 514,552 (+1.0%) | 49 |
 | end, 1440x900@1 | classic | 176 | 266,048 | 427 | 781,022 | 49 |
+| fix round (c6f009e) | classic | 178 | 266,074 | 429 | 781,056 | 49 |
+| fix round | golden | 167 | 137,566 | 394 | 514,364 | 49 |
+| fix round, 1440x900@1 | classic | 176 | 266,048 | 426 | 780,974 | 49 |
 
 Both editions sit under the package ceiling (calls at or below the base, triangles within +1.5%).
-Initial JS: index chunk 299,544 B gzipped vs 292,619 B on the base (+6.9 KB).
+Initial JS: index chunk 299,544 B gzipped vs 292,619 B on the base (+6.9 KB). The fix round adds 846 B
+(gzip -9 of the index chunk: 298,819 B at 348e444, 299,665 B after the fixes).
 
 Package ceiling: fight calls <= base + 10 (classic 445, golden 409); fight triangles <= base + 5% (classic 808k, golden 535k).
 
@@ -145,6 +149,18 @@ All in `/tmp/claude-0/art/creatures-fx/`:
 - Every capture ran without console errors or warnings from this package (the harness filters only the
   dev server's 403s on blocked font hosts). One matrix run (golden legendary-peak phone) timed out reaching
   the battle under CPU load and was re-shot cleanly.
+
+Fix round (after the review), all in `/tmp/claude-0/art/creatures-fx/fix/`, taken on a dev server that serves
+the bundled fonts (fs.allow for the main checkout's node_modules), so numbers are in Lilita One and the captures
+have no console messages at all:
+- `creatures.png` (`creatures-classic.png` over `creatures-golden.png`), `creatures-cb-{classic,golden}.png`
+  (colour-blind palette): the kite's sail faces the camera in all four rows; the strip fits every unit.
+- `fx.png` (Classic, training-camp) and `fx-golden.png` (courtyard), with `fireball-after` and `fireball-scorch`.
+- `midfight-{classic,golden}-{training-camp,pekka-playhouse}-390x844[-b].png`: balloons and kites on both sides,
+  minions, gargoyles, a stone golem and a fireball each way, bot fed elixir.
+- The standard matrix again (`{classic,golden}-{4 arenas}-{390x844,1440x900}.png`, `*-390x844-low.png`); every
+  capture checks the battle phase is "playing" before the shot (the old golden pekka-playhouse 1440x900 frame
+  was the home screen).
 
 ## Known gaps
 - Creatures get the 14 degree lean from cast-kit's troops.ts `leanNode` once merged; this branch has no lean
@@ -236,6 +252,12 @@ All in `/tmp/claude-0/art/creatures-fx/`:
 - ae001fa Classic balloon parchment envelope (clear of both palettes), palette-aware team families and a
   colour-blind test for big Classic creature surfaces; popups merge by target id when given (test).
 - Rejected: none. Noted for ship: requests 7-10.
+- Evidence re-shot on a dev server that serves the fonts (`/tmp/claude-0/art/creatures-fx/fix/`): creature sheets
+  (both editions, both palettes), fx.png and fx-golden.png, four mid-fight pairs and the full standard matrix plus
+  both low phone shots; every capture checked the battle phase and had no console messages. All looked at.
+- Quality bar after the fixes: tsc clean; vitest 136 files / 1573 tests pass (golden and bot tests unchanged,
+  src/game untouched); npm run build ok; perf-budget both editions and 1440x900 under the ceiling (table).
+  DONE.
 - Harness note: tools that call VfxPool.update several times before one render (the FX sheet steps the clock)
   must re-upload the pools before the shot; each flush replaces the last one's upload ranges. The game flushes
   once per rendered frame, so it never hits this.
