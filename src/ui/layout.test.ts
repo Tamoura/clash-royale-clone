@@ -209,8 +209,9 @@ describe("battleLayout", () => {
       // The slimmer panels (144px, were 176px) hand their width to the board.
       expect(lay.tile, `${w}x${h}`).toBeGreaterThan(before.tile(w, h) * 1.1);
     }
-    // 568x320 and 800x600 now fit a full-height board between the panels.
-    for (const [w, h] of [[568, 320], [800, 600]]) {
+    // 568x320, 800x600 and an unfolded foldable in landscape now fit a
+    // full-height board between the panels.
+    for (const [w, h] of [[568, 320], [800, 600], [884, 768]]) {
       const lay = battleLayout(w, h);
       expect(lay.tile, `${w}x${h}`).toBeCloseTo(h / BATTLE_BOX.height, 6);
       expect(lay.tile, `${w}x${h}`).toBeGreaterThan(before.tile(w, h) * 1.02);

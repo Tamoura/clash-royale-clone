@@ -166,7 +166,8 @@
   background: #0d1c4a;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
   color: var(--on-surface);
-  font-size: 10px;
+  /* 10px on a phone, up to 12px beside a tablet's bigger cards. */
+  font-size: clamp(10px, calc(var(--nw) * 0.24), 12px);
   line-height: 12px;
   text-shadow: none;
   white-space: nowrap;
@@ -245,8 +246,9 @@
   filter: grayscale(0.7) brightness(0.75);
 }
 #hud.v2 .hud-ability-icon .ui-icon {
-  width: 22px;
-  height: 22px;
+  /* Just under half the ring: 22px on a phone, 29px on a tablet. */
+  width: calc(min(var(--kw), 60px) * 0.48);
+  height: calc(min(var(--kw), 60px) * 0.48);
 }
 #hud.v2 .hud-ability-label {
   position: absolute;

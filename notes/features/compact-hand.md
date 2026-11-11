@@ -41,7 +41,10 @@ up to the board. Nothing under `src/game/` changed.
 - Thinner chrome (2px border, 12/10px padding, 16px row gap), a slightly
   more see-through panel.
 - Side panels may go down to 144px (were 176px): near-square and small
-  landscape windows give that width to the board.
+  landscape windows give that width to the board. Under 176px
+  (`:root[data-slim]`) the left panel's clock drops its "TIME LEFT" caption
+  and its row takes the column's inner 12px with a 40px menu button, so
+  OVERTIME and the menu still sit side by side inside the column.
 - KING and the chat bubble stay bottom-left in the left panel.
 
 **The frame.** A width-bound phone cannot draw a bigger board (the field
@@ -83,8 +86,8 @@ Honest reading of the table:
   height, so it cannot grow; the hand beside it shrank by 40 to 55% in area.
   The task brief expected 844x390 and 1024x768 to be panel-bound; measured,
   they are not (the old panels had 269px and 218px of room). The windows that
-  were panel-bound do grow: 568x320 +18%, 800x600 +3%, 900x900 +12%,
-  1000x1000 +10% (`layout.test.ts`).
+  were panel-bound do grow: 568x320 +19%, 800x600 +3%, 900x900 +12%,
+  1000x1000 +10%, a foldable's 884x768 +10% (`layout.test.ts`).
 - 360x640 and 375x667 land at 17.3% and 16.6% of the height, a little over
   the 16% target: their cards stop at the 56px floor (`TALL_CARD_MIN`), which
   matters more for a kid's finger than the last 6px of board.
@@ -99,9 +102,11 @@ Honest reading of the table:
   Wide: `wideCardCap`, `sideMax`, `SIDE_MIN = 144`, and the arrangement score
   (bigger cards, a readable elixir bar, the 2x2 block over a column).
 - `src/ui/layoutWire.ts` sets `--card-w`, `--card-h`, `--next-w`, `--king-w`
-  (tall) and `--band` (tall: the measured scoreboard band) next to the old
-  variables, and clears them all between battles, when the tray falls back to
-  a phone's sizes (it keeps its layout under the home screen, hidden).
+  (tall), `--band` (tall: the measured scoreboard band) and `data-slim` next
+  to the old variables, and clears them all between battles, when the tray
+  falls back to a phone's sizes (it keeps its layout under the home screen,
+  hidden; the home diorama fits itself to the stage it is given, so the home
+  screen looks the same).
 - `src/ui/styles/hud.css`: the tray's base rules are the tall layout's (a
   grid: the rail row, then `next | hand | king`); the wide layout overrides
   them into the side panel. The numbers `layout.ts` relies on are marked in
@@ -114,6 +119,17 @@ Honest reading of the table:
   `Framing`.
 - Wide: KING and the chat bubble are `position: fixed` inside `#hud`, so
   never put a `transform` or `filter` on `#app` or `#hud` (as before).
+
+## Cost
+
+- Draw calls are unchanged (`tools/perf-budget.mjs`, 390x844@2: 154 empty /
+  376 fight, was 154 / 377).
+- The phone's canvas is taller (390x844: 653 -> 720 CSS px), so a phone
+  shades about 10% more pixels per frame. Tall phones from about 400px wide
+  (412x915: 412x784 @2 = 1.29M device px) now cross `BLOOM_HALF_PX` (1.2M)
+  and get the half-size bloom the 430px phones already had; 390x844 and
+  393x852 stay under it. Worth a look on the family's real phones.
+- The hand's card art is drawn at 112 CSS px (was 136).
 
 ## Things that depend on the tray (all re-checked in a browser)
 
@@ -130,8 +146,11 @@ Honest reading of the table:
 - Safe areas (emulated notch 47px, home indicator 34px, landscape 47/21px):
   the band moves under the notch, the tray's bottom padding becomes the home
   indicator's height, the side panel clears it.
-- Resize and rotation mid-battle, reduced motion, RTL text in the Golden Age
-  edition (the battle HUD itself stays LTR, as before).
+- Resize and rotation mid-battle, reduced motion, the large text setting
+  (the droplets' digits and the KING label are capped so they stay inside
+  their shapes), RTL text in the Golden Age edition (the battle HUD itself
+  stays LTR, as before), all 22 arena looks at the taller phone frame (the
+  far scenery it reveals is finished in every one).
 - Sandbox reset: it sat under the clock and menu in the tall layout (not
   reachable on a phone); it now goes just under the band (`--band`). Replay
   pill: unchanged.
