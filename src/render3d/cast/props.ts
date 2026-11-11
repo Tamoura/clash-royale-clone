@@ -189,7 +189,8 @@ export function headCloth(color: Paint, cord: number): Extra[] {
   const cloth = color === "team" || color === "teamDark";
   return [
     x("head", color, () => cap(0.55, 0.55, 0, HEAD_Y + 0.02, 0, 1.0), { cloth }),
-    x("head", color, () => box(0.86, 0.6, 0.18, 0, 1.55, -0.38, -0.25), { cloth }),
+    // The drape hangs round the back of the head to the nape: a curved shell, not a board.
+    x("head", color, () => drape({ top: HEAD_Y, bottom: 1.3, rx: [0.53, 0.58], rz: [0.5, 0.6], z: -0.03, arc: [Math.PI - 1.55, Math.PI + 1.55], thick: 0.06, seg: 12, rows: 3, belly: 0.06 }), { cloth }),
     x("head", cord, () => torus(0.5, 0.05, 0, HEAD_TOP - 0.2, 0, Math.PI / 2, 16)),
   ];
 }

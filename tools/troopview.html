@@ -111,13 +111,13 @@
       const strip = document.createElement("canvas");
       const sw = 44 * cards.length * 2;
       strip.width = sw;
-      strip.height = 52;
+      strip.height = 64;
       const sctx = strip.getContext("2d");
       sctx.fillStyle = "#86b85a";
-      sctx.fillRect(0, 0, sw, 52);
+      sctx.fillRect(0, 0, sw, 64);
       const small = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
       small.setPixelRatio(1);
-      small.setSize(44, 52);
+      small.setSize(44, 64);
       small.outputColorSpace = THREE.SRGBColorSpace;
       small.toneMapping = THREE.ACESFilmicToneMapping;
       for (let i = 0; i < cards.length; i++) {
@@ -138,8 +138,9 @@
           for (let f = 0; f < 12; f++) animateKitTroop(u, { moving: pose === "walk", attacking: false, cooldown: 1, hitSpeed: 1.2, rate: 1, frozen: false }, 0.033);
           // A 390 px phone shows the 18-tile board about 21.7 px per tile.
           const half = 22 / 21.7;
-          const c2 = new THREE.OrthographicCamera(-half, half, (52 / 44) * half, -(52 / 44) * half, -100, 200);
-          const mid = new THREE.Vector3(0, 1.2, 0);
+          // Tall enough for the big ones (a Giant's head, a rider's helm).
+          const c2 = new THREE.OrthographicCamera(-half, half, (64 / 44) * half, -(64 / 44) * half, -100, 200);
+          const mid = new THREE.Vector3(0, 1.55, 0);
           c2.position.copy(mid).addScaledVector(DIR, -60);
           c2.lookAt(mid);
           small.render(one, c2);

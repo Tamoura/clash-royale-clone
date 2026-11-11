@@ -5,12 +5,14 @@ import { GOLDEN } from "./variants.golden";
 import { CLOTH_MESH, CLOTH_SWATCHES, HAIR_SWATCH, SKIN_SWATCHES, inTeamFamily, teamHues, teamRuleViolations } from "./rules";
 import { MESH_SWATCHES, MESH_VERTS, SWATCH_HEX } from "./palettes";
 import { BONES, BONE_INDEX, clips, type Source } from "./loader";
-import { LEAN, LEAN_DEG, SWARM_SHARE, joinSwarm, leanQuaternion, mixerHz, swarmLeader, swarmSize } from "./animate";
+import { LEAN, LEAN_DEG, SWARM_SHARE, VIEW_DIR, joinSwarm, leanQuaternion, mixerHz, setLeanCamera, swarmLeader, swarmSize } from "./animate";
 import { championVariant, signatureSafe } from "./champion";
 import { makeUnit } from "./unit";
-import { gradeHsl, type Baked } from "./bake";
-import type { Edition, Variant } from "./types";
-import { DEFAULT_CHAMPION } from "../../game/customcard";
+import { EXTRA_MAX_LIGHTNESS, extraColor, gradeHsl, type Baked } from "./bake";
+import { drape } from "./props";
+import { mountColors } from "./mounts";
+import type { Edition, Extra, Variant } from "./types";
+import { DEFAULT_CHAMPION, type ChampionDef } from "../../game/customcard";
 import { disposeDeep } from "../scene/common";
 
 const EDITIONS: [Edition, Record<string, Variant>][] = [
@@ -298,5 +300,183 @@ describe("cast units", () => {
     for (const u of units) root.add(u.group);
     disposeDeep(root);
     expect(swarmSize("test:skeletons:enemy")).toBe(0);
+  });
+});
+
+/**
+ * Projected area (rig units squared) of a variant's team cloth extras seen
+ * from the battle camera, front or back: the camera looks down 49 degrees
+ * and the unit leans 14 degrees toward it, so its body sees the camera 35
+ * degrees above the horizon. Only the half of the body facing the camera
+ * counts (a cape behind a unit seen from the front does not).
+ */
+function teamArea(v: Variant, from: "front" | "back"): number {
+  const e = ((49 - LEAN_DEG) * Math.PI) / 180;
+  const toCam = new THREE.Vector3(0, Math.sin(e), Math.cos(e) * (from === "front" ? 1 : -1));
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const n = new THREE.Vector3();
+  let area = 0;
+  for (const x of v.extras ?? []) {
+    if ((x.color !== "team" && x.color !== "teamDark") || x.local) continue;
+    const g = x.geo();
+    const pos = g.getAttribute("position");
+    const idx = g.index;
+    const count = idx ? idx.count : pos.count;
+    for (let i = 0; i < count; i += 3) {
+      const at = (k: number): number => (idx ? idx.getX(i + k) : i + k);
+      a.fromBufferAttribute(pos, at(0));
+      b.fromBufferAttribute(pos, at(1));
+      c.fromBufferAttribute(pos, at(2));
+      if ((a.z + b.z + c.z) / 3 * (from === "front" ? 1 : -1) <= 0.05) continue;
+      n.subVectors(b, a).cross(c.clone().sub(a));
+      const facing = n.dot(toCam) / 2;
+      if (facing > 0) area += facing;
+    }
+    g.dispose();
+  }
+  return area;
+}
+
+/** The team mesh a variant wears that wraps its whole body (a cape shows from behind; the skeletons' cloak all round). */
+function wearsTeamCape(v: Variant): boolean {
+  if (!v.team) return false;
+  return v.props.some((p) => v.team!.test(p)) || (v.file === "skeleton_minion" && v.team.test("Skeleton_Minion_Cloak"));
+}
+
+/** Every Studio look the champion can wear (the cast dresses it like any card). */
+function championLooks(ed: Edition): Variant[] {
+  const out: Variant[] = [];
+  for (const headgear of ["none", "helmet", "hood", "crown", "horns", "turban"] as const) {
+    for (const weapon of ["sword", "bow", "none"] as const) {
+      const def: ChampionDef = { ...DEFAULT_CHAMPION, look: { ...DEFAULT_CHAMPION.look, headgear, weapon } };
+      out.push(championVariant(def, ed)!);
+    }
+  }
+  return out;
+}
+
+describe("cast side reads from the body", () => {
+  // The finding this guards: enemies walk toward the camera, and a cape alone hides behind the body.
+  it("every unit wears team cloth on its FRONT (a tabard, sash or capelet facing the camera)", () => {
+    for (const [ed, roster] of EDITIONS) {
+      const all: [string, Variant][] = [...Object.entries(roster), ...championLooks(ed).map((v, i): [string, Variant] => [`champion#${i}`, v])];
+      for (const [id, v] of all) {
+        if (v.file === "skeleton_minion" && wearsTeamCape(v)) continue; // the team cloak wraps its chest
+        expect(teamArea(v, "front"), `${ed}:${id}`).toBeGreaterThan(0.12);
+      }
+    }
+  });
+
+  it("and from BEHIND (its team cape, or team cloth on its back)", () => {
+    for (const [ed, roster] of EDITIONS) {
+      for (const [id, v] of Object.entries(roster)) {
+        if (wearsTeamCape(v)) continue;
+        expect(teamArea(v, "back"), `${ed}:${id}`).toBeGreaterThan(0.12);
+      }
+    }
+  });
+
+  it("keeps the mounts' fixed colours out of the team families (the saddle cloth is the team's)", () => {
+    for (const [ed, roster] of EDITIONS) {
+      for (const [id, v] of Object.entries(roster)) {
+        if (!v.mount) continue;
+        expect(v.mount.cloth, `${ed}:${id}`).toBe("team");
+        for (const hex of mountColors(v.mount)) expect(inTeamFamily(hex), `${ed}:${id} mount #${hex.toString(16)}`).toBe(false);
+      }
+    }
+  });
+});
+
+describe("cast cloth and colour", () => {
+  it("drapes are closed shells with outward normals (they shade like cloth and take ink)", () => {
+    const g = drape({ top: 1.1, bottom: 0.5, rx: [0.33, 0.42], rz: [0.34, 0.42], arc: [-0.75, 0.75], thick: 0.05, belly: 0.03 });
+    const pos = g.getAttribute("position");
+    const idx = g.index!;
+    // Signed volume of a closed, outward-wound mesh is positive.
+    const a = new THREE.Vector3();
+    const b = new THREE.Vector3();
+    const c = new THREE.Vector3();
+    let vol = 0;
+    for (let i = 0; i < idx.count; i += 3) {
+      a.fromBufferAttribute(pos, idx.getX(i));
+      b.fromBufferAttribute(pos, idx.getX(i + 1));
+      c.fromBufferAttribute(pos, idx.getX(i + 2));
+      vol += a.dot(b.clone().cross(c)) / 6;
+    }
+    expect(vol).toBeGreaterThan(0);
+    // Every edge is shared by exactly two triangles: no holes.
+    const edges = new Map<string, number>();
+    for (let i = 0; i < idx.count; i += 3) {
+      for (let k = 0; k < 3; k++) {
+        const p = idx.getX(i + k);
+        const q = idx.getX(i + ((k + 1) % 3));
+        const key = p < q ? `${p}-${q}` : `${q}-${p}`;
+        edges.set(key, (edges.get(key) ?? 0) + 1);
+      }
+    }
+    for (const n of edges.values()) expect(n).toBe(2);
+    // The front of the panel faces forward.
+    const nor = g.getAttribute("normal");
+    let front = -1;
+    for (let i = 0; i < pos.count; i++) if (pos.getZ(i) > (front < 0 ? -1 : pos.getZ(front))) front = i;
+    expect(nor.getZ(front)).toBeGreaterThan(0.8);
+  });
+
+  it("no extra is a flat board (a box with two sides over 0.45 and the third under 0.15)", () => {
+    const p0 = new THREE.Vector3();
+    const p1 = new THREE.Vector3();
+    const p2 = new THREE.Vector3();
+    const p4 = new THREE.Vector3();
+    const n = new THREE.Vector3();
+    for (const [ed, roster] of EDITIONS) {
+      for (const [id, v] of Object.entries(roster)) {
+        (v.extras ?? []).forEach((x: Extra, i) => {
+          const g = x.geo();
+          const pos = g.getAttribute("position");
+          if (pos.count === 24) {
+            // A BoxGeometry, however it is turned: its first face's two edges, and the gap to the opposite face.
+            p0.fromBufferAttribute(pos, 0);
+            p1.fromBufferAttribute(pos, 1);
+            p2.fromBufferAttribute(pos, 2);
+            p4.fromBufferAttribute(pos, 4);
+            n.subVectors(p1, p0).cross(p2.clone().sub(p0)).normalize();
+            const dims = [p1.distanceTo(p0), p2.distanceTo(p0), Math.abs(p4.clone().sub(p0).dot(n))].sort((a, b) => a - b);
+            expect(dims[1] > 0.45 && dims[0] < 0.15, `${ed}:${id} extra #${i} is a ${dims.map((d) => d.toFixed(2)).join(" x ")} board`).toBe(false);
+          }
+          g.dispose();
+        });
+      }
+    }
+  });
+
+  it("caps our primitives' lightness below white (no cream hat or veil blooms)", () => {
+    const hsl = { h: 0, s: 0, l: 0 };
+    for (const hex of [0xffffff, 0xf5f0e6, 0xfff7ea, 0xf2ede4]) {
+      extraColor(hex).getHSL(hsl, THREE.SRGBColorSpace);
+      expect(hsl.l).toBeLessThanOrEqual(EXTRA_MAX_LIGHTNESS + 1e-4);
+    }
+    // A colour already below the cap is untouched.
+    expect(extraColor(0x8a5a2e).getHex(THREE.SRGBColorSpace)).toBe(0x8a5a2e);
+    expect(EXTRA_MAX_LIGHTNESS).toBeLessThanOrEqual(0.85);
+  });
+});
+
+describe("cast lean camera", () => {
+  it("follows the camera it is given: the guest's flipped view leans the crews the other way", () => {
+    const home = new THREE.OrthographicCamera();
+    home.position.set(0, 30, 26);
+    home.lookAt(0, 0, 0);
+    home.updateMatrixWorld();
+    setLeanCamera(home);
+    expect(VIEW_DIR.z).toBeLessThan(0);
+    const guest = new THREE.OrthographicCamera();
+    guest.position.set(0, 30, -26);
+    guest.lookAt(0, 0, 0);
+    guest.updateMatrixWorld();
+    setLeanCamera(guest);
+    expect(VIEW_DIR.z).toBeGreaterThan(0);
+    setLeanCamera(home);
   });
 });
