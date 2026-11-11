@@ -54,13 +54,14 @@ import {
   easeOutBack,
   targetOf,
   toWorld,
+  viewSide,
   type DyingView,
   type EntityView,
 } from "../common";
 import { addShake } from "../camera";
 import { contactRing, damagePopup, emitSparks, megaSlam } from "../fx/effects";
-import { glbModels, hpBarVisible, makeStunSprite, setHpFill } from "./troops";
-import { animateKitTroop } from "../../kitTroops";
+import { hpBarVisible, makeStunSprite, setHpFill } from "./troops";
+import { animateKitTroop, leanQuaternion, setLeanCamera, startKitDeath, stepKitDeath, VIEW_DIR } from "../../cast/index";
 
 /** A troop view's animation state (created on its first frame). */
 export interface TroopAnim {
@@ -120,7 +121,9 @@ const RECOIL_FRESH = 1.2;
 /** Emissive tints for status poses. */
 const FROZEN_TINT = [0.25, 0.45, 0.6] as const;
 const SLOW_TINT = [0.12, 0.04, 0.17] as const;
-const FLASH_WARM = [1, 0.85, 0.7] as const;
+/** Hit flash on troops: a mix toward #FFF4E0 of at most HIT_FLASH_PEAK (art bible 6: never white, never blooms). */
+export const HIT_FLASH = [1, 0.957, 0.878] as const;
+export const HIT_FLASH_PEAK = 0.35;
 /**
  * Towers and buildings take many hits: a full-white emissive frame turned
  * the whole tower into a solid white block on every one. They get a soft
@@ -128,14 +131,16 @@ const FLASH_WARM = [1, 0.85, 0.7] as const;
  * TOWER_FLASH_TIME, a little longer than a troop's snap so it reads as a throb.
  */
 export const TOWER_FLASH = [1, 0.82, 0.62] as const;
-export const TOWER_FLASH_PEAK = 0.26;
+export const TOWER_FLASH_PEAK = 0.25;
 export const TOWER_FLASH_TIME = 0.22;
 
 /**
  * The emissive tint of a hit flash, written into `out` (r, g, b). A troop
- * snaps to pure white on the frame the blow lands, then glows warm and dies
- * away over FLASH_TIME; a tower or building swells to a soft warm tint and
- * back over TOWER_FLASH_TIME, never white. `left` is the flash time left.
+ * jumps to HIT_FLASH_PEAK of a warm white (#FFF4E0) on the frame the blow
+ * lands and fades over FLASH_TIME (80 ms); a tower or building swells to a
+ * soft warm tint (peak 0.25) and back over TOWER_FLASH_TIME. Never white,
+ * never past the bloom threshold. `left` is the flash time left; `fresh`
+ * is kept for callers (the peak is the same either way).
  */
 export function hitFlashTint(structure: boolean, left: number, fresh: boolean, out: number[]): number[] {
   if (structure) {
@@ -146,14 +151,11 @@ export function hitFlashTint(structure: boolean, left: number, fresh: boolean, o
     out[2] = TOWER_FLASH[2] * k;
     return out;
   }
-  if (fresh) {
-    out[0] = out[1] = out[2] = 1;
-    return out;
-  }
-  const k = Math.max(0, left / FLASH_TIME);
-  out[0] = FLASH_WARM[0] * k;
-  out[1] = FLASH_WARM[1] * k;
-  out[2] = FLASH_WARM[2] * k;
+  void fresh;
+  const k = HIT_FLASH_PEAK * Math.min(1, Math.max(0, left / FLASH_TIME));
+  out[0] = HIT_FLASH[0] * k;
+  out[1] = HIT_FLASH[1] * k;
+  out[2] = HIT_FLASH[2] * k;
   return out;
 }
 
@@ -250,6 +252,8 @@ export function beginDeath(b: Battle3D, view: EntityView): void {
     view.glowing = false;
   }
   if (anim?.face?.head) anim.face.head.rotation.z = anim.headRoll;
+  // A cast character plays its own fall (Death_A); the KO beat then sinks it away.
+  if (view.kit) startKitDeath(view.kit);
 
   const now = b.syncState?.time ?? 0;
   const fresh = anim && now - anim.recoilAt <= RECOIL_FRESH;
@@ -270,10 +274,13 @@ export function beginDeath(b: Battle3D, view: EntityView): void {
   const fall = rig?.hover ? rig.group.position.y : 0;
   // World -> arena tiles (toWorld() just recentres the board).
   const origin = toWorld(0, 0);
-  const motion = deathMotion(anim?.cardId ?? null, {
-    flying: !!rig?.hover,
-    hasFace: !!anim?.face,
-  });
+  // A cast body is one mesh: it never shatters into parts (it falls over instead).
+  const motion = view.kit
+    ? "ko"
+    : deathMotion(anim?.cardId ?? null, {
+        flying: !!rig?.hover,
+        hasFace: !!anim?.face,
+      });
   const da = startDeath({
     motion,
     root: view.root,
@@ -450,6 +457,7 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
   sa.clock = animClock(sa.clock, state.time, alpha, b.hitStop.active);
   const w = toWorld(e.x, e.y);
   VIEW_OF.set(e, view);
+  setLeanCamera(b.camera);
 
   if (view.isTroop && !view.anim) view.anim = initTroopAnim(b, view, e);
   const anim = view.anim;
@@ -699,6 +707,10 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
     e.kind === "troop" ? 0.9 : e.kind === "building" ? 1.4 : e.kind === "king-tower" ? 2.2 : 1.8;
   setHpFill(view, e.hp / e.maxHp, barWidth);
   view.hpGroup.visible = hpBarVisible(view, e);
+  // Troop bars stay square to the camera whichever way the body turns.
+  if (view.isTroop && view.hpGroup.visible) {
+    view.hpGroup.rotation.set(view.hpGroup.rotation.x, (viewSide === "enemy" ? Math.PI : 0) - view.root.rotation.y, 0, "YXZ");
+  }
 
   if (view.rig && anim) {
     const rig = view.rig;
@@ -804,7 +816,7 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
     // turning smoothly rather than snapping (frozen units can't turn).
     if (!stunned) turnToward(view, e, target, inRange, w, dt);
   } else if (view.kit) {
-    // KIT TROOPS: a modelled character plays its real clips, the attack locked to the sim's timer.
+    // A cast character plays its real clips: the attack locked to the sim's timer, the walk to the ground speed.
     const kit = view.kit;
     const target = targetOf(b, e);
     const inRange =
@@ -821,6 +833,8 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
         hitSpeed: e.hitSpeed,
         rate: pace,
         frozen: stunned,
+        speed: e.speed * pace,
+        hit: lost > 0.5,
       },
       dt,
     );
@@ -841,29 +855,9 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
       view.root.position.x += anim.jigX * RECOIL_KNOCK * recoil;
       view.root.position.z += anim.jigZ * RECOIL_KNOCK * recoil;
     }
+    // Dazed (stunned, not frozen): a slow wobble while the pose holds.
+    if (stunned && !frozen) kit.group.rotation.z += Math.sin(sa.clock * Math.PI * 3) * 0.08;
     if (!inRange && acting) {
-      view.dustT = (view.dustT ?? Math.random() * DUST_INTERVAL) - dt;
-      if (view.dustT <= 0) {
-        view.dustT = DUST_INTERVAL;
-        b.fx.emit("dust", e.x, e.y);
-      }
-    }
-    if (!stunned) turnToward(view, e, target, inRange, w, dt);
-  } else if (view.glb) {
-    // Real glTF model: drive its mixer + clip from the same combat state.
-    const target = targetOf(b, e);
-    const inRange =
-      !!target &&
-      distance(e, target) - e.radius - target.radius <= e.attackRange + 0.05;
-    const moving = !inRange && e.deployTimer <= 0 && !stunned;
-    glbModels()!.playGlbAction(view.glb, inRange ? "attack" : moving ? "walk" : "idle");
-    if (!stunned) view.glb.mixer.update(dt);
-    if (anim && drops(view)) {
-      view.root.position.y = dropY;
-      view.root.scale.set(dsx * (1 + 0.1 * jig), dsy * (1 - 0.14 * jig), dsz * (1 + 0.1 * jig));
-    }
-
-    if (moving) {
       view.dustT = (view.dustT ?? Math.random() * DUST_INTERVAL) - dt;
       if (view.dustT <= 0) {
         view.dustT = DUST_INTERVAL;
@@ -883,6 +877,8 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
       poseFace(face, { blink: blinkShut(clock, sa.clock), squint: 0, anger: 0, ko: false });
     }
   }
+  // Render-only lean toward the camera (the body only: disc, shadow and bar stay flat).
+  if (view.lean) leanQuaternion(VIEW_DIR.x, VIEW_DIR.z, view.root.rotation.y, view.lean.quaternion);
 }
 
 const DEFENDER_BLINKS = new WeakMap<TroopRig, BlinkClock>();
@@ -917,6 +913,15 @@ function turnToward(
 
 /** A dying entity's motion, `f` running 0 -> 1 over its death time. */
 export function updateTroopDeath(d: DyingView, f: number, dt: number): void {
+  if (d.anim && d.view.kit) {
+    // Death_A does the fall; the KO beat only sinks and shrinks the body away (no second topple).
+    stepKitDeath(d.view.kit, dt);
+    stepDeath(d.anim, d.view.root, f * d.duration, dt);
+    const keepYaw = d.anim.yaw;
+    d.view.root.rotation.set(0, keepYaw, 0);
+    d.view.root.position.y = Math.min(0, d.view.root.position.y);
+    return;
+  }
   if (d.anim) {
     stepDeath(d.anim, d.view.root, f * d.duration, dt);
     return;
