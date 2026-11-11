@@ -508,3 +508,19 @@ describe("damage numbers merge and stack", () => {
     expect(stackLift(v.glyphs.live, 9, 1.3, 0.8, 1.25, v.now, 1)).toBe(0);
   });
 });
+
+describe("floor dust per look", () => {
+  it("Classic dust is the lane dirt; the Golden Age court's is its own sand, never violet", async () => {
+    const { floorDust } = await import("./pool");
+    const { LOOKS, ISLAMIC_LOOKS } = await import("../../arenaLooks");
+    const hsl = { h: 0, s: 0, l: 0 };
+    for (const look of [...Object.values(LOOKS), ...Object.values(ISLAMIC_LOOKS)]) {
+      new THREE.Color(floorDust(look)).getHSL(hsl, THREE.SRGBColorSpace);
+      expect(hsl.l, look.id).toBeLessThanOrEqual(0.67);
+      expect(hsl.s, look.id).toBeLessThanOrEqual(0.43);
+    }
+    new THREE.Color(floorDust(ISLAMIC_LOOKS.courtyard)).getHSL(hsl, THREE.SRGBColorSpace);
+    expect(hsl.h * 360).toBeGreaterThan(25); // sandy, not lavender
+    expect(hsl.h * 360).toBeLessThan(60);
+  });
+});

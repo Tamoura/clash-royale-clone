@@ -333,11 +333,12 @@ const DUST_HSL = { h: 0, s: 0, l: 0 };
  * and never as white blobs (a snow look's dust is a soft blue-grey).
  */
 export function floorDust(look: ArenaLook): number {
+  // The Golden Age court keeps its own plaster and lane dirt ("r,g,b").
   const base = look.islamic ? cssHex(look.islamic.plaster, 0xd8c8a0) : cssHex(look.floor.a, 0x9a8a6a);
-  const lane = cssHex(look.floor.lane, 0xc9b99c);
+  const lane = look.islamic ? cssHex(`rgb(${look.islamic.lane})`, 0xd6b25e) : cssHex(look.floor.lane, 0xc9b99c);
   const c = new THREE.Color(base).lerp(new THREE.Color(lane), 0.9);
-  c.getHSL(DUST_HSL);
-  c.setHSL(DUST_HSL.h, Math.min(DUST_HSL.s, 0.42), Math.min(0.66, Math.max(0.36, DUST_HSL.l * 0.92)));
+  c.getHSL(DUST_HSL, THREE.SRGBColorSpace);
+  c.setHSL(DUST_HSL.h, Math.min(DUST_HSL.s, 0.42), Math.min(0.66, Math.max(0.36, DUST_HSL.l * 0.92)), THREE.SRGBColorSpace);
   return c.getHex();
 }
 
