@@ -16,7 +16,7 @@
  */
 import * as THREE from "three";
 import { ARENA_HEIGHT, ARENA_WIDTH, RIVER_HALF_WIDTH } from "../../../game/arena";
-import type { ArenaLook } from "../../arenaLooks";
+import { stagePalette, type ArenaLook } from "../../arenaLooks";
 import { teamColor } from "../../teamColors";
 import { Sculpt, frustum, sculptMaterial, tone } from "../views/towerCraft";
 import type { CrowdSeat } from "./crowd";
@@ -174,7 +174,7 @@ function bannerPole(s: Sculpt, x: number, z: number, h: number, cloth: number): 
 
 /** A round striped pavilion with a pennant. */
 function pavilion(s: Sculpt, x: number, z: number, k: number, cloth: number, look: ArenaLook): void {
-  const canvas = tone(look.tentWall, 1.04, 0.7);
+  const canvas = tone(stagePalette(look).awning, 1.0, 0.8);
   const wallH = 0.85 * k;
   const r = 1.05 * k;
   s.cyl(r * 0.92, r, wallH, canvas, x, wallH / 2, z, 12, (_x, y) => 0.72 + 0.28 * smooth(0, wallH, y));
@@ -195,7 +195,7 @@ function pavilion(s: Sculpt, x: number, z: number, k: number, cloth: number, loo
 
 /** The stone kerb around the court: dressed blocks, a cap, piers with pyramid caps. */
 function kerb(s: Sculpt, look: ArenaLook): void {
-  const stone = tone(look.cornerPost, 1.0, 0.55);
+  const stone = tone(stagePalette(look).kerb, 1.0, 0.55);
   const dark = tone(stone, 0.8);
   const hw = ARENA_WIDTH / 2 + 0.45;
   const hd = ARENA_HEIGHT / 2 + 0.2;

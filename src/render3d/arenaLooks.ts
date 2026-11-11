@@ -115,6 +115,22 @@ export interface ArenaLook {
   islamic?: IslamicTiles;
   /** Display-space colour grade (defaults in scene3d when omitted). */
   grade?: { saturation?: number; contrast?: number; tint?: [number, number, number]; vignette?: number };
+  /** The Toy Tournament set's own palette (kerb, awnings, banks, crowd). Every look carries one. */
+  stage?: StagePalette;
+}
+
+/**
+ * Palette fields the Toy Tournament set reads (stage package): the dressed
+ * kerb stone, the light stripe between team stripes on awnings and
+ * pavilions, the floor's bank colours at the band and where they meet the
+ * floor, and how much of each half's crowd wears its team colour.
+ */
+export interface StagePalette {
+  kerb: number;
+  awning: number;
+  bankNear: string;
+  bankFar: string;
+  crowdTeamShare: number;
 }
 
 /** The Islamic floor and trim palette (the zellige is drawn by scene3d). */
@@ -450,6 +466,49 @@ export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {
     islamic: tiles({ plaster: "#dcd8e8", star: "rgba(60,50,150,0.16)", diamond: "rgba(202,162,63,0.2)", lane: "200,180,130", laneWear: "140,120,80", dome: 0xcaa23f, domeKing: 0xe8c050, emblem: 0xf0c848 }),
   },
 };
+
+/** Per-look stage palette overrides (the rest derive from the look). */
+const STAGE_OVERRIDES: Record<string, Partial<StagePalette>> = {
+  meadow: { bankNear: "#85734d", bankFar: "#d6c08a" },
+  swamp: { bankNear: "#4a4630", bankFar: "#8a8458", awning: 0xe0d6b8 },
+  bone: { bankNear: "#6a5a48", bankFar: "#cfc0a0" },
+  snow: { bankNear: "#c8dcec", bankFar: "#f6fbff" },
+  forge: { bankNear: "#28201f", bankFar: "#4a4246", awning: 0x3a3236, kerb: 0x4a4246 },
+  mystic: { bankNear: "#3a2c62", bankFar: "#6a5a9a", awning: 0xd8ccf0 },
+  workshop: { bankNear: "#6a4c2c", bankFar: "#b8925a" },
+  royal: { bankNear: "#8a7a5a", bankFar: "#e2d4b0", awning: 0xfff6e0, kerb: 0xd8ccb0 },
+  ice: { bankNear: "#cfe2f2", bankFar: "#f4faff" },
+  jungle: { bankNear: "#5a4a2a", bankFar: "#b09a62" },
+  neon: { bankNear: "#8a90aa", bankFar: "#d0d6e8", awning: 0xe8e6f6, kerb: 0x4a4670 },
+  courtyard: { bankNear: "#b89a68", bankFar: "#e8d9b4" },
+  souk: { bankNear: "#b0965e", bankFar: "#efe7cf" },
+  copper: { bankNear: "#6a4030", bankFar: "#d8c2a8", awning: 0xf0d8b8 },
+  medina: { bankNear: "#6a6088", bankFar: "#dcd8e8" },
+};
+
+function tintHex(hex: number, f: number): number {
+  const ch = (sh: number): number => Math.min(255, Math.round(((hex >> sh) & 255) * f));
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
+/** The look's stage palette: its own, or one derived from its colours. */
+export function stagePalette(look: ArenaLook): StagePalette {
+  if (look.stage) return look.stage;
+  const islamic = !!look.islamic;
+  return {
+    kerb: islamic ? tintHex(look.edging, 0.95) : look.cornerPost,
+    awning: 0xf3ead6,
+    bankNear: "#85734d",
+    bankFar: "#d6c08a",
+    crowdTeamShare: 0.42,
+    ...(STAGE_OVERRIDES[look.id] ?? {}),
+  };
+}
+
+// Every look carries its stage palette.
+for (const look of [...Object.values(LOOKS), ...Object.values(ISLAMIC_LOOKS)]) {
+  look.stage = stagePalette(look);
+}
 
 /** Which Islamic world each trophy-road arena is staged in. */
 const ISLAMIC_ARENA_TO_LOOK: Record<string, string> = {

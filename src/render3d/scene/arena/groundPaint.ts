@@ -26,7 +26,7 @@ import {
   RIVER_Y,
   towerSpots,
 } from "../../../game/arena";
-import type { ArenaLook } from "../../arenaLooks";
+import { stagePalette, type ArenaLook } from "../../arenaLooks";
 
 /** Pixels per arena tile, both editions. */
 export const GROUND_PX = 48;
@@ -886,9 +886,11 @@ function paintBanks(look: ArenaLook, p: Paint, P: number, seed: number, rand: ()
       far = [0.82, 0.85, 0.92];
       reachBase = 0.3;
       break;
-    default:
-      near = [0.52, 0.45, 0.3];
-      far = mix3([0.84, 0.74, 0.52], floorMid, 0.15);
+    default: {
+      const pal = stagePalette(look);
+      near = mix3(parseColor(pal.bankNear), [0, 0, 0], 0);
+      far = mix3(parseColor(pal.bankFar), floorMid, 0.15);
+    }
   }
   for (const sgn of [-1, 1]) {
     const lip = RIVER_Y + sgn * RIVER_HALF_WIDTH;

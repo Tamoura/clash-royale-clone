@@ -98,7 +98,7 @@ export interface Crowd {
 }
 
 /** Build the crowd for `seats` (2 draws). */
-export function makeCrowd(seats: CrowdSeat[]): Crowd | null {
+export function makeCrowd(seats: CrowdSeat[], teamShare = TEAM_SHARE): Crowd | null {
   if (seats.length === 0) return null;
   const n = seats.length;
   const bodyMat = toon(0xffffff);
@@ -119,7 +119,7 @@ export function makeCrowd(seats: CrowdSeat[]): Crowd | null {
     return c.setHSL(hsl.h, Math.min(1, hsl.s * 1.15), hsl.l);
   };
   seats.forEach((seat, i) => {
-    const team = hash(i, 11) < TEAM_SHARE;
+    const team = hash(i, 11) < teamShare;
     const shirt = team ? teamColor(seat.side, hash(i, 12) < 0.5 ? "main" : "dark") : SHIRTS[Math.floor(hash(i, 13) * SHIRTS.length)];
     bodies.setColorAt(i, vivid(shirt));
     heads.setColorAt(i, vivid(CROWD_SKIN[Math.floor(hash(i, 14) * CROWD_SKIN.length)]));

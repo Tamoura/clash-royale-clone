@@ -10,7 +10,7 @@
  */
 import * as THREE from "three";
 import { ARENA_HEIGHT, ARENA_WIDTH } from "../../../game/arena";
-import type { ArenaLook } from "../../arenaLooks";
+import { stagePalette, type ArenaLook } from "../../arenaLooks";
 import { THEME } from "../../theme";
 import { Sculpt, sculptMaterial, tone } from "../views/towerCraft";
 import type { CrowdSeat } from "./crowd";
@@ -86,7 +86,7 @@ function gallery(s: Sculpt, sx: number, zc: number, len: number, side: "player" 
     const z = zc - len / 2 + (i + 0.5) * (len / stripes);
     const g = new THREE.BoxGeometry(0.9, 0.05, len / stripes);
     g.rotateZ(sx * 0.45);
-    s.add(g, i % 2 ? 0xf3ead6 : team, ax, GAL_H + 1.2, z, 0, lit);
+    s.add(g, i % 2 ? stagePalette(look).awning : team, ax, GAL_H + 1.2, z, 0, lit);
   }
   for (let z = zc - len / 2 + 0.1; z <= zc + len / 2; z += len / 3) {
     s.cyl(0.035, 0.035, 1.25, 0x6e4a28, sx * (GAL_X + GAL_DEPTH - 0.05), GAL_H + 0.6, z, 5);

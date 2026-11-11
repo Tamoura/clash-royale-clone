@@ -12,6 +12,13 @@ import {
   luminanceAt,
 } from "./groundPaint";
 import { KIT_TRIANGLE_BUDGET, buildKit } from "./kits";
+import { FLOOR_RECIPES, floorRecipe } from "./groundPaint";
+import { buildClassicScenery, OUTER_THEMES } from "./scenery";
+import { buildGoldenSurround } from "./golden";
+import { buildClassicBridges } from "./bridges";
+import { buildRiver } from "./river";
+import { buildTufts } from "./tufts";
+import { makeCrowd, poseCrowd } from "./crowd";
 import { LightPools, NIGHT_NATIVE_FLOOR, poolIntensity } from "./lightPools";
 
 const ALL: ArenaLook[] = [...Object.values(LOOKS), ...Object.values(ISLAMIC_LOOKS)];
@@ -168,5 +175,95 @@ describe("ambient weather", () => {
     expect(Object.values(a.points.geometry.attributes).map((at) => (at as THREE.BufferAttribute).version)).toEqual(versions);
     expect(a.material.version).toBe(0);
     vi.restoreAllMocks();
+  });
+});
+
+describe("toy tournament stage (all 22 looks)", () => {
+  afterEach(() => clearGroundCache());
+
+  const classic = Object.values(LOOKS);
+  const golden = Object.values(ISLAMIC_LOOKS);
+
+  /** Mean luminance of each whole tile of open turf, split by checker parity. */
+  function parityMeans(look: ArenaLook, islamic: boolean): [number, number] {
+    const img = groundPainter.paint(look, islamic);
+    const sums = [0, 0];
+    const counts = [0, 0];
+    for (let ty = 1; ty < ARENA_HEIGHT - 1; ty++) {
+      for (let tx = 1; tx < ARENA_WIDTH - 1; tx++) {
+        // Skip tiles that hold lanes, banks or aprons: sample open floor only.
+        if (Math.abs(ty + 0.5 - 16) < 2.2 || Math.abs(tx + 0.5 - 3.5) < 1.6 || Math.abs(tx + 0.5 - 14.5) < 1.6) continue;
+        if (Math.abs(ty + 0.5 - 6.5) < 2.4 || Math.abs(ty + 0.5 - 25.5) < 2.4 || ty < 5 || ty > 26) continue;
+        let sum = 0;
+        for (let k = 0; k < 16; k++) sum += luminanceAt(img, tx + 0.125 + (k % 4) * 0.25, ty + 0.125 + Math.floor(k / 4) * 0.25);
+        const par = (tx + ty) & 1;
+        sums[par] += sum / 16;
+        counts[par]++;
+      }
+    }
+    return [sums[0] / counts[0], sums[1] / counts[1]];
+  }
+
+  it.each(classic.map((l) => [l.id, l] as const))("%s floor has no checkerboard", (_id, look) => {
+    const [even, odd] = parityMeans(look, false);
+    // The old painter's checker was a +-4.5% swing; tiles now differ by noise only.
+    expect(Math.abs(even - odd) / ((even + odd) / 2)).toBeLessThan(0.012);
+  });
+
+  it("every classic look has its own floor recipe", () => {
+    for (const look of classic) expect(FLOOR_RECIPES[look.id]).toBe(floorRecipe(look));
+    expect(new Set(classic.map((l) => floorRecipe(l))).size).toBe(11);
+  });
+
+  it.each(classic.map((l) => [l.id, l] as const))("%s builds its surround, bridges, river and crowd", (_id, look) => {
+    const parent = new THREE.Group();
+    const seats = buildClassicScenery(parent, look);
+    expect(seats.length).toBeGreaterThan(120);
+    const names = parent.children.map((c) => c.name);
+    expect(names).toContain("classic-scenery");
+    expect(names.filter((n) => n === "classic-forest")).toHaveLength(2);
+    expect(names.filter((n) => n === "outer-ring")).toHaveLength(2);
+    expect(OUTER_THEMES[look.id]).toBeDefined();
+    const bridges = buildClassicBridges(parent, look, () => new THREE.MeshBasicMaterial());
+    if (look.band.bridge !== "timber") expect(bridges.length).toBeGreaterThan(0);
+    const river = buildRiver(parent, look);
+    expect(river.mesh.name).toBe("river");
+    const crowd = makeCrowd(seats)!;
+    expect(crowd.bodies.count).toBe(seats.length);
+    poseCrowd(crowd, 1.2, 1, 1, 1);
+    // The forest and outer ring never cast: the per-frame shadow pass skips them.
+    for (const c of parent.children) if (c.userData.dressing) expect((c as THREE.Mesh).castShadow).toBe(false);
+  });
+
+  it.each(golden.map((l) => [l.id, l] as const))("%s builds its galleries, town and canal", (_id, look) => {
+    const parent = new THREE.Group();
+    const seats = buildGoldenSurround(parent, look);
+    expect(seats.length).toBeGreaterThan(80);
+    const names = parent.children.map((c) => c.name);
+    expect(names).toContain("golden-galleries");
+    expect(names.filter((n) => n === "golden-town")).toHaveLength(2);
+    expect(names.filter((n) => n === "golden-palms")).toHaveLength(2);
+    expect(buildRiver(parent, look).mesh.name).toBe("river");
+    expect(buildTufts(look)).toBeNull();
+    const img = groundPainter.paint(look, true);
+    expect(img.width).toBe(ARENA_WIDTH * img.pxPerUnit);
+  });
+
+  it("grows tufts on the grassy floors only", () => {
+    expect(buildTufts(LOOKS.meadow)!.count).toBeGreaterThan(200);
+    expect(buildTufts(LOOKS.forge)).toBeNull();
+    expect(buildTufts(LOOKS.neon)).toBeNull();
+  });
+
+  it("biases each half's crowd toward its team colour", () => {
+    const seats = Array.from({ length: 200 }, (_, i) => ({ x: i, z: -5, y: 1, face: 0, side: "enemy" as const }));
+    const crowd = makeCrowd(seats)!;
+    const c = new THREE.Color();
+    let reds = 0;
+    for (let i = 0; i < 200; i++) {
+      crowd.bodies.getColorAt(i, c);
+      if (c.r > c.g * 1.6 && c.r > c.b * 1.6) reds++;
+    }
+    expect(reds).toBeGreaterThan(50);
   });
 });

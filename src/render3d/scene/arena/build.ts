@@ -13,6 +13,7 @@ import { toon } from "../../characters3d";
 import { batchStatic } from "../../staticBatch";
 import { THEME } from "../../theme";
 import type { QualityLevel } from "../../quality";
+import { stagePalette } from "../../arenaLooks";
 import type { Battle3D } from "../../scene3d";
 import { LOOK, arabic, toWorld, unlitGlow, viewSide } from "../common";
 import { skyHorizon } from "../sky";
@@ -174,7 +175,7 @@ export function archGateway(): THREE.Group {
 
 /** Hand the crowd to the scene (2 draws) and keep its posing state. */
 function installCrowd(b: Battle3D, seats: CrowdSeat[]): Crowd | null {
-  const crowd = makeCrowd(seats);
+  const crowd = makeCrowd(seats, stagePalette(LOOK).crowdTeamShare);
   if (!crowd) return null;
   b.crowd = { bodies: crowd.bodies, heads: crowd.heads, seats: seats.map((s) => new THREE.Vector2(s.x, s.z)) };
   b.arenaGroup.add(crowd.bodies, crowd.heads);
