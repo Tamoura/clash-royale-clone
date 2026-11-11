@@ -48,7 +48,7 @@
       document.body.appendChild(renderer.domElement);
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(edition === "golden" ? 0xd8c8a0 : 0x86b85a);
-      document.body.style.background = "#" + scene.background.getHexString();
+      document.documentElement.style.background = document.body.style.background = "#" + scene.background.getHexString();
       // The battle's light: warm sun from the player's upper-left, cool sky, a cool back rim and a camera-side fill.
       scene.add(new THREE.HemisphereLight(0xcfe2ff, 0x7d9a5c, 0.8));
       const sun = new THREE.DirectionalLight(0xffedc8, 1.7);
