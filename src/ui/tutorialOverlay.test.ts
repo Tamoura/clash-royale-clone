@@ -1,8 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
+import { createBattle } from "../game/battle";
 import { getCard, type CardId } from "../game/cards";
-import { TUTORIAL_CHALLENGE } from "../game/challenges";
-import { TUTORIAL_STEPS } from "../game/tutorial";
-import { NUDGE_MS, cardAt, controlsTop, nudgeCopy } from "./tutorialOverlay";
+import { TUTORIAL_CHALLENGE, applyWaves } from "../game/challenges";
+import { tick } from "../game/sim";
+import { TUTORIAL_KEY, TUTORIAL_STEPS, Tutorial, prepareTutorialBattle, tutorialChallenge } from "../game/tutorial";
+import {
+  NUDGE_BURST_MS,
+  NUDGE_MS,
+  cardAt,
+  clearNudge,
+  controlsTop,
+  newNudge,
+  nudgeCopy,
+  nudgeLine,
+  overlayPress,
+  pressNudge,
+  releaseNudge,
+} from "./tutorialOverlay";
 
 const rect = (left: number, top: number, width: number, height: number) => ({
   left,
@@ -143,5 +157,119 @@ describe("tutorial: a lesson never opens with the name of a different card", () 
     const spell = TUTORIAL_STEPS.find((s) => s.id === "spell")!;
     expect(spell.text[0]).not.toMatch(/archers/i);
     expect(spell.text[1]).not.toContain(golden("archers"));
+  });
+});
+
+// ---- The press wiring ---------------------------------------------------------------
+
+/**
+ * The tutorial battle resumed at lesson `from`, run (no one playing) until
+ * the lesson holds the clock, as main.ts's loop does.
+ */
+function heldLesson(from: number): { t: Tutorial; b: ReturnType<typeof createBattle> } {
+  const store = new Map<string, string>([[TUTORIAL_KEY, String(from)]]);
+  const t = new Tutorial({
+    getItem: (k) => store.get(k) ?? null,
+    setItem: (k, v) => void store.set(k, v),
+    removeItem: (k) => void store.delete(k),
+  });
+  const ch = tutorialChallenge(from);
+  const b = createBattle(ch.deck, ch.deck, {}, 1, { player: "princess", enemy: "princess" }, { player: "rally", enemy: "salvo" });
+  prepareTutorialBattle(b, ch);
+  t.enter(b);
+  const cursor = { next: 0 };
+  for (let i = 0; i < 30 * 60 && !t.holds(b); i++) {
+    tick(b, 1 / 30);
+    applyWaves(b, ch, cursor);
+    for (const ev of b.events.splice(0)) t.feed(ev, b);
+    t.feed({ type: "frame" }, b);
+  }
+  expect(t.holds(b)).toBe(true);
+  return { t, b };
+}
+
+describe("tutorial: a press on the dim screen during a lesson", () => {
+  const lesson = { live: true, onSkip: false, tapStep: false };
+
+  it("gets a nudge, not silence (a card that is not the lesson's lies under the dim)", () => {
+    expect(overlayPress({ ...lesson, onDim: true })).toBe("nudge");
+  });
+
+  it("continues a callout, and leaves Skip, the bubble and a finished battle alone", () => {
+    expect(overlayPress({ ...lesson, tapStep: true, onDim: true })).toBe("continue");
+    expect(overlayPress({ ...lesson, onSkip: true, onDim: false })).toBe("none");
+    expect(overlayPress({ ...lesson, onDim: false })).toBe("none"); // the coach's bubble
+    expect(overlayPress({ ...lesson, live: false, onDim: true })).toBe("none");
+  });
+
+  it("in the Fireball lesson, pressing Archers names the Fireball and keeps the clock held", () => {
+    const { t, b } = heldLesson(3);
+    expect(t.current?.id).toBe("spell");
+    const before = { step: t.step, time: b.time, elixir: b.player.elixir.amount, units: b.entities.length };
+    const st = newNudge();
+    const r = pressNudge(st, t, b, "archers", 1000, (id) => getCard(id).name);
+    expect(r).toEqual({ fresh: true, target: "fireball" });
+    expect(nudgeLine(st, true, 1001)).toEqual(["Not that one. Use the glowing Fireball card!", expect.stringContaining("Fireball")]);
+    // Nothing moved on: same step, the clock still held, nothing played.
+    expect(t.step).toBe(before.step);
+    expect(t.holds(b)).toBe(true);
+    expect({ step: t.step, time: b.time, elixir: b.player.elixir.amount, units: b.entities.length }).toEqual(before);
+    // The lesson's own line comes back after a moment.
+    expect(nudgeLine(st, true, 1000 + NUDGE_MS - 1)).not.toBeNull();
+    expect(nudgeLine(st, true, 1000 + NUDGE_MS)).toBeNull();
+    // ...and only while the lesson holds the clock.
+    expect(nudgeLine(st, false, 1001)).toBeNull();
+  });
+
+  it("a burst of presses wiggles once; a later press wiggles again", () => {
+    const { t, b } = heldLesson(3);
+    const st = newNudge();
+    const name = (id: CardId): string => getCard(id).name;
+    expect(pressNudge(st, t, b, "archers", 0, name)?.fresh).toBe(true);
+    expect(pressNudge(st, t, b, "archers", NUDGE_BURST_MS - 1, name)?.fresh).toBe(false);
+    expect(pressNudge(st, t, b, null, NUDGE_BURST_MS * 3, name)?.fresh).toBe(true);
+    expect(nudgeLine(st, true, NUDGE_BURST_MS * 3)?.[0]).toBe("Drag the glowing Fireball card onto the glowing spot!");
+  });
+
+  it("in the King lesson, a card press points at the King's power", () => {
+    const { t, b } = heldLesson(5);
+    expect(t.current?.id).toBe("king");
+    const st = newNudge();
+    expect(pressNudge(st, t, b, "giant", 0, (id) => getCard(id).name)).toEqual({ fresh: true, target: null });
+    expect(nudgeLine(st, true, 1)?.[0]).toBe("Not a card this time. Tap your glowing King power!");
+    expect(t.holds(b)).toBe(true);
+  });
+});
+
+describe("tutorial: the wrong press's release", () => {
+  const copy: [string, string] = ["Not that one. Use the glowing Fireball card!", "ليست هذه. استخدم بطاقة قذيفة نفط المضيئة!"];
+  const pressed = (at: number, pointer = 7) => {
+    const st = newNudge();
+    st.text = copy;
+    st.until = at + NUDGE_MS;
+    st.pointer = pointer;
+    return st;
+  };
+
+  it("a slow, wrong drag gets the nudge again when it is dropped", () => {
+    const st = pressed(0);
+    expect(nudgeLine(st, true, 10_000)).toBeNull(); // the line had gone back mid-drag
+    expect(releaseNudge(st, 7, 10_000)).toBe(true); // fresh: wiggle and replay the glove
+    expect(nudgeLine(st, true, 10_001)).toEqual(copy);
+    expect(releaseNudge(st, 7, 10_100)).toBeNull(); // once per press
+  });
+
+  it("a quick tap's release keeps the line up without a second wiggle", () => {
+    const st = pressed(0);
+    expect(releaseNudge(st, 7, 120)).toBe(false);
+    expect(nudgeLine(st, true, NUDGE_MS + 100)).toEqual(copy);
+  });
+
+  it("ignores another finger, and a step that moved on", () => {
+    const st = pressed(0);
+    expect(releaseNudge(st, 8, 5000)).toBeNull();
+    clearNudge(st);
+    expect(releaseNudge(st, 7, 5000)).toBeNull();
+    expect(nudgeLine(st, true, 5001)).toBeNull();
   });
 });
