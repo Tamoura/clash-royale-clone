@@ -14,8 +14,10 @@
  * box's crown: his canopy and HP plate) only has to clear the chips that
  * sit over it, so where the band leaves the middle free (tablets) he rises
  * between them instead of shrinking the board. Wherever he may rise into the
- * band's box (between the chips on a tablet, under shorter chips than the
- * clock on a short phone), its shading stays off his column
+ * band's box (any tall screen where the chips over his column end above the
+ * band's lowest chip: between the chips on a tablet, and on portrait phones
+ * too, short or not, where a chip beside his column ends a few px under the
+ * ones over it), its shading stays off his column
  * (:root[data-crown="free"], --crown-l / --crown-r), so his canopy and HP
  * plate keep their full brightness. Wide mode frames the board between the
  * two side panels.
