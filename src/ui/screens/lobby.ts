@@ -83,11 +83,13 @@ export function failText(reason: FailReason, flow: Flow): string {
       return tr("That game timed out. Make a new one.", "انتهت مهلة هذه المباراة. أنشئ واحدة جديدة.");
     case "rate-limited":
       // A join is refused after too many wrong codes (server/joinGuard.ts),
-      // for up to ten minutes; a create only after very fast repeats.
+      // for up to ten minutes, or after very fast repeats (the pairing limit,
+      // seconds): "a little while" is true for both. A create only meets the
+      // pairing limit.
       return flow === "join"
         ? tr(
-            "Too many wrong codes. Wait a few minutes, then check the code with your friend.",
-            "رموز خاطئة كثيرة. انتظر بضع دقائق، ثم تأكّد من الرمز مع صديقك.",
+            "Too many wrong codes. Wait a little while, then check the code with your friend.",
+            "رموز خاطئة كثيرة. انتظر قليلًا، ثم تأكّد من الرمز مع صديقك.",
           )
         : tr("Too many tries. Wait a few seconds.", "محاولات كثيرة. انتظر بضع ثوانٍ.");
     case "server-restart":

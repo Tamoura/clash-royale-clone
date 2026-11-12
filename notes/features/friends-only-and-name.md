@@ -16,9 +16,13 @@ Owner decisions this follows: no strangers online, ever; the name is Crown Rush.
 - **Codes are a word and three digits** (`BEAR088`, 20,000 codes; they were
   `LION42`, 2,000). Typing `bear-088` or `Bear 088` still works.
 - **Ten wrong codes in ten minutes** pause joins from that home for ten
-  minutes. The eleventh try says "Too many wrong codes. Wait a few minutes,
-  then check the code with your friend." (Arabic: "رموز خاطئة كثيرة. انتظر بضع
-  دقائق، ثم تأكّد من الرمز مع صديقك.")
+  minutes. The eleventh try says "Too many wrong codes. Wait a little while,
+  then check the code with your friend." (Arabic: "رموز خاطئة كثيرة. انتظر
+  قليلًا، ثم تأكّد من الرمز مع صديقك.") "A little while" is true for both
+  limits a join can meet: the wrong-code pause (ten minutes) and the old
+  pairing limit (5 tries in 10 s, seconds). A page cached from before this
+  update still shows its old line, "Too many tries. Wait a few seconds.",
+  for the new ten-minute pause: rare, and it goes once the page updates.
 - **The name is Crown Rush** on the tab, the loading splash, the home-screen
   label and the installed app. In the Golden Age edition the tab and splash say
   **هجمة التاج** ("the crown's charge").

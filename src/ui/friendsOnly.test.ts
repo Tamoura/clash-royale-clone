@@ -54,7 +54,10 @@ describe("friends-only online", () => {
 
   it("tells a kid who typed too many wrong codes what to do", () => {
     // Node tests run the Golden Age edition, so these are the Arabic lines.
-    expect(failText("rate-limited", "join")).toBe("رموز خاطئة كثيرة. انتظر بضع دقائق، ثم تأكّد من الرمز مع صديقك.");
+    // "A little while": a join is refused for up to ten minutes after wrong
+    // codes, or for seconds after very fast repeats; the line fits both.
+    expect(failText("rate-limited", "join")).toBe("رموز خاطئة كثيرة. انتظر قليلًا، ثم تأكّد من الرمز مع صديقك.");
+    expect(lobbySource).toContain('"Too many wrong codes. Wait a little while, then check the code with your friend."');
     expect(failText("rate-limited", "create")).toBe("محاولات كثيرة. انتظر بضع ثوانٍ.");
     expect(failText("quick-disabled", "join")).toContain("مع الأصدقاء فقط");
   });
