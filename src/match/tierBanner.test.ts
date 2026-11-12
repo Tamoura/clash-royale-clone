@@ -160,6 +160,17 @@ describe("auto difficulty tells the kid when the bot moves", () => {
     expect(banners(end)).toHaveLength(1);
   });
 
+  it("never cheers a step up under DEFEAT: the climb waits for the next match not lost", () => {
+    mem.set(DIFF_KEY, "auto");
+    save({ v: 1, ladderMatches: 12, tier: "easy", history: diffs(3, 1, 0, 2, 2) });
+    const lost = finish(0, 1); // closes two +3 windows, but it is a defeat
+    expect(loadAutoState(400).tier).toBe("easy");
+    expect(banners(lost)).toHaveLength(0);
+    const won = finish(2, 0); // windows 1+0+2 and 2-1+2: both still decisive
+    expect(loadAutoState(400).tier).toBe("normal");
+    expect(banners(won).map((b) => b.dataset.step)).toEqual(["up"]);
+  });
+
   it("steps down and kindly says the bot will go easier, above the coach tip", () => {
     mem.set(DIFF_KEY, "auto");
     save({ v: 1, ladderMatches: 12, tier: "normal", history: diffs(-1, -1) });

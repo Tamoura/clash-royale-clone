@@ -184,7 +184,10 @@ const crownSum = (window: readonly MatchSample[]): number => window.reduce((s, m
  *   crown diffs add up to +3 or more, and so do the 3 before them. So a
  *   kid climbs after six good matches at a tier, not on one lucky run
  *   (with one window, a big win plus two draws was enough), and lands on
- *   the next step ready for it. Else stay at `current`.
+ *   the next step ready for it. Never on a defeat, though: the result
+ *   screen would show "The bot is getting smarter!" under DEFEAT, so the
+ *   climb waits for a match that is not lost and still closes two
+ *   decisive windows. Else stay at `current`.
  */
 export function autoTier(
   history: readonly MatchSample[],
@@ -208,6 +211,7 @@ export function autoTier(
   if (latest <= -DECISIVE_CROWNS) return down;
   if (
     history.length >= 2 * WINDOW &&
+    sampleOutcome(last) !== "loss" &&
     latest >= DECISIVE_CROWNS &&
     crownSum(history.slice(-2 * WINDOW, -WINDOW)) >= DECISIVE_CROWNS
   ) {

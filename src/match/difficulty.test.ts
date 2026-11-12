@@ -142,8 +142,30 @@ describe("autoTier", () => {
     expect(autoTier(diffs(1, 1, 1, 1, 1, 1), 9, "rookie")).toBe("easy");
     expect(autoTier(diffs(3, 0, 0, 3, 0, 0), 9, "easy")).toBe("normal");
     expect(autoTier(diffs(-1, 3, 1, -1, 3, 1), 9, "easy")).toBe("normal"); // four wins, two losses
-    expect(autoTier(diffs(3, 1, 0, 2, 2, -1), 9, "normal")).toBe("hard");
+    expect(autoTier(diffs(3, 1, 0, 2, 1, 0), 9, "normal")).toBe("hard"); // a draw can close it
     expect(autoTier(diffs(3, 3, 3, 3, 3, 3), 9, "hard")).toBe("hard"); // already at the top
+  });
+
+  it("never steps up on a defeat: the climb waits for a match that is not lost", () => {
+    // Both windows are decisive (+4, +3), but the latest match was lost.
+    expect(autoTier(diffs(3, 1, 0, 2, 2, -1), 9, "normal")).toBe("normal");
+    // A 0-0 tiebreak defeat is a defeat too.
+    expect(autoTier([...diffs(3, 1, 0, 2, 2), { crownDiff: 0, outcome: "loss" }], 9, "easy")).toBe("easy");
+
+    let s: AutoState = { v: 1, ladderMatches: 9, tier: "normal", history: diffs(3, 1, 0, 2, 2) };
+    s = recordAutoResult(s, -1, "loss");
+    expect(s.tier).toBe("normal");
+    expect(s.history).toHaveLength(HISTORY_SIZE); // the record is kept, not reset
+    // The next win still closes two decisive windows (1+0+2, 2-1+2): up it goes.
+    s = recordAutoResult(s, 2, "win");
+    expect(s.tier).toBe("hard");
+    expect(s.history).toEqual([]);
+
+    // A small win after the defeat no longer makes the latest window decisive (2-1+1).
+    let t: AutoState = { v: 1, ladderMatches: 9, tier: "normal", history: diffs(3, 1, 0, 2, 2) };
+    t = recordAutoResult(t, -1, "loss");
+    t = recordAutoResult(t, 1, "win");
+    expect(t.tier).toBe("normal");
   });
 
   it("does not step up on one lucky window or one big win counted twice", () => {
