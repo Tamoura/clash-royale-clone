@@ -108,8 +108,15 @@ screen offers "Quick match" / "Find a match" in either language.
   definitions only) and `src/meta/quests.ts` (20-21). No other افز exists.
 - Digits: `render/cardinfo.ts` formats every number in the Arabic lines
   (English lines keep plain digits); HP plates use `formatInt` (new in
-  `src/ui/i18n.ts`, Arabic-Indic and no grouping: ٢٥٣٤); Profile uses the
-  season's name (`seasonName`, as the Crown Pass does); raw costs, prices,
+  `src/ui/i18n.ts`, Arabic-Indic and no grouping: ٢٥٣٤) through
+  `hpPlateLabel`, and so does the level shield capping the bar
+  (`levelBadgeLabel`: ٩; added after review, it was a Latin 9); the floating
+  damage numbers' glyph atlas paints its digit cells as ٠-٩ (`glyphFace` in
+  `render3d/scene/fx/glyphs.ts`; popup text stays "160" inside, so merging
+  is unchanged; added after review). The shield and the atlas are painted
+  once, so both repaint when the Arabic face (Baloo Bhaijaan 2, which
+  supplies the digits; Lilita One has none) has loaded. Profile uses the
+  season's name (`seasonLine` → `seasonName`, as the Crown Pass does); raw costs, prices,
   rewards and shard counts in Arabic labels and banners (card info,
   collection, deck picker, draft, frame, home, studio, rewards, the Champion
   Bot banner) go through `fmtNum`.
@@ -158,10 +165,29 @@ screenshots in `/tmp/claude-0/r1/online/shots/`.
 - Tests: `server/joinGuard.test.ts`, `server/relay.test.ts` (bundles the
   relay and runs it on a free port: Quick match refused by default, 3-digit
   codes, typos then the right code start a match, the 11th try after 10 wrong
-  codes is rate-limited while another home still joins; it fails if the guard
-  is unwired), `src/ui/friendsOnly.test.ts`, `src/ui/lobbyCode.test.ts`,
+  codes is rate-limited while another home still joins, rotating /64s inside
+  one /56 stops at 30; it fails if the guard is unwired),
+  `src/ui/friendsOnly.test.ts`, `src/ui/lobbyCode.test.ts`,
   `src/app/brand.test.ts`, `src/app/sw.test.ts`, `src/render/cardinfo.test.ts`,
-  `src/ui/i18nLint.test.ts`.
+  `src/ui/i18nLint.test.ts`, `src/render3d/goldenDigits.test.ts` (formatInt,
+  the HP plate and level shield painters, the damage-number atlas and the
+  profile season line: no Latin digits in Golden Age, Latin in Classic).
+
+### After review (scripts and shots in `/tmp/claude-0/r1/online-fix/`)
+
+- Dev server, bot battle with troops sent at the enemy towers, dsf 2: Golden
+  Age damage numbers ١٨٠ / ٢٣٠, level shields ٩ next to plates ٤٠٠٨ / ٢١١٤
+  (`shots/ga-dmg-top-0.png`, `-top-2.png`); Classic unchanged, 180 / 100,
+  shields 9, plates 4008 / 1194 (`shots/cl-dmg-top-1.png`).
+- Production build on the relay: a friend match in each edition (DEER310,
+  LION379; both battles start), then 10 wrong codes and the 11th answered
+  with the new line, "Too many wrong codes. Wait a little while, then check
+  the code with your friend." / "رموز خاطئة كثيرة. انتظر قليلًا، ثم تأكّد من
+  الرمز مع صديقك." (`shots/cl-friend-7-wrong-11.png`,
+  `shots/ga-friend-7-wrong-11.png`). Golden Age profile still reads
+  "الموسم: نوفمبر ٢٠٢٦" (`shots/ga-prod-profile.png`), and the production
+  plates show ٩ shields (`shots/ga-prod-plates-top.png`, `-bottom.png`).
+  No page errors.
 
 ## Known gaps
 
