@@ -6,12 +6,14 @@
  * guaranteed to stay clear of it. No THREE here, so it is unit-tested
  * directly (fit.test.ts) and shared with the layout code (ui/layout.ts).
  *
- * The box is sized from the towers as built (towers.test.ts pins the
+ * The box is sized from the towers as built (kingExtents.test.ts pins the
  * numbers below to their geometry): the board from the near king's HP
  * plate to the far lanterns, and over its middle a "crown", the far king's
  * column, which rises past the lanterns with his canopy and his HP plate
  * on top. The crown is the tallest thing on the board; on a portrait phone
  * only the scoreboard chips that sit over it hold it down (Insets.crownTop).
+ * The gaps a plate keeps to its tower and to the tray are pixels (pads);
+ * its gap to the screen's edge grows with the board (EDGE_GAP).
  */
 
 /** CSS pixels the HUD covers along each edge of the canvas. */
@@ -83,15 +85,17 @@ export const NEAR_KING_FOOT = -11.75;
 export const CROWN_HALF_W = 2.3;
 /** The far lanterns: the board's top edge beside the crown (the box before the crown). */
 export const FAR_EDGE = 14;
+/**
+ * Between an HP plate and the screen's edge, or the scoreboard chips over
+ * the far king, in camera-space units, so it grows with the board: about
+ * 10 px on a laptop (a plate there reads as framed, not pressed against the
+ * edge), 4 px on a landscape phone, whose every pixel goes to the board.
+ */
+export const EDGE_GAP = 0.32;
 
 // ── Pixel gaps (they do not scale with the board) ──
 /** CSS px between an HP plate and the roofs or gate it labels (towers.ts: PLATE_CLEAR_PX and a 2 px margin). */
 export const PLATE_GAP_PX = 6;
-/**
- * CSS px between an HP plate and the screen's edge or a scoreboard chip:
- * enough that a plate reads as framed, not pressed against the edge.
- */
-export const EDGE_GAP_PX = 10;
 /** CSS px the tall band's inset already keeps under its chips (layoutWire.ts). */
 export const BAND_GAP_PX = 4;
 /**
@@ -100,35 +104,30 @@ export const BAND_GAP_PX = 4;
  */
 export const TRAY_MARK_PX = 10;
 
-const NEAR_EDGE = NEAR_KING_FOOT - KING_PLATE_H;
+/** The far king's column: his plate's top (and its gap) over his canopy, its own gap to his roofs in px. */
+const CROWN: Crown = { halfW: CROWN_HALF_W, top: FAR_KING_TOP + KING_PLATE_H + EDGE_GAP, padTop: PLATE_GAP_PX };
+/** The near king's plate's bottom edge under his gate (its gap to the gate in px). */
+const NEAR_PLATE = NEAR_KING_FOOT - KING_PLATE_H;
+
+/** A box from `bottom` to the far lanterns, `halfW` wide, with the far king's crown over it. */
+function boardBox(halfW: number, bottom: number, padBottom: number): ContentBox {
+  return { halfW, height: FAR_EDGE - bottom, mid: (FAR_EDGE + bottom) / 2, padBottom, crown: CROWN };
+}
 
 /**
  * Wide (side panels): the whole board, field half-width + edging, from the
- * near king's plate (with its gap and the screen's edge under it) to the far
- * lanterns, and the far king's column over them, his plate clear of the
- * screen's top edge.
+ * near king's plate (its edge gap under it) to the far lanterns, and the far
+ * king's column over them, his plate clear of the screen's top edge.
  */
-export const BATTLE_BOX: ContentBox = {
-  halfW: 9.95,
-  height: FAR_EDGE - NEAR_EDGE,
-  mid: (FAR_EDGE + NEAR_EDGE) / 2,
-  padBottom: PLATE_GAP_PX + EDGE_GAP_PX,
-  crown: { halfW: CROWN_HALF_W, top: FAR_KING_TOP + KING_PLATE_H, padTop: PLATE_GAP_PX + EDGE_GAP_PX },
-};
+export const BATTLE_BOX: ContentBox = boardBox(9.95, NEAR_PLATE - EDGE_GAP, PLATE_GAP_PX);
 
 /**
  * Portrait: the field is ±9 wide; keep a 0.25-unit sliver of edging so the
  * boundary still reads. Narrow screens are width-bound, so every bit of
  * edging given up here goes straight into bigger troops. The near plate
- * clears the tray's ornament; the band's inset carries part of the far
- * plate's gap to the chips.
+ * clears the tray's ornament under the board.
  */
-export const TALL_BOX: ContentBox = {
-  ...BATTLE_BOX,
-  halfW: 9.25,
-  padBottom: PLATE_GAP_PX + TRAY_MARK_PX,
-  crown: { halfW: CROWN_HALF_W, top: FAR_KING_TOP + KING_PLATE_H, padTop: PLATE_GAP_PX + EDGE_GAP_PX - BAND_GAP_PX },
-};
+export const TALL_BOX: ContentBox = boardBox(9.25, NEAR_PLATE, PLATE_GAP_PX + TRAY_MARK_PX);
 
 /** The top inset never takes more than this share of the canvas. */
 export const MAX_TOP_FRAC = 0.25;

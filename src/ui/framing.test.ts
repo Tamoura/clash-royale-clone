@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BAND_GAP_PX,
   CROWN_HALF_W,
-  EDGE_GAP_PX,
+  EDGE_GAP,
   FAR_EDGE,
   FAR_KING_TOP,
   KING_PLATE_H,
@@ -44,7 +44,9 @@ interface Frame {
   ins: Insets;
   /** Where the chips over the far king end (tall) or the screen's top edge (wide). */
   chipBottom: number;
-  /** What a near plate must stay over: the screen's bottom edge (wide) or the tray's ornament (tall). */
+  /** What the far king's plate must stay under: its edge gap under those. */
+  ceiling: number;
+  /** What a near plate must stay over: its edge gap over the screen's bottom edge (wide), the tray's ornament (tall). */
   floor: number;
   /** Camera-up → canvas px. */
   y: (u: number) => number;
@@ -65,12 +67,10 @@ function frame(w: number, h: number, safe: Insets = ZERO_INSETS, bandExtra = 0, 
   let ch: number;
   let alignY = 0.5;
   let chipBottom: number;
-  let floor: number;
   if (lay.mode === "wide") {
     ins = lay.insets;
     ch = h;
     chipBottom = ins.top;
-    floor = h - ins.bottom - EDGE_GAP_PX;
   } else {
     const band = (w >= 600 || w / h >= 0.47 ? 58 : 83) + safe.top + bandExtra + BAND_GAP_PX;
     const crownTop = crownFree ? safe.top + BAND_GAP_PX : band;
@@ -78,11 +78,13 @@ function frame(w: number, h: number, safe: Insets = ZERO_INSETS, bandExtra = 0, 
     ch = h - lay.tray;
     alignY = TALL_ALIGN_Y;
     chipBottom = crownTop - BAND_GAP_PX;
-    floor = ch - TRAY_MARK_PX;
   }
   const f = fitBattleFrustum(w, ch, ins, lay.box, alignY);
   const s = w / (f.right - f.left);
-  return { mode: lay.mode, w, h: ch, ins, chipBottom, floor, s, y: (u) => (f.top - u) * s, x: (u) => (u - f.left) * s };
+  const gap = EDGE_GAP * s;
+  const ceiling = lay.mode === "wide" ? chipBottom + gap : chipBottom + BAND_GAP_PX + gap;
+  const floor = lay.mode === "wide" ? ch - ins.bottom - gap : ch - TRAY_MARK_PX;
+  return { mode: lay.mode, w, h: ch, ins, chipBottom, ceiling, floor, s, y: (u) => (f.top - u) * s, x: (u) => (u - f.left) * s };
 }
 
 /** The kings on screen: the far king's top and plate, the near king's plate (canvas px). */
@@ -108,14 +110,16 @@ describe("the kings stay on screen, clear of the HUD", () => {
       it(`${w}x${h}${name}: the far king's roofs and plate, the near king's plate`, () => {
         const fr = frame(w, h, safe, bandExtra, crownFree);
         const k = kings(fr);
-        // The far king whole, his plate over his roofs, 6 px under the
-        // chips over him or the screen's top edge.
+        // The far king whole, his plate over his roofs and clear of the
+        // chips over him or the screen's top edge (3 to 12 px, with the board).
         expect(k.farTop).toBeGreaterThan(fr.chipBottom);
-        expect(k.farPlateTop).toBeGreaterThanOrEqual(fr.chipBottom + EDGE_GAP_PX - eps);
+        expect(k.farPlateTop).toBeGreaterThanOrEqual(fr.ceiling - eps);
+        expect(fr.ceiling - fr.chipBottom).toBeGreaterThanOrEqual(3 - eps);
         // The rest of the board's top (the far lanterns) under the whole band.
         expect(fr.y(FAR_EDGE)).toBeGreaterThanOrEqual(fr.ins.top - eps);
-        // The near king's plate over the tray's ornament, or 6 px over the screen's bottom edge.
+        // The near king's plate over the tray's ornament, or clear of the screen's bottom edge.
         expect(k.nearPlateBottom).toBeLessThanOrEqual(fr.floor + eps);
+        expect(fr.h - fr.ins.bottom - fr.floor).toBeGreaterThanOrEqual(3 - eps);
         // His column stays between the side panels.
         expect(fr.x(-CROWN_HALF_W)).toBeGreaterThanOrEqual(fr.ins.left - eps);
         expect(fr.x(CROWN_HALF_W)).toBeLessThanOrEqual(fr.w - fr.ins.right + eps);
@@ -131,10 +135,10 @@ describe("the kings stay on screen, clear of the HUD", () => {
         const widthBound = Math.abs(fr.x(fr.mode === "wide" ? 9.95 : 9.25) - fr.x(fr.mode === "wide" ? -9.95 : -9.25) - (fr.w - fr.ins.left - fr.ins.right)) < 1e-6;
         if (widthBound) continue;
         // Height-bound: the near plate sits exactly on its floor, and either
-        // the far plate exactly 6 px under what covers it, or the far lanterns
-        // exactly under the band.
+        // the far plate exactly its gap under what covers it, or the far
+        // lanterns exactly under the band.
         expect(k.nearPlateBottom, `${w}x${h}`).toBeCloseTo(fr.floor, 6);
-        const plateTight = Math.abs(k.farPlateTop - (fr.chipBottom + EDGE_GAP_PX)) < 1e-6;
+        const plateTight = Math.abs(k.farPlateTop - fr.ceiling) < 1e-6;
         const boardTight = Math.abs(fr.y(FAR_EDGE) - fr.ins.top) < 1e-6;
         expect(plateTight || boardTight, `${w}x${h}`).toBe(true);
       }

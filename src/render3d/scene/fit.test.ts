@@ -159,7 +159,7 @@ describe("fitBattleFrustum", () => {
     const boxPx = Math.max(TALL_BOX.height * s + (TALL_BOX.padTop ?? 0), (crown.top - bot) * s + crown.padTop) + (TALL_BOX.padBottom ?? 0);
     const slack = h - 87 - boxPx;
     // The far king's crown takes most of what the compact tray left over.
-    expect(slack).toBeGreaterThan(10);
+    expect(slack).toBeGreaterThan(5);
     const boxTop = (f: Frustum): number =>
       Math.min(toPx(f, w, h, 0, TALL_BOX.mid + TALL_BOX.height / 2).y - (TALL_BOX.padTop ?? 0), toPx(f, w, h, 0, crown.top).y - crown.padTop);
     const boxBottom = (f: Frustum): number => toPx(f, w, h, 0, bot).y + (TALL_BOX.padBottom ?? 0);
