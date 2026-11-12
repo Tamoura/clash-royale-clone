@@ -21,11 +21,11 @@ import { buildAmbient, disposeAmbient, updateAmbient, type Ambient } from "./amb
 import { buildBackdrop, type Backdrop } from "./backdrop";
 import { buildClassicBridges } from "./bridges";
 import { buildTufts } from "./tufts";
-import { makeCrowd, poseCrowd, type Crowd, type CrowdSeat } from "./crowd";
+import { makeCrowd, orientSeats, poseCrowd, type Crowd, type CrowdSeat, type SeatHome } from "./crowd";
 import { groundTexture, hashString } from "./groundPaint";
 import { LightPools, type LightSpot } from "./lightPools";
 import { buildRiver, type RiverHandle } from "./river";
-import { buildClassicScenery } from "./scenery";
+import { buildClassicScenery, orientSurround } from "./scenery";
 import { buildGoldenSurround } from "./golden";
 import { Sculpt, sculptMaterial, tone } from "../views/towerCraft";
 
@@ -35,8 +35,16 @@ interface ArenaArt {
   river: RiverHandle;
   pools: LightPools;
   ambient: Ambient | null;
-  /** Crowd seats 0..kitSeats-1 belong to the backdrop stand (host-view x/z). */
-  kitSeats: Array<{ x: number; z: number }>;
+  /**
+   * The court's surround (stands, pavilions or galleries, the forest or the
+   * town, the neon cage): built in the host's view, it turns with the view
+   * like the backdrop (scenery.ts orientSurround).
+   */
+  surround: THREE.Group;
+  /** Every crowd seat's host-view place and facing (they turn with their stands). */
+  homeSeats: SeatHome[];
+  /** Crowd seats 0..kitSeats-1 belong to the backdrop stand. */
+  kitSeats: number;
   /** The quality level the set was last dressed for. */
   level: QualityLevel | null;
   /** The instanced chibi crowd (null when there are no seats). */
@@ -189,20 +197,21 @@ function installCrowd(b: Battle3D, seats: CrowdSeat[]): Crowd | null {
 type Seat = CrowdSeat;
 
 /**
- * Set dressing around the court: the apron, the surround (scenery.ts for
- * Classic, golden.ts for the Golden Age: stands, crowd seats, pavilions or
- * souk awnings, the forest or the town), lantern strings and the bridge
- * torches or lanterns. Returns the crowd seats and appends every light to
- * `lights`. (The far band and the near band belong to the backdrop.)
+ * Set dressing around the court: the apron, the surround into `surround`
+ * (scenery.ts for Classic, golden.ts for the Golden Age: stands, crowd
+ * seats, pavilions or souk awnings, the forest or the town), lantern strings
+ * and the bridge torches or lanterns. Returns the crowd seats and appends
+ * every light to `lights`. (The far band and the near band belong to the
+ * backdrop.)
  */
-export function decorate(b: Battle3D, lights: LightSpot[]): Seat[] {
+export function decorate(b: Battle3D, lights: LightSpot[], surround: THREE.Object3D): Seat[] {
   // Outer apron framing the arena.
   const apron = new THREE.Mesh(new THREE.BoxGeometry(ARENA_WIDTH + 46, 0.36, ARENA_HEIGHT + 10), toon(LOOK.apron));
   apron.position.y = -0.24;
   apron.receiveShadow = true;
   b.arenaGroup.add(apron);
 
-  const seats: Seat[] = arabic ? buildGoldenSurround(b.arenaGroup, LOOK, (c) => b.glow(c)) : buildClassicScenery(b.arenaGroup, LOOK);
+  const seats: Seat[] = arabic ? buildGoldenSurround(surround, LOOK, (c) => b.glow(c)) : buildClassicScenery(surround, LOOK);
 
   // Strings of glowing lanterns flanking the field (look-dependent).
   // Unlit glow material, so the bloom pass makes them softly radiate;
@@ -395,6 +404,14 @@ export function buildArena(b: Battle3D): void {
   b.arenaGroup.add(field);
 
   // Edging around the playfield, post at each corner.
+  // The surround: everything dressed in the host's view with team colours by
+  // half (red far, blue near) or faces toward his camera; it turns as a unit
+  // for the online guest (applyEndStrings).
+  const surround = new THREE.Group();
+  surround.name = "surround";
+  surround.userData.batchRoot = true;
+  b.arenaGroup.add(surround);
+
   const hw = ARENA_WIDTH / 2 + 0.45;
   const hd = ARENA_HEIGHT / 2 + 0.15;
   const stone = LOOK.edging;
@@ -426,7 +443,7 @@ export function buildArena(b: Battle3D): void {
           b.glow(sz < 0 ? LOOK.neon.enemy : LOOK.neon.player),
         );
         neon.position.set(sx * hw, 0.56, sz * hd);
-        b.arenaGroup.add(neon);
+        surround.add(neon);
       }
     }
   }
@@ -438,13 +455,13 @@ export function buildArena(b: Battle3D): void {
         b.glow(sz < 0 ? LOOK.neon.enemy : LOOK.neon.player),
       );
       strip.position.set(0, 0.24, sz * hd);
-      b.arenaGroup.add(strip);
+      surround.add(strip);
     }
   }
   const tufts = buildTufts(LOOK);
   if (tufts) b.arenaGroup.add(tufts);
   const lights: LightSpot[] = [];
-  const seats = decorate(b, lights);
+  const seats = decorate(b, lights, surround);
 
   // The stadium backdrop behind the enemy king, with its own crowd stand
   // (seated first, so cheering can skip the off-screen side stands).
@@ -466,7 +483,9 @@ export function buildArena(b: Battle3D): void {
     river,
     pools,
     ambient,
-    kitSeats: kitSeats.map((st) => ({ x: st.x, z: st.z })),
+    surround,
+    homeSeats: [...kitSeats, ...seats].map((st) => ({ x: st.x, z: st.z, face: st.face })),
+    kitSeats: kitSeats.length,
     level: null,
     crowd,
     sides: [],
@@ -619,8 +638,9 @@ export function finishArena(b: Battle3D): RiverHandle {
 
 /**
  * Viewpoint-dependent dressing: hide the lantern string nearest the camera
- * (it would cross our king), and turn the backdrop, its crowd and its
- * lights to stand behind whichever king is at the far end.
+ * (it would cross our king), turn the backdrop, its crowd and its lights to
+ * stand behind whichever king is at the far end, and turn the surround with
+ * its crowd, so the viewer's opponent's colours are always at the far end.
  */
 export function applyEndStrings(b: Battle3D): void {
   if (b.endStringPlayer) b.endStringPlayer.visible = viewSide !== "player";
@@ -628,20 +648,16 @@ export function applyEndStrings(b: Battle3D): void {
   const art = ART.get(b);
   if (!art) return;
   art.backdrop.orient(viewSide);
+  // The surround casts (the stands): re-render the shadow map once it turns.
+  if (orientSurround(art.surround, viewSide)) b.renderer.shadowMap.needsUpdate = true;
   art.pools.orient(viewSide, {
     player: !b.endStringPlayer || b.endStringPlayer.visible,
     enemy: !b.endStringEnemy || b.endStringEnemy.visible,
   });
   if (art.crowd) {
-    // The far-band crowd turns with the backdrop to face the court.
-    const flip = viewSide === "player" ? 1 : -1;
-    art.kitSeats.forEach((st, i) => {
-      const seat = art.crowd!.seats[i];
-      seat.x = st.x * flip;
-      seat.z = st.z * flip;
-      seat.face = flip > 0 ? 0 : Math.PI;
-      b.crowd?.seats[i]?.set(seat.x, seat.z);
-    });
+    // Every spectator turns with his stand to face the court.
+    orientSeats(art.crowd.seats, art.homeSeats, viewSide);
+    art.crowd.seats.forEach((seat, i) => b.crowd?.seats[i]?.set(seat.x, seat.z));
     poseCrowd(art.crowd, -1, 0, 0);
   }
 }
@@ -712,7 +728,7 @@ export function updateCrowd(b: Battle3D, dt: number): void {
   if (!live && !cheering) return;
   art.posedStill = false;
   const sidesOnScreen = b.showcase || Math.max(-b.camera.left, b.camera.right) > STAND_INNER_X;
-  const n = sidesOnScreen ? Infinity : art.kitSeats.length;
+  const n = sidesOnScreen ? Infinity : art.kitSeats;
   poseCrowd(crowd, b.waterTime, jump, wave, live ? 1 : 0, n);
 }
 

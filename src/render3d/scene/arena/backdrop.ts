@@ -291,9 +291,11 @@ export function buildBackdrop(look: ArenaLook, glow: (color: number) => THREE.Me
     solid,
     orient(view: Side): void {
       group.rotation.y = view === "player" ? 0 : Math.PI;
-      // The banners belong to whoever owns the far king.
+      // The banners belong to the far king, who is always the viewer's
+      // opponent: his colours, as the towers wear them (teamSide), are the
+      // enemy's for the host and the online guest alike.
       if (!teamColor) return;
-      TMP.set(liveTeamColor(view === "player" ? "enemy" : "player")).getHSL(HSL);
+      TMP.set(liveTeamColor("enemy")).getHSL(HSL);
       TMP.setHSL(HSL.h, Math.min(1, HSL.s * 1.2), HSL.l);
       for (const [start, count] of kit.team) {
         // Team parts hang high, above the baked ground shading.

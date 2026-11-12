@@ -39,6 +39,21 @@ export function contactShadow(s: Sculpt, x: number, z: number, rx: number, rz: n
   }
 }
 
+/**
+ * Turn the court's surround (stands, pavilions, banners, the forest or the
+ * town: everything built in the host's view) to `view`'s end. It is built
+ * point-symmetric, red on the far (enemy) half and its faces toward the
+ * host's camera, so half a circle gives an online guest, whose camera looks
+ * from the other end, the same picture: his opponent's colours at the far
+ * end, his own near him, and every door, shield and window toward him.
+ */
+export function orientSurround(surround: THREE.Object3D, view: "player" | "enemy"): boolean {
+  const y = view === "player" ? 0 : Math.PI;
+  if (surround.rotation.y === y) return false;
+  surround.rotation.y = y;
+  return true;
+}
+
 /** Team cloth for the stands: the live team colour, a touch deeper on the set. */
 export function setTeam(side: "player" | "enemy"): number {
   return tone(teamColor(side), 0.92, 0.95);

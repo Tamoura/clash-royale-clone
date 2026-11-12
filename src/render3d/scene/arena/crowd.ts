@@ -27,6 +27,30 @@ export interface CrowdSeat {
   side: Side;
 }
 
+/** A seat's place and facing in the host's view (z toward the host's camera). */
+export interface SeatHome {
+  x: number;
+  z: number;
+  face: number;
+}
+
+/**
+ * Turn every seat to `view`'s end: the stands (the far band's with the
+ * backdrop, the side stands with the surround) turn half a circle for the
+ * online guest, so their spectators go with them, team shirts included: the
+ * fans in the viewer's opponent's colour stay at the far end.
+ */
+export function orientSeats(seats: CrowdSeat[], home: readonly SeatHome[], view: Side): void {
+  const flip = view === "player" ? 1 : -1;
+  home.forEach((h, i) => {
+    const seat = seats[i];
+    if (!seat) return;
+    seat.x = h.x * flip;
+    seat.z = h.z * flip;
+    seat.face = flip > 0 ? h.face : h.face + Math.PI;
+  });
+}
+
 /** Six skin tones, light to deep. */
 export const CROWD_SKIN = [0xf8d2b0, 0xeab48a, 0xd39a6c, 0xb07650, 0x8a5636, 0x5e3a24] as const;
 /** Eight shirt colours (team colours are added by the bias). */

@@ -13,14 +13,19 @@ import {
 } from "./groundPaint";
 import { KIT_TRIANGLE_BUDGET, buildKit } from "./kits";
 import { FLOOR_RECIPES, floorRecipe } from "./groundPaint";
-import { buildClassicScenery, OUTER_THEMES } from "./scenery";
+import { buildClassicScenery, OUTER_THEMES, orientSurround } from "./scenery";
 import { LOT_GAP, buildGoldenSurround, townLots, townPalette } from "./golden";
 import { ICE_BRIDGE, buildClassicBridges } from "./bridges";
 import { buildRiver } from "./river";
 import { buildTufts } from "./tufts";
-import { makeCrowd, poseCrowd } from "./crowd";
+import { makeCrowd, orientSeats, poseCrowd } from "./crowd";
 import { LightPools, NIGHT_NATIVE_FLOOR, poolIntensity } from "./lightPools";
 import { toon } from "../../characters3d";
+import { setViewSide } from "../common";
+import { tone } from "../views/towerCraft";
+import { towerTeamColors } from "../views/towers";
+import { setPrefs } from "../../../ui/prefs";
+import type { Side } from "../../../game/arena";
 
 const ALL: ArenaLook[] = [...Object.values(LOOKS), ...Object.values(ISLAMIC_LOOKS)];
 const lookWith = (kind: string): ArenaLook => ALL.find((l) => l.backdrop === kind)!;
@@ -58,16 +63,30 @@ describe("backdrop kits", () => {
     }
   });
 
-  it("turns the set and recolours its banners for the online guest", () => {
-    const bd = buildBackdrop(LOOKS.meadow, glow);
-    const colors = bd.solid!.geometry.getAttribute("color");
-    const [start] = bd.kit.team[0];
-    bd.orient("player");
-    const red = colors.getX(start);
-    bd.orient("enemy");
-    expect(bd.group.rotation.y).toBeCloseTo(Math.PI);
-    expect(colors.getX(start)).toBeLessThan(red); // red banners became blue
-    expect(colors.getZ(start)).toBeGreaterThan(colors.getX(start));
+  it("turns the set for the online guest and keeps its banners in the far king's colours", () => {
+    const hsl = { h: 0, s: 0, l: 0 };
+    const hue = (c: THREE.Color): number => c.getHSL(hsl).h;
+    try {
+      for (const palette of ["default", "cb"] as const) {
+        setPrefs({ teamPalette: palette });
+        const bd = buildBackdrop(LOOKS.meadow, glow);
+        const colors = bd.solid!.geometry.getAttribute("color");
+        const [start] = bd.kit.team[0];
+        for (const view of ["player", "enemy"] as const) {
+          setViewSide(view);
+          bd.orient(view);
+          expect(bd.group.rotation.y).toBeCloseTo(view === "player" ? 0 : Math.PI);
+          // The far king is the viewer's opponent: the sim's enemy for the
+          // host, its player for the guest. His banners wear his cloth.
+          const farKing = towerTeamColors(view === "player" ? "enemy" : "player");
+          const banner = new THREE.Color(colors.getX(start), colors.getY(start), colors.getZ(start));
+          expect(hue(banner), `${palette} ${view}`).toBeCloseTo(hue(new THREE.Color(farKing.cloth)), 2);
+        }
+      }
+    } finally {
+      setViewSide("player");
+      setPrefs({ teamPalette: "default" });
+    }
   });
 
   it("screen placement helpers invert each other", () => {
@@ -374,5 +393,97 @@ describe("toy tournament stage (all 22 looks)", () => {
       if (c.r > c.g * 1.6 && c.r > c.b * 1.6) reds++;
     }
     expect(reds).toBeGreaterThan(50);
+  });
+});
+
+describe("the ring wears the viewer's colours (online guest, ?viewpoint=enemy)", () => {
+  /**
+   * The team tones a stand built for `cloth` paints (scenery.ts setTeam and
+   * what the stands derive from it), as chromaticity: a vertex's colour is
+   * one of them times its baked shading.
+   */
+  const tones = (cloth: number): number[][] => {
+    const base = tone(cloth, 0.92, 0.95);
+    return [base, tone(base, 0.9), tone(base, 0.72), tone(base, 0.7), tone(base, 1.18, 0.9)].map((hex) => {
+      const c = new THREE.Color(hex);
+      const m = Math.max(c.r, c.g, c.b);
+      return [c.r / m, c.g / m, c.b / m];
+    });
+  };
+  const wears = (r: number, g: number, b: number, set: number[][]): boolean => {
+    const m = Math.max(r, g, b);
+    if (m < 0.02) return false;
+    return set.some(([tr, tg, tb]) => Math.abs(r / m - tr) < 0.015 && Math.abs(g / m - tg) < 0.015 && Math.abs(b / m - tb) < 0.015);
+  };
+  /** Team-toned vertices of every sculpt under `root`, per end of the court (far/near from `view`'s camera). */
+  const census = (root: THREE.Object3D, view: Side): Record<"far" | "near", Record<"opp" | "own", number>> => {
+    const farKing = towerTeamColors(view === "player" ? "enemy" : "player").cloth;
+    const nearKing = towerTeamColors(view).cloth;
+    const opp = tones(farKing);
+    const own = tones(nearKing);
+    const out = { far: { opp: 0, own: 0 }, near: { opp: 0, own: 0 } };
+    const camZ = view === "player" ? 1 : -1;
+    const v = new THREE.Vector3();
+    root.updateMatrixWorld(true);
+    root.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      const col = mesh.isMesh ? (mesh.geometry.getAttribute("color") as THREE.BufferAttribute | undefined) : undefined;
+      if (!col) return;
+      const pos = mesh.geometry.getAttribute("position");
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+        if (Math.abs(v.z) < 1) continue; // the river mouths
+        const end = v.z * camZ < 0 ? out.far : out.near;
+        const [r, g, b] = [col.getX(i), col.getY(i), col.getZ(i)];
+        if (wears(r, g, b, opp)) end.opp++;
+        else if (wears(r, g, b, own)) end.own++;
+      }
+    });
+    return out;
+  };
+  const cases: [string, (parent: THREE.Object3D) => unknown][] = [
+    ["Classic meadow", (p) => buildClassicScenery(p, LOOKS.meadow)],
+    ["Golden Age", (p) => buildGoldenSurround(p, Object.values(ISLAMIC_LOOKS)[0])],
+  ];
+  for (const palette of ["default", "cb"] as const) {
+    for (const [name, build] of cases) {
+      it(`${name} (${palette} palette): the far stands in the far king's cloth, the near ones in the viewer's`, () => {
+        try {
+          setPrefs({ teamPalette: palette });
+          for (const view of ["player", "enemy"] as const) {
+            setViewSide(view);
+            const surround = new THREE.Group();
+            build(surround);
+            orientSurround(surround, view);
+            const n = census(surround, view);
+            expect(n.far.opp, `${view}: far stands in the opponent's colours`).toBeGreaterThan(200);
+            expect(n.near.own, `${view}: near stands in the viewer's colours`).toBeGreaterThan(200);
+            expect(n.far.own, `${view}: none of the viewer's colours at the far end`).toBe(0);
+            expect(n.near.opp, `${view}: none of the opponent's colours at the near end`).toBe(0);
+          }
+        } finally {
+          setViewSide("player");
+          setPrefs({ teamPalette: "default" });
+        }
+      });
+    }
+  }
+
+  it("the crowd turns with its stands: the opponent's fans at the far end, facing the court", () => {
+    const parent = new THREE.Group();
+    const seats = buildClassicScenery(parent, LOOKS.meadow);
+    const home = seats.map((st) => ({ x: st.x, z: st.z, face: st.face }));
+    for (const view of ["player", "enemy"] as const) {
+      orientSeats(seats, home, view);
+      const camZ = view === "player" ? 1 : -1;
+      for (const [i, seat] of seats.entries()) {
+        // Shirts follow seat.side in the sim's terms; "enemy" fans wear the
+        // red the far king wears for the host, and for the guest the far
+        // king is the host, whom the guest sees in red as well.
+        expect(seat.z * camZ < 0, `seat ${i}`).toBe(seat.side === "enemy");
+        // Facing the court: toward x = 0.
+        expect(Math.sin(seat.face) * Math.sign(seat.x), `seat ${i}`).toBeLessThan(0);
+      }
+    }
   });
 });
