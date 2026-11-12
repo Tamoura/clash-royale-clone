@@ -98,8 +98,37 @@ Caveats: bots are not kids. The random pilot is a floor for a real
 first-week kid, so real win rates will sit above these. The real ladder
 also uses archetype decks, the kid's own deck and card levels (the bot is
 the kid's deck average, -2 / -2 / -1 / 0 / +1 by tier, never below 1), and
-main.ts's champion (after 3 wins) and mercy (picked tier, after 3 losses)
-bands; none of that changed.
+main.ts's champion (after 3 wins in a row) and mercy (picked tier, after
+3 losses in a row) bands. Their code did not change, but they now act on
+the new tiers, so they were measured too (next section).
+
+### Champion and mercy bands on the new tiers
+
+main.ts (startLadder) bends the tier's profile for one match: the
+champion bot thinks x0.85, pushes 1 elixir sooner and gets +1 card
+level; mercy thinks x1.35 and pushes 1 later (capped at 10). Kid's win
+rate, 80 games per cell, bot seeds 70000+i, kid seeds 80000+i, kid at
+level 1 (so the champion's cards are level 2, level 3 at hard):
+
+| Tier | plain | champion as shipped | champion, no level bonus | think x0.85 only | think x0.85 + level | mercy |
+|---|---|---|---|---|---|---|
+| rookie | 0.65 | 0.24 | 0.45 | 0.58 | 0.41 | 0.94 |
+| easy | 0.40 | 0.04 | 0.09 | 0.11 | 0.04 | 0.73 |
+| normal | 0.15 | 0.01 | 0.05 | 0.09 | 0.00 | 0.55 |
+| hard | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+
+The blind review measured the same on its own seeds (100 games, no level
+bonus): champion rookie 0.66 -> 0.44, easy 0.37 -> 0.09, normal 0.16 ->
+0.02; mercy easy 0.36 -> 0.72, normal 0.17 -> 0.48, nothing on hard.
+
+So the 4th match after 3 wins in a row is about three tiers harder on
+easy and two on normal, not one. That is no regression (against the old
+easy and normal the kid won about 0 in any band), but it is not an even
+step. Keeping pushAt alone does not fix it: think x0.85 by itself turns
+easy's 0.40 into 0.11, and the level bonus takes it to 0.04. Mercy now
+helps a lot on easy and normal and still does nothing on hard (pushAt is
+already 10 and a 1.35 s think barely slows it). Follow-up in "Left for
+later".
 
 ## The puzzle solver is frozen (SOLVER_PROFILE)
 
@@ -123,13 +152,19 @@ C06 trail) should rate with SOLVER_PROFILE too.
   6 results (was 5). Back-to-back windows, not sliding ones: sliding
   windows would count one 3-crown win twice and climb on two wins and two
   losses (-1, +3, +1, -1).
+- Never step up on a defeat. Two decisive windows can close on a lost
+  match (+3 +1 0, then +2 +2 -1), and the result screen would show "The
+  bot is getting smarter!" under DEFEAT. The record is kept and the climb
+  waits for a match that is not lost (a draw is fine) and still closes two
+  decisive windows: +2 next climbs (1 0 2 / 2 -1 2), +1 does not yet
+  (2 -1 1 is only +2).
 - Step down as before: two straight losses at rookie or easy, or -3 over
   the last 3 at any tier. One win at practice returns to rookie. The first
   5 ladder matches never climb above rookie. A tier change starts a fresh
   history.
 
-So a kid climbs after at least six good matches at a tier, and each new
-tier is one even step harder.
+So a kid climbs after at least six good matches at a tier, never right
+after a defeat, and each new tier is one even step harder.
 
 ## Telling the kid: the tier banner
 
@@ -144,7 +179,10 @@ tip on a loss):
 
 A picked tier never moves, so it never shows one; replays, sandbox and
 online games don't count. It is a `registerResultExtra` slot installed by
-`installAutoDifficulty()`, so main.ts is untouched. Checked in a browser
+`installAutoDifficulty()`, so main.ts needs no code change for it (its
+only edit in this package is the stale pace comment in startLadder).
+Since auto never climbs on a defeat, the up banner never sits under
+DEFEAT (tierBanner.test.ts checks it). Checked in a browser
 (dev build, SwiftShader): 390x844 phone Classic up and Golden Age down
 (right to left), 1440x900 Golden Age up, 844x390 landscape Classic down.
 On short landscape screens the result panel scrolls and, like the coach
@@ -172,11 +210,17 @@ against the old easy, normal and hard to identical state checksums.
 
 ## Left for later
 
-- main.ts's comment in startLadder still says only practice and rookie
-  keep their own pace (the rule for this package was to touch main.ts
-  only for the banner, and the banner needed no main.ts change). The
-  accurate rule is `keepsOwnPace` in difficulty.ts.
-- notes/features/bot-difficulty.md describes the original three tiers.
+- The champion and mercy bands (main.ts startLadder, measured above).
+  The champion match on easy or normal is two to three tiers harder, not
+  one. A simple follow-up: the champion plays the next tier's profile
+  (`ladderProfile` of the tier above, hard keeps today's tweak) with no
+  extra card level, so it is exactly one even step up, and mercy on a
+  picked tier plays the tier below (practice keeps today's mercy), so it
+  also helps on hard. Measure it with the ladder harness (ladder.test.ts)
+  before pinning. It needs a main.ts change outside this package's
+  banner-only rule, so it was left. The table above came from a scratch
+  copy of ladder.test.ts's pilotWinRate with the band applied to the
+  tier's profile (and the bot's card levels set for the level bonus).
 - A smarter hard (holding a counter, punishing a lone tank) would need new
   bot logic in src/game, which is locked; the knobs were enough to make
   hard the strongest bot here.
