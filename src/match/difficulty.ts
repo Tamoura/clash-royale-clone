@@ -9,6 +9,7 @@ import { DECK, type CardId } from "../game/cards";
 import { MAX_CARD_LEVEL } from "../meta/progress";
 import { on } from "../app/hooks";
 import { installCoachTips } from "./coachTips";
+import { installTierBanner, noteTierStep } from "./tierBanner";
 
 export const DIFF_KEY = "cr-clone-difficulty";
 export const AUTO_KEY = "cr-clone-auto-history";
@@ -368,23 +369,34 @@ export function outcomeFor(winner: string, mySide: string): MatchOutcome {
   return winner === "draw" ? "draw" : winner === mySide ? "win" : "loss";
 }
 
+/** Which way the bot the auto option plays moved between two auto records, if at all. */
+export function autoStep(before: AutoState, after: AutoState): "up" | "down" | null {
+  return tierStep(resolveTier("auto", before), resolveTier("auto", after));
+}
+
 /**
  * Keep the auto record current: every finished solo ladder match (not a
  * sandbox, replay or online game) adds its crown difference and outcome.
- * Also installs the defeat coaching tips (src/match/coachTips.ts), which
- * speak up after the same solo ladder matches, so main.ts wires both at once.
+ * When that moves the bot a player on the auto option meets, the result
+ * screen says so (src/match/tierBanner.ts). Also installs the defeat
+ * coaching tips (src/match/coachTips.ts), which speak up after the same
+ * solo ladder matches, so main.ts wires all three at once.
  */
 export function installAutoDifficulty(trophies: () => number): () => void {
   const off = on("matchEnd", (m) => {
     if (m.kind !== "ladder" || m.online || m.sandbox || m.replay) return;
-    saveAutoState(
-      recordAutoResult(loadAutoState(trophies()), m.myCrowns - m.theirCrowns, outcomeFor(m.winner, m.mySide)),
-    );
+    const before = loadAutoState(trophies());
+    const after = recordAutoResult(before, m.myCrowns - m.theirCrowns, outcomeFor(m.winner, m.mySide));
+    saveAutoState(after);
+    noteTierStep(m.battle, loadDifficulty() === "auto" ? autoStep(before, after) : null);
   });
+  // The banner first: on a loss that steps down it sits above the coach tip.
+  const offBanner = installTierBanner();
   const offTips = installCoachTips();
   return () => {
     off();
     offTips();
+    offBanner();
   };
 }
 
