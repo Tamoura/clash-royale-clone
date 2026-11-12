@@ -13,7 +13,9 @@
  * is left over the tray, see TALL_ALIGN_Y). The far king's column (the
  * box's crown: his canopy and HP plate) only has to clear the chips that
  * sit over it, so where the band leaves the middle free (tablets) he rises
- * between them instead of shrinking the board. Wide mode frames the board
+ * between them instead of shrinking the board; the band's shading then stays
+ * off his column (:root[data-crown="free"], --crown-l / --crown-r), so his
+ * canopy and HP plate keep their full brightness. Wide mode frames the board
  * between the two side panels.
  */
 import type { Battle3D } from "../render3d/scene3d";
@@ -31,7 +33,19 @@ const BAND_PARTS = ".crowns, .clock, .menu-toggle";
 /** Gap between the band and the board's far edging (CSS px). */
 const BAND_GAP = BAND_GAP_PX;
 /** The CSS variables a battle layout sets on :root (cleared between battles). */
-const LAYOUT_VARS = ["--side", "--field-w", "--card-w", "--card-h", "--next-w", "--king-w", "--gutter-w", "--gap-w", "--hand-cols", "--band"] as const;
+const LAYOUT_VARS = ["--side", "--field-w", "--card-w", "--card-h", "--next-w", "--king-w", "--gutter-w", "--gap-w", "--hand-cols", "--band", "--crown-l", "--crown-r"] as const;
+
+/**
+ * The far king's column (the tall box's crown: his canopy and HP plate) on a
+ * stage `width` px wide, as [left, right] px from the stage's left edge. At
+ * its widest, a width-bound board, so it holds him on any board: the chips
+ * that overlap it hold the crown down, and where none do (tablets) the band's
+ * shading stays off it.
+ */
+export function crownColumn(width: number): [number, number] {
+  const half = (TALL_BOX.crown?.halfW ?? 0) * (width / (2 * TALL_BOX.halfW));
+  return [width / 2 - half, width / 2 + half];
+}
 
 export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutControl {
   const root = document.documentElement;
@@ -56,22 +70,36 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
   // is the same for the chips over the far king's column only.
   let band = 0;
   let crown = 0;
-  const bandInset = (safeTop: number): { top: number; crownTop: number } => {
+  const bandInset = (safeTop: number): { top: number; crownTop: number; column: [number, number] } => {
     const r = stage.getBoundingClientRect();
-    // The crown's column at its widest (a width-bound board), about the stage's middle.
-    const half = (TALL_BOX.crown?.halfW ?? 0) * (r.width / (2 * TALL_BOX.halfW));
-    const mid = r.left + r.width / 2;
+    const [c0, c1] = crownColumn(r.width);
     let bottom = r.top;
     let over = r.top + safeTop;
     topbar.querySelectorAll<HTMLElement>(BAND_PARTS).forEach((el) => {
       const q = el.getBoundingClientRect();
       if (q.height <= 0) return;
       bottom = Math.max(bottom, q.bottom);
-      if (q.right > mid - half && q.left < mid + half) over = Math.max(over, q.bottom);
+      if (q.right > r.left + c0 && q.left < r.left + c1) over = Math.max(over, q.bottom);
     });
     band = Math.max(band, bottom - r.top + BAND_GAP);
     crown = Math.max(crown, over - r.top + BAND_GAP);
-    return { top: band, crownTop: Math.min(crown, band) };
+    return { top: band, crownTop: Math.min(crown, band), column: [r.left + c0, r.left + c1] };
+  };
+  /**
+   * While the far king rises between the chips, keep the band's shading off
+   * his column (`column` in client px; the CSS reads it in the band's px).
+   */
+  const shadeWindow = (column: [number, number] | null): void => {
+    if (!column) {
+      delete root.dataset.crown;
+      root.style.removeProperty("--crown-l");
+      root.style.removeProperty("--crown-r");
+      return;
+    }
+    const left = topbar.getBoundingClientRect().left;
+    root.dataset.crown = "free";
+    root.style.setProperty("--crown-l", `${Math.round(column[0] - left)}px`);
+    root.style.setProperty("--crown-r", `${Math.round(column[1] - left)}px`);
   };
 
   const relayout = (): void => {
@@ -80,6 +108,7 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
       delete root.dataset.side;
       delete root.dataset.panel;
       delete root.dataset.slim;
+      delete root.dataset.crown;
       for (const name of LAYOUT_VARS) root.style.removeProperty(name);
       setEdgeShade(scene, 0);
       return;
@@ -109,14 +138,16 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
     setEdgeShade(scene, lay.mode === "wide" ? lay.fieldW : 0);
     if (lay.mode === "wide") {
       root.style.removeProperty("--band");
+      shadeWindow(null);
       scene.setFraming({ insets: lay.insets, box: lay.box });
       return;
     }
     // Tall: the board goes under the band; so do the stage's own top-corner
     // controls (the sandbox reset), which the band would otherwise cover.
     // The near plates keep clear of the tray's ornament under the board.
-    const { top, crownTop } = bandInset(safe.top);
+    const { top, crownTop, column } = bandInset(safe.top);
     root.style.setProperty("--band", px(top));
+    shadeWindow(crownTop < top ? column : null);
     scene.setFraming({ insets: { ...ZERO_INSETS, top, crownTop }, box: TALL_BOX, alignY: TALL_ALIGN_Y, plateFloor: TRAY_MARK_PX });
   };
 

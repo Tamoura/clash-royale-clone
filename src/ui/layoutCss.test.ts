@@ -166,4 +166,19 @@ describe("the tray's stylesheet numbers match layout.ts", () => {
     expect(slimInset).toBeGreaterThanOrEqual(12);
     expect(slimInset).toBeLessThan(inset(':root[data-layout="wide"] #topbar'));
   });
+
+  it("a tablet's band shades only the chips' corners: its shading leaves the far king's column out", () => {
+    // layoutWire.ts sets :root[data-crown="free"] and the column's edges
+    // (--crown-l, --crown-r) while the king rises between the chips; the band
+    // then draws its shading on ::before, transparent over that column.
+    const free = ':root[data-layout="tall"][data-crown="free"] #topbar.v2';
+    expect(rule(free).background).toBe("none");
+    const shade = rule(`${free}::before`);
+    expect(shade.background).toBe("var(--band-shade)");
+    expect(shade["z-index"]).toBe("-1");
+    for (const mask of [shade["mask-image"], shade["-webkit-mask-image"]]) {
+      // Opaque out at the chips, clear from --crown-l to --crown-r.
+      expect(mask).toMatch(/transparent var\(--crown-l\), transparent var\(--crown-r\)/);
+    }
+  });
 });

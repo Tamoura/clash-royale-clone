@@ -15,6 +15,7 @@ import {
   type Insets,
 } from "../render3d/scene/fit";
 import { battleLayout } from "./layout";
+import { crownColumn } from "./layoutWire";
 
 /**
  * The battle frame on the screens the art round was checked on, end to end:
@@ -153,5 +154,24 @@ describe("the kings stay on screen, clear of the HUD", () => {
     for (const [w, h] of [[390, 844], [412, 915]]) {
       expect(frame(w, h).s, `${w}x${h}`).toBeCloseTo(w / 18.5, 9);
     }
+  });
+
+  it("keeps the band's shading off the far king where he rises between the chips", () => {
+    // Tablets: his canopy and plate stand inside the band's box (under its
+    // dark gradient, they drew at about 40% brightness), so the shading
+    // leaves out the column layoutWire.ts hands the stylesheet; that column
+    // must hold him on any board, and on the tablet his plate must be in it.
+    const eps = 1e-6;
+    for (const [w, h] of [...SIZES, [820, 1180] as [number, number], [1024, 1366] as [number, number]]) {
+      for (const bandExtra of [0, 20]) {
+        const fr = frame(w, h, ZERO_INSETS, bandExtra, true);
+        if (fr.mode !== "tall") continue;
+        const [c0, c1] = crownColumn(fr.w);
+        expect(fr.x(-CROWN_HALF_W), `${w}x${h}`).toBeGreaterThanOrEqual(c0 - eps);
+        expect(fr.x(CROWN_HALF_W), `${w}x${h}`).toBeLessThanOrEqual(c1 + eps);
+      }
+    }
+    const tablet = frame(768, 1024, ZERO_INSETS, 0, true);
+    expect(kings(tablet).farPlateTop).toBeLessThan(tablet.ins.top);
   });
 });
