@@ -575,8 +575,8 @@ function startLadder(): void {
   );
   // Personality tweaks (match/difficulty.ts archetypeTweak): beatdown banks
   // bigger pushes, cycle plays faster, siege turtles behind buildings and
-  // only commits when fully loaded. Practice and rookie are calibrated as a
-  // whole (novice.test), so they keep their own pace.
+  // only commits when fully loaded. Practice to normal are calibrated as a
+  // whole (ladder.test, keepsOwnPace), so they keep their own pace.
   const tuned: BotProfile = ladderProfile(tier, archetype);
   const banded: BotProfile = championBotMatch
     ? { ...tuned, thinkInterval: tuned.thinkInterval * 0.85, pushAt: Math.max(4, tuned.pushAt - 1) }
