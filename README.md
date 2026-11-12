@@ -74,7 +74,9 @@ Open the printed `http://<your-ip>:3101` link on each device (same Wi-Fi),
 then tap the sliders row under **Battle** → **Play online** → **Play a friend**.
 One player taps **Create a game** and reads the code aloud; the other types it
 in and taps **Join**. If **Play online** is greyed out, take the Champion out
-of your deck (it is for bot battles only).
+of your deck (it is for bot battles only). Online play is friends-only: there
+is no matching with strangers, only room codes (a word plus three digits,
+like `LION042`) shared with people you know.
 
 Both devices run the identical, fully-deterministic simulation in lockstep —
 the relay (`server/relay.ts`) only forwards each player's deploys, never the

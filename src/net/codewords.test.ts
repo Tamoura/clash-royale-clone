@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CODE_WORDS, base32Code, makeCodeGen, wordPart } from "./codewords";
+import { CODE_NUMBER_DIGITS, CODE_WORDS, base32Code, makeCodeGen, wordPart } from "./codewords";
 
 describe("room code words", () => {
   it("are short, uppercase, and kid-typable", () => {
@@ -9,12 +9,27 @@ describe("room code words", () => {
     }
   });
 
-  it("builds WORD + 2 digits from the injected random source", () => {
+  it("builds WORD + 3 digits from the injected random source", () => {
+    expect(CODE_NUMBER_DIGITS).toBe(3);
     const gen = makeCodeGen(() => 0);
-    expect(gen()).toBe(`${CODE_WORDS[0]}00`);
+    expect(gen()).toBe(`${CODE_WORDS[0]}000`);
     let i = 0;
-    const seq = [0.99, 0.42];
-    expect(makeCodeGen(() => seq[i++])()).toBe(`${CODE_WORDS[CODE_WORDS.length - 1]}42`);
+    const seq = [0.99, 0.042];
+    expect(makeCodeGen(() => seq[i++])()).toBe(`${CODE_WORDS[CODE_WORDS.length - 1]}042`);
+    let j = 0;
+    const top = [0, 0.9999];
+    expect(makeCodeGen(() => top[j++])()).toBe(`${CODE_WORDS[0]}999`);
+  });
+
+  it("has 20,000 codes, and the generator reaches all 1,000 numbers", () => {
+    expect(CODE_WORDS.length * 10 ** CODE_NUMBER_DIGITS).toBe(20_000);
+    const seen = new Set<string>();
+    for (let n = 0; n < 1000; n++) {
+      let k = 0;
+      const seq = [0, (n + 0.5) / 1000];
+      seen.add(makeCodeGen(() => seq[k++])());
+    }
+    expect(seen.size).toBe(1000);
   });
 
   it("spreads picks across the list", () => {
@@ -26,6 +41,7 @@ describe("room code words", () => {
 
   it("strips the digits for v1 clients", () => {
     expect(wordPart("LION42")).toBe("LION");
+    expect(wordPart("LION042")).toBe("LION");
     expect(wordPart("OWL")).toBe("OWL");
   });
 

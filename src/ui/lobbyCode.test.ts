@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CODE_DIGITS, CODE_WORDS, makeCodeGen, normalizeCode } from "../net/codewords";
+import { CODE_PATTERN } from "../net/validate";
 import { mulberry32 } from "../net/session";
 import { cleanCode, opponentFallbackName } from "../match/online";
 import { sanitizeCode } from "./screens/lobby";
@@ -50,6 +51,64 @@ describe("lobby code sanitizer", () => {
     expect(cleanCode("a/b/c")).toBeNull();
     expect(cleanCode(" Lion 42 ")).toBe("LION42");
     expect(cleanCode("w.a.s.p_94")).toBe("WASP94");
+  });
+});
+
+/**
+ * The code rules as a page cached before the 3-digit change runs them
+ * (2054fdb: src/net/codewords.ts normalizeCode, src/match/online.ts cleanCode,
+ * and the lobby's code box with maxLength 12). Frozen here on purpose: a
+ * kid with that old page must still be able to type a new code.
+ */
+const OLD_WORDS = ["LION", "BEAR", "WOLF", "FROG", "DEER", "GOAT", "HAWK", "SEAL", "CRAB", "LYNX", "MOLE", "TOAD", "DUCK", "FOX", "OWL", "PUMA", "MULE", "SWAN", "CARP", "WASP"];
+function oldNormalize(raw: string): string {
+  const up = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const word = OLD_WORDS.find((w) => up.startsWith(w));
+  if (!word) return up;
+  const look: Record<string, string> = { O: "0", I: "1" };
+  return word + up.slice(word.length).replace(/[A-Z]/g, (c) => (!"0123456789".includes(c) && look[c]) || c);
+}
+function oldClean(raw: string): string | null {
+  if (/[<>"'`&\\/=;(){}]/.test(raw)) return null;
+  const c = oldNormalize(raw);
+  return /^[A-Z0-9]{3,12}$/.test(c) ? c : null;
+}
+const OLD_MAX_LENGTH = 12;
+
+describe("three-digit room codes", () => {
+  const gen = makeCodeGen(mulberry32(11));
+  const codes = Array.from({ length: 400 }, gen);
+
+  it("are what new rooms get (LION042)", () => {
+    for (const c of codes) expect(c).toMatch(/^[A-Z]{3,4}\d{3}$/);
+    expect(new Set(OLD_WORDS)).toEqual(new Set(CODE_WORDS));
+  });
+
+  it("pass the code box, the Join button, invite links and the relay unchanged", () => {
+    for (const c of codes) {
+      expect(sanitizeCode(c)).toBe(c);
+      expect(sanitizeCode(` ${c.toLowerCase().replace(/(\d)/, "-$1")} `)).toBe(c);
+      expect(cleanCode(c)).toBe(c);
+      expect(c.length).toBeLessThanOrEqual(12);
+      expect(CODE_PATTERN.test(c)).toBe(true);
+    }
+    expect(sanitizeCode("lion-o4i")).toBe("LION041");
+  });
+
+  it("still work on a page cached before the change (old rules, 12-character box)", () => {
+    for (const c of codes) {
+      const typed = ` ${c.toLowerCase().replace(/(\d)/, "-$1")} `;
+      expect(oldNormalize(typed)).toBe(c);
+      expect(oldNormalize(typed).slice(0, OLD_MAX_LENGTH)).toBe(c);
+      expect(oldClean(c)).toBe(c);
+      expect(oldClean(typed)).toBe(c);
+    }
+  });
+
+  it("old two-digit codes are still accepted everywhere (a room made just before an update)", () => {
+    expect(sanitizeCode("lion-42")).toBe("LION42");
+    expect(cleanCode("LION42")).toBe("LION42");
+    expect(CODE_PATTERN.test("LION42")).toBe(true);
   });
 });
 
