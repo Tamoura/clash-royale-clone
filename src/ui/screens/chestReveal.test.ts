@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import * as reveal from "./chestReveal";
 import { LEGENDARY_BUILD_MS, flipDelay, rarityLabel, revealOrder } from "./chestReveal";
+import source from "./chestReveal.ts?raw";
 
 const tr = (en: string): string => en;
 
@@ -50,5 +52,34 @@ describe("chest reveal: the legendary moment", () => {
   it("names the tier", () => {
     expect(rarityLabel("legendary", tr)).toBe("Legendary");
     expect(rarityLabel("epic", tr)).toBe("Epic");
+  });
+});
+
+describe("chest reveal: the deck is safe from tap-through", () => {
+  /** The source of one arrow-function const in playChestReveal, up to the next one. */
+  const body = (name: string, next: string): string => {
+    const from = source.indexOf(`const ${name} = `);
+    const to = source.indexOf(`const ${next} = `, from + 1);
+    expect(from).toBeGreaterThan(0);
+    expect(to).toBeGreaterThan(from);
+    return source.slice(from, to);
+  };
+
+  it("no card in the reveal sequence offers Add to deck (only the summary does)", () => {
+    const showCard = body("showCard", "addToDeckOffer");
+    expect(showCard).not.toMatch(/addToDeck|button\(/);
+    const summary = body("showSummary", "run");
+    expect(summary).toMatch(/addToDeckOffer\(newId\)/);
+    // ...below Collect, not in the middle of the screen.
+    expect(summary.indexOf("addToDeckOffer(newId)")).toBeGreaterThan(summary.indexOf("summary.appendChild(ok)"));
+  });
+
+  it("never picks the outgoing card for the kid", () => {
+    expect("swapOutIndex" in reveal).toBe(false);
+    expect(source).not.toMatch(/swapOutIndex|most expensive|Swap in/);
+    const offer = body("addToDeckOffer", "showSummary");
+    // The deck changes only from the strip's answer, or by filling a free slot.
+    expect(offer).toMatch(/pickSwapOut\(/);
+    expect(offer).toMatch(/if \(i === null\) return;/);
   });
 });
