@@ -18,14 +18,21 @@ export type Tier = "practice" | "rookie" | "easy" | "normal" | "hard";
 export const TIERS: readonly Tier[] = ["practice", "rookie", "easy", "normal", "hard"];
 
 /**
- * The two first-hour tiers are tuned against a near-random player
- * (novice.test.ts): it should beat rookie in most games and practice in
- * nearly all of them. Rookie thinks every 6.5 s, notices each invader late,
- * slips up on almost half its plays, only spells big clusters and never
- * finishes a tower with a spell. Practice (where auto steps a kid down to
- * after two straight losses) is slower and sloppier still: it thinks only
- * every 10 s, so even the cycle personality's speed-up (archetypeTweak:
- * 8.5 s, push at 8) stays well below rookie.
+ * The ladder is an even staircase (ladder.test.ts pins it; the numbers are
+ * in notes/features/bot-ladder.md). Each tier beats the one below it in
+ * most bot-against-bot games, and a near-random "kid" player (pilot.ts,
+ * novice.test.ts) wins about 9 in 10 against practice, 2 in 3 against
+ * rookie, 1 in 3 against easy, 1 in 7 against normal and almost never
+ * against hard.
+ *
+ * Every knob moves one way up the ladder: the bot thinks more often,
+ * slips up less (mistakeRate), notices invaders sooner (reactionDelay),
+ * spells smaller clusters (spellIQ) and, from normal up, finishes a tower
+ * with a spell. Every tier banks a full bar before it pushes: a bot that
+ * pushes on less sends half a push and loses to one that waits (the old
+ * hard pushed at 6 and lost to the old easy). Hard is the old normal's
+ * pace with that patience: it wins about three games in four against it.
+ * Practice is where auto steps a kid down to after two straight losses.
  */
 const TIER_PROFILES: Record<Tier, BotProfile> = {
   practice: {
@@ -44,9 +51,30 @@ const TIER_PROFILES: Record<Tier, BotProfile> = {
     spellIQ: 2.5,
     reactionDelay: 1.8,
   },
-  easy: { thinkInterval: 1.8, pushAt: 9 },
-  normal: { thinkInterval: 1.0, pushAt: 8 },
-  hard: { thinkInterval: 0.55, pushAt: 6 },
+  easy: {
+    thinkInterval: 5,
+    pushAt: 10,
+    mistakeRate: 0.35,
+    allowFinisher: false,
+    spellIQ: 2,
+    reactionDelay: 1.5,
+  },
+  normal: {
+    thinkInterval: 4,
+    pushAt: 10,
+    mistakeRate: 0.25,
+    allowFinisher: true,
+    spellIQ: 1.5,
+    reactionDelay: 1,
+  },
+  hard: {
+    thinkInterval: 1,
+    pushAt: 10,
+    mistakeRate: 0,
+    allowFinisher: true,
+    spellIQ: 1,
+    reactionDelay: 0,
+  },
 };
 
 /**
@@ -267,11 +295,14 @@ export function tierProfile(tier: Tier): BotProfile {
 export type BotArchetype = "balanced" | "beatdown" | "cycle" | "siege";
 
 /**
- * The first-hour tiers are calibrated as a whole against a novice
- * (novice.test.ts), so a ladder personality never changes their pace.
+ * Practice to normal are calibrated as a whole against a novice
+ * (ladder.test.ts), so a ladder personality never changes their pace: the
+ * cycle speed-up (push at 8) alone made the novice's 1-in-3 easy bot a
+ * 1-in-11 one. Their personality still shows in the deck it drafts. Hard,
+ * the top step, keeps the personality tweaks for variety.
  */
 export function keepsOwnPace(tier: Tier): boolean {
-  return tier === "practice" || tier === "rookie";
+  return tier !== "hard";
 }
 
 /**
@@ -294,8 +325,8 @@ export function archetypeTweak(base: BotProfile, archetype: BotArchetype): BotPr
 
 /**
  * The ladder bot's profile for a tier and personality, before the champion
- * or mercy banding: practice and rookie keep their own pace, every other
- * tier gets the personality's tweak.
+ * or mercy banding: practice to normal keep their own pace, hard gets the
+ * personality's tweak.
  */
 export function ladderProfile(tier: Tier, archetype: BotArchetype): BotProfile {
   const base = tierProfile(tier);

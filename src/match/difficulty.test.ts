@@ -42,10 +42,27 @@ describe("difficulty options", () => {
     }
   });
 
-  it("keeps easy, normal and hard exactly as they were", () => {
-    expect(DIFFICULTIES.easy).toEqual({ thinkInterval: 1.8, pushAt: 9 });
-    expect(DIFFICULTIES.normal).toEqual({ thinkInterval: 1.0, pushAt: 8 });
-    expect(DIFFICULTIES.hard).toEqual({ thinkInterval: 0.55, pushAt: 6 });
+  // The staircase measured in ladder.test.ts (notes/features/bot-ladder.md).
+  it("pins easy, normal and hard to the measured staircase", () => {
+    expect(DIFFICULTIES.easy).toEqual({ thinkInterval: 5, pushAt: 10, mistakeRate: 0.35, allowFinisher: false, spellIQ: 2, reactionDelay: 1.5 });
+    expect(DIFFICULTIES.normal).toEqual({ thinkInterval: 4, pushAt: 10, mistakeRate: 0.25, allowFinisher: true, spellIQ: 1.5, reactionDelay: 1 });
+    expect(DIFFICULTIES.hard).toEqual({ thinkInterval: 1, pushAt: 10, mistakeRate: 0, allowFinisher: true, spellIQ: 1, reactionDelay: 0 });
+    expect(DIFFICULTIES.auto).toEqual(DIFFICULTIES.normal);
+  });
+
+  it("moves every knob one way, weakest to strongest", () => {
+    const p = TIERS.map((t) => tierProfile(t));
+    for (let i = 1; i < p.length; i++) {
+      const [lo, hi] = [p[i - 1], p[i]];
+      expect(hi.thinkInterval, TIERS[i]).toBeLessThan(lo.thinkInterval);
+      expect(hi.mistakeRate!, TIERS[i]).toBeLessThan(lo.mistakeRate!);
+      expect(hi.reactionDelay!, TIERS[i]).toBeLessThan(lo.reactionDelay!);
+      expect(hi.spellIQ!, TIERS[i]).toBeLessThan(lo.spellIQ!);
+      expect(hi.pushAt, TIERS[i]).toBe(10); // every tier banks a full bar
+      if (lo.allowFinisher) expect(hi.allowFinisher, TIERS[i]).toBe(true);
+    }
+    // Hard plays clean: no slips, no late looks, the finisher on.
+    expect(tierProfile("hard")).toMatchObject({ mistakeRate: 0, reactionDelay: 0, allowFinisher: true });
   });
 
   it("makes the rookie slow, sloppy and polite", () => {
@@ -84,22 +101,24 @@ describe("the puzzle solver", () => {
 describe("ladder personalities", () => {
   const ARCHETYPES: BotArchetype[] = ["balanced", "beatdown", "cycle", "siege"];
 
-  it("leave practice and rookie at their own pace", () => {
-    expect(TIERS.filter(keepsOwnPace)).toEqual(["practice", "rookie"]);
-    for (const a of ARCHETYPES) {
-      expect(ladderProfile("practice", a)).toEqual(DIFFICULTIES.practice);
-      expect(ladderProfile("rookie", a)).toEqual(DIFFICULTIES.rookie);
+  it("leave the novice-calibrated tiers (practice to normal) at their own pace", () => {
+    expect(TIERS.filter(keepsOwnPace)).toEqual(["practice", "rookie", "easy", "normal"]);
+    for (const t of ["practice", "rookie", "easy", "normal"] as const) {
+      for (const a of ARCHETYPES) expect(ladderProfile(t, a)).toEqual(DIFFICULTIES[t]);
     }
   });
 
-  it("tweak every other tier as main.ts always has", () => {
-    const n = tierProfile("normal");
-    expect(ladderProfile("normal", "balanced")).toEqual(n);
-    expect(ladderProfile("normal", "beatdown")).toEqual({ ...n, pushAt: 9 });
-    expect(ladderProfile("normal", "cycle")).toEqual({ ...n, thinkInterval: 0.85, pushAt: 6 });
-    expect(ladderProfile("normal", "siege")).toEqual({ ...n, thinkInterval: 1.1, pushAt: 10 });
-    expect(ladderProfile("hard", "cycle").pushAt).toBe(4);
-    expect(ladderProfile("easy", "beatdown").pushAt).toBe(10);
+  it("tweak hard as main.ts always has", () => {
+    const h = tierProfile("hard");
+    expect(ladderProfile("hard", "balanced")).toEqual(h);
+    expect(ladderProfile("hard", "beatdown")).toEqual({ ...h, pushAt: 10 });
+    expect(ladderProfile("hard", "cycle")).toEqual({ ...h, thinkInterval: 0.85, pushAt: 8 });
+    expect(ladderProfile("hard", "siege")).toEqual({ ...h, thinkInterval: 1.1, pushAt: 10 });
+    // The tweak itself is unchanged (an old-style profile, as main.ts always tweaked it).
+    const old = { thinkInterval: 1.0, pushAt: 8 };
+    expect(archetypeTweak(old, "beatdown")).toEqual({ ...old, pushAt: 9 });
+    expect(archetypeTweak(old, "cycle")).toEqual({ ...old, thinkInterval: 0.85, pushAt: 6 });
+    expect(archetypeTweak({ thinkInterval: 0.55, pushAt: 6 }, "cycle").pushAt).toBe(4);
   });
 
   it("keep practice slower than rookie even if the cycle speed-up were applied", () => {
