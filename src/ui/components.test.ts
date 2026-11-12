@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installFakeDom } from "./fakeDom.testkit";
 import {
   btnClass,
   burstCount,
@@ -7,6 +8,7 @@ import {
   flightPoint,
   segmentedNext,
   toastBottom,
+  toast,
   toastBottomOver,
   trapOrder,
   walletValue,
@@ -193,5 +195,35 @@ describe("reward bursts", () => {
       expect(v).toBeGreaterThanOrEqual(last);
       last = v;
     }
+  });
+});
+
+describe("toast lifetime", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    installFakeDom();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("goes after 2.4 s by default", () => {
+    const t = toast("Saved");
+    vi.advanceTimersByTime(2399);
+    expect(t.classList.contains("is-leaving")).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(t.classList.contains("is-leaving")).toBe(true);
+    vi.advanceTimersByTime(400);
+    expect(t.isConnected).toBe(false);
+  });
+
+  it("stays up as long as asked, for a line a young reader needs time for", () => {
+    const t = toast("November 2026 season starts! You kept Royal Arena.", "success", 6000);
+    vi.advanceTimersByTime(5999);
+    expect(t.isConnected).toBe(true);
+    expect(t.classList.contains("is-leaving")).toBe(false);
+    vi.advanceTimersByTime(401);
+    expect(t.isConnected).toBe(false);
   });
 });

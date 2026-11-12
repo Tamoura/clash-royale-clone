@@ -359,12 +359,12 @@ function placeToasts(host: HTMLElement): void {
 }
 
 /**
- * A short message that fades out after 2.4s. Toasts stack near the bottom,
- * above the tab bar, so they never cover a screen's title or the wallet;
- * with a sheet or dialog open they sit just above its panel instead, clear
- * of its buttons.
+ * A short message that fades out after 2.4s (or `ms`, for a longer line a
+ * young reader needs time for). Toasts stack near the bottom, above the tab
+ * bar, so they never cover a screen's title or the wallet; with a sheet or
+ * dialog open they sit just above its panel instead, clear of its buttons.
  */
-export function toast(text: string, tone: Tone = "neutral"): HTMLElement {
+export function toast(text: string, tone: Tone = "neutral", ms = TOAST_MS): HTMLElement {
   if (!toastHost || !toastHost.isConnected) {
     toastHost = el("div", "ui-toast-host");
     toastHost.setAttribute("role", "status");
@@ -375,8 +375,8 @@ export function toast(text: string, tone: Tone = "neutral"): HTMLElement {
   toastHost.appendChild(t);
   // Placed once the new toast is in the stack, so its height counts.
   placeToasts(toastHost);
-  setTimeout(() => t.classList.add("is-leaving"), TOAST_MS);
-  setTimeout(() => t.remove(), TOAST_MS + 400);
+  setTimeout(() => t.classList.add("is-leaving"), ms);
+  setTimeout(() => t.remove(), ms + 400);
   return t;
 }
 
