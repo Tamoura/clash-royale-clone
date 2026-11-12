@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { JOIN_GUARD_DEFAULTS, JoinGuard, addressKey } from "./joinGuard";
+import { JOIN_GUARD_DEFAULTS, JoinGuard, NET_MISSES, addressKey, addressKeys } from "./joinGuard";
 
 const MIN = 60_000;
 const IP = ["ip:203.0.113.7", "conn:c1"];
@@ -7,6 +7,8 @@ const IP = ["ip:203.0.113.7", "conn:c1"];
 describe("join guard: wrong room codes", () => {
   it("defaults to 10 wrong codes in 10 minutes, then a 10 minute block", () => {
     expect(JOIN_GUARD_DEFAULTS).toMatchObject({ maxMisses: 10, windowMs: 10 * MIN, blockMs: 10 * MIN });
+    // Looser limits for a whole IPv6 /56 (a home) and /48 (a site or tunnel broker).
+    expect(NET_MISSES).toEqual({ 56: 30, 48: 60 });
   });
 
   it("lets a kid mistype a code a few times and still join", () => {
@@ -74,6 +76,51 @@ describe("join guard: wrong room codes", () => {
     expect(tries.length).toBeLessThan(1_500);
   });
 
+  it("an IPv6 home cannot multiply its guesses by rotating /64s inside its /56", () => {
+    const g = new JoinGuard();
+    const from = (net: number, i: number): string[] => [...addressKeys(`2001:db8:5:1${net.toString(16).padStart(2, "0")}::1`), `conn:n${net}-${i}`];
+    let t = 0;
+    let misses = 0;
+    // Nine wrong codes from each /64 (never enough to block one /64)...
+    for (let net = 0; misses < 30; net++) {
+      for (let i = 0; i < 9 && misses < 30; i++, t++) {
+        expect(g.blocked(from(net, i), t)).toBe(false);
+        g.miss(from(net, i), t);
+        misses++;
+      }
+    }
+    // ...and the 30th from the /56 blocks every /64 in it, a fresh one included.
+    expect(g.blocked(from(0xfe, 0), t)).toBe(true);
+    // Another home's /56 in the same /48 is not blocked.
+    expect(g.blocked([...addressKeys("2001:db8:5:200::1"), "conn:other"], t)).toBe(false);
+  });
+
+  it("a /48 is capped at 60 wrong codes in 10 minutes, however many /56s it rotates through", () => {
+    const g = new JoinGuard();
+    let tries = 0;
+    for (let net = 0; net < 256 && tries < 500; net++) {
+      // 29 per /56 (never enough to block one), each from a different /64.
+      for (let i = 0; i < 29; i++) {
+        const keys = [...addressKeys(`2001:db8:6:${net.toString(16)}${i.toString(16).padStart(2, "0")}::1`), `conn:${net}-${i}`];
+        if (g.blocked(keys, tries)) continue;
+        g.miss(keys, tries);
+        tries++;
+      }
+    }
+    expect(tries).toBe(60);
+    expect(g.blocked([...addressKeys("2001:db8:6:ff00::1"), "conn:z"], 61)).toBe(true);
+    expect(g.blocked([...addressKeys("2001:db8:7::1"), "conn:y"], 61)).toBe(false);
+  });
+
+  it("limits each key by its kind: 10 for an address or socket, 30 for a /56, 60 for a /48", () => {
+    const g = new JoinGuard();
+    expect(g.limitOf("ip:203.0.113.7")).toBe(10);
+    expect(g.limitOf("conn:c1")).toBe(10);
+    expect(g.limitOf("ip6:2001:db8:1:2::/64")).toBe(10);
+    expect(g.limitOf("ip6:2001:db8:1:200::/56")).toBe(30);
+    expect(g.limitOf("ip6:2001:db8:1::/48")).toBe(60);
+  });
+
   it("sweeps expired counts and blocks, and caps how many keys it tracks", () => {
     const g = new JoinGuard({ maxKeys: 3 });
     for (let i = 0; i < 5; i++) g.miss([`ip:10.0.0.${i}`], 0);
@@ -103,6 +150,17 @@ describe("addressKey", () => {
     expect(addressKey("2001:db8:1:3::1")).not.toBe(a);
     expect(addressKey("::1")).toBe("ip6:0:0:0:0::/64");
     expect(addressKey("2001:db8::")).toBe("ip6:2001:db8:0:0::/64");
+  });
+
+  it("adds an IPv6 address's /56 and /48 networks as wider keys; IPv4 stays one key", () => {
+    expect(addressKeys("203.0.113.7")).toEqual(["ip:203.0.113.7"]);
+    expect(addressKeys("::ffff:203.0.113.7")).toEqual(["ip:203.0.113.7"]);
+    expect(addressKeys("2001:db8:1:2a3:aaaa::1")).toEqual(["ip6:2001:db8:1:2a3::/64", "ip6:2001:db8:1:200::/56", "ip6:2001:db8:1::/48"]);
+    // Every /64 from 2001:db8:1:200:: to 2001:db8:1:2ff:: is one /56.
+    expect(addressKeys("2001:db8:1:2ff::9")[1]).toBe("ip6:2001:db8:1:200::/56");
+    expect(addressKeys("2001:db8:1:300::9")[1]).toBe("ip6:2001:db8:1:300::/56");
+    expect(addressKeys("2001:db8:1:5::9")[1]).toBe("ip6:2001:db8:1:0::/56");
+    expect(addressKeys("unknown")).toEqual(["ip:unknown"]);
   });
 
   it("keeps anything else as it came", () => {

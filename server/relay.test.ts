@@ -173,4 +173,18 @@ describe("relay: wrong room codes", () => {
     // Another home is not affected, and its friend's room still works.
     expect((await tryJoin("2001:db8:c:1::1", room.code)).t).toBe("start");
   });
+
+  it("rotating /64s inside one IPv6 /56 still stops at 30 wrong codes", async () => {
+    const room = await hostRoom("192.0.2.30");
+    // Nine wrong codes from each of several /64s of 2001:db8:d:100::/56
+    // (never enough to block one /64), thirty in all.
+    for (let n = 0; n < 30; n++) {
+      const net = (0x100 + Math.floor(n / 9)).toString(16);
+      expect(await tryJoin(`2001:db8:d:${net}::${(n % 9) + 1}`, "ZZZ999")).toEqual({ t: "error", reason: "no-such-room" });
+    }
+    // A fresh /64 of the same /56 is refused, the right code included...
+    expect(await tryJoin("2001:db8:d:1ff::1", room.code)).toEqual({ t: "error", reason: "rate-limited" });
+    // ...while the next /56 over joins its friend's room.
+    expect((await tryJoin("2001:db8:d:200::1", room.code)).t).toBe("start");
+  });
 });

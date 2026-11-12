@@ -39,7 +39,10 @@ Owner decisions this follows: no strangers online, ever; the name is Crown Rush.
 - `JoinGuard` counts joins answered `no-such-room`, per address and per
   connection. An IPv4 address counts alone; an IPv6 address counts by its /64,
   because one home or phone is handed a whole /64 and could otherwise rotate
-  addresses. At 10 misses inside 10 minutes the key is blocked for 10 minutes:
+  addresses. An IPv6 address also counts toward its /56 (a home's usual
+  allocation, 256 /64s; limit 30) and its /48 (a site, or a free tunnel-broker
+  allocation; limit 60), so rotating /64s does not multiply the guesses (added
+  after review). At 10 misses inside 10 minutes the key is blocked for 10 minutes:
   every join from it gets `rate-limited`, the right code included, so a
   blocked guesser learns nothing. Successful joins never reset the count (a
   guesser could otherwise reset it by joining their own room). The miss
@@ -48,8 +51,12 @@ Owner decisions this follows: no strangers online, ever; the name is Crown Rush.
   128-bit token.
 - What it buys: at most 10 guesses per 10 minutes per address, the life of a
   waiting room, so one address finds a given waiting room with a chance of
-  about 1 in 2,000. Before: about 65 minutes to sweep all 2,000 codes from one
-  address.
+  about 1 in 2,000; an IPv6 home rotating its /64s gets at most 30 (1 in
+  about 670), a /48 at most 60. Before: about 65 minutes to sweep all 2,000
+  codes from one address. It does not stop someone with many separate
+  networks: a code is a hard-to-guess key, not a password.
+- No relay-wide miss budget, on purpose: one guesser could then pause every
+  family's joins for ten minutes.
 - No protocol or sim change: `rate-limited` already existed and every page
   shows it. `PROTOCOL_VERSION` and `SIM_VERSION` are unchanged.
 
@@ -159,9 +166,9 @@ screenshots in `/tmp/claude-0/r1/online/shots/`.
   went missing, every player would share one address and ten typos anywhere
   would pause every join for ten minutes. The deploy guide's "check the
   per-player limits" step covers it. Siblings at home share one count.
-- **Many addresses can still guess,** about 1 in 2,000 per address per
-  waiting room. Fine at family scale; a confirm step for the host would close
-  it fully (not built).
+- **Many networks can still guess,** about 1 in 2,000 per address (1 in 670
+  per IPv6 /56) per waiting room. Fine at family scale; a confirm step for
+  the host would close it fully (not built).
 - **Installed icons** may keep the "CR Clone" label until re-added to the
   home screen. The boot splash is "Crown Rush" in Latin letters until the
   game's script runs, then Arabic in the Golden Age edition.

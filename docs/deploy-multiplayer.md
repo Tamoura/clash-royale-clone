@@ -385,7 +385,8 @@ socket glue would need rewriting. Not needed at kid-and-friends scale.
 
 Built-in limits: 4 KB per message; 60 messages per second per socket (bursts
 up to 90); 5 create/join per IP per 10 s; 10 wrong codes in 10 minutes per address
-(IPv6: per /64) or socket, then `rate-limited` joins for 10 minutes. 5 invalid
+(IPv6: per /64; also 30 per /56 and 60 per /48) or socket, then `rate-limited`
+joins for 10 minutes. 5 invalid
 messages close a socket. Heartbeat every 15 s; expired rooms are swept every 5 s.
 
 Serving the game, the relay compresses text and 3D models (brotli/gzip), caches
@@ -436,9 +437,13 @@ The page and the relay must speak the same protocol. `PROTOCOL_VERSION` in
 
 ## (k) Kid safety
 
-* **Friends only, and codes can't be guessed.** No stranger matching
+* **Friends only, and codes are hard to guess.** No stranger matching
   (`QUICK_MATCH` stays off). A code is a word plus 3 digits (20,000 codes);
-  10 wrong codes in 10 minutes pause an address's joins for 10 minutes. An
+  10 wrong codes in 10 minutes pause an address's joins for 10 minutes (an
+  IPv6 home is also counted as a whole: 30 per /56, 60 per /48). So one
+  home gets about 10 to 30 guesses in a waiting room's 10-minute life, a
+  1-in-2,000 to 1-in-670 chance at a given room. Someone with many separate
+  networks can try more: a code is a hard-to-guess key, not a password. An
   unjoined room expires after 10 minutes, a match after 12.
 * **No chat.** Players can only send one of 8 built-in emotes. The relay
   rejects anything else.

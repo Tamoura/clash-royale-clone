@@ -24,7 +24,7 @@ import { makeCodeGen } from "../src/net/codewords";
 import { originAllowed, relayOriginPolicy } from "../src/net/origins";
 import { PROTOCOL_VERSION, type ErrorReason, type ServerMsg } from "../src/net/protocol";
 import { MAX_MESSAGE_BYTES, isParseError, parseClientMsg, playableCardIds } from "../src/net/validate";
-import { JoinGuard, addressKey } from "./joinGuard";
+import { JoinGuard, addressKeys } from "./joinGuard";
 import { openStaticSite } from "./static";
 
 const env = process.env;
@@ -215,9 +215,10 @@ function handle(conn: Conn, data: RawData, isBinary: boolean): void {
       deliver(hub.create(id, msg.deck, msg.mode, { loadout: msg.loadout, v: msg.v }));
       break;
     case "join": {
-      // Too many wrong codes from this address or socket: refuse every join
-      // for a while, the right code included, so guessing learns nothing.
-      const keys = [addressKey(conn.ip), `conn:${id}`];
+      // Too many wrong codes from this address (an IPv6 address also counts
+      // toward its /56 and /48) or socket: refuse every join for a while, the
+      // right code included, so guessing learns nothing.
+      const keys = [...addressKeys(conn.ip), `conn:${id}`];
       if (joinGuard.blocked(keys, now)) {
         sendError(conn, "rate-limited");
         log("info", "join-limited", { conn: id });
