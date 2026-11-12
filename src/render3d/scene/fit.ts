@@ -83,7 +83,11 @@ export const NEAR_KING_FOOT = -11.75;
  * then a little room (about 5 px on a phone) to the chips beside it.
  */
 export const CROWN_HALF_W = 2.3;
-/** The far lanterns: the board's top edge beside the crown (the box before the crown). */
+/**
+ * The board's top edge beside the crown (the box before the crown): the far
+ * band's front, where the far lantern string used to run (its festoon now
+ * hangs just under it, along the far stands' rail).
+ */
 export const FAR_EDGE = 14;
 /**
  * Between an HP plate and the screen's edge, or the scoreboard chips over

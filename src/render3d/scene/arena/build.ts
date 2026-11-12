@@ -197,6 +197,38 @@ function installCrowd(b: Battle3D, seats: CrowdSeat[]): Crowd | null {
 type Seat = CrowdSeat;
 
 /**
+ * The lantern strings (looks with `lanterns`): their posts stand between the
+ * kerb and the stands, just outside the court's long sides.
+ */
+export const LANTERN_X = ARENA_WIDTH / 2 + 1.3;
+/** The end festoon's posts and swag tops: low, along the front rail of the far stands (under their crowd). */
+export const END_STRING_Y = 1.7;
+/** Swags across an end (a lantern hangs between each pair). */
+const END_SWAGS = 8;
+/** How far each swag dips under its ends (world units). */
+const END_SAG = 0.42;
+/** The festoon rope's radius: about 2 px on a laptop, a rope rather than a hairline. */
+const ROPE_R = 0.035;
+/** The side lantern posts' height. */
+const SIDE_POST_H = 2.5;
+
+/** A rope through `pts` that dips `sag` between each pair (a parabola per swag). */
+export class FestoonCurve extends THREE.Curve<THREE.Vector3> {
+  constructor(private readonly pts: readonly THREE.Vector3[], private readonly sag: number) {
+    super();
+  }
+  override getPoint(t: number, out = new THREE.Vector3()): THREE.Vector3 {
+    const n = this.pts.length - 1;
+    const f = Math.min(n, Math.max(0, t * n));
+    const i = Math.min(n - 1, Math.floor(f));
+    const u = f - i;
+    out.lerpVectors(this.pts[i], this.pts[i + 1], u);
+    out.y -= this.sag * 4 * u * (1 - u);
+    return out;
+  }
+}
+
+/**
  * Set dressing around the court: the apron, the surround into `surround`
  * (scenery.ts for Classic, golden.ts for the Golden Age: stands, crowd
  * seats, pavilions or souk awnings, the forest or the town), lantern strings
@@ -231,33 +263,44 @@ export function decorate(b: Battle3D, lights: LightSpot[], surround: THREE.Objec
       cap.position.set(x, y - 0.02, z);
       b.arenaGroup.add(cap);
     };
-    const rope = (len: number, x: number, y: number, z: number, alongX: boolean): void => {
-      const r = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.025, 0.025, len, 5),
-        new THREE.MeshBasicMaterial({ color: LOOK.fencePost, fog: false }),
-      );
-      r.rotation.set(alongX ? 0 : Math.PI / 2, 0, alongX ? Math.PI / 2 : 0);
-      r.position.set(x, y, z);
+    const wood = toon(LOOK.fencePost);
+    // A slim wooden post with a round cap: the strings hang from these.
+    const post = (x: number, h: number, z: number): void => {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, h, 6), wood);
+      pole.position.set(x, h / 2 - 0.05, z);
+      b.arenaGroup.add(pole);
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), toon(THEME.gold));
+      knob.position.set(x, h, z);
+      b.arenaGroup.add(knob);
+    };
+    // A rope through `pts` that swags `sag` between each pair (a lantern
+    // hangs at every inner point): a festoon, not a taut wire.
+    const ropeMat = new THREE.MeshBasicMaterial({ color: LOOK.fencePost, fog: false });
+    const rope = (pts: THREE.Vector3[], sag: number): void => {
+      const curve = new FestoonCurve(pts, sag);
+      const r = new THREE.Mesh(new THREE.TubeGeometry(curve, (pts.length - 1) * 8, ROPE_R, 4, false), ropeMat);
       b.arenaGroup.add(r);
     };
-    // A string across each end, hung right at the arena edge — the
-    // steep camera keeps anything further out above the frame.
-    // Each end's string lives in its own group so the one on the camera's
-    // side can hide: seen from above it would cross our own king tower.
+    // A festoon across each end, between two posts just outside the court's
+    // corners, low along the front of the far stands (under their crowd), a
+    // lantern at every swag. Each end's string lives in its own group so the
+    // one on the camera's side can hide: seen from above it would cross our
+    // own king tower.
     for (const sz of [-1, 1]) {
       const dz = ARENA_HEIGHT / 2;
-      const y = 2.8;
       const holder = b.arenaGroup;
       const endGroup = new THREE.Group();
       endGroup.userData.batchRoot = true; // toggled as a unit per viewpoint
       b.arenaGroup = endGroup;
-      rope(ARENA_WIDTH + 10, 0, y, sz * dz, true);
-      for (let i = 0; i < 7; i++) {
-        const ly = y + Math.sin(i * 2.3) * 0.15;
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= END_SWAGS; i++) pts.push(new THREE.Vector3(-LANTERN_X + (2 * LANTERN_X * i) / END_SWAGS, END_STRING_Y, sz * dz));
+      for (const sx of [-1, 1]) post(sx * LANTERN_X, END_STRING_Y + 0.1, sz * dz);
+      rope(pts, END_SAG);
+      for (let i = 1; i < END_SWAGS; i++) {
         const ci = i + (sz > 0 ? 1 : 0);
-        stringLantern(-12 + i * 4, ly, sz * dz, ci);
+        stringLantern(pts[i].x, END_STRING_Y, sz * dz, ci);
         lights.push({
-          x: -12 + i * 4, y: ly - 0.4, z: sz * dz, color: lanternColors[ci % lanternColors.length],
+          x: pts[i].x, y: END_STRING_Y - 0.4, z: sz * dz, color: lanternColors[ci % lanternColors.length],
           radius: 1.7, end: sz > 0 ? "player" : "enemy",
         });
       }
@@ -267,15 +310,20 @@ export function decorate(b: Battle3D, lights: LightSpot[], surround: THREE.Objec
       else b.endStringEnemy = endGroup;
     }
     applyEndStrings(b);
-    // Side strings for wider screens.
-    const sideX = ARENA_WIDTH / 2 + 3.4;
+    // Down the long sides (wider screens): a lantern on a post with a short
+    // arm toward the court, between the kerb and the stands, so the lights
+    // frame the court; no rope runs through the crowd.
     for (const sx of [-1, 1]) {
-      rope(ARENA_HEIGHT + 4, sx * sideX, 4.6, 0, false);
       for (let i = 0; i < 8; i++) {
         const z = -14 + i * 4;
         const ci = i + (sx > 0 ? 1 : 0);
-        stringLantern(sx * sideX, 4.6 + Math.sin(i * 1.7) * 0.18, z, ci);
-        lights.push({ x: sx * sideX, y: 4.2, z, color: lanternColors[ci % lanternColors.length], radius: 1.6 });
+        const x = sx * LANTERN_X;
+        post(x, SIDE_POST_H, z);
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.05, 0.05), wood);
+        arm.position.set(x - sx * 0.19, SIDE_POST_H - 0.16, z);
+        b.arenaGroup.add(arm);
+        stringLantern(x - sx * 0.36, SIDE_POST_H - 0.14, z, ci);
+        lights.push({ x: x - sx * 0.36, y: SIDE_POST_H - 0.6, z, color: lanternColors[ci % lanternColors.length], radius: 1.6 });
       }
     }
   }

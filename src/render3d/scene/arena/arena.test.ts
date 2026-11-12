@@ -21,6 +21,8 @@ import { buildTufts } from "./tufts";
 import { makeCrowd, orientSeats, poseCrowd } from "./crowd";
 import { LightPools, NIGHT_NATIVE_FLOOR, poolIntensity } from "./lightPools";
 import { toon } from "../../characters3d";
+import { FAR_EDGE } from "../fit";
+import { END_STRING_Y, FestoonCurve, LANTERN_X } from "./build";
 import { setViewSide } from "../common";
 import { tone } from "../views/towerCraft";
 import { towerTeamColors } from "../views/towers";
@@ -484,6 +486,34 @@ describe("the ring wears the viewer's colours (online guest, ?viewpoint=enemy)",
         // Facing the court: toward x = 0.
         expect(Math.sin(seat.face) * Math.sign(seat.x), `seat ${i}`).toBeLessThan(0);
       }
+    }
+  });
+});
+
+describe("lantern strings", () => {
+  it("swag between their lanterns: a festoon, not a taut wire", () => {
+    const pts = [new THREE.Vector3(-2, 2, 0), new THREE.Vector3(0, 2, 0), new THREE.Vector3(2, 2, 0)];
+    const c = new FestoonCurve(pts, 0.4);
+    expect(c.getPoint(0).distanceTo(pts[0])).toBeLessThan(1e-9);
+    expect(c.getPoint(0.5).distanceTo(pts[1])).toBeLessThan(1e-9);
+    expect(c.getPoint(1).distanceTo(pts[2])).toBeLessThan(1e-9);
+    expect(c.getPoint(0.25).y).toBeCloseTo(1.6, 9); // the bottom of the first swag
+    expect(c.getPoint(0.25).x).toBeCloseTo(-1, 9);
+  });
+
+  it("the far festoon hangs under the far stands' crowd and the board's top edge, its posts outside the court", () => {
+    const z = -ARENA_HEIGHT / 2;
+    const top = screenU(END_STRING_Y, z); // the rope's highest points, where the lanterns hang
+    expect(screenU(END_STRING_Y + 0.2, z)).toBeLessThanOrEqual(FAR_EDGE); // a post's knob
+    // The lanterns (0.75 tall, under the rope) stay over the far kerb.
+    expect(screenU(END_STRING_Y - 0.8, z)).toBeGreaterThan(screenU(0.4, z));
+    expect(LANTERN_X).toBeGreaterThan(ARENA_WIDTH / 2 + 0.75); // clear of the kerb
+    for (const look of ALL) {
+      const bd = buildBackdrop(look, glow);
+      const over = bd.seats.filter((st) => Math.abs(st.x) < LANTERN_X);
+      if (over.length === 0) continue;
+      const feet = Math.min(...over.map((st) => screenU(st.y, st.z)));
+      expect(top, look.id).toBeLessThanOrEqual(feet);
     }
   });
 });
