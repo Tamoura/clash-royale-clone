@@ -32,7 +32,7 @@ export const TIERS: readonly Tier[] = ["practice", "rookie", "easy", "normal", "
  * with a spell. Every tier banks a full bar before it pushes: a bot that
  * pushes on less sends half a push and loses to one that waits (the old
  * hard pushed at 6 and lost to the old easy). Hard is the old normal's
- * pace with that patience: it wins about three games in four against it.
+ * pace with that patience: it wins about four games in five against it.
  * Practice is where auto steps a kid down to after two straight losses.
  */
 const TIER_PROFILES: Record<Tier, BotProfile> = {
@@ -324,7 +324,7 @@ export type BotArchetype = "balanced" | "beatdown" | "cycle" | "siege";
  * Practice to normal are calibrated as a whole against a novice
  * (ladder.test.ts), so a ladder personality never changes their pace: the
  * cycle speed-up (push at 8) alone made the novice's 1-in-3 easy bot a
- * 1-in-11 one. Their personality still shows in the deck it drafts. Hard,
+ * 1-in-10 one. Their personality still shows in the deck it drafts. Hard,
  * the top step, keeps the personality tweaks for variety.
  */
 export function keepsOwnPace(tier: Tier): boolean {
