@@ -52,7 +52,13 @@ const TRUST_PROXY = (env.TRUST_PROXY ?? (env.RENDER_EXTERNAL_URL ? "true-client-
  */
 const RELAY_ONLY = process.argv.slice(2).includes("--relay-only");
 const STATIC_DIR = RELAY_ONLY ? "off" : (env.STATIC_DIR ?? "").trim();
-const QUICK_MATCH = env.QUICK_MATCH !== "off";
+/**
+ * Quick match pairs strangers, so it is OFF unless QUICK_MATCH is exactly
+ * "on" (for developers testing the queue). Crown Rush is friends-only: the
+ * game has no button for it, and a page that asks anyway gets
+ * "quick-disabled". Room codes are the only way to meet someone.
+ */
+const QUICK_MATCH = env.QUICK_MATCH === "on";
 /** "debug" adds client IPs and per-message detail; never on by default. */
 const LOG_LEVEL = env.LOG_LEVEL === "debug" ? "debug" : "info";
 
