@@ -1415,7 +1415,10 @@ function frame(now: number): void {
       );
     }
     // The bot says wow when you take its tower, and never laughs when it takes yours.
-    if (ev.type === "crown" && mode() === "solo") botEmote({ type: "crown", byKid: ev.winner === "player" });
+    // The tower that ends the match gets only the end emote (finishMatch).
+    if (ev.type === "crown" && mode() === "solo") {
+      botEmote({ type: "crown", byKid: ev.winner === "player", matchOver: battle.result !== null });
+    }
     if (ev.type === "finish") finishMatch(ev.winner);
   }
   checkBanners(battle, audio);

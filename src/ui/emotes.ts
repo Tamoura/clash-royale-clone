@@ -12,6 +12,9 @@
  *
  * The bubble draws the glyph on the inked, off-white canvas bubble
  * (render3d/scene/fx/pool.ts paintBubble), like the Crown Pass emotes.
+ * The glyphs are written as \u escapes, as meta/pass.ts writes its own:
+ * emotes are emoji on purpose (the noEmoji ratchet exempts the emote
+ * list), so they stay out of that ratchet's count for UI chrome.
  */
 
 /** Wire id -> glyph ("" = retired: never shown). 7 is free for later. */
@@ -58,8 +61,12 @@ export function emoteGlyph(id: number): string | null {
 
 /** Something the bot may react to. */
 export type BotMoment =
-  /** A tower fell; `byKid` is true when the kid took it. */
-  | { type: "crown"; byKid: boolean }
+  /**
+   * A tower fell; `byKid` is true when the kid took it. `matchOver` is
+   * true when that tower ended the match (the King, or a sudden-death
+   * crown): the end-of-match emote speaks for it then.
+   */
+  | { type: "crown"; byKid: boolean; matchOver?: boolean }
   /** The match ended; `kidWon` is null for a draw. */
   | { type: "end"; kidWon: boolean | null };
 
@@ -67,9 +74,10 @@ export type BotMoment =
  * The bot's reaction (a wire id), or null to stay quiet. The bot is a
  * good sport: it never laughs, gloats or celebrates the kid's loss. It
  * says wow when the kid takes its tower, gives a thumbs up when the kid
- * wins and waves a friendly 'good game' at the end otherwise.
+ * wins and waves a friendly 'good game' at the end otherwise. One emote
+ * per moment: the tower that ends the match gets only the end's emote.
  */
 export function botReaction(m: BotMoment): number | null {
-  if (m.type === "crown") return m.byKid ? EMOTE_ID.wow : null;
+  if (m.type === "crown") return m.byKid && !m.matchOver ? EMOTE_ID.wow : null;
   return m.kidWon === true ? EMOTE_ID.thumbsUp : EMOTE_ID.hello;
 }

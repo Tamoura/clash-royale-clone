@@ -76,6 +76,12 @@ describe("botReaction: the bot is a good sport", () => {
 
   it("says wow when the kid takes its tower", () => {
     expect(emoteGlyph(botReaction({ type: "crown", byKid: true })!)).toBe("\u{1F62E}");
+    expect(emoteGlyph(botReaction({ type: "crown", byKid: true, matchOver: false })!)).toBe("\u{1F62E}");
+  });
+
+  it("says one thing when the kid's crown ends the match: the end's thumbs up, not wow as well", () => {
+    expect(botReaction({ type: "crown", byKid: true, matchOver: true })).toBeNull();
+    expect(botReaction({ type: "crown", byKid: false, matchOver: true })).toBeNull();
   });
 
   it("gives a thumbs up when the kid wins and a friendly wave otherwise", () => {
