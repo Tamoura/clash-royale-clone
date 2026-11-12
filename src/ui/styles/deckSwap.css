@@ -1,0 +1,82 @@
+/* The chest summary's new-card offer and its "Which card goes out?" deck
+   strip (screens/chestReveal.ts, screens/deckSwap.ts). */
+.rw-swap__box {
+  width: min(100%, 380px);
+}
+.rw-swap__body {
+  margin-bottom: var(--sp-3);
+}
+.rw-swap__strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-4);
+}
+.rw-swap__card {
+  --rw-rarity: var(--cr-rarity-common);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 4px 2px 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--surface-2, var(--surface-1));
+  box-shadow: inset 0 0 0 2px var(--rw-rarity);
+  color: var(--on-surface);
+  font: inherit;
+  cursor: pointer;
+  transition: transform var(--dur-fast, 120ms) var(--ease-out, ease-out);
+}
+.rw-swap__card.rarity-rare { --rw-rarity: var(--cr-rarity-rare); }
+.rw-swap__card.rarity-epic { --rw-rarity: var(--cr-rarity-epic); }
+.rw-swap__card.rarity-legendary { --rw-rarity: var(--cr-rarity-legendary); }
+.rw-swap__card:active {
+  transform: scale(0.95);
+}
+.rw-swap__card:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.rw-swap__card canvas {
+  width: 100%;
+  max-width: 64px;
+  height: auto;
+  aspect-ratio: 1;
+}
+.rw-swap__name {
+  max-width: 100%;
+  font-size: var(--fs-xs);
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* The summary's new-card offer sits below Collect, away from the centre of
+   the screen where the reveal's "tap to continue" taps land. */
+.rw-summary__offer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+.rw-summary__offer-text {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: #fff;
+  text-shadow: var(--cr-outline);
+  text-align: center;
+}
+.rw-card__later {
+  font-size: var(--fs-sm);
+  color: var(--on-surface-dim);
+  text-shadow: var(--cr-outline);
+  text-align: center;
+}

@@ -102,6 +102,46 @@ describe("audio wiring", () => {
     expect(r.music.at(-1)).toBe("battle");
   });
 
+  it("hushes the battle track while a tutorial step holds the clock, and brings it back", async () => {
+    const r = await rig();
+    const b = fakeBattle();
+    let held = false;
+    const off = r.hooks.registerSimHold(() => held);
+    start(r, b);
+    frame(r, b, "playing");
+    expect(r.music.at(-1)).toBe("battle");
+    expect(r.engine.hushed).toBe(false);
+    held = true; // the lesson waits for the kid
+    frame(r, b, "playing");
+    expect(r.engine.hushed).toBe(true);
+    expect(r.music.at(-1)).toBe("battle"); // same track, same place: only quieter
+    held = false; // they played the card
+    frame(r, b, "playing");
+    expect(r.engine.hushed).toBe(false);
+    // A menu or the end of the match never leaves it hushed.
+    held = true;
+    frame(r, b, "playing");
+    r.hooks.emit("screen", { id: "deck", sceneMode: "none" });
+    expect(r.engine.hushed).toBe(false);
+    r.hooks.emit("screen", { id: "battle", sceneMode: "battle" });
+    frame(r, b, "playing");
+    expect(r.engine.hushed).toBe(true);
+    r.hooks.emit("matchEnd", {
+      kind: "ladder", winner: "player", mySide: "player", myCrowns: 3, theirCrowns: 0,
+      trophyDelta: 0, online: false, battle: b, replay: false, sandbox: false,
+    });
+    expect(r.engine.hushed).toBe(false);
+    off();
+  });
+
+  it("never hushes online or before the countdown ends", async () => {
+    const { shouldHush } = await import("./wire");
+    expect(shouldHush("playing", false, true)).toBe(true);
+    expect(shouldHush("playing", true, true)).toBe(false);
+    expect(shouldHush("countdown", false, true)).toBe(false);
+    expect(shouldHush("playing", false, false)).toBe(false);
+  });
+
   it("ticks the last 10 seconds and taps when our towers are hit", async () => {
     const r = await rig();
     const ticks: number[] = [];

@@ -9,6 +9,7 @@ import {
   compileTrack,
   degreeSemis,
   dueSteps,
+  hushedLayers,
   layersAt,
   lookaheadFor,
   parseDegree,
@@ -247,6 +248,11 @@ describe("music data", () => {
     expect(stepSeconds(TRACKS.menu, 2)).toBe(stepSeconds(TRACKS.menu, 0));
   });
 
+  it("a held clock keeps only the quietest bed: the pad, else the bass", () => {
+    expect(hushedLayers(TRACKS.battle)).toEqual({ lead: false, bass: true, pad: false, arp: false, hats: false, drums: false });
+    expect(hushedLayers(TRACKS.menu)).toEqual({ lead: false, bass: false, pad: true, arp: false, hats: false, drums: false });
+  });
+
   it("ticks once per second through the last 10 seconds only", () => {
     let last = -1;
     const ticks: number[] = [];
@@ -354,6 +360,44 @@ describe("look-ahead scheduler", () => {
     advance(4000);
     // Drums, hats and the counter-melody join: clearly busier.
     expect(engine.notesScheduled - before).toBeGreaterThan(normal * 1.3);
+  });
+});
+
+// ---- The quiet wait ------------------------------------------------------------
+
+describe("hushed battle music", () => {
+  it("plays far fewer notes while hushed and the full track again after", async () => {
+    const { sound } = await load(memoryStorage());
+    const engine = new sound.SoundEngine({ edition: "classic" });
+    engine.resume();
+    engine.playMusic("battle");
+    advance(4000);
+    const normal = engine.notesScheduled;
+    expect(normal).toBeGreaterThan(10);
+    engine.setHushed(true);
+    expect(engine.hushed).toBe(true);
+    let before = engine.notesScheduled;
+    advance(4000);
+    const hushed = engine.notesScheduled - before;
+    expect(hushed).toBeGreaterThan(0); // still music: the bass keeps time
+    expect(hushed).toBeLessThan(normal * 0.6);
+    engine.setHushed(false);
+    before = engine.notesScheduled;
+    advance(4000);
+    expect(engine.notesScheduled - before).toBeGreaterThan(hushed * 1.4);
+  });
+
+  it("never hushes the menu theme", async () => {
+    const { sound } = await load(memoryStorage());
+    const engine = new sound.SoundEngine({ edition: "arabic" });
+    engine.resume();
+    engine.playMusic("menu");
+    advance(4000);
+    const normal = engine.notesScheduled;
+    engine.setHushed(true);
+    const before = engine.notesScheduled;
+    advance(4000);
+    expect(engine.notesScheduled - before).toBeGreaterThan(normal * 0.8);
   });
 });
 

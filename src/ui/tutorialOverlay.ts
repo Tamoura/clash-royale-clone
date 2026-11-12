@@ -9,6 +9,7 @@ import "./styles/tutorial.css";
 import type { AppCtx } from "../app/ctx";
 import { on, registerSimHold } from "../app/hooks";
 import type { BattleState } from "../game/battle";
+import type { CardId } from "../game/cards";
 import {
   TUTORIAL_STEP_COUNT,
   Tutorial,
@@ -28,6 +29,7 @@ import { button, confirm, sheet } from "./components";
 import { tr } from "./i18n";
 import { icon } from "./icons";
 import { reducedMotion } from "./prefs";
+import { cardDisplayName } from "../render/cardNames";
 import { ARABIC } from "../render3d/theme";
 
 export { tutorialDone } from "../game/tutorial";
@@ -75,6 +77,8 @@ interface Session {
   tileGlow: HTMLElement;
   hand: HTMLElement;
   ghost: HTMLElement;
+  /** The target card's name on a tinted chip above it. */
+  chip: HTMLElement;
   coach: HTMLElement;
   coachText: HTMLElement;
   coachHint: HTMLElement;
@@ -94,6 +98,10 @@ interface Session {
   viewKey: string;
   textKey: string;
   anims: Animation[];
+  /** The coach's answer to a wrong press (see pressNudge). */
+  nudge: NudgeState;
+  /** Presses on the dimmed area during this battle (a dev/test aid). */
+  nudges: number;
   offs: (() => void)[];
 }
 
@@ -135,6 +143,140 @@ function anchorElement(anchor: TutorialStep["anchor"]): HTMLElement | null {
     if (el && !el.hidden && el.getClientRects().length > 0 && el.getBoundingClientRect().width > 0) return el;
   }
   return null;
+}
+
+// ---- Wrong presses -------------------------------------------------------------
+
+/** How long the coach's nudge line stays up before the step's own line returns. */
+export const NUDGE_MS = 2800;
+/** A press this soon after the last nudge is part of the same burst: no second wiggle. */
+export const NUDGE_BURST_MS = 300;
+
+interface Box {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/** The card whose box holds (x, y), if any. */
+export function cardAt(cards: readonly { id: string; rect: Box }[], x: number, y: number): string | null {
+  for (const c of cards) {
+    const r = c.rect;
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return c.id;
+  }
+  return null;
+}
+
+/**
+ * What the coach says when the kid presses the dimmed screen during a
+ * lesson: a card that is not the lesson's (`pressed`), or anywhere else
+ * (null). The line names the card to use, in the edition's own card names
+ * (`name`). Null when there is nothing to point at.
+ */
+export function nudgeCopy(
+  step: Pick<TutorialStep, "anchor">,
+  target: CardId | null,
+  pressed: string | null,
+  name: (id: CardId) => string,
+): [string, string] | null {
+  if (target) {
+    const n = name(target);
+    if (pressed === target) return null;
+    return pressed
+      ? [`Not that one. Use the glowing ${n} card!`, `ليست هذه. استخدم بطاقة ${n} المضيئة!`]
+      : [`Drag the glowing ${n} card onto the glowing spot!`, `اسحب بطاقة ${n} المضيئة إلى البقعة المضيئة!`];
+  }
+  if (step.anchor === "ability") {
+    return pressed
+      ? ["Not a card this time. Tap your glowing King power!", "ليست بطاقة هذه المرة. اضغط قوة ملكك المضيئة!"]
+      : ["Tap your glowing King power!", "اضغط قوة ملكك المضيئة!"];
+  }
+  return null;
+}
+
+/** The coach's nudge, apart from the DOM (each session holds one). */
+export interface NudgeState {
+  /** The line the coach says instead of the step's own, until `until` (performance.now ms). */
+  text: [string, string] | null;
+  until: number;
+  /** The pointer whose press started the nudge, while it is still down. */
+  pointer: number | null;
+}
+
+export function newNudge(): NudgeState {
+  return { text: null, until: 0, pointer: null };
+}
+
+/**
+ * Show `copy` from `now` for NUDGE_MS. True when this is a fresh nudge (the
+ * target wiggles and the glove's drag replays), false inside a burst of
+ * presses, which only keeps the line up.
+ */
+export function sayNudge(st: NudgeState, copy: [string, string], now: number): boolean {
+  const fresh = now >= st.until - NUDGE_MS + NUDGE_BURST_MS;
+  st.text = copy;
+  st.until = now + NUDGE_MS;
+  return fresh;
+}
+
+/** The nudge line to show now, or null for the step's own line. */
+export function nudgeLine(st: NudgeState, holding: boolean, now: number): [string, string] | null {
+  return holding && st.text !== null && now < st.until ? st.text : null;
+}
+
+/** A new step ends any nudge (its line belonged to the old one). */
+export function clearNudge(st: NudgeState): void {
+  st.text = null;
+  st.until = 0;
+  st.pointer = null;
+}
+
+/**
+ * What a press on the overlay does. A callout's tap continues it. During a
+ * lesson, a press on the dimmed area (a card that is not the lesson's, or
+ * anywhere else) gets a nudge, never silence, and never plays anything.
+ * Presses on the Skip link, before the battle or after its end do nothing.
+ */
+export function overlayPress(o: { live: boolean; onSkip: boolean; tapStep: boolean; onDim: boolean }): "none" | "continue" | "nudge" {
+  if (!o.live || o.onSkip) return "none";
+  if (o.tapStep) return "continue";
+  return o.onDim ? "nudge" : "none";
+}
+
+/**
+ * The kid pressed the dimmed screen during a lesson; `pressed` is the card
+ * under the finger, or null. Starts the coach's nudge for the step the
+ * machine is on. It never feeds the machine, so the step, and the clock
+ * it holds, stay exactly as they were. Null when there is nothing to point
+ * at; otherwise whether the nudge is fresh, and the lesson's card.
+ */
+export function pressNudge(
+  st: NudgeState,
+  machine: Pick<Tutorial, "current">,
+  b: BattleState,
+  pressed: string | null,
+  now: number,
+  name: (id: CardId) => string,
+): { fresh: boolean; target: CardId | null } | null {
+  const step = machine.current;
+  if (!step) return null;
+  const target = step.target?.(b)?.cardId ?? null;
+  const copy = nudgeCopy(step, target, pressed, name);
+  if (!copy) return null;
+  return { fresh: sayNudge(st, copy, now), target };
+}
+
+/**
+ * The finger that started a nudge lifted (a slow, wrong drag ends here):
+ * say it again, so the drop gets an answer too. Null when there is nothing
+ * to repeat (another finger, or the step moved on); otherwise whether the
+ * repeat is fresh (a quick tap's release is part of its own burst).
+ */
+export function releaseNudge(st: NudgeState, pointer: number, now: number): boolean | null {
+  if (st.pointer === null || st.pointer !== pointer) return null;
+  st.pointer = null;
+  return st.text ? sayNudge(st, st.text, now) : null;
 }
 
 /** The tile's screen position and a radius of about one tile. */
@@ -187,6 +329,7 @@ function buildOverlay(): Pick<
   | "tileGlow"
   | "hand"
   | "ghost"
+  | "chip"
   | "coach"
   | "coachText"
   | "coachHint"
@@ -203,6 +346,9 @@ function buildOverlay(): Pick<
   const trail = svgEl("path", "tut-trail", mask);
   const tileGlow = el("div", "tut-tile", root);
   const ghost = el("div", "tut-ghost", root);
+  const chip = el("div", "tut-chip", root);
+  chip.hidden = true;
+  chip.setAttribute("aria-hidden", "true");
   const hand = el("div", "tut-hand", root);
   hand.innerHTML = HAND_SVG;
   hand.style.width = `${HAND_PX}px`;
@@ -226,7 +372,7 @@ function buildOverlay(): Pick<
   const coachHint = el("div", "tut-coach-hint", body);
   const actions = el("div", "tut-actions", body);
   document.body.appendChild(root);
-  return { root, mask, maskPath, ringPath, trail, tileGlow, hand, ghost, coach, coachText, coachHint, dots, skipSlot, actions };
+  return { root, mask, maskPath, ringPath, trail, tileGlow, hand, ghost, chip, coach, coachText, coachHint, dots, skipSlot, actions };
 }
 
 function skipLink(s: Session): HTMLButtonElement {
@@ -449,6 +595,14 @@ function drawView(s: Session, v: View): void {
     s.trail.setAttribute("d", "");
   }
 
+  // The target card's name on a tinted chip just above it.
+  s.chip.hidden = !(v.holding && v.card && v.cardId);
+  if (v.holding && v.card && v.cardId) {
+    s.chip.textContent = cardDisplayName(v.cardId as CardId);
+    s.chip.style.left = `${v.card.left + v.card.width / 2}px`;
+    s.chip.style.top = `${v.card.top - 10}px`;
+  }
+
   stopAnims(s);
   s.ghost.hidden = true;
   s.hand.hidden = !(v.card || v.anchor);
@@ -535,7 +689,9 @@ function coachCopy(step: TutorialStep, b: BattleState, holding: boolean): [strin
 }
 
 function drawCoach(s: Session, b: BattleState, step: TutorialStep, holding: boolean): void {
-  const [en, ar] = coachCopy(step, b, holding);
+  const line = nudgeLine(s.nudge, holding, performance.now());
+  const nudging = line !== null;
+  const [en, ar] = line ?? coachCopy(step, b, holding);
   const tap = step.tapToContinue || (step.id === "king" && b.player.ability === null);
   const index = typeof s.machine.step === "number" ? s.machine.step : TUTORIAL_STEP_COUNT;
   // Free-play steps dock the bubble low so the enemy towers stay in view.
@@ -544,6 +700,7 @@ function drawCoach(s: Session, b: BattleState, step: TutorialStep, holding: bool
   if (key === s.textKey) return;
   s.textKey = key;
   s.coachText.textContent = tr(en, ar);
+  s.coach.classList.toggle("nudge", nudging);
   s.coachHint.textContent = tap ? tr("Tap anywhere to continue", "اضغط في أي مكان للمتابعة") : "";
   s.coachHint.hidden = !tap;
   s.coach.dataset.place = placement;
@@ -630,6 +787,53 @@ function render(s: Session, b: BattleState): void {
   drawCoach(s, b, step, view.holding);
 }
 
+/**
+ * The kid pressed the dimmed screen during a lesson (most often a card that
+ * is not the lesson's): swap the coach line for a moment to name the card
+ * to use, wiggle the glowing target and play the glove's drag again from
+ * the start. The clock stays held; nothing is deployed.
+ */
+function nudge(s: Session, b: BattleState, ev: PointerEvent): void {
+  const cards = Array.from(document.querySelectorAll<HTMLElement>("#hud button.card[data-card]")).map((n) => ({
+    id: n.dataset.card ?? "",
+    rect: n.getBoundingClientRect(),
+  }));
+  const pressed = cardAt(cards, ev.clientX, ev.clientY);
+  const r = pressNudge(s.nudge, s.machine, b, pressed, performance.now(), cardDisplayName);
+  if (!r) return;
+  s.nudge.pointer = ev.pointerId;
+  s.nudges++;
+  s.root.dataset.nudges = String(s.nudges);
+  showNudge(s, b, r.fresh, r.target);
+}
+
+/** Draw the nudge line now; a fresh nudge also wiggles the target and replays the glove. */
+function showNudge(s: Session, b: BattleState, fresh: boolean, target: CardId | null): void {
+  const step = s.machine.current;
+  if (!step) return;
+  // Say it now, not on the next frame (a slow tablet may be a while).
+  drawCoach(s, b, step, effectiveHold(s, b));
+  if (!fresh) return;
+  // Replay the glove's drag (and the card riding under it) from the start.
+  for (const a of s.anims) {
+    a.currentTime = 0;
+    a.play();
+  }
+  if (reducedMotion()) return;
+  const glow = target ? cardButton(target) : step.anchor ? anchorElement(step.anchor) : null;
+  glow?.animate(
+    [
+      { rotate: "0deg", scale: "1" },
+      { rotate: "-10deg", scale: "1.12", offset: 0.18 },
+      { rotate: "9deg", scale: "1.12", offset: 0.38 },
+      { rotate: "-7deg", scale: "1.08", offset: 0.58 },
+      { rotate: "4deg", scale: "1.04", offset: 0.78 },
+      { rotate: "0deg", scale: "1" },
+    ],
+    { duration: 650, easing: "ease-in-out" },
+  );
+}
+
 // ---- End of the battle ---------------------------------------------------------
 
 function showEnding(s: Session, won: boolean): void {
@@ -646,6 +850,8 @@ function showEnding(s: Session, won: boolean): void {
   s.tileGlow.hidden = true;
   s.hand.hidden = true;
   s.ghost.hidden = true;
+  s.chip.hidden = true;
+  s.coach.classList.remove("nudge");
   s.coach.dataset.place = "center";
   s.dots.querySelectorAll("i").forEach((d) => (d.className = won ? "done" : ""));
   s.coachText.textContent = won
@@ -689,6 +895,7 @@ export function stopTutorial(): void {
 function feed(s: Session, input: Parameters<Tutorial["feed"]>[0], b: BattleState): void {
   if (!s.machine.feed(input, b)) return;
   s.viewKey = "";
+  clearNudge(s.nudge);
   const now = performance.now();
   // The finger that caused this (a tap on KING, a callout tap) is still on
   // the glass or just lifted: the click it fires next must not land on
@@ -749,6 +956,8 @@ function runTutorial(ctx: AppCtx): void {
     viewKey: "",
     textKey: "",
     anims: [],
+    nudge: newNudge(),
+    nudges: 0,
     offs: [],
   };
   session = s;
@@ -763,13 +972,25 @@ function runTutorial(ctx: AppCtx): void {
   };
   s.root.addEventListener("click", swallow, true);
 
-  // Taps on the dimmed area: continue a callout; anything else is ignored.
+  // Taps on the dimmed area: continue a callout. During a lesson, a press
+  // there (a card that is not the lesson's, or anywhere else) never plays
+  // anything, so the coach points at the right card instead.
   s.root.addEventListener("pointerdown", (ev) => {
-    if (s.ended || s.root.dataset.tap !== "1" || !s.battle) return;
-    if ((ev.target as Element).closest(".tut-skip")) return;
+    const b = s.battle;
+    const act = overlayPress({
+      live: !s.ended && b !== null,
+      onSkip: (ev.target as Element).closest(".tut-skip") !== null,
+      tapStep: s.root.dataset.tap === "1",
+      onDim: ev.target === s.maskPath && s.mask.classList.contains("on"),
+    });
+    if (!b || act === "none") return;
+    if (act === "nudge") {
+      nudge(s, b, ev);
+      return;
+    }
     ev.preventDefault();
     if (performance.now() < s.swallowUntil) return; // a double tap is one tap
-    feed(s, { type: "tap" }, s.battle);
+    feed(s, { type: "tap" }, b);
   });
 
   // Where the finger is, for feed()'s guard (capture: before the HUD acts).
@@ -777,12 +998,17 @@ function runTutorial(ctx: AppCtx): void {
     s.pointerIsDown = true;
     s.pointerDownAt = performance.now();
   };
-  const onUp = (): void => {
+  const onUp = (ev: PointerEvent): void => {
     s.pointerIsDown = false;
     if (s.swallowAfterUp) {
       s.swallowAfterUp = false;
       s.swallowUntil = Math.max(s.swallowUntil, performance.now() + SWALLOW_MS);
     }
+    // A wrong press let go (a slow drag ends here): the drop gets the nudge too.
+    const b = s.battle;
+    const fresh = releaseNudge(s.nudge, ev.pointerId, performance.now());
+    if (fresh === null || !b || s.ended || !effectiveHold(s, b)) return;
+    showNudge(s, b, fresh, s.machine.current?.target?.(b)?.cardId ?? null);
   };
   window.addEventListener("pointerdown", onDown, true);
   window.addEventListener("pointerup", onUp, true);
