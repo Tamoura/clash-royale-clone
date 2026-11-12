@@ -138,6 +138,8 @@ screen offers "Quick match" / "Find a match" in either language.
   (`tr("Emotes", "التعابير")`). I left both untouched to avoid conflicts; the
   lint allowlists them by expression text, so the entries simply go unused
   after the merge. My static emote-bar label uses the same word, التعابير.
+  (Round 1 integration, r1/ship: once kind's rewrite landed, the three
+  entries were removed and both allowlists are now empty; the lint passes.)
   kind also edits `src/meta/achievements.ts` (header and season-reset code);
   my edits there are the five definition lines only.
 - `src/main.ts` changes here are small and away from kind's hunks: the brand

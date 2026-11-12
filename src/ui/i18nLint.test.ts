@@ -18,20 +18,19 @@ import { describe, expect, it } from "vitest";
 const ROOT = decodeURIComponent(new URL("../../", import.meta.url).pathname);
 const rel = (f: string): string => f.replace(ROOT, "").replace(/\\/g, "/");
 
-/** English-only aria-label literals that are allowed, as "file: text". */
-const ARIA_ALLOW = new Set<string>([
-  // The emote picker's toggle belongs to round 1's "kind" package, which
-  // translates it (tr("Emotes", "التعابير")) along with the new emote set.
-  "src/main.ts: Emotes",
-]);
+/**
+ * English-only aria-label literals that are allowed, as "file: text".
+ * Empty since round 1's merge: the emote toggle now reads tr("Emotes",
+ * "التعابير").
+ */
+const ARIA_ALLOW = new Set<string>([]);
 
-/** Raw numbers allowed in an Arabic string, as "file: expression". */
-const NUMBER_ALLOW = new Set<string>([
-  // The old season-reset banner; round 1's "kind" package replaces it with
-  // a season-start toast that names the season (Arabic digits) and no counts.
-  "src/main.ts: from",
-  "src/main.ts: seasonRoll.trophies",
-]);
+/**
+ * Raw numbers allowed in an Arabic string, as "file: expression". Empty
+ * since round 1's merge: the old season-reset banner's two counts gave way
+ * to a season-start toast that names the season and no counts.
+ */
+const NUMBER_ALLOW = new Set<string>([]);
 
 const LATIN = /[A-Za-z]/;
 const ARABIC_LETTER = /[؀-ۿ]/;
