@@ -23,6 +23,7 @@ import { registerTroopCaster } from "../post";
 import { castActiveForBattle, hasKitTroop, kitTroopCards, loadKitTroops, makeKitGhost, makeKitTroop, setCastPalette } from "../../cast/index";
 import { invalidatePortrait } from "../../cardportraits";
 import {
+  ARABIC_DIGIT_FACE,
   BAR_TILT,
   GAME_FONT,
   HP_COLOR,
@@ -135,6 +136,19 @@ export function makeHpText(y: number): { sprite: THREE.Sprite; text: HpText } {
   return { sprite, text: { ctx, tex, last: -1 } };
 }
 
+/**
+ * The number on an HP plate: whole, ungrouped, and in Arabic-Indic digits
+ * in the Golden Age edition, like the clock and the costs (2534 / ٢٥٣٤).
+ */
+export function hpPlateLabel(value: number, arabic: boolean = ARABIC): string {
+  return formatInt(value, arabic);
+}
+
+/** The number on a level shield, in the same digits as the plate beside it (9 / ٩). */
+export function levelBadgeLabel(level: number, arabic: boolean = ARABIC): string {
+  return formatInt(level, arabic);
+}
+
 export function updateHpText(t: HpText, hp: number): void {
   const value = Math.max(0, Math.ceil(hp));
   if (value === t.last) return;
@@ -148,8 +162,7 @@ export function updateHpText(t: HpText, hp: number): void {
   ctx.lineJoin = "round";
   ctx.lineWidth = 7 * k;
   ctx.strokeStyle = "rgba(31,26,46,0.92)";
-  // Golden Age plates use Arabic-Indic digits, like the clock and the costs.
-  const label = formatInt(value, ARABIC);
+  const label = hpPlateLabel(value);
   ctx.strokeText(label, 64 * k, 26 * k);
   ctx.fillStyle = HP_TEXT_FILL;
   ctx.fillText(label, 64 * k, 26 * k);
@@ -298,9 +311,11 @@ function drawLevelBadge(b: LevelBadge, palette: TeamPalette): void {
   ctx.lineJoin = "round";
   ctx.lineWidth = 6;
   ctx.strokeStyle = "rgba(10,14,22,0.85)";
-  ctx.strokeText(String(level), 32, 33);
+  // ARABIC is fixed for the page's life, so the cache key needs no edition.
+  const label = levelBadgeLabel(level);
+  ctx.strokeText(label, 32, 33);
   ctx.fillStyle = "#fff";
-  ctx.fillText(String(level), 32, 33);
+  ctx.fillText(label, 32, 33);
   b.tex.needsUpdate = true;
 }
 
@@ -318,9 +333,18 @@ export function makeLevelBadge(simSide: Side, level = 9): THREE.Sprite {
     const tex = new THREE.CanvasTexture(c);
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
     mat.userData.shared = true;
-    badge = { side, level, ctx: c.getContext("2d")!, tex, mat };
-    drawLevelBadge(badge, teamPalette());
-    levelBadges.set(key, badge);
+    const made: LevelBadge = { side, level, ctx: c.getContext("2d")!, tex, mat };
+    badge = made;
+    drawLevelBadge(made, teamPalette());
+    levelBadges.set(key, made);
+    // Golden Age digits come from the Arabic face (Lilita One has none). The
+    // shield is painted once, so paint it again once that face is in.
+    if (ARABIC) {
+      document.fonts
+        ?.load(`36px ${ARABIC_DIGIT_FACE}`, levelBadgeLabel(level))
+        .then(() => drawLevelBadge(made, teamPalette()))
+        .catch(() => undefined);
+    }
   }
   const sprite = new THREE.Sprite(badge.mat);
   sprite.scale.set(0.42, 0.42, 1);

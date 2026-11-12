@@ -10,7 +10,7 @@ import { DECK } from "../../game/cards";
 import { ACHIEVEMENTS, achievementProgress, claimAchievement, isEarned, saveAchievements } from "../../meta/achievements";
 import { button, rewardBurst } from "../components";
 import { ARABIC } from "../../render3d/theme";
-import { fmtNum } from "../i18n";
+import { fmtNum, tr } from "../i18n";
 import { countFraction } from "../passText";
 import { icon, type CrestIndex, type IconName } from "../icons";
 import { CREST_COUNT, PLAYER_NAME_MAX, getPrefs, sanitizePlayerName, setPrefs } from "../prefs";
@@ -51,6 +51,16 @@ function stat(ic: IconName, value: string, label: string): HTMLElement {
   s.querySelector("b")!.textContent = value;
   s.querySelector("span")!.textContent = label;
   return s;
+}
+
+/**
+ * The player card's season line: the season by name, as the Crown Pass shows
+ * it ("Season: November 2026" / "الموسم: نوفمبر ٢٠٢٦"), never the raw key
+ * ("2026-11") in Latin digits.
+ */
+export function seasonLine(key: string): string {
+  const name = seasonName(key);
+  return tr(`Season: ${name}`, `الموسم: ${name}`);
 }
 
 function playerCard(ctx: AppCtx): HTMLElement {
@@ -95,10 +105,7 @@ function playerCard(ctx: AppCtx): HTMLElement {
   id.appendChild(nameLabel);
   const season = document.createElement("div");
   season.className = "v2-player-season";
-  // The season by name, as the Crown Pass shows it ("November 2026" /
-  // "نوفمبر ٢٠٢٦"), never the raw key in Latin digits.
-  const seasonLabel = seasonName(meta.season.key);
-  season.textContent = tr(`Season: ${seasonLabel}`, `الموسم: ${seasonLabel}`);
+  season.textContent = seasonLine(meta.season.key);
   id.appendChild(season);
   top.appendChild(id);
   card.appendChild(top);

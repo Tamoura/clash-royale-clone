@@ -62,6 +62,11 @@ export const BAR_TILT = -Math.atan2(CAM_HOME.y, CAM_HOME.z - 1.0);
 
 /** The game's display face (bundled, OFL) with the old system fallbacks. */
 export const GAME_FONT = "'Lilita One', 'Baloo Bhaijaan 2', 'Chalkboard SE', 'Comic Sans MS', 'Trebuchet MS', sans-serif";
+/**
+ * The face GAME_FONT draws Arabic-Indic digits (٠-٩) with in the Golden Age
+ * edition: Lilita One has none. Canvases painted once wait for it to load.
+ */
+export const ARABIC_DIGIT_FACE = "'Baloo Bhaijaan 2'";
 
 /** Render-loop scratch vectors (render-avoid-allocations). */
 export const PREV_POS = new THREE.Vector3();
