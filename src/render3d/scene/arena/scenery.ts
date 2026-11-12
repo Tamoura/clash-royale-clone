@@ -19,6 +19,40 @@ import { stagePalette, type ArenaLook } from "../../arenaLooks";
 import { teamColor } from "../../teamColors";
 import { Sculpt, frustum, sculptMaterial, tone } from "../views/towerCraft";
 import type { CrowdSeat } from "./crowd";
+import { SHADOW_SLOPE } from "../sky";
+
+/**
+ * A painted contact shadow on the apron under a prop of height `h`: two
+ * flat ellipses (a soft outer one and a darker core) in the ground's own
+ * tone, slid away from the sun along SHADOW_SLOPE, so houses, trees and
+ * stalls sit on the ground instead of floating over it. Merged into the
+ * prop's sculpt: no extra draw, no transparency.
+ */
+export function contactShadow(s: Sculpt, x: number, z: number, rx: number, rz: number, ground: number, h: number): void {
+  const ox = SHADOW_SLOPE.x * h * 0.22;
+  const oz = SHADOW_SLOPE.y * h * 0.22;
+  for (const [k, f, y] of [[1, 0.84, -0.049], [0.72, 0.74, -0.047]] as const) {
+    const g = new THREE.CircleGeometry(1, 16);
+    g.rotateX(-Math.PI / 2);
+    g.scale(rx * k + Math.abs(ox) * 0.5, 1, rz * k + Math.abs(oz) * 0.5);
+    s.add(g, tone(ground, f, 0.9), x + ox * 0.6, y, z + oz * 0.6, 0, () => 1);
+  }
+}
+
+/**
+ * Turn the court's surround (stands, pavilions, banners, the forest or the
+ * town: everything built in the host's view) to `view`'s end. It is built
+ * point-symmetric, red on the far (enemy) half and its faces toward the
+ * host's camera, so half a circle gives an online guest, whose camera looks
+ * from the other end, the same picture: his opponent's colours at the far
+ * end, his own near him, and every door, shield and window toward him.
+ */
+export function orientSurround(surround: THREE.Object3D, view: "player" | "enemy"): boolean {
+  const y = view === "player" ? 0 : Math.PI;
+  if (surround.rotation.y === y) return false;
+  surround.rotation.y = y;
+  return true;
+}
 
 /** Team cloth for the stands: the live team colour, a touch deeper on the set. */
 export function setTeam(side: "player" | "enemy"): number {
@@ -366,12 +400,22 @@ function outerPiece(s: Sculpt, theme: OuterTheme, i: number, x: number, z: numbe
   const roofs = [0x9a5a3a, 0x7a4a32, 0x8c6a3a, 0x5a6a7a];
   switch (theme) {
     case "village":
-      if (i === 2) windmill(s, x, z, 1.0, look);
-      else if (i === 5) orchard(s, x, z, look, rand);
-      else if (i === 3 || i === 4) marketStall(s, x - 0.8, z + 0.8, [0x2e7d32, 0xf2a03a, 0x8e44ad][i % 3], rand);
-      else cottage(s, x, z, 0.9 + rand() * 0.3, roofs[i % roofs.length], 0xf0e6d0, rand);
+      if (i === 2) {
+        contactShadow(s, x, z, 0.8, 0.8, look.apron, 2.4);
+        windmill(s, x, z, 1.0, look);
+      } else if (i === 5) {
+        contactShadow(s, x, z + 0.55, 1.9, 1.2, look.apron, 1.2);
+        orchard(s, x, z, look, rand);
+      } else if (i === 3 || i === 4) {
+        contactShadow(s, x - 0.8, z + 0.8, 0.85, 0.5, look.apron, 1.2);
+        marketStall(s, x - 0.8, z + 0.8, [0x2e7d32, 0xf2a03a, 0x8e44ad][i % 3], rand);
+      } else {
+        contactShadow(s, x, z, 1.0, 0.85, look.apron, 1.3);
+        cottage(s, x, z, 0.9 + rand() * 0.3, roofs[i % roofs.length], 0xf0e6d0, rand);
+      }
       break;
     case "chalets":
+      contactShadow(s, x, z, 1.0, 0.85, look.apron, 1.3);
       cottage(s, x, z, 0.95 + rand() * 0.3, 0xf4f8fc, 0x9a6a3a, rand);
       pineTree(s, x + 1.3, z - 0.8, 1.1, look);
       s.add(new THREE.ConeGeometry(0.42, 0.5, 9), 0xf4f8fc, x + 1.3, 2.05, z - 0.8);
@@ -480,6 +524,7 @@ export function buildClassicScenery(parent: THREE.Object3D, look: ArenaLook): Cr
       // Leave the outer ring's set pieces standing in clearings.
       if (OUTER_SPOTS.some(([ox, oz]) => Math.abs(Math.abs(x) - ox) < 1.6 && Math.abs(z - oz * sx) < 1.6)) continue;
       const k = 0.95 + rand() * 0.75 + band * 0.3;
+      contactShadow(f, x, z, 0.55 * k, 0.45 * k, look.apron, 1.6 * k);
       if (pine && rand() < 0.45) pineTree(f, x, z, k * 1.15, look);
       else roundTree(f, x, z, k, look, rand);
       if (rand() < 0.5) bush(f, x + (rand() - 0.5) * 2.2, z + 1.0 + rand(), 0.8 + rand() * 0.5, look, rand);

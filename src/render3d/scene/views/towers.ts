@@ -62,8 +62,10 @@ import {
 } from "./towerStyles";
 import { onionDome } from "../arena/build";
 import { addShake, startKoZoom } from "../camera";
+import { PLATE_GAP_PX } from "../fit";
 import { markShadowsDirty, registerTroopCaster } from "../post";
 import { contactRing, crownPop, emitSparks, kingWakeBurst, puff } from "../fx/effects";
+import { floorDust } from "../fx/pool";
 import { attackSwing, isFrozen } from "./animate";
 import {
   collectFlashMats,
@@ -457,22 +459,28 @@ const V = new THREE.Vector3();
 /**
  * Keep the plate on screen and clear of the roofs and crew: the clearance is
  * held in screen px (at least PLATE_CLEAR_PX), and a plate that would leave
- * the screen, or slide under the HUD, flips to the tower's other side.
+ * the screen, or slide under the HUD, flips to the tower's other side. The
+ * frame (fit.ts) leaves room for both kings' plates where they belong; the
+ * far king's only has to clear the chips over his own column (crownTop), a
+ * near plate the tray's ornament (plateFloor).
  */
 function updatePlate(b: Battle3D, rig: TowerRig, root: THREE.Object3D): void {
   const cam = b.camera;
   const h = b.renderer.domElement.clientHeight || 1;
   const viewH = (cam.top - cam.bottom) / cam.zoom;
   const ppu = (h / viewH) * TOWER_SCALE; // CSS px per local unit
-  const clear = Math.max(0.12, (PLATE_CLEAR_PX + 2) / ppu);
+  const clear = Math.max(0.12, PLATE_GAP_PX / ppu);
   const ins = b.framing?.insets;
   root.getWorldPosition(V);
   V.applyMatrix4(cam.matrixWorldInverse);
   const footUp = V.y; // camera-up of the tower's foot
-  const screenTop = (cam.top / cam.zoom - (ins?.top ?? 0) / (ppu / TOWER_SCALE) - footUp) / TOWER_SCALE;
-  const screenBottom = (cam.bottom / cam.zoom + (ins?.bottom ?? 0) / (ppu / TOWER_SCALE) - footUp) / TOWER_SCALE;
+  const topInset = (rig.king && rig.far ? ins?.crownTop : undefined) ?? ins?.top ?? 0;
+  const screenTop = (cam.top / cam.zoom - topInset / (ppu / TOWER_SCALE) - footUp) / TOWER_SCALE;
+  const floor = (ins?.bottom ?? 0) + (b.framing?.plateFloor ?? 0);
+  const screenBottom = (cam.bottom / cam.zoom + floor / (ppu / TOWER_SCALE) - footUp) / TOWER_SCALE;
   const want = platePlacement(rig.top, rig.foot, PLATE_HALF, clear, rig.far);
-  const spot = clampPlate(want, rig.top, rig.foot, PLATE_HALF, clear, screenTop, screenBottom);
+  const minClear = PLATE_CLEAR_PX / ppu; // the art bible's floor; `clear` adds 2 px of margin
+  const spot = clampPlate(want, rig.top, rig.foot, PLATE_HALF, clear, screenTop, screenBottom, minClear);
   if (!rig.spot || Math.abs(rig.spot.s - spot.s) > 1e-3) placePlate(rig, spot);
 }
 
@@ -706,7 +714,7 @@ export function updateTowerDeath(d: DyingView, f: number): void {
       if (b) {
         const ax = root.position.x + ARENA_WIDTH / 2 + p.x * TOWER_SCALE;
         const ay = root.position.z + ARENA_HEIGHT / 2 + p.z * TOWER_SCALE;
-        b.fx.emit("dust", ax, ay, { radius: 0.9, color: LOOK.tower.plinth });
+        b.fx.emit("dust", ax, ay, { radius: 0.9, color: collapseDust() });
       }
     }
   }
@@ -748,6 +756,18 @@ export function dropRubble(b: Battle3D, ax: number, ay: number, king: boolean, s
   return pile;
 }
 
+/**
+ * Collapse dust: the floor's own dust lifted about 20% toward white, so a
+ * falling keep raises the court's dust and never a near-black cloud (it took
+ * the plinth colour: on the dark looks a black smoke wall).
+ */
+export function collapseDust(): number {
+  return new THREE.Color(floorDust(LOOK)).lerp(new THREE.Color(0xfff6e6), 0.2).getHex();
+}
+
+/** A ruin's scorched ground: a soft decal tinted toward the floor, at most 0.6 opaque. */
+export const RUIN_SCORCH_ALPHA = 0.55;
+
 /** A tower or building destroyed, or a king woken. */
 export function towersOnEvent(b: Battle3D, ev: BattleEvent): void {
   switch (ev.type) {
@@ -758,10 +778,11 @@ export function towersOnEvent(b: Battle3D, ev: BattleEvent): void {
       const king = ev.kind === "king-tower";
       crownPop(b, ev.x, ev.y);
       b.cheer = 1.8; // the stands go wild
-      // Dust billows up as the keep comes apart; a scorched crater stays.
-      const craterR = king ? 2.2 : 1.7;
-      b.fx.emit("smoke-column", ev.x, ev.y, { radius: king ? 1.6 : 1.2, color: LOOK.tower.plinth });
-      b.fx.decal("crater", ev.x, ev.y, craterR, { life: 600 });
+      // Dust billows up as the keep comes apart; a soft scorch stays (the
+      // scorch decal's colour leans toward the floor's dust: no black pit).
+      const craterR = king ? 2.4 : 1.9;
+      b.fx.emit("smoke-column", ev.x, ev.y, { radius: king ? 1.6 : 1.2, color: collapseDust() });
+      b.fx.decal("scorch", ev.x, ev.y, craterR, { life: 600, alpha: RUIN_SCORCH_ALPHA });
       const pile = dropRubble(b, ev.x, ev.y, king, ev.side);
       // The heap rises while the chunks rain down (the stump is there at once).
       const heap = pile.children[1];

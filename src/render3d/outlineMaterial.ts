@@ -1,7 +1,7 @@
 /**
  * The ink outline every character shares: one back-face ShaderMaterial that
  * pushes each vertex outward in CLIP space along a smoothed normal, so the
- * line is the same width on screen (2 CSS px) for a Knight and a Giant, at
+ * line is the same width on screen (OUTLINE_CSS_PX) for a Knight and a Giant, at
  * any zoom or device pixel ratio. The old hull scaled each mesh by 7.5 %,
  * which made big bodies fat-lined and small parts hairline, and cost one
  * hull draw per part; a baked rig now needs one outline mesh per animated
@@ -12,11 +12,12 @@
  * sphere seams extrude together instead of tearing open.
  */
 import * as THREE from "three";
+import { INK_COLOR, INK_PX } from "./look/material";
 
-/** Outline width in CSS pixels (the device-pixel width scales with the DPR). */
-export const OUTLINE_CSS_PX = 1.25;
-/** Near-black ink with a touch of blue, like the old hull. */
-export const OUTLINE_COLOR = 0x1c1730;
+/** Outline width in CSS pixels (the device-pixel width scales with the DPR): the shared ink, 1.6. */
+export const OUTLINE_CSS_PX = INK_PX;
+/** Near-black ink with a touch of violet (#1F1A2E, look/material.ts). */
+export const OUTLINE_COLOR = INK_COLOR;
 /** Parts whose bounding radius (in their node's units) is below this stay unlined. */
 export const OUTLINE_MIN_RADIUS = 0.05;
 
@@ -79,7 +80,7 @@ let lastH = 0;
 let lastDpr = 0;
 
 /**
- * onBeforeRender hook for anything that draws ink: keeps the line 2 CSS px
+ * onBeforeRender hook for anything that draws ink: keeps the line OUTLINE_CSS_PX
  * wide for whichever renderer is drawing (the battle, a card portrait, the
  * gallery), refreshing the shared uniforms only when its buffer changed.
  */

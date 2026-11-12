@@ -245,7 +245,7 @@ export class Battle3D {
 
   constructor(container: HTMLElement) {
     this.container = container;
-    loadGlbModels(); // real character models (KayKit), only when opted in
+    loadGlbModels(); // the modelled cast (KayKit pack, lazy chunk); battles latch it in main.ts afterCastGate
     setTowerCrewProvider(castTowerCrews);
     this.renderer = createRenderer(container);
 
@@ -729,8 +729,8 @@ export class Battle3D {
       seen.add(e.id);
       let view = this.views.get(e.id);
       if (!view) {
-        // One name label per deployed group: the lowest-id living unit of
-        // a card nearby carries it, so a swarm reads as one labeled pack.
+        // The lowest-id living unit of a card nearby leads its pack: a
+        // swarm shows one level shield, not one per member.
         const packLead =
           e.kind === "troop" &&
           !state.entities.some(
@@ -742,16 +742,13 @@ export class Battle3D {
               o.kind === "troop" &&
               distance(o, e) < 4,
           );
-        const withLabel = packLead && e.radius >= 0.28;
         view =
           e.kind === "troop"
-            ? buildTroopMesh(e, withLabel)
+            ? buildTroopMesh(e)
             : e.kind === "building"
               ? buildBuildingMesh(e)
               : buildTowerMesh(e);
         if (e.kind === "troop" && e.cardId) {
-          view.label = view.root.getObjectByName("unitLabel");
-          view.labelAge = 0;
           // Level shield on the (damage-only) HP bar, CR-style. Swarm-sized
           // members past the first go without: one shield names the pack's
           // level and saves a draw per unit.

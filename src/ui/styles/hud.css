@@ -901,6 +901,24 @@
   :root[data-layout="tall"] #topbar.v2 .clock { grid-column: 4; grid-row: 1; }
   :root[data-layout="tall"] #topbar.v2 .battle-menu { grid-column: 5; grid-row: 1; }
 }
+/* The far king rises into the band's box: between the chips on a portrait
+   tablet, under shorter chips than the clock on a short phone (layoutWire.ts
+   sets data-crown="free" and his column's edges, --crown-l / --crown-r, in
+   the band's px). The band's shading stays off that column, so his canopy and
+   HP plate keep their full brightness, and fades in toward the chips it backs. */
+:root[data-layout="tall"][data-crown="free"] #topbar.v2 {
+  background: none;
+}
+:root[data-layout="tall"][data-crown="free"] #topbar.v2::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--band-shade);
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(var(--crown-l) - 48px), transparent var(--crown-l), transparent var(--crown-r), #000 calc(var(--crown-r) + 48px));
+  mask-image: linear-gradient(90deg, #000 calc(var(--crown-l) - 48px), transparent var(--crown-l), transparent var(--crown-r), #000 calc(var(--crown-r) + 48px));
+}
 @media (max-width: 599px) and (min-aspect-ratio: 47/100) {
   /* No room for both names on one row: the opponent's stays (as much of it
      as fits, see the name rule below), yours goes (the blue shield chip is

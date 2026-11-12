@@ -132,13 +132,8 @@ export interface EntityView extends InterpTrack {
   hopFromZ?: number;
   /** The modelled cast character (one skinned draw) when this troop is one. */
   kit?: KitUnit;
-  /** The modelled tower crew standing in for `defender` (kept for the prototype's towers). */
-  kitCrew?: KitUnit;
   /** The node a troop body hangs under, tipped toward the camera each frame (render-only lean). */
   lean?: THREE.Object3D;
-  /** Deploy name tag: shown briefly, then shrinks away (CR shows none). */
-  label?: THREE.Object3D;
-  labelAge?: number;
   /** Troop animation state (archetype, clocks, face, status poses). */
   anim?: TroopAnim;
 }

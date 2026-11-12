@@ -2,9 +2,10 @@
 
 A browser-based 3D clone of the Clash Royale core battle loop, built
 with TypeScript + Three.js. You play against an AI bot in a 3-minute,
-two-lane tower-defense battle, with fully synthesized sound. All art
-and audio are original (low-poly primitives + Web Audio synthesis) —
-no Supercell assets are used.
+two-lane tower-defense battle, with fully synthesized sound. The art is
+procedural low-poly work of our own plus a CC0 character cast (see
+[Assets and licences](#assets-and-licences)); the audio is Web Audio
+synthesis. No Supercell assets are used.
 
 ## Gameplay
 
@@ -60,6 +61,7 @@ npm install
 npm run dev      # http://localhost:3101
 npm test         # run the simulation test suite
 npm run build    # typecheck + production build
+npm run perf:budget  # draw-call, triangle and texture gates, both editions, phone and desktop (needs Chromium)
 ```
 
 ## Play a friend on your Wi-Fi (1v1)
@@ -112,6 +114,30 @@ step by step. It covers a free 5-minute test through a Cloudflare tunnel, a
 permanent Fly.io deploy, wiring GitHub Pages with the `RELAY_URL` variable,
 and troubleshooting. `node tools/relay-smoke.mjs wss://<relay>/ws` checks a
 running relay end to end.
+
+## Assets and licences
+
+- **Characters**: every humanoid card and the tower crews are built from the
+  CC0 [KayKit Adventurers](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0)
+  and [KayKit Skeletons](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0)
+  character packs 1.0 by Kay Lousberg, packed by `tools/troop-pack.mjs` into
+  `public/models/troops/` (about 0.8 MB, loaded at boot and precached by the
+  service worker). Each card is a variant baked at run time: hats, capes,
+  weapons, palette and a Golden Age overlay on the same rigs. Sources, commits
+  and SHA-256 hashes are in that folder's `CREDITS.txt`.
+- **Everything else is procedural**: towers, ground, river and bridges, the
+  tournament court and its crowd, creatures, mounts, card buildings and every
+  effect are built in code (`src/render3d/`).
+- **Fonts**: Lilita One and Baloo Bhaijaan 2 (SIL OFL 1.1), from `@fontsource`.
+- **Libraries**: three.js and its meshopt decoder (MIT); `ws` for the relay (MIT).
+- The full list, with versions and hashes, is in
+  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Every folder under
+  `public/models/` must carry a `CREDITS.txt` with the source URL, version,
+  licence and SHA-256 of what was read; only CC0 packs and our own procedural
+  art go in. The art direction behind the look is in
+  `notes/features/art-direction-2026-11.md`.
+- Dev A/B: `?troops=rigs` (dev server only) plays a battle with the
+  procedural roster instead of the cast.
 
 ## Project conventions
 

@@ -24,12 +24,13 @@ import type { ArenaLook } from "../../arenaLooks";
 import type { DecalKindName, FxApi } from "./api";
 import { ATLAS_GRID, makeParticleAtlas } from "./atlas";
 import { DecalLayer, SCORCH_ALPHA, scorchColor, type DecalOpts } from "./decals";
-import { GlyphLayer } from "./glyphs";
+import { GlyphLayer, PHONE_POPUP_SCALE, PHONE_POPUP_WIDTH } from "./glyphs";
 import { IceDomes } from "./iceDome";
 import { emitPreset, type EmitOpts, type PoolKind, type Spawner } from "./presets";
+import { INK_COLOR, SCREEN_FLASH_MAX } from "../../look/material";
 
 /** Bloom contract (art bible 5): a screen flash never asks for more than this. */
-export const FX_MAX_FLASH = 0.25;
+export const FX_MAX_FLASH = SCREEN_FLASH_MAX;
 
 /** Pool capacities before the quality scale. */
 export const ADD_CAP = 1024;
@@ -292,6 +293,19 @@ export function particleMaterial(map: THREE.Texture, uTime: { value: number }, a
 const CROWN_POOL = 3;
 const CROWN_LIFE = 1.2;
 const EMOTE_LIFE = 2.4;
+/**
+ * Emote bubbles: an off-white card with the ink rim, never opaque white (it
+ * bloomed over the enemy king's face, 0.94-0.97 linear), hung beside the king
+ * and his plate instead of over his head, at 0.7 of the old size.
+ */
+export const EMOTE_BUBBLE = {
+  fill: "#f2ebdd",
+  ink: `#${INK_COLOR.toString(16).padStart(6, "0")}`,
+  /** World offset from the king tower's centre: to his right, at canopy height. */
+  x: 2.9,
+  y: 4.4,
+  scale: 1.55,
+} as const;
 const SCHEDULE_CAP = 16;
 
 interface Crown {
@@ -345,20 +359,25 @@ export function floorDust(look: ArenaLook): number {
 /** Draw an emote bubble into its (reused) canvas. */
 function paintBubble(ctx: CanvasRenderingContext2D, emoji: string): void {
   ctx.clearRect(0, 0, 128, 128);
-  ctx.fillStyle = "rgba(255,255,255,0.95)";
-  ctx.beginPath();
-  ctx.arc(64, 56, 46, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(50, 96);
-  ctx.lineTo(64, 122);
-  ctx.lineTo(76, 96);
-  ctx.closePath();
+  // One outline round the disc and its tail (pointing down-left, at the king).
+  const outline = (): void => {
+    ctx.beginPath();
+    ctx.arc(66, 56, 44, Math.PI * 0.62, Math.PI * 0.62 + Math.PI * 2 - 0.42);
+    ctx.lineTo(22, 118);
+    ctx.closePath();
+  };
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 9;
+  ctx.strokeStyle = EMOTE_BUBBLE.ink;
+  outline();
+  ctx.stroke();
+  ctx.fillStyle = EMOTE_BUBBLE.fill;
+  outline();
   ctx.fill();
   ctx.font = "56px serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(emoji, 64, 58);
+  ctx.fillText(emoji, 66, 58);
 }
 
 export class VfxPool implements FxApi, Spawner {
@@ -487,6 +506,7 @@ export class VfxPool implements FxApi, Spawner {
 
   /** Floating damage number at a world point (`target`: the entity hit, so merges go by it). */
   popup(wx: number, wy: number, wz: number, text: string, scale: number, color: string, crit = false, target?: number): void {
+    this.glyphs.sizeK = this.host.container.clientWidth < PHONE_POPUP_WIDTH ? PHONE_POPUP_SCALE : 1;
     this.glyphs.popup(wx, wy, wz, text, scale, color, crit, this.uTime.value, this.host.camera.matrixWorldInverse, target);
   }
 
@@ -571,7 +591,7 @@ export class VfxPool implements FxApi, Spawner {
     b.tex.needsUpdate = true;
     b.t = 0;
     b.sprite.visible = true;
-    b.sprite.position.set(0, 4.2, kingZ);
+    b.sprite.position.set(EMOTE_BUBBLE.x, EMOTE_BUBBLE.y, kingZ);
     b.sprite.scale.setScalar(0.1);
   }
 
@@ -617,8 +637,8 @@ export class VfxPool implements FxApi, Spawner {
         continue;
       }
       const pop = Math.min(1, b.t * 6);
-      b.sprite.scale.setScalar(2.2 * (0.2 + 0.8 * pop));
-      b.sprite.position.y = 4.2 + b.t * 0.5 / EMOTE_LIFE;
+      b.sprite.scale.setScalar(EMOTE_BUBBLE.scale * (0.2 + 0.8 * pop));
+      b.sprite.position.y = EMOTE_BUBBLE.y + b.t * 0.5 / EMOTE_LIFE;
       b.sprite.material.opacity = frac < 0.15 ? frac / 0.15 : 1;
     }
     // Screen flash: hold for its frames, then clear exactly once.

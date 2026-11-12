@@ -128,8 +128,12 @@ function gatehouse(s: Sculpt, x: number, glow: Sculpt, look: ArenaLook): void {
   const GOLD = 0xd9a93f;
   const GOLDLT = 0xf2c14e;
   s.box(2.1, 0.24, HALF_LEN * 2, SLATE, x, 0.1, 0, 0, lit);
-  s.box(1.7, 0.08, 2.0, GOLD, x, 0.25, 0, 0, lit);
-  s.box(1.15, 0.09, 1.3, GOLDLT, x, 0.31, 0, 0, lit);
+  // A tiled slate deck framed in thin gold strips (two flat gold slabs
+  // read as yellow UI squares in black frames).
+  s.box(1.7, 0.08, 2.0, 0x4a5172, x, 0.25, 0, 0, lit);
+  s.box(1.15, 0.09, 1.3, 0x5c6488, x, 0.27, 0, 0, lit);
+  for (const sx of [-1, 1]) s.box(0.06, 0.1, 2.0, GOLD, x + sx * 0.85, 0.26, 0, 0, lit);
+  for (const sz of [-1, 1]) s.box(1.15, 0.1, 0.05, GOLDLT, x, 0.28, sz * 0.65, 0, lit);
   for (const sz of [-1, 1]) {
     for (const dx of [-0.38, 0, 0.38]) {
       const g = new THREE.ConeGeometry(0.14, 0.3, 4);

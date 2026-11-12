@@ -218,13 +218,30 @@ describe("plate tops and damage parts", () => {
     }
   });
 
-  it("the ruin leaves a scorched ring on the ground past its paving", () => {
+  it("the ruin's soot is the paving's own tone: no near-black ground ring (the burnt ground is a soft decal)", () => {
     const R = 0.95;
-    const ruin = craftRuin({ king: false, radius: R, team: 0xe53935, enemyTeam: true, camSide: 1, style: towerStyle(LOOKS.meadow, "classic"), seed: 5 });
-    const p = ruin.stump.geometry.getAttribute("position");
-    let far = 0;
-    for (let i = 0; i < p.count; i++) if (p.getY(i) < 0.05 && Math.hypot(p.getX(i), p.getZ(i)) > R * 1.9) far++;
-    expect(far).toBeGreaterThan(20);
+    for (const look of [LOOKS.meadow, LOOKS.forge, ISLAMIC_LOOKS.courtyard]) {
+      const style = towerStyle(look, look.islamic ? "golden" : "classic");
+      const ruin = craftRuin({ king: false, radius: R, team: 0xe53935, enemyTeam: true, camSide: 1, style, seed: 5 });
+      const p = ruin.stump.geometry.getAttribute("position");
+      const c = ruin.stump.geometry.getAttribute("color");
+      let dark = 0;
+      let soot = 0;
+      for (let i = 0; i < p.count; i++) {
+        // The soot ring lies on the paving (y 0.163) from the stump's foot outward.
+        const r = Math.hypot(p.getX(i), p.getZ(i));
+        if (Math.abs(p.getY(i) - 0.163) > 0.004 || r < R * 0.98 || r > R * 1.4) continue;
+        soot++;
+        const lum = 0.2126 * c.getX(i) + 0.7152 * c.getY(i) + 0.0722 * c.getZ(i);
+        if (lum < 0.03) dark++;
+      }
+      expect(soot, look.id).toBeGreaterThan(50);
+      expect(dark, look.id).toBe(0);
+      // Nothing opaque spreads past the paving onto the floor any more.
+      let ground = 0;
+      for (let i = 0; i < p.count; i++) if (p.getY(i) < 0.03 && Math.hypot(p.getX(i), p.getZ(i)) > R * 2.1) ground++;
+      expect(ground, look.id).toBe(0);
+    }
   });
 });
 
@@ -285,5 +302,21 @@ describe("HP plate maths", () => {
     // No room on either side: pinned inside the screen.
     const pinned = clampPlate(want, top, foot, half, clear, top + 0.3, foot + 0.1);
     expect(pinned.s + half).toBeLessThanOrEqual(top + 0.3 + 1e-9);
+  });
+
+  it("slides a far plate down toward the roofs (keeping the 4 px floor) before flipping it under the gate", () => {
+    const margin = clear + 2 / ppu; // the scene asks for 2 px on top of the floor
+    const want = platePlacement(top, foot, half, margin, true);
+    // Half a pixel short of the room the margin wants: it stays above, 1.5 px over the floor.
+    const tight = want.s + half - 0.5 / ppu;
+    const slid = clampPlate(want, top, foot, half, margin, tight, -20, clear);
+    expect(slid.above).toBe(true);
+    expect(slid.s + half).toBeCloseTo(tight, 9);
+    expect(plateClearancePx(slid, top, foot, half, ppu)).toBeGreaterThanOrEqual(PLATE_CLEAR_PX - 1e-6);
+    // Three pixels short: sliding would break the floor, so it flips as before.
+    const flipped = clampPlate(want, top, foot, half, margin, want.s + half - 3 / ppu, -20, clear);
+    expect(flipped.above).toBe(false);
+    // Without a separate floor the old rule holds (no slide).
+    expect(clampPlate(want, top, foot, half, margin, tight, -20).above).toBe(false);
   });
 });

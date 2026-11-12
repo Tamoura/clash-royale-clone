@@ -17,7 +17,18 @@
 import * as THREE from "three";
 import type { Side } from "../../game/arena";
 import type { TeamPalette } from "../../ui/prefs";
-import { INK_FRAGMENT, OUTLINE_CSS_PX, fitInk, installInk, registerInkGeometry, smoothedNormals } from "../outlineMaterial";
+import { INK_FRAGMENT, fitInk, installInk, registerInkGeometry, smoothedNormals } from "../outlineMaterial";
+import {
+  ALBEDO_SATURATION as SHARED_SATURATION,
+  GROUND_AO,
+  INK_DEPTH,
+  INK_PX,
+  RIM_UNIFORM as SHARED_RIM,
+  TINT_MAX,
+  litClampGlsl,
+  rimGlsl,
+  toonRampGlsl,
+} from "../look/material";
 import { teamColor, teamPalette } from "../teamColors";
 import { BONE_INDEX, HEAD_BONE, sources, type Source } from "./loader";
 import { CLOTH_SWATCHES, HAIR_SWATCH, SKIN_SWATCHES, TEAM_HUE_SPREAD, teamHues } from "./rules";
@@ -29,19 +40,19 @@ export const HEAD_SCALE = 1.12;
 export const CAPE_LENGTH = 0.56;
 /** The Mage's hat brim hides the whole wizard from the battle camera: narrowed to show the shoulders. */
 export const HAT_BRIM = 0.8;
-/** Ink width of the cast in CSS px (the shared shell shader is written for OUTLINE_CSS_PX). */
-export const CAST_INK_PX = 1.6;
+/** Ink width of the cast in CSS px: the shared ink (look/material.ts INK_PX). */
+export const CAST_INK_PX = INK_PX;
 /**
  * The ink shell is pushed this far back along the view (world units): it
  * only survives where it pokes past the body's SILHOUETTE, so concave
  * creases (a hat's back fold, a hood's seam) no longer draw "V" lines.
  */
-export const CAST_INK_DEPTH = 0.3;
-/** Ground occlusion: the lowest share of the body, and how much darker its foot gets. */
-export const GROUND_AO_HEIGHT = 0.18;
-export const GROUND_AO_DARK = 0.15;
-/** Albedo saturation multiplier. */
-export const ALBEDO_SATURATION = 1.12;
+export const CAST_INK_DEPTH = INK_DEPTH;
+/** Ground occlusion: the lowest share of the body, and how much darker its foot gets (look/material.ts). */
+export const GROUND_AO_HEIGHT = GROUND_AO.share;
+export const GROUND_AO_DARK = GROUND_AO.dark;
+/** Albedo saturation multiplier (look/material.ts). */
+export const ALBEDO_SATURATION = SHARED_SATURATION;
 
 // ---------------------------------------------------------------- team
 
@@ -67,8 +78,8 @@ export function castPalette(): TeamPalette {
   return paintedPalette!;
 }
 
-/** Rim light strength (0 at the quality levels without rim light): shared by every cast material. */
-export const RIM_UNIFORM = { value: 1 };
+/** Rim light on/off (0 at the quality levels without rim light): the one shared by every cast and rig material. */
+export const RIM_UNIFORM = SHARED_RIM;
 
 // ---------------------------------------------------------------- palette
 
@@ -587,9 +598,8 @@ export function castMaterial(map: THREE.Texture, side: Side): THREE.MeshToonMate
         `vec3 _back = projectionMatrix[3][3] > 0.5 ? vec3(0.0, 0.0, -${CAST_INK_DEPTH.toFixed(3)}) : normalize(mvPosition.xyz) * ${CAST_INK_DEPTH.toFixed(3)};
          gl_Position = projectionMatrix * vec4(mvPosition.xyz + _back, 1.0);
          vec3 nView = normalize(normalMatrix`,
-      )
-      // The cast's line is CAST_INK_PX wide (the shared hull is written for OUTLINE_CSS_PX).
-      .replace("* uInkPx * 2.0 / uInkViewport", `* uInkPx * ${((2 * CAST_INK_PX) / OUTLINE_CSS_PX).toFixed(4)} / uInkViewport`);
+      );
+    // The line is CAST_INK_PX wide: the shared ink's own width (INK_PX), no rescale.
     sh.fragmentShader = sh.fragmentShader
       .replace(
         "#include <common>",
@@ -615,28 +625,20 @@ export function castMaterial(map: THREE.Texture, side: Side): THREE.MeshToonMate
         "#include <emissivemap_fragment>",
         "#include <emissivemap_fragment>\nvec3 _tint = totalEmissiveRadiance;\ntotalEmissiveRadiance = vec3(0.0);",
       )
-      // Three-band ramp at 0.62 / 0.86 / 1.0 with soft edges.
-      .replace(
-        "#include <gradientmap_pars_fragment>",
-        `vec3 getGradientIrradiance( vec3 normal, vec3 lightDirection ) {
-           float x = dot( normal, lightDirection ) * 0.5 + 0.5;
-           float k = 0.62 + 0.24 * smoothstep(0.40, 0.44, x) + 0.14 * smoothstep(0.68, 0.72, x);
-           return vec3(k);
-         }`,
-      )
+      // The shared three-band ramp (0.62 / 0.86 / 1.0 with soft edges).
+      .replace("#include <gradientmap_pars_fragment>", toonRampGlsl())
       .replace(
         "#include <dithering_fragment>",
         `${INK_FRAGMENT}
-           float _rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
-           _rim = smoothstep(0.62, 1.0, _rim) * 0.35 * uRim;
-           gl_FragColor.rgb += _rim * vec3(0.749, 0.890, 1.0);
+           ${rimGlsl("uRim")}
            float _k = max(_tint.r, max(_tint.g, _tint.b));
-           if (_k > 0.001) gl_FragColor.rgb = mix(gl_FragColor.rgb, _tint / _k, min(_k, 0.6));
+           if (_k > 0.001) gl_FragColor.rgb = mix(gl_FragColor.rgb, _tint / _k, min(_k, ${TINT_MAX.toFixed(2)}));
+           ${litClampGlsl()}
          }
          #include <dithering_fragment>`,
       );
   };
-  mat.customProgramCacheKey = () => "cast-v2";
+  mat.customProgramCacheKey = () => "cast-v3";
   return mat;
 }
 

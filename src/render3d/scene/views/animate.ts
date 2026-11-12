@@ -61,8 +61,11 @@ import {
 import { addShake } from "../camera";
 import { contactRing, damagePopup, emitSparks, megaSlam } from "../fx/effects";
 import { fxTeamColor } from "../fx/spells";
-import { hpBarVisible, makeStunSprite, setHpFill } from "./troops";
-import { animateKitTroop, LEAN, leanQuaternion, RIM_UNIFORM, setLeanCamera, startKitDeath, stepKitDeath, VIEW_DIR } from "../../cast/index";
+import { CONTACT_SHADOW, hpBarVisible, makeStunSprite, setHpFill } from "./troops";
+import { troopShadowLevel } from "../post";
+import { SHADOW_SLOPE } from "../sky";
+import { animateKitTroop, LEAN, leanQuaternion, startKitDeath, stepKitDeath, VIEW_DIR } from "../../cast/index";
+import { TOWER_FLASH_MAX, TROOP_FLASH_MAX, syncRim } from "../../look/material";
 import { currentQuality } from "../../quality";
 
 /** A troop view's animation state (created on its first frame). */
@@ -125,7 +128,7 @@ const FROZEN_TINT = [0.25, 0.45, 0.6] as const;
 const SLOW_TINT = [0.12, 0.04, 0.17] as const;
 /** Hit flash on troops: a mix toward #FFF4E0 of at most HIT_FLASH_PEAK (art bible 6: never white, never blooms). */
 export const HIT_FLASH = [1, 0.957, 0.878] as const;
-export const HIT_FLASH_PEAK = 0.35;
+export const HIT_FLASH_PEAK = TROOP_FLASH_MAX;
 /**
  * Towers and buildings take many hits: a full-white emissive frame turned
  * the whole tower into a solid white block on every one. They get a soft
@@ -133,7 +136,7 @@ export const HIT_FLASH_PEAK = 0.35;
  * TOWER_FLASH_TIME, a little longer than a troop's snap so it reads as a throb.
  */
 export const TOWER_FLASH = [1, 0.82, 0.62] as const;
-export const TOWER_FLASH_PEAK = 0.25;
+export const TOWER_FLASH_PEAK = TOWER_FLASH_MAX;
 export const TOWER_FLASH_TIME = 0.22;
 
 /**
@@ -249,7 +252,6 @@ export function beginDeath(b: Battle3D, view: EntityView): void {
   const anim = view.anim;
   view.root.visible = true;
   view.hpGroup.visible = false;
-  if (view.label) view.label.visible = false;
   if (view.stunStars) view.stunStars.visible = false;
   if (view.deployRing) view.deployRing.visible = false;
   if (anim?.ice) for (const m of anim.ice) m.visible = false;
@@ -466,8 +468,7 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
   sa.clock = animClock(sa.clock, state.time, alpha, b.hitStop.active);
   const w = toWorld(e.x, e.y);
   VIEW_OF.set(e, view);
-  setLeanCamera(b.camera);
-  RIM_UNIFORM.value = currentQuality().rimLight ? 1 : 0; // the cast's cool rim follows the live quality level
+  syncRim(currentQuality()); // the shared cool rim (cast and rigs) follows the live quality level
 
   if (view.isTroop && !view.anim) view.anim = initTroopAnim(b, view, e);
   const anim = view.anim;
@@ -496,17 +497,6 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
   view.root.position.x = POS.x;
   view.root.position.z = POS.z;
 
-  // Deploy name tag: readable for two seconds, then it shrinks away so
-  // a crowded field shows troops, not captions.
-  if (view.label) {
-    view.labelAge = (view.labelAge ?? 0) + dt;
-    const k = Math.max(0, 1 - Math.max(0, view.labelAge - 2) / 0.35);
-    view.label.scale.set(1.7 * k, 0.42 * k, 1);
-    if (k === 0) {
-      view.label.visible = false;
-      view.label = undefined;
-    }
-  }
 
   // Entrance: risers climb out of the ground, the Mega Knight plummets,
   // everyone else drops in from just overhead.
@@ -905,6 +895,46 @@ export function updateTroop(b: Battle3D, view: EntityView, e: Entity, dt: number
   }
   // Render-only lean toward the camera (the body only: disc, shadow and bar stay flat).
   if (view.lean) leanQuaternion(VIEW_DIR.x, VIEW_DIR.z, view.root.rotation.y, view.lean.quaternion);
+  if (view.isTroop) sunBlob(view);
+}
+
+/**
+ * Share of a walker's height its blob shadow slides away from the sun
+ * (SHADOW_SLOPE) on the levels where troops cast no real shadow (L1-L4,
+ * art bible 5): enough to read the sun's direction, while the blob still
+ * covers the feet. On L0 the shadow map draws the real shadow and the blob
+ * sits centred as contact occlusion.
+ */
+export const SUN_BLOB_SHARE = 0.32;
+/** How much the slid blob stretches along the sun's slope per world unit slid. */
+export const SUN_BLOB_STRETCH = 0.35;
+
+/** The sun-offset blob (world x/z offset, stretch along it) for a walker of height `lift`. */
+export function sunBlobOffset(lift: number, real: boolean): { x: number; z: number; stretch: number } {
+  if (real) return { x: 0, z: 0, stretch: 1 };
+  const x = SHADOW_SLOPE.x * lift * SUN_BLOB_SHARE;
+  const z = SHADOW_SLOPE.y * lift * SUN_BLOB_SHARE;
+  return { x, z, stretch: 1 + SUN_BLOB_STRETCH * Math.hypot(x, z) };
+}
+
+/** Keep a walker's blob under the live level's rule (follows the governor and Settings). */
+function sunBlob(view: EntityView): void {
+  const blob = view.root.getObjectByName(CONTACT_SHADOW) as THREE.Mesh | undefined;
+  const spec = blob?.userData.sunBlob as { size: number; lift: number } | undefined;
+  if (!blob || !spec) return;
+  const o = sunBlobOffset(spec.lift, troopShadowLevel());
+  // The blob is a child of the yawing root: turn the world offset into its frame.
+  const yaw = view.root.rotation.y;
+  const c = Math.cos(yaw);
+  const sn = Math.sin(yaw);
+  const lx = c * o.x - sn * o.z;
+  const lz = sn * o.x + c * o.z;
+  blob.position.x = lx;
+  blob.position.z = lz;
+  // Stretch along the slope: the plane's own z spin (applied before it is laid
+  // flat by rotation.x = -PI/2, which sends its y axis to -z) aims its x axis.
+  blob.rotation.z = o.stretch > 1 ? Math.atan2(-lz, lx) : 0;
+  blob.scale.set(spec.size * o.stretch, spec.size, 1);
 }
 
 const DEFENDER_BLINKS = new WeakMap<TroopRig, BlinkClock>();

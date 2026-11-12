@@ -2084,7 +2084,9 @@ button.card.ready-pop {
   align-items: center;
   gap: 4px 8px;
   padding: calc(6px + env(safe-area-inset-top)) 10px 18px;
-  background: linear-gradient(180deg, rgba(8, 12, 28, 0.82) 0%, rgba(8, 12, 28, 0.55) 60%, rgba(8, 12, 28, 0) 100%);
+  /* The band's shading (styles/hud.css keeps it off the far king's column on tablets). */
+  --band-shade: linear-gradient(180deg, rgba(8, 12, 28, 0.82) 0%, rgba(8, 12, 28, 0.55) 60%, rgba(8, 12, 28, 0) 100%);
+  background: var(--band-shade);
   border-bottom: none;
   box-shadow: none;
   pointer-events: none;

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ARENA_HEIGHT, ARENA_WIDTH, towerSpots } from "../../../game/arena";
-import { BACKDROP_KINDS, ISLAMIC_LOOKS, LOOKS, type ArenaLook } from "../../arenaLooks";
+import { BACKDROP_KINDS, ISLAMIC_LOOKS, LOOKS, stagePalette, type ArenaLook } from "../../arenaLooks";
 import { AMBIENT_COUNT, buildAmbient, updateAmbient } from "./ambient";
 import { buildBackdrop, farGroundMaterial, screenU, yForScreen } from "./backdrop";
 import {
@@ -13,14 +13,21 @@ import {
 } from "./groundPaint";
 import { KIT_TRIANGLE_BUDGET, buildKit } from "./kits";
 import { FLOOR_RECIPES, floorRecipe } from "./groundPaint";
-import { buildClassicScenery, OUTER_THEMES } from "./scenery";
+import { buildClassicScenery, OUTER_THEMES, orientSurround } from "./scenery";
 import { LOT_GAP, buildGoldenSurround, townLots, townPalette } from "./golden";
 import { ICE_BRIDGE, buildClassicBridges } from "./bridges";
 import { buildRiver } from "./river";
 import { buildTufts } from "./tufts";
-import { makeCrowd, poseCrowd } from "./crowd";
+import { makeCrowd, orientSeats, poseCrowd } from "./crowd";
 import { LightPools, NIGHT_NATIVE_FLOOR, poolIntensity } from "./lightPools";
 import { toon } from "../../characters3d";
+import { FAR_EDGE } from "../fit";
+import { END_STRING_Y, FestoonCurve, LANTERN_X } from "./build";
+import { setViewSide } from "../common";
+import { tone } from "../views/towerCraft";
+import { towerTeamColors } from "../views/towers";
+import { setPrefs } from "../../../ui/prefs";
+import type { Side } from "../../../game/arena";
 
 const ALL: ArenaLook[] = [...Object.values(LOOKS), ...Object.values(ISLAMIC_LOOKS)];
 const lookWith = (kind: string): ArenaLook => ALL.find((l) => l.backdrop === kind)!;
@@ -58,16 +65,30 @@ describe("backdrop kits", () => {
     }
   });
 
-  it("turns the set and recolours its banners for the online guest", () => {
-    const bd = buildBackdrop(LOOKS.meadow, glow);
-    const colors = bd.solid!.geometry.getAttribute("color");
-    const [start] = bd.kit.team[0];
-    bd.orient("player");
-    const red = colors.getX(start);
-    bd.orient("enemy");
-    expect(bd.group.rotation.y).toBeCloseTo(Math.PI);
-    expect(colors.getX(start)).toBeLessThan(red); // red banners became blue
-    expect(colors.getZ(start)).toBeGreaterThan(colors.getX(start));
+  it("turns the set for the online guest and keeps its banners in the far king's colours", () => {
+    const hsl = { h: 0, s: 0, l: 0 };
+    const hue = (c: THREE.Color): number => c.getHSL(hsl).h;
+    try {
+      for (const palette of ["default", "cb"] as const) {
+        setPrefs({ teamPalette: palette });
+        const bd = buildBackdrop(LOOKS.meadow, glow);
+        const colors = bd.solid!.geometry.getAttribute("color");
+        const [start] = bd.kit.team[0];
+        for (const view of ["player", "enemy"] as const) {
+          setViewSide(view);
+          bd.orient(view);
+          expect(bd.group.rotation.y).toBeCloseTo(view === "player" ? 0 : Math.PI);
+          // The far king is the viewer's opponent: the sim's enemy for the
+          // host, its player for the guest. His banners wear his cloth.
+          const farKing = towerTeamColors(view === "player" ? "enemy" : "player");
+          const banner = new THREE.Color(colors.getX(start), colors.getY(start), colors.getZ(start));
+          expect(hue(banner), `${palette} ${view}`).toBeCloseTo(hue(new THREE.Color(farKing.cloth)), 2);
+        }
+      }
+    } finally {
+      setViewSide("player");
+      setPrefs({ teamPalette: "default" });
+    }
   });
 
   it("screen placement helpers invert each other", () => {
@@ -216,6 +237,43 @@ describe("toy tournament stage (all 22 looks)", () => {
     expect(new Set(classic.map((l) => floorRecipe(l))).size).toBe(11);
   });
 
+  /** Mean painted luma (sRGB) over 0.5-tile patches at fixed points. */
+  function patchLuma(img: ReturnType<typeof groundPainter.paint>, pts: readonly (readonly [number, number])[]): number {
+    let sum = 0;
+    for (const [x, y] of pts) {
+      for (let k = 0; k < 25; k++) sum += luminanceAt(img, x - 0.25 + (k % 5) * 0.125, y - 0.25 + Math.floor(k / 5) * 0.125);
+    }
+    return sum / (pts.length * 25);
+  }
+  const FIELD_PTS = [[9, 10.5], [9, 21.5], [6.5, 11.5], [11.5, 20.5], [7, 22], [11, 10]] as const;
+  const LANE_PTS = [[3.5, 10.5], [14.5, 21.5], [3.5, 21], [14.5, 11]] as const;
+
+  it.each(ALL.map((l) => [`${l.islamic ? "golden" : "classic"} ${l.id}`, l] as const))(
+    "%s keeps a mid-value court with lanes that read",
+    (_id, look) => {
+      // Calm floor, loud actors: a near-white court sinks white and cream
+      // units and erases the lanes (snow, neon and the Golden Age courts
+      // painted 0.83-0.93). The lit court reads about 1.09x its paint on
+      // screen, so the paint stays at or under 0.65 (screen 0.70 at most)
+      // and the lanes sit at least 0.06 away from it, darker or lighter.
+      const img = groundPainter.paint(look, !!look.islamic);
+      const field = patchLuma(img, FIELD_PTS);
+      const lane = patchLuma(img, LANE_PTS);
+      expect(field).toBeLessThanOrEqual(0.65);
+      expect(Math.abs(field - lane)).toBeGreaterThanOrEqual(0.06);
+    },
+  );
+
+  it("gives each Golden Age court its own floor, the night courts about 30% darker", () => {
+    expect(new Set(golden.map((l) => l.islamic!.plaster)).size).toBe(golden.length);
+    const fieldOf = (l: ArenaLook): number => patchLuma(groundPainter.paint(l, true), FIELD_PTS);
+    const night = golden.filter((l) => l.nightPools).map(fieldOf);
+    const day = golden.filter((l) => !l.nightPools).map(fieldOf);
+    expect(night.length).toBe(3);
+    // The court shares the night town's exposure instead of a noon grade.
+    expect(Math.max(...night)).toBeLessThan(Math.min(...day) * 0.85);
+  });
+
   it.each(classic.map((l) => [l.id, l] as const))("%s builds its surround, bridges, river and crowd", (_id, look) => {
     const parent = new THREE.Group();
     const seats = buildClassicScenery(parent, look);
@@ -310,9 +368,10 @@ describe("toy tournament stage (all 22 looks)", () => {
 
   it("builds ice bridges that read on white: a blue deck and blue-grey kerbs and posts", () => {
     const hsl = { h: 0, s: 0, l: 0 };
-    const snowFloor = new THREE.Color(LOOKS.snow.floor.b).getHSL(hsl).l;
+    // The snow court is packed blue-grey snow now; the bridge lands on the white banks.
+    const snowBank = new THREE.Color(stagePalette(LOOKS.snow).bankNear).getHSL(hsl).l;
     const deck = new THREE.Color(ICE_BRIDGE.deck);
-    expect(deck.getHSL(hsl).l).toBeLessThan(snowFloor - 0.2);
+    expect(deck.getHSL(hsl).l).toBeLessThan(snowBank - 0.2);
     expect(deck.b).toBeGreaterThan(deck.r * 1.4);
     for (const c of [ICE_BRIDGE.kerb, ICE_BRIDGE.post, ICE_BRIDGE.body]) expect(new THREE.Color(c).getHSL(hsl).l).toBeLessThan(0.3);
     const parent = new THREE.Group();
@@ -336,5 +395,125 @@ describe("toy tournament stage (all 22 looks)", () => {
       if (c.r > c.g * 1.6 && c.r > c.b * 1.6) reds++;
     }
     expect(reds).toBeGreaterThan(50);
+  });
+});
+
+describe("the ring wears the viewer's colours (online guest, ?viewpoint=enemy)", () => {
+  /**
+   * The team tones a stand built for `cloth` paints (scenery.ts setTeam and
+   * what the stands derive from it), as chromaticity: a vertex's colour is
+   * one of them times its baked shading.
+   */
+  const tones = (cloth: number): number[][] => {
+    const base = tone(cloth, 0.92, 0.95);
+    return [base, tone(base, 0.9), tone(base, 0.72), tone(base, 0.7), tone(base, 1.18, 0.9)].map((hex) => {
+      const c = new THREE.Color(hex);
+      const m = Math.max(c.r, c.g, c.b);
+      return [c.r / m, c.g / m, c.b / m];
+    });
+  };
+  const wears = (r: number, g: number, b: number, set: number[][]): boolean => {
+    const m = Math.max(r, g, b);
+    if (m < 0.02) return false;
+    return set.some(([tr, tg, tb]) => Math.abs(r / m - tr) < 0.015 && Math.abs(g / m - tg) < 0.015 && Math.abs(b / m - tb) < 0.015);
+  };
+  /** Team-toned vertices of every sculpt under `root`, per end of the court (far/near from `view`'s camera). */
+  const census = (root: THREE.Object3D, view: Side): Record<"far" | "near", Record<"opp" | "own", number>> => {
+    const farKing = towerTeamColors(view === "player" ? "enemy" : "player").cloth;
+    const nearKing = towerTeamColors(view).cloth;
+    const opp = tones(farKing);
+    const own = tones(nearKing);
+    const out = { far: { opp: 0, own: 0 }, near: { opp: 0, own: 0 } };
+    const camZ = view === "player" ? 1 : -1;
+    const v = new THREE.Vector3();
+    root.updateMatrixWorld(true);
+    root.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      const col = mesh.isMesh ? (mesh.geometry.getAttribute("color") as THREE.BufferAttribute | undefined) : undefined;
+      if (!col) return;
+      const pos = mesh.geometry.getAttribute("position");
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+        if (Math.abs(v.z) < 1) continue; // the river mouths
+        const end = v.z * camZ < 0 ? out.far : out.near;
+        const [r, g, b] = [col.getX(i), col.getY(i), col.getZ(i)];
+        if (wears(r, g, b, opp)) end.opp++;
+        else if (wears(r, g, b, own)) end.own++;
+      }
+    });
+    return out;
+  };
+  const cases: [string, (parent: THREE.Object3D) => unknown][] = [
+    ["Classic meadow", (p) => buildClassicScenery(p, LOOKS.meadow)],
+    ["Golden Age", (p) => buildGoldenSurround(p, Object.values(ISLAMIC_LOOKS)[0])],
+  ];
+  for (const palette of ["default", "cb"] as const) {
+    for (const [name, build] of cases) {
+      it(`${name} (${palette} palette): the far stands in the far king's cloth, the near ones in the viewer's`, () => {
+        try {
+          setPrefs({ teamPalette: palette });
+          for (const view of ["player", "enemy"] as const) {
+            setViewSide(view);
+            const surround = new THREE.Group();
+            build(surround);
+            orientSurround(surround, view);
+            const n = census(surround, view);
+            expect(n.far.opp, `${view}: far stands in the opponent's colours`).toBeGreaterThan(200);
+            expect(n.near.own, `${view}: near stands in the viewer's colours`).toBeGreaterThan(200);
+            expect(n.far.own, `${view}: none of the viewer's colours at the far end`).toBe(0);
+            expect(n.near.opp, `${view}: none of the opponent's colours at the near end`).toBe(0);
+          }
+        } finally {
+          setViewSide("player");
+          setPrefs({ teamPalette: "default" });
+        }
+      });
+    }
+  }
+
+  it("the crowd turns with its stands: the opponent's fans at the far end, facing the court", () => {
+    const parent = new THREE.Group();
+    const seats = buildClassicScenery(parent, LOOKS.meadow);
+    const home = seats.map((st) => ({ x: st.x, z: st.z, face: st.face }));
+    for (const view of ["player", "enemy"] as const) {
+      orientSeats(seats, home, view);
+      const camZ = view === "player" ? 1 : -1;
+      for (const [i, seat] of seats.entries()) {
+        // Shirts follow seat.side in the sim's terms; "enemy" fans wear the
+        // red the far king wears for the host, and for the guest the far
+        // king is the host, whom the guest sees in red as well.
+        expect(seat.z * camZ < 0, `seat ${i}`).toBe(seat.side === "enemy");
+        // Facing the court: toward x = 0.
+        expect(Math.sin(seat.face) * Math.sign(seat.x), `seat ${i}`).toBeLessThan(0);
+      }
+    }
+  });
+});
+
+describe("lantern strings", () => {
+  it("swag between their lanterns: a festoon, not a taut wire", () => {
+    const pts = [new THREE.Vector3(-2, 2, 0), new THREE.Vector3(0, 2, 0), new THREE.Vector3(2, 2, 0)];
+    const c = new FestoonCurve(pts, 0.4);
+    expect(c.getPoint(0).distanceTo(pts[0])).toBeLessThan(1e-9);
+    expect(c.getPoint(0.5).distanceTo(pts[1])).toBeLessThan(1e-9);
+    expect(c.getPoint(1).distanceTo(pts[2])).toBeLessThan(1e-9);
+    expect(c.getPoint(0.25).y).toBeCloseTo(1.6, 9); // the bottom of the first swag
+    expect(c.getPoint(0.25).x).toBeCloseTo(-1, 9);
+  });
+
+  it("the far festoon hangs under the far stands' crowd and the board's top edge, its posts outside the court", () => {
+    const z = -ARENA_HEIGHT / 2;
+    const top = screenU(END_STRING_Y, z); // the rope's highest points, where the lanterns hang
+    expect(screenU(END_STRING_Y + 0.2, z)).toBeLessThanOrEqual(FAR_EDGE); // a post's knob
+    // The lanterns (0.75 tall, under the rope) stay over the far kerb.
+    expect(screenU(END_STRING_Y - 0.8, z)).toBeGreaterThan(screenU(0.4, z));
+    expect(LANTERN_X).toBeGreaterThan(ARENA_WIDTH / 2 + 0.75); // clear of the kerb
+    for (const look of ALL) {
+      const bd = buildBackdrop(look, glow);
+      const over = bd.seats.filter((st) => Math.abs(st.x) < LANTERN_X);
+      if (over.length === 0) continue;
+      const feet = Math.min(...over.map((st) => screenU(st.y, st.z)));
+      expect(top, look.id).toBeLessThanOrEqual(feet);
+    }
   });
 });

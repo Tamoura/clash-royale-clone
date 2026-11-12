@@ -4,7 +4,23 @@ import type { CardId } from "../game/cards";
 import { loadChampion, normalizeChampion, type ChampionDef } from "../game/customcard";
 import type { Side } from "../game/arena";
 import { applyTeam, teamPart } from "./teamColors";
-import { INK_FRAGMENT, OUTLINE_CSS_PX, OUTLINE_MIN_RADIUS, installInk, outlineHull } from "./outlineMaterial";
+import { INK_FRAGMENT, OUTLINE_MIN_RADIUS, installInk, outlineHull } from "./outlineMaterial";
+import {
+  ALBEDO_SATURATION,
+  GROUND_AO,
+  INK_DEPTH,
+  INK_PX,
+  RIM_COLOR,
+  RIM_STRENGTH,
+  RIM_UNIFORM,
+  TINT_MAX,
+  TOON_RAMP,
+  TROOP_FLASH_MAX,
+  litClampGlsl,
+  rimGlsl,
+  syncRim,
+  toonRampGlsl,
+} from "./look/material";
 import { currentQuality } from "./quality";
 import { ARABIC, THEME } from "./theme";
 import { cameraZForView } from "./scene/common";
@@ -125,24 +141,24 @@ function grainMap(): THREE.DataTexture {
  *   flash can never cross the bloom threshold.
  * Each wave-1 package holds these constants locally; ship unifies them.
  */
-export const RIG_RAMP = [0.62, 0.86, 1.0] as const;
-export const RIG_RIM = { color: 0xbfe3ff, strength: 0.35 } as const;
-export const RIG_INK_PX = 1.6;
+export const RIG_RAMP = TOON_RAMP;
+export const RIG_RIM = { color: RIM_COLOR, strength: RIM_STRENGTH } as const;
+export const RIG_INK_PX = INK_PX;
 /** World units the ink shell sits behind the body (silhouette-only ink). */
-export const RIG_INK_DEPTH = 0.3;
-export const RIG_AO = { share: 0.18, dark: 0.15 } as const;
+export const RIG_INK_DEPTH = INK_DEPTH;
+export const RIG_AO = GROUND_AO;
 /** Albedo saturation multiplier applied when a rig is baked. */
-export const RIG_SATURATION = 1.12;
+export const RIG_SATURATION = ALBEDO_SATURATION;
 /** The most a status tint (freeze, rage, slow) may pull a pixel toward its colour. */
-export const RIG_TINT_MAX = 0.6;
+export const RIG_TINT_MAX = TINT_MAX;
 /** The most a hit flash (a near-white tint) may: art bible 6, 0.35 on troops. */
-export const RIG_FLASH_MAX = 0.35;
-/** Rim strength (1 on, 0 off) shared by every rig material; follows the quality level. */
-export const RIG_RIM_UNIFORM = { value: 1 };
+export const RIG_FLASH_MAX = TROOP_FLASH_MAX;
+/** Rim on (1) or off (0): the SAME uniform object as the cast's (look/material.ts RIM_UNIFORM). */
+export const RIG_RIM_UNIFORM = RIM_UNIFORM;
 
 /** Keep the shared rim switch in step with the live quality level (called per animated rig). */
 function syncRigRim(): void {
-  RIG_RIM_UNIFORM.value = currentQuality().rimLight ? 1 : 0;
+  syncRim(currentQuality());
 }
 
 /** The vertex and fragment changes that give a baked rig material the art bible's language. */
@@ -158,18 +174,11 @@ function installRigLanguage(sh: THREE.WebGLProgramParametersWithUniforms): void 
       `vec3 _back = projectionMatrix[3][3] > 0.5 ? vec3(0.0, 0.0, -${RIG_INK_DEPTH.toFixed(3)}) : normalize(mvPosition.xyz) * ${RIG_INK_DEPTH.toFixed(3)};
            gl_Position = projectionMatrix * vec4(mvPosition.xyz + _back, 1.0);
            vec3 nView = normalize(normalMatrix * outlineNormal);`,
-    )
-    .replace("* uInkPx * 2.0 / uInkViewport", `* uInkPx * ${((2 * RIG_INK_PX) / OUTLINE_CSS_PX).toFixed(4)} / uInkViewport`);
+    );
+  // The line is RIG_INK_PX wide: the shared ink's own width (INK_PX), no rescale.
   sh.fragmentShader = sh.fragmentShader
     .replace("#include <common>", "#include <common>\n varying float vGroundY;\n uniform float uRigRim;\n uniform float uAoTop;")
-    .replace(
-      "#include <gradientmap_pars_fragment>",
-      `vec3 getGradientIrradiance( vec3 normal, vec3 lightDirection ) {
-         float x = dot( normal, lightDirection ) * 0.5 + 0.5;
-         float k = ${RIG_RAMP[0].toFixed(2)} + ${(RIG_RAMP[1] - RIG_RAMP[0]).toFixed(2)} * smoothstep(0.40, 0.44, x) + ${(RIG_RAMP[2] - RIG_RAMP[1]).toFixed(2)} * smoothstep(0.68, 0.72, x);
-         return vec3(k);
-       }`,
-    )
+    .replace("#include <gradientmap_pars_fragment>", toonRampGlsl())
     .replace(
       "#include <emissivemap_fragment>",
       "#include <emissivemap_fragment>\n vec3 _tint = totalEmissiveRadiance;\n totalEmissiveRadiance = vec3(0.0);",
@@ -178,13 +187,12 @@ function installRigLanguage(sh: THREE.WebGLProgramParametersWithUniforms): void 
       "#include <dithering_fragment>",
       `${INK_FRAGMENT}
          gl_FragColor.rgb *= 1.0 - ${RIG_AO.dark.toFixed(2)} * (1.0 - smoothstep(0.0, uAoTop, vGroundY));
-         float _rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
-         _rim = smoothstep(0.62, 1.0, _rim) * ${RIG_RIM.strength.toFixed(2)} * uRigRim;
-         gl_FragColor.rgb += _rim * vec3(0.749, 0.890, 1.0);
+         ${rimGlsl("uRigRim")}
          float _k = max(_tint.r, max(_tint.g, _tint.b));
          // A white or warm-white tint is a hit flash: art bible 6 caps it at RIG_FLASH_MAX.
          float _cap = min(_tint.r, min(_tint.g, _tint.b)) >= 0.6 * _k ? ${RIG_FLASH_MAX.toFixed(2)} : ${RIG_TINT_MAX.toFixed(2)};
          if (_k > 0.001) gl_FragColor.rgb = mix(gl_FragColor.rgb, _tint / _k, min(_k, _cap));
+         ${litClampGlsl()}
        }
        #include <dithering_fragment>`,
     );
@@ -880,7 +888,8 @@ function buildWarElephant(): TroopRig {
   const g = new THREE.Group();
   g.scale.setScalar(ELEPHANT_SCALE);
   root.add(g);
-  const GRAY = 0x8d8f96, GRAYDK = 0x6d6f77, IVORY = 0xf1e7cf;
+  // A warm elephant grey (a cool slate read as a boulder) with pink inner ears.
+  const GRAY = 0x9b938f, GRAYDK = 0x7a726f, IVORY = 0xf1e7cf, EAR_PINK = 0xd9a0a0;
   // Art bible 7: the ONE team slot is the saddle cloth (the caparison); the
   // howdah, canopy and medallion keep the edition's emerald, turquoise and gold.
   const GOLD = THEME.goldLight, CLOTH = THEME.emerald, CLOTH2 = THEME.turquoise;
@@ -904,6 +913,7 @@ function buildWarElephant(): TroopRig {
   const tail = cyl(0.05, 0.04, 0.5, GRAYDK, 0, 1.05, -1.5);
   tail.rotation.x = 0.35;
   g.add(tail);
+  g.add(cone(0.08, 0.2, 0x3a3432, 0, 0.78, -1.6)); // tail tuft: a back cue
 
   // Head + flapping ears at the front.
   const head = sphere(0.52, GRAY, 0, 1.42, 1.0);
@@ -912,12 +922,20 @@ function buildWarElephant(): TroopRig {
   g.add(box(0.5, 0.07, 0.06, 0x55575e, 0, 1.78, 1.28)); // brow ridge
   for (const s of [-1, 1]) {
     g.add(sphere(0.07, 0x1f2430, s * 0.22, 1.5, 1.36)); // small eye
+    // Big ears that stand out of the silhouette from the front and behind.
     const ear = new THREE.Group();
     ear.name = "ear";
-    ear.position.set(s * 0.44, 1.55, 0.85);
-    const flap = sphere(0.36, GRAYDK, s * 0.14, 0, 0);
-    flap.scale.set(0.28, 1.05, 1.1);
+    ear.position.set(s * 0.46, 1.55, 0.85);
+    // Flared forward: the pink inner face turns to the front, the grey back
+    // stands out past the body from behind.
+    ear.userData.flare = -s * 0.5;
+    ear.rotation.y = ear.userData.flare;
+    const flap = sphere(0.48, GRAYDK, s * 0.2, -0.04, -0.04);
+    flap.scale.set(0.24, 1.05, 1.1);
     ear.add(flap);
+    const inner = sphere(0.36, EAR_PINK, s * 0.27, -0.02, 0.02);
+    inner.scale.set(0.2, 0.95, 0.9);
+    ear.add(inner);
     g.add(ear);
   }
 
@@ -1030,7 +1048,7 @@ function buildWarElephant(): TroopRig {
     extras: (time, phase) => {
       trunk.rotation.x = Math.sin(time * 2 + phase) * 0.18;
       for (let i = 0; i < ears.length; i++) {
-        ears[i].rotation.y = Math.sin(time * 3 + phase + i) * 0.22 * (i === 0 ? 1 : -1);
+        ears[i].rotation.y = ((ears[i].userData.flare as number | undefined) ?? 0) + Math.sin(time * 3 + phase + i) * 0.22 * (i === 0 ? 1 : -1);
       }
     },
   };
@@ -4028,16 +4046,21 @@ function buildMamlukAmir(): TroopRig {
  * Islamic baby-dragon → ROC HATCHLING: cream-and-gold mythical chick with
  * hooked beak and broad feathered wings — Arabian Nights flyer.
  */
+/** The Golden Age baby dragon's (roc hatchling's) plumage. */
+export const ROC_PLUME = 0x2f9a62;
+
 function buildRocHatchling(): TroopRig {
   const g = new THREE.Group();
-  const CREAM = THEME.cream, GOLD = THEME.goldLight, SAND = THEME.sand;
-  const body = sphere(0.48, CREAM, 0, 0.52, 0);
+  // An emerald roc with gold wings and a sand belly: a white bird sank into
+  // the pale courts (critic review), and emerald sits far from both team hues.
+  const PLUME = ROC_PLUME, GOLD = THEME.goldLight, SAND = THEME.sand;
+  const body = sphere(0.48, PLUME, 0, 0.52, 0);
   body.scale.set(0.95, 0.9, 1.05);
   g.add(body);
   const belly = sphere(0.36, SAND, 0, 0.44, 0.18);
   belly.scale.set(0.8, 0.75, 0.55);
   g.add(belly);
-  const head = sphere(0.36, CREAM, 0, 1.05, 0.2);
+  const head = sphere(0.36, PLUME, 0, 1.05, 0.2);
   g.add(head);
   const beak = cone(0.12, 0.32, GOLD, 0, 0.96, 0.52);
   beak.name = "beak";

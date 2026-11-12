@@ -27,10 +27,36 @@ export interface CrowdSeat {
   side: Side;
 }
 
+/** A seat's place and facing in the host's view (z toward the host's camera). */
+export interface SeatHome {
+  x: number;
+  z: number;
+  face: number;
+}
+
+/**
+ * Turn every seat to `view`'s end: the stands (the far band's with the
+ * backdrop, the side stands with the surround) turn half a circle for the
+ * online guest, so their spectators go with them, team shirts included: the
+ * fans in the viewer's opponent's colour stay at the far end.
+ */
+export function orientSeats(seats: CrowdSeat[], home: readonly SeatHome[], view: Side): void {
+  const flip = view === "player" ? 1 : -1;
+  home.forEach((h, i) => {
+    const seat = seats[i];
+    if (!seat) return;
+    seat.x = h.x * flip;
+    seat.z = h.z * flip;
+    seat.face = flip > 0 ? h.face : h.face + Math.PI;
+  });
+}
+
 /** Six skin tones, light to deep. */
 export const CROWD_SKIN = [0xf8d2b0, 0xeab48a, 0xd39a6c, 0xb07650, 0x8a5636, 0x5e3a24] as const;
 /** Eight shirt colours (team colours are added by the bias). */
 const SHIRTS = [0xf2c14e, 0x66bb6a, 0xab47bc, 0xff8a3a, 0xf5f0e6, 0x26a69a, 0xec6fa8, 0x8d6e63] as const;
+/** Saturation share kept by the non-team shirts. */
+export const SHIRT_SATURATION = 0.75;
 /** Share of each half's crowd wearing its team's colour. */
 const TEAM_SHARE = 0.42;
 /** Spectators are modelled 0.56 tall and drawn this much larger (about 0.75). */
@@ -118,10 +144,17 @@ export function makeCrowd(seats: CrowdSeat[], teamShare = TEAM_SHARE): Crowd | n
     c.set(hex).getHSL(hsl);
     return c.setHSL(hsl.h, Math.min(1, hsl.s * 1.15), hsl.l);
   };
+  // The non-team shirts are muted and held to a narrow value band, so the
+  // stands read as one warm mass with team colour in it, not barcode noise
+  // that outshouts the court (wide-screen review).
+  const muted = (hex: number): THREE.Color => {
+    c.set(hex).getHSL(hsl);
+    return c.setHSL(hsl.h, hsl.s * SHIRT_SATURATION, 0.5 + (hsl.l - 0.5) * 0.7);
+  };
   seats.forEach((seat, i) => {
     const team = hash(i, 11) < teamShare;
     const shirt = team ? teamColor(seat.side, hash(i, 12) < 0.5 ? "main" : "dark") : SHIRTS[Math.floor(hash(i, 13) * SHIRTS.length)];
-    bodies.setColorAt(i, vivid(shirt));
+    bodies.setColorAt(i, team ? vivid(shirt) : muted(shirt));
     heads.setColorAt(i, vivid(CROWD_SKIN[Math.floor(hash(i, 14) * CROWD_SKIN.length)]));
     raised[i] = hash(i, 15) < 0.3 ? 1 : 0;
   });

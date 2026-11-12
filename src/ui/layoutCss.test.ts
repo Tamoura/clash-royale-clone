@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 // disk. The project ships no Node typings (browser code only), hence the directive.
 // @ts-expect-error -- "node:fs" has no type declarations here; Vitest runs in Node.
 import { readFileSync } from "node:fs";
-import { BATTLE_BOX } from "../render3d/scene/fit";
+import { BATTLE_BOX, heightScale } from "../render3d/scene/fit";
 import {
   CARD_ASPECT,
   SIDE_GAP,
@@ -156,7 +156,7 @@ describe("the tray's stylesheet numbers match layout.ts", () => {
     expect(lay).not.toBeNull();
     if (!lay) return;
     expect(lay.insets.left).toBe(lay.side + SIDE_GAP);
-    expect(lay.fieldW).toBe(Math.round(((2 * BATTLE_BOX.halfW) / BATTLE_BOX.height) * 900));
+    expect(lay.fieldW).toBe(Math.round(2 * BATTLE_BOX.halfW * heightScale(900, BATTLE_BOX)));
     const hug = rule(':root[data-layout="wide"]')["--hug"];
     expect(hug).toBe("max(12px, calc((100vw - var(--field-w)) / 2 - var(--side) + 12px))");
     // A slim left panel (under SIDE_SLIM) may use the column's inner inset
@@ -165,5 +165,20 @@ describe("the tray's stylesheet numbers match layout.ts", () => {
     const [slimInset] = px(rule(':root[data-layout="wide"][data-slim] #topbar.v2').width);
     expect(slimInset).toBeGreaterThanOrEqual(12);
     expect(slimInset).toBeLessThan(inset(':root[data-layout="wide"] #topbar'));
+  });
+
+  it("a tablet's band shades only the chips' corners: its shading leaves the far king's column out", () => {
+    // layoutWire.ts sets :root[data-crown="free"] and the column's edges
+    // (--crown-l, --crown-r) while the king rises between the chips; the band
+    // then draws its shading on ::before, transparent over that column.
+    const free = ':root[data-layout="tall"][data-crown="free"] #topbar.v2';
+    expect(rule(free).background).toBe("none");
+    const shade = rule(`${free}::before`);
+    expect(shade.background).toBe("var(--band-shade)");
+    expect(shade["z-index"]).toBe("-1");
+    for (const mask of [shade["mask-image"], shade["-webkit-mask-image"]]) {
+      // Opaque out at the chips, clear from --crown-l to --crown-r.
+      expect(mask).toMatch(/transparent var\(--crown-l\), transparent var\(--crown-r\)/);
+    }
   });
 });

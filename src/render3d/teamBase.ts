@@ -20,6 +20,13 @@ export const RING_INNER = 0.5 / 1.08;
 export const DISC_OUTER = 1.08;
 /** Swarm units still get a disc big enough to read at phone size. */
 export const DISC_MIN_RADIUS = 0.45;
+/**
+ * A flyer's ground marker: the same disc and notch, lighter and a little
+ * smaller, so it reads as "this flyer is here" and not as a bright splat
+ * offset from the body.
+ */
+export const FLYER_DISC_OPACITY = 0.6;
+export const FLYER_DISC_SCALE = 0.85;
 /** Opacity of the inner fill. */
 export const FILL_ALPHA = 0.42;
 /** Disc colours are the team colour pushed this much more saturated (they sit on busy floors). */

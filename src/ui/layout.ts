@@ -22,7 +22,7 @@
  * --king-w, --gutter-w, --gap-w and --hand-cols variables), so they never
  * disagree.
  */
-import { BATTLE_BOX, TALL_BOX, ZERO_INSETS, type ContentBox, type Insets } from "../render3d/scene/fit";
+import { BATTLE_BOX, TALL_BOX, ZERO_INSETS, heightScale, type ContentBox, type Insets } from "../render3d/scene/fit";
 
 /** Narrowest side panel: the left one's clock + menu row needs it, the right one a column of cards. */
 export const SIDE_MIN = 144;
@@ -210,7 +210,9 @@ export function tallLayout(w: number, h: number, safe: Insets = ZERO_INSETS): Ba
   // styles/hud.css: the one-row band is (min-width: 600px), (min-aspect-ratio: 47/100).
   const band = (w >= 600 || w / h >= 0.47 ? BAND_ONE_ROW : BAND_TWO_ROWS) + safe.top;
   // The tile is one world unit across (the field's 18 tiles span x = -9..9).
-  const tile = Math.max(0, Math.min(w / (2 * TALL_BOX.halfW), (h - tray - band) / TALL_BOX.height));
+  // The far king's column counts under the whole band here; the camera lets
+  // it rise between the chips where they leave the middle free (tablets).
+  const tile = Math.max(0, Math.min(w / (2 * TALL_BOX.halfW), heightScale(h - tray - band, TALL_BOX)));
   return {
     mode: "tall",
     side: 0,
@@ -235,8 +237,9 @@ export function tallLayout(w: number, h: number, safe: Insets = ZERO_INSETS): Ba
 export function wideLayout(w: number, h: number, safe: Insets = ZERO_INSETS): BattleLayout | null {
   const availW = w - safe.left - safe.right;
   const availH = Math.max(1, h - safe.top - safe.bottom);
-  // The whole board at full height is this wide (0.7425 x the height).
-  const fieldCol = ((2 * BATTLE_BOX.halfW) / BATTLE_BOX.height) * availH;
+  // The whole board at full height (the far king's plate clear of the top
+  // edge, the near king's of the bottom one) is this wide: just under 0.71 x the height.
+  const fieldCol = 2 * BATTLE_BOX.halfW * heightScale(availH, BATTLE_BOX);
   const room = (availW - fieldCol) / 2 - SIDE_GAP;
   const side = Math.floor(Math.max(SIDE_MIN, Math.min(sideMax(h), room)));
   // Full height when both panels fit beside it, else the width between them.

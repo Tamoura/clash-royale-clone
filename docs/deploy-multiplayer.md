@@ -65,8 +65,8 @@ Good to know about the free plan:
   `render.yaml`, then use **Manual Deploy → Deploy latest commit**.
 * **Limits:** 750 free hours a month (enough to run all month) and a limited
   amount of outbound traffic (5 GB a month when this was written). A first
-  visit downloads about 0.5 MB (3 MB more with the optional `?models=kaykit`
-  3D models); return visits mostly use the device's cache. With a card on
+  visit downloads about 1.4 MB (0.55 MB of code, then 0.85 MB of 3D characters
+  in the background); return visits mostly use the device's cache. With a card on
   file, going over may be billed: check **Billing**.
 * **One server.** Rooms live in its memory, and the free plan always runs
   exactly one instance, which is what the relay needs.
@@ -425,8 +425,8 @@ The page and the relay must speak the same protocol. `PROTOCOL_VERSION` in
   restart" and can start a new game. Deploy when nobody is playing.
 * **Memory:** a room keeps its match's frames so a dropped player can catch
   up: about 1 MB per 3-minute match, at most 4 MB before the 12-minute
-  expiry. The served game adds about 50 MB (the files plus their compressed
-  copies). 256 MB is plenty.
+  expiry. The served game adds under 10 MB (its 2.9 MB of files plus their
+  compressed copies). 256 MB is plenty.
 * **Cost:** Render's free plan and the Cloudflare tunnel cost nothing. On Fly,
   one `shared-cpu-1x` 256 MB machine is about $2/month if it never sleeps,
   cents with `auto_stop_machines`. Prices change: see

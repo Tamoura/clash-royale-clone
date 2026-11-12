@@ -27,7 +27,7 @@ export interface FxApi {
     opts?: { z?: number; color?: number; radius?: number; count?: number; side?: Side },
   ): void;
   /** A ground mark of radius `r` tiles that fades over `life` seconds. */
-  decal(kind: DecalKindName, x: number, y: number, r: number, opts?: { color?: number; life?: number }): void;
+  decal(kind: DecalKindName, x: number, y: number, r: number, opts?: { color?: number; life?: number; alpha?: number }): void;
   /** Advance by the presentation dt (called once per rendered frame). */
   update(dt: number): void;
   /** Drop everything in flight (battle restart). */

@@ -21,11 +21,11 @@ import { buildAmbient, disposeAmbient, updateAmbient, type Ambient } from "./amb
 import { buildBackdrop, type Backdrop } from "./backdrop";
 import { buildClassicBridges } from "./bridges";
 import { buildTufts } from "./tufts";
-import { makeCrowd, poseCrowd, type Crowd, type CrowdSeat } from "./crowd";
+import { makeCrowd, orientSeats, poseCrowd, type Crowd, type CrowdSeat, type SeatHome } from "./crowd";
 import { groundTexture, hashString } from "./groundPaint";
 import { LightPools, type LightSpot } from "./lightPools";
 import { buildRiver, type RiverHandle } from "./river";
-import { buildClassicScenery } from "./scenery";
+import { buildClassicScenery, orientSurround } from "./scenery";
 import { buildGoldenSurround } from "./golden";
 import { Sculpt, sculptMaterial, tone } from "../views/towerCraft";
 
@@ -35,8 +35,16 @@ interface ArenaArt {
   river: RiverHandle;
   pools: LightPools;
   ambient: Ambient | null;
-  /** Crowd seats 0..kitSeats-1 belong to the backdrop stand (host-view x/z). */
-  kitSeats: Array<{ x: number; z: number }>;
+  /**
+   * The court's surround (stands, pavilions or galleries, the forest or the
+   * town, the neon cage): built in the host's view, it turns with the view
+   * like the backdrop (scenery.ts orientSurround).
+   */
+  surround: THREE.Group;
+  /** Every crowd seat's host-view place and facing (they turn with their stands). */
+  homeSeats: SeatHome[];
+  /** Crowd seats 0..kitSeats-1 belong to the backdrop stand. */
+  kitSeats: number;
   /** The quality level the set was last dressed for. */
   level: QualityLevel | null;
   /** The instanced chibi crowd (null when there are no seats). */
@@ -128,6 +136,10 @@ export function makeLantern(s = 1): THREE.Group {
   return g;
 }
 
+/** Golden Age bridge deck: pale laid sandstone, and the darker brass of its lip. */
+export const BRIDGE_SANDSTONE = 0xc4b08e;
+export const BRIDGE_BRASS = 0xa8843e;
+
 /** A horseshoe-arch gateway straddling a bridge, crescent + hanging lantern. */
 export function archGateway(): THREE.Group {
   const g = new THREE.Group();
@@ -185,20 +197,53 @@ function installCrowd(b: Battle3D, seats: CrowdSeat[]): Crowd | null {
 type Seat = CrowdSeat;
 
 /**
- * Set dressing around the court: the apron, the surround (scenery.ts for
- * Classic, golden.ts for the Golden Age: stands, crowd seats, pavilions or
- * souk awnings, the forest or the town), lantern strings and the bridge
- * torches or lanterns. Returns the crowd seats and appends every light to
- * `lights`. (The far band and the near band belong to the backdrop.)
+ * The lantern strings (looks with `lanterns`): their posts stand between the
+ * kerb and the stands, just outside the court's long sides.
  */
-export function decorate(b: Battle3D, lights: LightSpot[]): Seat[] {
+export const LANTERN_X = ARENA_WIDTH / 2 + 1.3;
+/** The end festoon's posts and swag tops: low, along the front rail of the far stands (under their crowd). */
+export const END_STRING_Y = 1.7;
+/** Swags across an end (a lantern hangs between each pair). */
+const END_SWAGS = 8;
+/** How far each swag dips under its ends (world units). */
+const END_SAG = 0.42;
+/** The festoon rope's radius: about 2 px on a laptop, a rope rather than a hairline. */
+const ROPE_R = 0.035;
+/** The side lantern posts' height. */
+const SIDE_POST_H = 2.5;
+
+/** A rope through `pts` that dips `sag` between each pair (a parabola per swag). */
+export class FestoonCurve extends THREE.Curve<THREE.Vector3> {
+  constructor(private readonly pts: readonly THREE.Vector3[], private readonly sag: number) {
+    super();
+  }
+  override getPoint(t: number, out = new THREE.Vector3()): THREE.Vector3 {
+    const n = this.pts.length - 1;
+    const f = Math.min(n, Math.max(0, t * n));
+    const i = Math.min(n - 1, Math.floor(f));
+    const u = f - i;
+    out.lerpVectors(this.pts[i], this.pts[i + 1], u);
+    out.y -= this.sag * 4 * u * (1 - u);
+    return out;
+  }
+}
+
+/**
+ * Set dressing around the court: the apron, the surround into `surround`
+ * (scenery.ts for Classic, golden.ts for the Golden Age: stands, crowd
+ * seats, pavilions or souk awnings, the forest or the town), lantern strings
+ * and the bridge torches or lanterns. Returns the crowd seats and appends
+ * every light to `lights`. (The far band and the near band belong to the
+ * backdrop.)
+ */
+export function decorate(b: Battle3D, lights: LightSpot[], surround: THREE.Object3D): Seat[] {
   // Outer apron framing the arena.
   const apron = new THREE.Mesh(new THREE.BoxGeometry(ARENA_WIDTH + 46, 0.36, ARENA_HEIGHT + 10), toon(LOOK.apron));
   apron.position.y = -0.24;
   apron.receiveShadow = true;
   b.arenaGroup.add(apron);
 
-  const seats: Seat[] = arabic ? buildGoldenSurround(b.arenaGroup, LOOK, (c) => b.glow(c)) : buildClassicScenery(b.arenaGroup, LOOK);
+  const seats: Seat[] = arabic ? buildGoldenSurround(surround, LOOK, (c) => b.glow(c)) : buildClassicScenery(surround, LOOK);
 
   // Strings of glowing lanterns flanking the field (look-dependent).
   // Unlit glow material, so the bloom pass makes them softly radiate;
@@ -218,33 +263,44 @@ export function decorate(b: Battle3D, lights: LightSpot[]): Seat[] {
       cap.position.set(x, y - 0.02, z);
       b.arenaGroup.add(cap);
     };
-    const rope = (len: number, x: number, y: number, z: number, alongX: boolean): void => {
-      const r = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.025, 0.025, len, 5),
-        new THREE.MeshBasicMaterial({ color: LOOK.fencePost, fog: false }),
-      );
-      r.rotation.set(alongX ? 0 : Math.PI / 2, 0, alongX ? Math.PI / 2 : 0);
-      r.position.set(x, y, z);
+    const wood = toon(LOOK.fencePost);
+    // A slim wooden post with a round cap: the strings hang from these.
+    const post = (x: number, h: number, z: number): void => {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, h, 6), wood);
+      pole.position.set(x, h / 2 - 0.05, z);
+      b.arenaGroup.add(pole);
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), toon(THEME.gold));
+      knob.position.set(x, h, z);
+      b.arenaGroup.add(knob);
+    };
+    // A rope through `pts` that swags `sag` between each pair (a lantern
+    // hangs at every inner point): a festoon, not a taut wire.
+    const ropeMat = new THREE.MeshBasicMaterial({ color: LOOK.fencePost, fog: false });
+    const rope = (pts: THREE.Vector3[], sag: number): void => {
+      const curve = new FestoonCurve(pts, sag);
+      const r = new THREE.Mesh(new THREE.TubeGeometry(curve, (pts.length - 1) * 8, ROPE_R, 4, false), ropeMat);
       b.arenaGroup.add(r);
     };
-    // A string across each end, hung right at the arena edge — the
-    // steep camera keeps anything further out above the frame.
-    // Each end's string lives in its own group so the one on the camera's
-    // side can hide: seen from above it would cross our own king tower.
+    // A festoon across each end, between two posts just outside the court's
+    // corners, low along the front of the far stands (under their crowd), a
+    // lantern at every swag. Each end's string lives in its own group so the
+    // one on the camera's side can hide: seen from above it would cross our
+    // own king tower.
     for (const sz of [-1, 1]) {
       const dz = ARENA_HEIGHT / 2;
-      const y = 2.8;
       const holder = b.arenaGroup;
       const endGroup = new THREE.Group();
       endGroup.userData.batchRoot = true; // toggled as a unit per viewpoint
       b.arenaGroup = endGroup;
-      rope(ARENA_WIDTH + 10, 0, y, sz * dz, true);
-      for (let i = 0; i < 7; i++) {
-        const ly = y + Math.sin(i * 2.3) * 0.15;
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= END_SWAGS; i++) pts.push(new THREE.Vector3(-LANTERN_X + (2 * LANTERN_X * i) / END_SWAGS, END_STRING_Y, sz * dz));
+      for (const sx of [-1, 1]) post(sx * LANTERN_X, END_STRING_Y + 0.1, sz * dz);
+      rope(pts, END_SAG);
+      for (let i = 1; i < END_SWAGS; i++) {
         const ci = i + (sz > 0 ? 1 : 0);
-        stringLantern(-12 + i * 4, ly, sz * dz, ci);
+        stringLantern(pts[i].x, END_STRING_Y, sz * dz, ci);
         lights.push({
-          x: -12 + i * 4, y: ly - 0.4, z: sz * dz, color: lanternColors[ci % lanternColors.length],
+          x: pts[i].x, y: END_STRING_Y - 0.4, z: sz * dz, color: lanternColors[ci % lanternColors.length],
           radius: 1.7, end: sz > 0 ? "player" : "enemy",
         });
       }
@@ -254,15 +310,20 @@ export function decorate(b: Battle3D, lights: LightSpot[]): Seat[] {
       else b.endStringEnemy = endGroup;
     }
     applyEndStrings(b);
-    // Side strings for wider screens.
-    const sideX = ARENA_WIDTH / 2 + 3.4;
+    // Down the long sides (wider screens): a lantern on a post with a short
+    // arm toward the court, between the kerb and the stands, so the lights
+    // frame the court; no rope runs through the crowd.
     for (const sx of [-1, 1]) {
-      rope(ARENA_HEIGHT + 4, sx * sideX, 4.6, 0, false);
       for (let i = 0; i < 8; i++) {
         const z = -14 + i * 4;
         const ci = i + (sx > 0 ? 1 : 0);
-        stringLantern(sx * sideX, 4.6 + Math.sin(i * 1.7) * 0.18, z, ci);
-        lights.push({ x: sx * sideX, y: 4.2, z, color: lanternColors[ci % lanternColors.length], radius: 1.6 });
+        const x = sx * LANTERN_X;
+        post(x, SIDE_POST_H, z);
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.05, 0.05), wood);
+        arm.position.set(x - sx * 0.19, SIDE_POST_H - 0.16, z);
+        b.arenaGroup.add(arm);
+        stringLantern(x - sx * 0.36, SIDE_POST_H - 0.14, z, ci);
+        lights.push({ x: x - sx * 0.36, y: SIDE_POST_H - 0.6, z, color: lanternColors[ci % lanternColors.length], radius: 1.6 });
       }
     }
   }
@@ -391,6 +452,14 @@ export function buildArena(b: Battle3D): void {
   b.arenaGroup.add(field);
 
   // Edging around the playfield, post at each corner.
+  // The surround: everything dressed in the host's view with team colours by
+  // half (red far, blue near) or faces toward his camera; it turns as a unit
+  // for the online guest (applyEndStrings).
+  const surround = new THREE.Group();
+  surround.name = "surround";
+  surround.userData.batchRoot = true;
+  b.arenaGroup.add(surround);
+
   const hw = ARENA_WIDTH / 2 + 0.45;
   const hd = ARENA_HEIGHT / 2 + 0.15;
   const stone = LOOK.edging;
@@ -422,7 +491,7 @@ export function buildArena(b: Battle3D): void {
           b.glow(sz < 0 ? LOOK.neon.enemy : LOOK.neon.player),
         );
         neon.position.set(sx * hw, 0.56, sz * hd);
-        b.arenaGroup.add(neon);
+        surround.add(neon);
       }
     }
   }
@@ -434,13 +503,13 @@ export function buildArena(b: Battle3D): void {
         b.glow(sz < 0 ? LOOK.neon.enemy : LOOK.neon.player),
       );
       strip.position.set(0, 0.24, sz * hd);
-      b.arenaGroup.add(strip);
+      surround.add(strip);
     }
   }
   const tufts = buildTufts(LOOK);
   if (tufts) b.arenaGroup.add(tufts);
   const lights: LightSpot[] = [];
-  const seats = decorate(b, lights);
+  const seats = decorate(b, lights, surround);
 
   // The stadium backdrop behind the enemy king, with its own crowd stand
   // (seated first, so cheering can skip the off-screen side stands).
@@ -462,7 +531,9 @@ export function buildArena(b: Battle3D): void {
     river,
     pools,
     ambient,
-    kitSeats: kitSeats.map((st) => ({ x: st.x, z: st.z })),
+    surround,
+    homeSeats: [...kitSeats, ...seats].map((st) => ({ x: st.x, z: st.z, face: st.face })),
+    kitSeats: kitSeats.length,
     level: null,
     crowd,
     sides: [],
@@ -531,15 +602,17 @@ export function finishArena(b: Battle3D): RiverHandle {
   if (arabic) {
     // Ornate sandstone bridges with a horseshoe-arch gateway, parapets,
     // gold rim, and teal cupola finials at each end.
+    // The deck is laid sandstone (pale, desaturated, with grout joints and
+    // a shaded skirt) under a brass lip: a flat saturated yellow slab read as
+    // a UI block, not a bridge. One sculpted mesh for both decks.
+    const deckSc = new Sculpt((_x, _y, _z, ny) => (ny > 0.7 ? 1.04 : ny < -0.4 ? 0.7 : 0.8));
     for (const bx of BRIDGE_XS) {
       const w = toWorld(bx, RIVER_Y);
-      const deck = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.2, 2.6), toon(THEME.sand));
-      deck.position.set(w.x, 0.1, 0);
-      deck.castShadow = true;
-      deck.receiveShadow = true;
-      b.arenaGroup.add(deck);
-      const rim = new THREE.Mesh(new THREE.BoxGeometry(2.06, 0.06, 2.66), toon(THEME.gold));
-      rim.position.set(w.x, 0.21, 0);
+      deckSc.box(2.0, 0.2, 2.6, BRIDGE_SANDSTONE, w.x, 0.1, 0);
+      for (let i = 1; i < 6; i++) deckSc.box(1.78, 0.012, 0.035, tone(BRIDGE_SANDSTONE, 0.78, 0.9), w.x, 0.206, -1.3 + i * (2.6 / 6), 0, () => 1);
+      for (const jx of [-0.45, 0.45]) deckSc.box(0.035, 0.012, 2.5, tone(BRIDGE_SANDSTONE, 0.8, 0.9), w.x + jx, 0.205, 0, 0, () => 1);
+      const rim = new THREE.Mesh(new THREE.BoxGeometry(2.06, 0.06, 2.66), toon(BRIDGE_BRASS));
+      rim.position.set(w.x, 0.17, 0);
       b.arenaGroup.add(rim);
       const gate = archGateway();
       gate.position.set(w.x, 0.2, 0);
@@ -558,6 +631,11 @@ export function finishArena(b: Battle3D): RiverHandle {
           b.arenaGroup.add(post);
         }
       }
+    }
+    const decks = deckSc.mesh(sculptMaterial(), "golden-bridge-decks");
+    if (decks) {
+      decks.castShadow = decks.receiveShadow = true;
+      b.arenaGroup.add(decks);
     }
   } else if (LOOK.band.bridge === "timber") {
     // Hand-built timber crossings: uneven planks over dark bearers, stone
@@ -608,8 +686,9 @@ export function finishArena(b: Battle3D): RiverHandle {
 
 /**
  * Viewpoint-dependent dressing: hide the lantern string nearest the camera
- * (it would cross our king), and turn the backdrop, its crowd and its
- * lights to stand behind whichever king is at the far end.
+ * (it would cross our king), turn the backdrop, its crowd and its lights to
+ * stand behind whichever king is at the far end, and turn the surround with
+ * its crowd, so the viewer's opponent's colours are always at the far end.
  */
 export function applyEndStrings(b: Battle3D): void {
   if (b.endStringPlayer) b.endStringPlayer.visible = viewSide !== "player";
@@ -617,20 +696,16 @@ export function applyEndStrings(b: Battle3D): void {
   const art = ART.get(b);
   if (!art) return;
   art.backdrop.orient(viewSide);
+  // The surround casts (the stands): re-render the shadow map once it turns.
+  if (orientSurround(art.surround, viewSide)) b.renderer.shadowMap.needsUpdate = true;
   art.pools.orient(viewSide, {
     player: !b.endStringPlayer || b.endStringPlayer.visible,
     enemy: !b.endStringEnemy || b.endStringEnemy.visible,
   });
   if (art.crowd) {
-    // The far-band crowd turns with the backdrop to face the court.
-    const flip = viewSide === "player" ? 1 : -1;
-    art.kitSeats.forEach((st, i) => {
-      const seat = art.crowd!.seats[i];
-      seat.x = st.x * flip;
-      seat.z = st.z * flip;
-      seat.face = flip > 0 ? 0 : Math.PI;
-      b.crowd?.seats[i]?.set(seat.x, seat.z);
-    });
+    // Every spectator turns with his stand to face the court.
+    orientSeats(art.crowd.seats, art.homeSeats, viewSide);
+    art.crowd.seats.forEach((seat, i) => b.crowd?.seats[i]?.set(seat.x, seat.z));
     poseCrowd(art.crowd, -1, 0, 0);
   }
 }
@@ -701,7 +776,7 @@ export function updateCrowd(b: Battle3D, dt: number): void {
   if (!live && !cheering) return;
   art.posedStill = false;
   const sidesOnScreen = b.showcase || Math.max(-b.camera.left, b.camera.right) > STAND_INNER_X;
-  const n = sidesOnScreen ? Infinity : art.kitSeats.length;
+  const n = sidesOnScreen ? Infinity : art.kitSeats;
   poseCrowd(crowd, b.waterTime, jump, wave, live ? 1 : 0, n);
 }
 

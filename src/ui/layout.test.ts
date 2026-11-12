@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BATTLE_BOX, TALL_BOX, ZERO_INSETS, fitBattleFrustum, type Insets } from "../render3d/scene/fit";
+import { BATTLE_BOX, TALL_BOX, ZERO_INSETS, fitBattleFrustum, heightScale, type ContentBox, type Insets } from "../render3d/scene/fit";
 import {
   CARD_ASPECT,
   CARD_TOUCH_MIN,
@@ -24,31 +24,36 @@ import {
   wideLayout,
 } from "./layout";
 
+/** The content the old layout framed: the field and its edging, before the far king's crown. */
+const LEGACY_BOX: ContentBox = { halfW: 9.95, height: 26.8, mid: 0.6 };
+
 /**
  * The layout before the compact hand, verbatim (its tray: 3:4 cards filling
  * the width, at most 16% of the height tall, over a full-width elixir bar,
  * 82px of chrome; its side panels: 176 to 320px), so the sweeps below can
- * hold the new one against it screen by screen.
+ * hold the new one against it screen by screen. It frames the same content
+ * as today's (the board with the far king's crown and the plates' gaps), so
+ * the comparison weighs the hand alone; `LEGACY_BOX` gives its own numbers.
  */
 const before = {
   cardHeight: (cw: number): number => ((cw - 6) * 4) / 3 + 6,
   cardForHeight: (ch: number): number => ((ch - 6) * 3) / 4 + 6,
-  tall(w: number, h: number, safe: Insets = ZERO_INSETS): { tile: number; tray: number; cardW: number } {
+  tall(w: number, h: number, safe: Insets = ZERO_INSETS, box: ContentBox = TALL_BOX): { tile: number; tray: number; cardW: number } {
     const availW = Math.max(1, w - safe.left - safe.right);
     const capByHeight = 4 * before.cardForHeight(0.16 * h) + 56;
     const handW = Math.max(60, Math.floor(Math.min(availW, 560, capByHeight)));
     const cardW = (handW - 56) / 4;
     const tray = before.cardHeight(cardW) + 82 + Math.max(0, safe.bottom - 8);
     const band = (w >= 600 || w / h >= 0.47 ? 58 : 83) + safe.top;
-    return { tile: Math.max(0, Math.min(w / (2 * TALL_BOX.halfW), (h - tray - band) / TALL_BOX.height)), tray, cardW };
+    return { tile: Math.max(0, Math.min(w / (2 * box.halfW), heightScale(h - tray - band, box))), tray, cardW };
   },
-  wide(w: number, h: number, safe: Insets = ZERO_INSETS): { tile: number; side: number } {
+  wide(w: number, h: number, safe: Insets = ZERO_INSETS, box: ContentBox = BATTLE_BOX): { tile: number; side: number } {
     const availW = w - safe.left - safe.right;
     const availH = Math.max(1, h - safe.top - safe.bottom);
-    const fieldCol = ((2 * BATTLE_BOX.halfW) / BATTLE_BOX.height) * availH;
+    const fieldCol = 2 * box.halfW * heightScale(availH, box);
     const side = Math.floor(Math.max(176, Math.min(320, (availW - fieldCol) / 2 - 8)));
     const fieldW = Math.min(fieldCol, availW - 2 * (side + 8));
-    return { tile: fieldW > 0 ? fieldW / (2 * BATTLE_BOX.halfW) : 0, side };
+    return { tile: fieldW > 0 ? fieldW / (2 * box.halfW) : 0, side };
   },
   tile(w: number, h: number, safe: Insets = ZERO_INSETS): number {
     return Math.max(before.tall(w, h, safe).tile, before.wide(w, h, safe).tile);
@@ -181,7 +186,8 @@ describe("battleLayout", () => {
       expect(lay.mode, `${w}x${h}`).toBe("wide");
       expect(lay.box).toBe(BATTLE_BOX);
       expect(lay.insets).toEqual({ top: 0, bottom: 0, left: lay.side + SIDE_GAP, right: lay.side + SIDE_GAP });
-      expect(lay.tile, `${w}x${h}`).toBeCloseTo(h / BATTLE_BOX.height, 6);
+      // Full height: the far king's plate clear of the top edge, the near king's of the bottom one.
+      expect(lay.tile, `${w}x${h}`).toBeCloseTo(heightScale(h, BATTLE_BOX), 6);
       // A 2x2 block of cards, never the old screen-high column.
       expect(lay.handCols, `${w}x${h}`).toBe(2);
       expect(handPanelHeight(lay.cardW, lay.handCols, lay.stacked), `${w}x${h}`).toBeLessThanOrEqual(0.62 * h + 110);
@@ -200,10 +206,11 @@ describe("battleLayout", () => {
     for (const [w, h, oldCard, oldSide] of cases) {
       const lay = battleLayout(w, h);
       const at = `${w}x${h}`;
-      expect(before.wide(w, h).side, at).toBe(oldSide);
+      expect(before.wide(w, h, ZERO_INSETS, LEGACY_BOX).side, at).toBe(oldSide);
       expect(lay.cardW, at).toBeLessThan(oldCard);
       expect(lay.cardW, at).toBeLessThanOrEqual(wideCardCap(h));
-      expect(lay.side, at).toBeLessThanOrEqual(oldSide);
+      // Narrower than the old panels around the same board (today's, with the far king's crown).
+      expect(lay.side, at).toBeLessThanOrEqual(before.wide(w, h).side);
       expect(lay.side, at).toBeLessThanOrEqual(sideMax(h));
     }
     expect(battleLayout(1440, 900).cardW).toBeLessThanOrEqual(104);
@@ -211,12 +218,14 @@ describe("battleLayout", () => {
   });
 
   it("keeps near-square and small landscape windows wide: the board gives up height, not the panels", () => {
+    // (The board with the far king's crown is a little narrower for its
+    // height than the old box, so these windows are a little narrower too.)
     for (const [w, h] of [
-      [600, 400],
-      [640, 480],
-      [700, 560],
+      [560, 400],
+      [610, 480],
+      [670, 560],
       [900, 900],
-      [1000, 1000],
+      [980, 1000],
     ]) {
       const lay = battleLayout(w, h);
       expect(lay.mode, `${w}x${h}`).toBe("wide");
@@ -225,16 +234,17 @@ describe("battleLayout", () => {
       // Width-bound between the panels, so the whole board still shows.
       const f = fitBattleFrustum(w, h, lay.insets, lay.box);
       expect(w / (f.right - f.left), `${w}x${h}`).toBeCloseTo(lay.fieldW / (2 * BATTLE_BOX.halfW), 6);
-      expect(lay.fieldW / (2 * BATTLE_BOX.halfW)).toBeLessThanOrEqual(h / BATTLE_BOX.height);
+      expect(lay.fieldW / (2 * BATTLE_BOX.halfW)).toBeLessThanOrEqual(heightScale(h, BATTLE_BOX));
       // The slimmer panels (144px, were 176px) hand their width to the board.
       expect(lay.tile, `${w}x${h}`).toBeGreaterThan(before.tile(w, h) * 1.1);
     }
-    // 568x320, 800x600 and an unfolded foldable in landscape now fit a
+    // 568x320, 760x600 and an unfolded foldable in landscape now fit a
     // full-height board between the panels.
-    for (const [w, h] of [[568, 320], [800, 600], [884, 768]]) {
+    for (const [w, h] of [[568, 320], [760, 600], [884, 768]]) {
       const lay = battleLayout(w, h);
-      expect(lay.tile, `${w}x${h}`).toBeCloseTo(h / BATTLE_BOX.height, 6);
-      expect(lay.tile, `${w}x${h}`).toBeGreaterThan(before.tile(w, h) * 1.02);
+      expect(lay.tile, `${w}x${h}`).toBeCloseTo(heightScale(h, BATTLE_BOX), 6);
+      // (Only a little bigger: the old 176px panels nearly fit beside today's narrower board too.)
+      expect(lay.tile, `${w}x${h}`).toBeGreaterThan(before.tile(w, h) * 1.005);
     }
   });
 
@@ -248,10 +258,14 @@ describe("battleLayout", () => {
     // The hand panel clears the home indicator and the top edge.
     expect(handPanelHeight(lay.cardW, lay.handCols, lay.stacked)).toBeLessThanOrEqual(390 - 12 - 21);
     expect(handPanelBudget(390, safe)).toBe(390 - 12 - 21);
-    // Portrait: the notch pushes the band down, the home indicator the cards up.
-    const tall = battleLayout(390, 844, { top: 47, left: 0, right: 0, bottom: 34 });
+    // Portrait: the notch pushes the band down, the home indicator the cards
+    // up. The board was just width-bound; the far king's crown under the band
+    // now costs it a little height (less where the chips leave his column free).
+    const notched = { top: 47, left: 0, right: 0, bottom: 34 };
+    const tall = battleLayout(390, 844, notched);
     expect(tall.mode).toBe("tall");
-    expect(tall.tile).toBeCloseTo(390 / (2 * TALL_BOX.halfW), 9); // still width-bound
+    expect(tall.tile).toBeCloseTo(heightScale(844 - tall.tray - 83 - 47, TALL_BOX), 9);
+    expect(tall.tile).toBeGreaterThan(0.9 * (390 / (2 * TALL_BOX.halfW)));
   });
 
   it("never squeezes the panels, the hand or the board", () => {
@@ -331,12 +345,15 @@ describe("battleLayout", () => {
       }
     }
     // Width-bound phones cannot grow the board: the slimmer tray leaves
-    // height over instead, which the frame spends around the board.
+    // height over instead, which the frame spends around the board, most
+    // of it on the far king's crown (his canopy and plate under the band).
     for (const [w, h] of [[390, 844], [412, 915]]) {
       const lay = battleLayout(w, h);
       expect(lay.tile, `${w}x${h}`).toBeCloseTo(w / (2 * TALL_BOX.halfW), 9);
-      const slack = h - lay.tray - 83 - TALL_BOX.height * lay.tile;
-      expect(slack, `${w}x${h}`).toBeGreaterThan(50);
+      const crown = TALL_BOX.crown!;
+      const span = crown.top - (TALL_BOX.mid - TALL_BOX.height / 2);
+      const slack = h - lay.tray - 83 - (span * lay.tile + crown.padTop + (TALL_BOX.padBottom ?? 0));
+      expect(slack, `${w}x${h}`).toBeGreaterThan(10);
     }
   });
 

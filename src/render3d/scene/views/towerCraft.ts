@@ -22,6 +22,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { paintedToon } from "../../characters3d";
 import type { BrickVariant } from "../../arenaLooks";
 import { INK, OUTLINE_CSS_PX, fitInk, smoothedNormals } from "../../outlineMaterial";
+import { INK_COLOR, INK_PX } from "../../look/material";
 import { TOWER_GOLD, TOWER_GOLD_DARK, type TowerFlair, type TowerStyle, type YZ } from "./towerStyles";
 
 const C = new THREE.Color();
@@ -164,7 +165,11 @@ const STONE_BASE: Record<BrickVariant, string> = {
   blue: "#93a9d1",
   grey: "#b4bac4",
   marble: "#dcd6ea",
-  dark: "#52525e",
+  // Basalt for forge and copper: warm, and light enough in the texture (the
+  // walls are the texture alone, lit) to land a mid-dark brown facade on
+  // screen, so the keeps read their gate, quoins and banner instead of
+  // black boxes (it was #52525e: facades at about 2% linear luminance).
+  dark: "#9c8278",
   ice: "#cfe4f2",
   moss: "#8ba269",
   bone: "#e4dac4",
@@ -283,8 +288,8 @@ export const KEEP_TEX = { none: 0, ashlar: 1, crack: 2, roof: 3, band: 4 } as co
 export const STAGE_END = 99;
 
 /** Silhouette ink (art bible: #1F1A2E, 1.6 CSS px, depth-pushed so only the outline survives). */
-export const TOWER_INK = 0x1f1a2e;
-export const TOWER_INK_PX = 1.6;
+export const TOWER_INK = INK_COLOR;
+export const TOWER_INK_PX = INK_PX;
 /** How far (world units) the ink hull is pushed away from the camera. */
 export const TOWER_INK_DEPTH = 0.45;
 
@@ -1885,14 +1890,13 @@ export function craftRuin(spec: RuinSpec): { stump: THREE.Mesh; heap: THREE.Mesh
     st = (st * 1664525 + 1013904223) >>> 0;
     return st / 4294967296;
   };
-  // The plinth and paving as they stood, then a scorched ring: soot over
-  // the paving round the stump, and burnt ground spreading past the paving
-  // with a ragged edge (the team inlay stays on top).
+  // The plinth and paving as they stood, then soot on the paving round the
+  // stump: the paving's own tone darkened, not a black ring (the burnt
+  // ground past the paving is the soft scorch decal towers.ts lays, tinted
+  // toward the floor, so nothing reads as a pit punched in the court).
   buildBase(c);
   s.chunk = "base";
-  s.add(raggedRing(R * 1.0, R * 1.36, 0.0, 0.02, 28, rand), 0x3a2e24, 0, 0.163, 0, 0, () => 1);
-  s.add(raggedRing(R * 1.3, R * 2.05, 0.08, 0.3, 32, rand), 0x4a3b2c, 0, 0.012, 0, 0, () => 1);
-  s.add(raggedRing(R * 1.3, R * 1.75, 0.04, 0.24, 32, rand), 0x241c15, 0, 0.018, 0, 0, () => 1);
+  s.add(raggedRing(R * 1.0, R * 1.3, 0.0, 0.05, 28, rand), tone(c.plat, 0.62, 0.7), 0, 0.163, 0, 0, () => 1);
   // Jagged top: broken ashlar blocks of uneven height along each face.
   const TILE = R * 2.02;
   for (let face = 0; face < 4; face++) {
@@ -1910,9 +1914,9 @@ export function craftRuin(spec: RuinSpec): { stump: THREE.Mesh; heap: THREE.Mesh
       s.add(block, 0xffffff, x, STUMP_Y + h / 2 - 0.02, z, (face * Math.PI) / 2 + (rand() - 0.5) * 0.2, () => 0.95, { tex: KEEP_TEX.ashlar, uv: [w / TILE, h / TILE], ink: true });
     }
   }
-  // The keep's hollow: dark rubble fill inside the stump.
+  // The keep's hollow: rubble fill in the stone's shadow tone inside the stump.
   const fill = new THREE.BoxGeometry(hwAt(STUMP_Y) * 1.8, 0.1, hwAt(STUMP_Y) * 1.8);
-  s.add(fill, 0x3b3128, 0, STUMP_Y - 0.03, 0, 0, () => 1);
+  s.add(fill, tone(stone, 0.55), 0, STUMP_Y - 0.03, 0, 0, () => 1);
   // The gate: a dark gap with a broken arch stub.
   const gz = camSide * (hwAt(0.7) + 0.02);
   s.box(0.5, 0.45, 0.06, 0x1d1712, 0, 0.6 + 0.2, gz, 0, () => 1);

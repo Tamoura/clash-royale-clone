@@ -34,6 +34,13 @@ const DEFAULT_ADVANCE = 0.6;
 export const GLYPH_HEIGHT = 1.25;
 /** Seconds within which a second hit on the same target merges into the first number. */
 export const MERGE_WINDOW = 0.15;
+/**
+ * Damage numbers on a phone-width board (under PHONE_POPUP_WIDTH CSS px) are
+ * drawn at this share of their size: a normal hit about 18 CSS px tall and a
+ * crit about 22, instead of 25-30 px numbers covering the bridge and lanes.
+ */
+export const PHONE_POPUP_SCALE = 0.75;
+export const PHONE_POPUP_WIDTH = 500;
 /** Ink and shadow colours (art bible 8: #1D1630 stroke). */
 export const GLYPH_INK = 0x1d1630;
 
@@ -167,9 +174,9 @@ function paintGlyphs(ctx: CanvasRenderingContext2D, advances: number[]): void {
     ctx.rect(cx - CELL / 2, cy - 2 - CELL / 2, CELL, CELL);
     ctx.clip();
     // Soft drop shadow: the stroked shape, blurred, offset down-right.
-    ctx.filter = "blur(4px)";
+    ctx.filter = "blur(3px)";
     ctx.fillStyle = ctx.strokeStyle = "#0000ff";
-    shape(i, cx + 3, cy + 6, "stroke", STROKE_PX + 4);
+    shape(i, cx + 2, cy + 5, "stroke", STROKE_PX + 2);
     ctx.filter = "none";
     ctx.fillStyle = ctx.strokeStyle = "#00ff00";
     shape(i, cx, cy, "stroke", STROKE_PX);
@@ -236,7 +243,7 @@ varying vec3 vCol;
 varying float vAlpha;
 void main() {
   vec3 m = texture2D(uMap, vUv).rgb;
-  float s = m.b * 0.5;
+  float s = m.b * 0.32; // a tight, light drop shadow: no dark smudge on the lawn
   float g = m.g;
   float r = m.r;
   // Shadow, then ink, then fill ("over", premultiplied).
@@ -261,6 +268,8 @@ const LIVE_CAP = 32;
 export class GlyphLayer {
   readonly mesh: THREE.InstancedMesh;
   readonly advances: number[] = Array.from({ length: GLYPHS.length }, () => DEFAULT_ADVANCE);
+  /** Size share for every new number (PHONE_POPUP_SCALE on a phone-width board). */
+  sizeK = 1;
   private head = 0;
   private total = 0;
   private dirty = false;
@@ -390,7 +399,7 @@ export class GlyphLayer {
     }
     const quads = this.layout(text, crit);
     if (quads.length === 0) return;
-    const h = GLYPH_HEIGHT * scale;
+    const h = GLYPH_HEIGHT * scale * this.sizeK;
     let run = 0;
     for (const q of quads) run += this.advances[q.cell];
     const w = run * h;

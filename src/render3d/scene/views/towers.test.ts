@@ -7,7 +7,9 @@ import { HP_COLOR, setViewSide } from "../common";
 import { ARABIC } from "../../theme";
 import {
   PLATE_HALF,
+  RUIN_SCORCH_ALPHA,
   TOWER_SCALE,
+  collapseDust,
   buildTowerMesh,
   crewKindOf,
   kingSlumpTilt,
@@ -105,6 +107,14 @@ describe("tower team colours follow the viewer (online guest)", () => {
     expect(towersSource).not.toMatch(/HP_COLOR\[/);
     // The baked hand-built crew is cached per viewer team, not per sim side.
     expect(towersSource).toMatch(/bakeRig\(rig, `[^`]*\$\{team\}/);
+  });
+});
+
+describe("a fallen tower leaves no black pit", () => {
+  it("lays a soft scorch at most 0.6 opaque and raises dust in the floor's colour, never near-black", () => {
+    expect(RUIN_SCORCH_ALPHA).toBeLessThanOrEqual(0.6);
+    const c = new THREE.Color(collapseDust());
+    expect(0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b).toBeGreaterThan(0.12);
   });
 });
 

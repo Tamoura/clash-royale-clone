@@ -75,6 +75,21 @@ export const SHADOW_SLOPE = new THREE.Vector2(-SUN_DIRECTION.x / SUN_DIRECTION.y
 
 const SUN_INTENSITY = LIGHT_RIG.sunIntensity;
 
+/**
+ * Night-native sets (souk, medina, copper) light the court like the town
+ * around it: a softer sun turned toward moonlight and a cooler sky fill,
+ * from the first second (the court was graded like noon inside a dark
+ * town). Their floors are painted about 30% darker too (arenaLooks), so
+ * the lantern pools read and the units stay the brightest thing.
+ */
+export const NIGHT_NATIVE_LIGHT = {
+  /** Share of the sun's daylight strength kept. */
+  sun: 0.8,
+  /** How far the sun's colour and the hemisphere start toward moonlight. */
+  sunToMoon: 0.3,
+  hemiToMoon: 0.3,
+} as const;
+
 /** Dome layout in camera-up units: where the fog band ends, the horizon, the zenith. */
 
 const DOME_CENTRE_U = 14.8;
@@ -335,13 +350,19 @@ export function gradeSky(b: Battle3D, dt: number): void {
   (b.scene.background as THREE.Color).copy(sky);
   (b.scene.fog as THREE.Fog).color.copy(sky);
   // Hemisphere: cools and dims toward a moonlit blue.
-  b.hemi.color.set(LOOK.hemiSky).lerp(MOON_HEMI, p);
-  b.hemi.groundColor.set(LOOK.hemiGround).lerp(MOON_GROUND, p);
+  const nn = LOOK.nightPools;
+  const hemiMoon = nn ? NIGHT_NATIVE_LIGHT.hemiToMoon + (1 - NIGHT_NATIVE_LIGHT.hemiToMoon) * p : p;
+  b.hemi.color.set(LOOK.hemiSky).lerp(MOON_HEMI, hemiMoon);
+  b.hemi.groundColor.set(LOOK.hemiGround).lerp(MOON_GROUND, hemiMoon);
   b.hemi.intensity = LOOK.hemiIntensity * (1 - 0.4 * p);
   // Sun: warm daylight -> amber sunset (mid) -> cool moonlight.
   if (p < 0.5) b.sun.color.set(LOOK.sun).lerp(SUNSET, p * 2);
   else b.sun.color.copy(SUNSET).lerp(MOON, (p - 0.5) * 2);
   b.sun.intensity = SUN_INTENSITY - 0.9 * p;
+  if (nn) {
+    b.sun.color.lerp(MOON, NIGHT_NATIVE_LIGHT.sunToMoon * (1 - p));
+    b.sun.intensity *= NIGHT_NATIVE_LIGHT.sun;
+  }
   b.fillLight.intensity = LIGHT_RIG.fillIntensity * (1 - 0.5 * p);
   // Lanterns/neon: dim by day (unless the look is already a night set),
   // fully lit by night.

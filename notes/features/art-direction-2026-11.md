@@ -236,6 +236,88 @@ Screens (looked at, against /tmp/claude-0/proto/baseline/), all in /tmp/claude-0
 - No page or console errors in any capture, and no failed requests in production.
 
 
+### 5. ship (final integration, branch `art/ship`)
+
+`art/ship` was cut from the live branch at `29f6451`, after the four per-package shippers above. It merges nothing: it wires what was left, unifies the material constants, tunes, adds the budget tooling and the offline cache, writes the licences, and runs the full verification matrix. Details and the progress log: `notes/features/art-ship.md`.
+
+WHAT EACH PACKAGE DELIVERED (as shipped)
+- stage: calm per-look floors (no checkerboard), the light rig from `sky.ts` (sun from the upper left, shadows fall right), bloom and grade under the contract, pebble-edged paths and recessed river with a bridge per BridgeStyle, the tournament court (kerb, team bleachers, chibi crowd that waves and jumps, pavilions), the far band (gate, terrace, pennants), a village or town outer ring on wide screens, the Golden Age court and souk, and the five-level quality ladder.
+- cast-kit: the CC0 KayKit cast for every humanoid card and the tower crews in both editions (one skinned draw per unit with its ink, team cloth front and back, Golden Age overlays, champion, procedural mounts), the 14 degree render-only lean, swarm pose sharing, card portraits from the same models, and the 0.8 MB pack.
+- creatures-fx: the procedural creatures and card buildings in the cast's material language (one team slot each), gold outlined damage numbers that merge per target, bloom-safe toon FX, modelled projectiles, team spell rings, deploy countdown in team colour, hit-stop and shake.
+- towers: one-mesh keeps with silhouette ink for both editions and all 22 looks (cone roofs or domes in live team colour, per-look extras, flair tiers), HP plates clear of roofs and crew, two damage stages, the chunked collapse and ruin, and the crew provider seam.
+- ship: the integration below.
+
+SEAMS AND UNIFICATION
+- Already wired by the per-package shippers and checked here: the crew provider (6 cast crews in every capture with the pack in), the battle-start cast gate (fresh-profile tutorials that start before the pack run on the procedural roster for the whole battle, with no mixing), the crowd events.
+- `troopShadowLevel` reads `QualityLevel.troopShadows` (the last stopgap).
+- `src/render3d/look/material.ts`: the toon ramp, rim (one shared live uniform for cast and rigs), ink (#1F1A2E, 1.6 CSS px, 0.3 depth; plain hulls were 1.25 px), ground occlusion, saturation, tint cap and the 0.35 / 0.25 / 0.25 flash caps, with the ramp, rim and roll-off GLSL. The cast, rigs, shared ink, keeps, hit flashes and screen flash read it (`look/material.test.ts`).
+- Dead paths removed: `kitTroops.ts` (the prototype's re-export, no importers), the unused name-label sprites and `view.label`, `EntityView.kitCrew`, the per-entity `setLeanCamera`.
+
+TUNING (fix-up rights)
+- Bloom: lit cast and rig pixels roll off from 0.8 to at most 0.9 linear luminance, under the 0.92 threshold. Measured on screen: janissary bork 0.94-0.96 -> 0.80-0.815, Golden Age tower-king turban #FFFFFF -> 0.861 (cast-kit review minor and stage request 4).
+- HP plates: a plate short of room slides toward its tower within the 4 px floor before it flips. The Golden Age far king's plate on a 390x844 phone now stays over his qubba (towers request 6).
+- Stage request 3: sun-offset blob shadows on L1-L4 (0.32 of the unit's height along `SHADOW_SLOPE`, stretched along it).
+- Golden valkyrie: her keffiyeh hem ends at 1.56, so both braids show from behind (cast-kit review minor).
+- Golden Age Giant (war elephant): rig scale 1.48 -> 1.3, off the whole bridge.
+- Smoke ribbon: tapers toward its tail (creatures-fx review rest; the unoutlined cell was not needed).
+- Checked by eye and kept: crew scale (0.72), team disc and notch, the 14 degree lean, grade and bloom, the Golden Age overlays by the Golden Age towers, and the hat-height exception (signed off).
+- Colour-blind Golden Age enemy hue (creatures-fx request 8): kept orange (reasons in art-ship.md).
+
+BUDGETS
+`npm run perf:budget` (`tools/perf-budget.mjs --matrix`: both editions at 390x844@2 and 1440x900@1, `?quality=high`, training-camp, cast measured in every run). Gates: empty 220 calls / 300k triangles; fight 450 calls / 850k triangles / 110 textures. Targets: empty 200 / 260k, fight 400 / 750k.
+
+| View | Edition | Empty calls / tris | Fight calls / tris | Fight textures |
+|---|---|---|---|---|
+| 390x844@2 | Classic | 100 / 251,206 | 179 / 628,230 | 76 |
+| 1440x900@1 | Classic | 106 / 274,378 | 184 / 651,446 | 76 |
+| 390x844@2 | Golden Age | 106 / 256,182 | 200 / 653,650 | 75 |
+| 1440x900@1 | Golden Age | 114 / 272,102 | 204 / 669,354 | 75 |
+
+Every gate passes. Every target is met except the empty-battle triangles at 1440x900 (274k and 272k against 260k), see Known gaps. At art/base (`b7ae4ce`, the towers notes' start figures) the same measure read empty 167-178 calls and fight 402-432 calls; the art round roughly halved the draw calls (one draw per keep, per crew and per cast unit).
+
+SIZE AND OFFLINE
+| Build | `index-*.js` gz | `three-*.js` gz | lazy chunks gz | dist/ |
+|---|---|---|---|---|
+| `0a8c97d` (before the art round) | 283.9 KB | 157.2 KB | glbModels 22.4 KB | 12.95 MB (11.0 MB `public/models/kaykit`) |
+| `ed45f9c` (live, compact tray, before any art) | 284.6 KB | 157.2 KB | glbModels 22.4 KB | 12.95 MB |
+| `b7ae4ce` (art/base: + handcrafted-plus) | 294.1 KB | 157.2 KB | | 12.97 MB |
+| `29f6451` (four packages merged) | 339.2 KB | 157.9 KB | GLTFLoader 13.2, meshopt 7.3 | 2.88 MB |
+| `art/ship` | 324.0 KB | 157.9 KB | roster 16.7, GLTFLoader 13.2, meshopt 7.3 | 2.88 MB (0.81 MB cast) |
+
+- Initial JS (index + three) grew +40.1 KB gzipped over the pre-art live build `ed45f9c` (+30.6 over art/base): inside the +50 KB budget. Before the lazy roster it was +55.3 over `ed45f9c`.
+- The cast pack is 803 KB on disk (at most 1.0 MB), served gzipped by the relay; the roster chunk, GLTFLoader and the meshopt decoder ride in with it after boot. No outer-ring props were packed (the outer ring is procedural).
+- `public/sw.js` precaches the seven cast files per BUILD_ID at install (best effort per file) and serves `/models/` cache-first with no background refetch.
+- `docs/deploy-multiplayer.md`: a first visit is about 1.4 MB (0.55 MB code, then 0.85 MB of characters in the background).
+- Fast 3G, fresh profile, production build: the pack finished at 17.6 s (Classic) and 19.2 s (Golden Age) after navigation, before the tutorial battle started (25.1 s and 27.9 s; boot is slow under software GL), so the pack had landed before the gate looked. A returning profile on Fast 3G had the pack by 8.6 s and its first battle at 21.4 s. The gate's other branch (pack later than 3 s after the tap: procedural roster for the whole battle, no mixing) was checked by the cast-kit and towers shippers with the pack held back 15 s.
+
+LICENCES
+- `THIRD_PARTY_NOTICES.md`: the two CC0 KayKit packs (URL, version commit, SHA-256 of every shipped file; source-file hashes in `public/models/troops/CREDITS.txt`), the OFL fonts and the MIT libraries.
+- README: an "Assets and licences" section. `src/app/assets.test.ts` checks that every `public/models/` folder has a CREDITS.txt with a source URL, CC0 and SHA-256, and that the notices name every shipped file.
+
+VERIFICATION MATRIX (every image looked at; all in `/tmp/claude-0/art/ship/`)
+- Standard matrix, 4 looks x 2 editions x {390x844@2 high, 1440x900 high, 390x844@1 low}: `matrix/`.
+- All 22 looks at 1440x900: `looks/` plus the four in `matrix/`; contact sheets `looks-sheet-classic.png` and `looks-sheet-golden.png`. No missing pieces in any look.
+- L0 / L2 / L4 phone per edition, `?viewpoint=enemy` (flipped through `__cr` after the battle start, see Known gaps), 360x640, 768x1024 and 844x390, the home diorama (phone and desk), the tutorial battle, a tower destroyed (collapse, ruin), the king KO and Victory, the colour-blind palette, sunset (`?sky=0.6`) and night (`?sky=1`): `extra/`.
+- Production build on the relay (`npm run build:all`, served by `dist-server/relay.mjs`): home, battle start and battle after played cards, Fast 3G fresh profiles, and a real online "Play a friend" match with host and guest screens in both editions: `prod/`.
+- No page errors, console errors or warnings, and no failed requests in any capture (dev captures use a git-ignored `server.fs.allow` wrapper so the fonts load: the worktree's `node_modules` is a symlink).
+- What a parent sees at phone size, in both editions and in all four showcase looks: whose tower and troop is whose at a glance (team roofs, cloth and discs); your own troops read from behind (hats, hair, weapons held out, team capes); no name tags, haze or white blobs (the only white glow is the bot's emote bubble); a calm floor; a dressed far band and sides; the compact tray leaves the board clear.
+- Owner sheets: `before-after-phone.png` (four looks per edition, baseline `0a8c97d` against the final) and `before-after-desk.png` (training-camp at 1440x900, both editions).
+
+KNOWN GAPS AND FOLLOW-UPS
+1. Real-device fps on a mid-range Android phone and an iPad (owner follow-up; SwiftShader timings say nothing).
+2. Far king at landscape sizes (1440x900, 844x390): his roofs are cut at the top of the frame and his plate flips under his gate (towers request 4). The fix is extra top margin in wide mode (`WIDE_BOX` in `scene/fit.ts` and `ui/layout.ts`), which is the compact-hand framing and frozen for the art round: a request for that owner.
+3. `?viewpoint=enemy` (DEV aid) is reset by every bot-battle start in main.ts (towers request 5; main.ts is frozen outside the gate). The real guest view was verified through an online match on the production relay.
+4. Empty-battle triangles at 1440x900 are 272k-274k, over the 260k target (gate 300k): at L0 the shadow map re-renders every frame for the troop casters, so the static keeps are drawn twice (towers request 2). Fix: split the static and dynamic shadow maps.
+5. Unbaked `toon()` parts (arena props, the hand-built crews of a procedural-roster battle, non-humanoid card portraits) keep the handcrafted coloured ramp, not `look/material.ts`'s.
+6. The cast's ink is opaque (it shares the body's draw); the bible asks for 85% alpha.
+7. From cast-kit: the Studio preview (src/ui, frozen) uses the procedural champion; mounts gallop procedurally and their heads are blocky from the front.
+8. A fresh profile's first tutorial battle on a slow device can start before the pack (by design it then plays the procedural roster for that whole battle).
+
+HOW TO A/B
+- `?troops=rigs` (dev server only): the procedural roster instead of the cast.
+- `?quality=high|medium|low`, `?sky=0..1`, `?arena=<id>`, `?viewpoint=enemy` (DEV, see gap 3).
+- Before/after: build `0a8c97d` in a throwaway worktree (`git worktree add --detach <dir> 0a8c97d`).
+
 ## Art bible
 
 TOY TOURNAMENT: ART BIBLE (Crown Rush, both editions, all 22 arena looks)
