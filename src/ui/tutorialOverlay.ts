@@ -723,6 +723,8 @@ function nudge(s: Session, b: BattleState, x: number, y: number): void {
   const fresh = now >= s.nudgeUntil - NUDGE_MS + 300; // a burst of presses wiggles once
   s.nudgeText = copy;
   s.nudgeUntil = now + NUDGE_MS;
+  // Say it now, not on the next frame (a slow tablet may be a while).
+  drawCoach(s, b, step, effectiveHold(s, b));
   if (!fresh) return;
   // Replay the glove's drag (and the card riding under it) from the start.
   for (const a of s.anims) {
