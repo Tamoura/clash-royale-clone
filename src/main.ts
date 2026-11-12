@@ -65,6 +65,7 @@ import { applyWaves, challengeStatus, type Challenge } from "./game/challenges";
 import { dailyDeck, dateKey } from "./game/daily";
 import { checkSeason, loadAchievements, loadSeason, saveSeason, seasonKey } from "./meta/achievements";
 import { seasonStartText } from "./ui/seasonBanner";
+import { toast } from "./ui/components";
 import { EMOTES, EMOTE_PICKER, botReaction, emoteGlyph, type BotMoment } from "./ui/emotes";
 import { seasonName } from "./ui/screens/pass";
 import { loadQuests } from "./meta/quests";
@@ -301,9 +302,10 @@ if (seasonRoll.reset) {
 }
 if (seasonRoll.rolled) {
   // A celebration, never a loss: the reset keeps the arena they reached.
-  // Banner once the UI exists — boot runs before the stage is built.
+  // A toast once the UI exists (boot runs before the stage is built); the
+  // battle banner would sit behind Home's panels.
   const line = seasonStartText(seasonName(seasonRoll.state.key), seasonRoll.trophies, ARABIC);
-  window.setTimeout(() => showBanner(line), 1200);
+  window.setTimeout(() => toast(line, "success"), 1200);
 }
 
 function persistProfile(): void {
