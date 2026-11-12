@@ -13,10 +13,12 @@
  * is left over the tray, see TALL_ALIGN_Y). The far king's column (the
  * box's crown: his canopy and HP plate) only has to clear the chips that
  * sit over it, so where the band leaves the middle free (tablets) he rises
- * between them instead of shrinking the board; the band's shading then stays
- * off his column (:root[data-crown="free"], --crown-l / --crown-r), so his
- * canopy and HP plate keep their full brightness. Wide mode frames the board
- * between the two side panels.
+ * between them instead of shrinking the board. Wherever he may rise into the
+ * band's box (between the chips on a tablet, under shorter chips than the
+ * clock on a short phone), its shading stays off his column
+ * (:root[data-crown="free"], --crown-l / --crown-r), so his canopy and HP
+ * plate keep their full brightness. Wide mode frames the board between the
+ * two side panels.
  */
 import type { Battle3D } from "../render3d/scene3d";
 import { BAND_GAP_PX, TALL_ALIGN_Y, TALL_BOX, TRAY_MARK_PX, ZERO_INSETS, type Insets } from "../render3d/scene/fit";
@@ -39,8 +41,8 @@ const LAYOUT_VARS = ["--side", "--field-w", "--card-w", "--card-h", "--next-w", 
  * The far king's column (the tall box's crown: his canopy and HP plate) on a
  * stage `width` px wide, as [left, right] px from the stage's left edge. At
  * its widest, a width-bound board, so it holds him on any board: the chips
- * that overlap it hold the crown down, and where none do (tablets) the band's
- * shading stays off it.
+ * that overlap it hold the crown down, and wherever he may rise into the band
+ * (crownTop under the band's inset) its shading stays off this column.
  */
 export function crownColumn(width: number): [number, number] {
   const half = (TALL_BOX.crown?.halfW ?? 0) * (width / (2 * TALL_BOX.halfW));
@@ -86,8 +88,8 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
     return { top: band, crownTop: Math.min(crown, band), column: [r.left + c0, r.left + c1] };
   };
   /**
-   * While the far king rises between the chips, keep the band's shading off
-   * his column (`column` in client px; the CSS reads it in the band's px).
+   * While the far king may rise into the band's box, keep its shading off his
+   * column (`column` in client px; the CSS reads it in the band's px).
    */
   const shadeWindow = (column: [number, number] | null): void => {
     if (!column) {
