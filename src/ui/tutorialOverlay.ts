@@ -9,6 +9,7 @@ import "./styles/tutorial.css";
 import type { AppCtx } from "../app/ctx";
 import { on, registerSimHold } from "../app/hooks";
 import type { BattleState } from "../game/battle";
+import type { CardId } from "../game/cards";
 import {
   TUTORIAL_STEP_COUNT,
   Tutorial,
@@ -28,6 +29,7 @@ import { button, confirm, sheet } from "./components";
 import { tr } from "./i18n";
 import { icon } from "./icons";
 import { reducedMotion } from "./prefs";
+import { cardDisplayName } from "../render/cardNames";
 import { ARABIC } from "../render3d/theme";
 
 export { tutorialDone } from "../game/tutorial";
@@ -75,6 +77,8 @@ interface Session {
   tileGlow: HTMLElement;
   hand: HTMLElement;
   ghost: HTMLElement;
+  /** The target card's name on a tinted chip above it. */
+  chip: HTMLElement;
   coach: HTMLElement;
   coachText: HTMLElement;
   coachHint: HTMLElement;
@@ -94,6 +98,11 @@ interface Session {
   viewKey: string;
   textKey: string;
   anims: Animation[];
+  /** A wrong press swapped the coach line to this until nudgeUntil (performance.now ms). */
+  nudgeText: [string, string] | null;
+  nudgeUntil: number;
+  /** Presses on the dimmed area during this battle (a dev/test aid). */
+  nudges: number;
   offs: (() => void)[];
 }
 
@@ -133,6 +142,54 @@ function anchorElement(anchor: TutorialStep["anchor"]): HTMLElement | null {
     // Rendered with a size (offsetParent is null for the wide layout's
     // position: fixed controls, which are on screen all the same).
     if (el && !el.hidden && el.getClientRects().length > 0 && el.getBoundingClientRect().width > 0) return el;
+  }
+  return null;
+}
+
+// ---- Wrong presses -------------------------------------------------------------
+
+/** How long the coach's nudge line stays up before the step's own line returns. */
+export const NUDGE_MS = 2800;
+
+interface Box {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/** The card whose box holds (x, y), if any. */
+export function cardAt(cards: readonly { id: string; rect: Box }[], x: number, y: number): string | null {
+  for (const c of cards) {
+    const r = c.rect;
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return c.id;
+  }
+  return null;
+}
+
+/**
+ * What the coach says when the kid presses the dimmed screen during a
+ * lesson: a card that is not the lesson's (`pressed`), or anywhere else
+ * (null). The line names the card to use, in the edition's own card names
+ * (`name`). Null when there is nothing to point at.
+ */
+export function nudgeCopy(
+  step: Pick<TutorialStep, "anchor">,
+  target: CardId | null,
+  pressed: string | null,
+  name: (id: CardId) => string,
+): [string, string] | null {
+  if (target) {
+    const n = name(target);
+    if (pressed === target) return null;
+    return pressed
+      ? [`Not that one. Use the glowing ${n} card!`, `ليست هذه. استخدم بطاقة ${n} المضيئة!`]
+      : [`Drag the glowing ${n} card onto the glowing spot!`, `اسحب بطاقة ${n} المضيئة إلى البقعة المضيئة!`];
+  }
+  if (step.anchor === "ability") {
+    return pressed
+      ? ["Not a card this time. Tap your glowing King power!", "ليست بطاقة هذه المرة. اضغط قوة ملكك المضيئة!"]
+      : ["Tap your glowing King power!", "اضغط قوة ملكك المضيئة!"];
   }
   return null;
 }
@@ -187,6 +244,7 @@ function buildOverlay(): Pick<
   | "tileGlow"
   | "hand"
   | "ghost"
+  | "chip"
   | "coach"
   | "coachText"
   | "coachHint"
@@ -203,6 +261,9 @@ function buildOverlay(): Pick<
   const trail = svgEl("path", "tut-trail", mask);
   const tileGlow = el("div", "tut-tile", root);
   const ghost = el("div", "tut-ghost", root);
+  const chip = el("div", "tut-chip", root);
+  chip.hidden = true;
+  chip.setAttribute("aria-hidden", "true");
   const hand = el("div", "tut-hand", root);
   hand.innerHTML = HAND_SVG;
   hand.style.width = `${HAND_PX}px`;
@@ -226,7 +287,7 @@ function buildOverlay(): Pick<
   const coachHint = el("div", "tut-coach-hint", body);
   const actions = el("div", "tut-actions", body);
   document.body.appendChild(root);
-  return { root, mask, maskPath, ringPath, trail, tileGlow, hand, ghost, coach, coachText, coachHint, dots, skipSlot, actions };
+  return { root, mask, maskPath, ringPath, trail, tileGlow, hand, ghost, chip, coach, coachText, coachHint, dots, skipSlot, actions };
 }
 
 function skipLink(s: Session): HTMLButtonElement {
@@ -449,6 +510,14 @@ function drawView(s: Session, v: View): void {
     s.trail.setAttribute("d", "");
   }
 
+  // The target card's name on a tinted chip just above it.
+  s.chip.hidden = !(v.holding && v.card && v.cardId);
+  if (v.holding && v.card && v.cardId) {
+    s.chip.textContent = cardDisplayName(v.cardId as CardId);
+    s.chip.style.left = `${v.card.left + v.card.width / 2}px`;
+    s.chip.style.top = `${v.card.top - 10}px`;
+  }
+
   stopAnims(s);
   s.ghost.hidden = true;
   s.hand.hidden = !(v.card || v.anchor);
@@ -535,7 +604,8 @@ function coachCopy(step: TutorialStep, b: BattleState, holding: boolean): [strin
 }
 
 function drawCoach(s: Session, b: BattleState, step: TutorialStep, holding: boolean): void {
-  const [en, ar] = coachCopy(step, b, holding);
+  const nudging = holding && s.nudgeText !== null && performance.now() < s.nudgeUntil;
+  const [en, ar] = nudging && s.nudgeText ? s.nudgeText : coachCopy(step, b, holding);
   const tap = step.tapToContinue || (step.id === "king" && b.player.ability === null);
   const index = typeof s.machine.step === "number" ? s.machine.step : TUTORIAL_STEP_COUNT;
   // Free-play steps dock the bubble low so the enemy towers stay in view.
@@ -544,6 +614,7 @@ function drawCoach(s: Session, b: BattleState, step: TutorialStep, holding: bool
   if (key === s.textKey) return;
   s.textKey = key;
   s.coachText.textContent = tr(en, ar);
+  s.coach.classList.toggle("nudge", nudging);
   s.coachHint.textContent = tap ? tr("Tap anywhere to continue", "اضغط في أي مكان للمتابعة") : "";
   s.coachHint.hidden = !tap;
   s.coach.dataset.place = placement;
@@ -630,6 +701,49 @@ function render(s: Session, b: BattleState): void {
   drawCoach(s, b, step, view.holding);
 }
 
+/**
+ * The kid pressed the dimmed screen during a lesson (most often a card that
+ * is not the lesson's): wiggle the glowing target, play the glove's drag
+ * again from the start and swap the coach line for a moment to name the
+ * card to use. The clock stays held; nothing is deployed.
+ */
+function nudge(s: Session, b: BattleState, x: number, y: number): void {
+  const step = s.machine.current;
+  if (!step) return;
+  const target = step.target?.(b) ?? null;
+  const cards = Array.from(document.querySelectorAll<HTMLElement>("#hud button.card[data-card]")).map((n) => ({
+    id: n.dataset.card ?? "",
+    rect: n.getBoundingClientRect(),
+  }));
+  const copy = nudgeCopy(step, target?.cardId ?? null, cardAt(cards, x, y), cardDisplayName);
+  if (!copy) return;
+  s.nudges++;
+  s.root.dataset.nudges = String(s.nudges);
+  const now = performance.now();
+  const fresh = now >= s.nudgeUntil - NUDGE_MS + 300; // a burst of presses wiggles once
+  s.nudgeText = copy;
+  s.nudgeUntil = now + NUDGE_MS;
+  if (!fresh) return;
+  // Replay the glove's drag (and the card riding under it) from the start.
+  for (const a of s.anims) {
+    a.currentTime = 0;
+    a.play();
+  }
+  if (reducedMotion()) return;
+  const glow = target ? cardButton(target.cardId) : step.anchor ? anchorElement(step.anchor) : null;
+  glow?.animate(
+    [
+      { rotate: "0deg", scale: "1" },
+      { rotate: "-10deg", scale: "1.12", offset: 0.18 },
+      { rotate: "9deg", scale: "1.12", offset: 0.38 },
+      { rotate: "-7deg", scale: "1.08", offset: 0.58 },
+      { rotate: "4deg", scale: "1.04", offset: 0.78 },
+      { rotate: "0deg", scale: "1" },
+    ],
+    { duration: 650, easing: "ease-in-out" },
+  );
+}
+
 // ---- End of the battle ---------------------------------------------------------
 
 function showEnding(s: Session, won: boolean): void {
@@ -646,6 +760,8 @@ function showEnding(s: Session, won: boolean): void {
   s.tileGlow.hidden = true;
   s.hand.hidden = true;
   s.ghost.hidden = true;
+  s.chip.hidden = true;
+  s.coach.classList.remove("nudge");
   s.coach.dataset.place = "center";
   s.dots.querySelectorAll("i").forEach((d) => (d.className = won ? "done" : ""));
   s.coachText.textContent = won
@@ -689,6 +805,8 @@ export function stopTutorial(): void {
 function feed(s: Session, input: Parameters<Tutorial["feed"]>[0], b: BattleState): void {
   if (!s.machine.feed(input, b)) return;
   s.viewKey = "";
+  s.nudgeText = null;
+  s.nudgeUntil = 0;
   const now = performance.now();
   // The finger that caused this (a tap on KING, a callout tap) is still on
   // the glass or just lifted: the click it fires next must not land on
@@ -749,6 +867,9 @@ function runTutorial(ctx: AppCtx): void {
     viewKey: "",
     textKey: "",
     anims: [],
+    nudgeText: null,
+    nudgeUntil: 0,
+    nudges: 0,
     offs: [],
   };
   session = s;
@@ -763,10 +884,16 @@ function runTutorial(ctx: AppCtx): void {
   };
   s.root.addEventListener("click", swallow, true);
 
-  // Taps on the dimmed area: continue a callout; anything else is ignored.
+  // Taps on the dimmed area: continue a callout. During a lesson, a press
+  // there (a card that is not the lesson's, or anywhere else) never plays
+  // anything, so the coach points at the right card instead.
   s.root.addEventListener("pointerdown", (ev) => {
-    if (s.ended || s.root.dataset.tap !== "1" || !s.battle) return;
+    if (s.ended || !s.battle) return;
     if ((ev.target as Element).closest(".tut-skip")) return;
+    if (s.root.dataset.tap !== "1") {
+      if (ev.target === s.maskPath && s.mask.classList.contains("on")) nudge(s, s.battle, ev.clientX, ev.clientY);
+      return;
+    }
     ev.preventDefault();
     if (performance.now() < s.swallowUntil) return; // a double tap is one tap
     feed(s, { type: "tap" }, s.battle);

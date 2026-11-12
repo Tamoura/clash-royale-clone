@@ -118,8 +118,8 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     target: (s) => (crossedGiant(s) ? { cardId: "musketeer", ...DEFEND_TILE } : null),
     idleText: ["Your Knight marches on. Keep an eye on the other bridge!", "فارسك يتقدّم. راقب الجسر الآخر!"],
     text: [
-      "A Giant is coming for your tower! Drop the Musketeer here to shoot it down.",
-      "عملاق يتجه نحو برجك! ضع الرامية هنا لتُسقطه.",
+      "Something big is coming for your tower! Drop the Musketeer here to shoot it down.",
+      "شيء ضخم يتجه نحو برجك! ضع الإنكشاري هنا ليُسقطه.",
     ],
   },
   {
@@ -144,10 +144,10 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
       const c = clusterCentre(s);
       return c ? { cardId: "fireball", ...c } : null;
     },
-    idleText: ["Your Musketeer and tower team up on the Giant. Get ready…", "الرامية وبرجك يتعاونان على العملاق. استعد…"],
+    idleText: ["Your tower and Musketeer team up on the Giant. Get ready…", "برجك والإنكشاري يتعاونان على فيل الحرب. استعد…"],
     text: [
-      "Archers in a bunch! Throw a Fireball on them to hit them all at once.",
-      "رماة متجمّعون! ألقِ كرة النار عليهم لتصيبهم جميعًا.",
+      "Throw your Fireball on that bunch of enemies to hit them all at once!",
+      "ألقِ قذيفة نفط على الأعداء المتجمّعين لتصيبهم جميعًا دفعة واحدة!",
     ],
   },
   {
@@ -156,10 +156,10 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     holdWhen: (s) => !pushing(s),
     waitFor: (i) => i.type === "crown" && i.winner === "player",
     target: (s) => (pushing(s) ? null : { cardId: "giant", ...PUSH_TILE }),
-    idleText: ["Your Giant heads for their tower. Back him up with more troops!", "عملاقك يتجه نحو برجهم. ادعمه بمزيد من الجنود!"],
+    idleText: ["Your Giant heads for their tower. Back him up with more troops!", "فيل الحرب يتجه نحو برجهم. ادعمه بمزيد من الجنود!"],
     text: [
       "Your turn to attack! Send the Giant over the bridge and knock down a tower.",
-      "دورك في الهجوم! أرسل العملاق عبر الجسر وأسقط برجًا.",
+      "دورك في الهجوم! أرسل فيل الحرب عبر الجسر وأسقط برجًا.",
     ],
   },
   {
