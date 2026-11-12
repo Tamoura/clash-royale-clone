@@ -1,12 +1,18 @@
 import { levelMultiplier } from "../game/battle";
 import { getCard, SPEED_TILES_PER_SEC, type CardId, type Rarity, type Speed } from "../game/cards";
 import { ARABIC } from "../render3d/theme";
+import { formatNum } from "../ui/i18n";
 import { cardDisplayName } from "./cardNames";
 
 const cap = (s: string): string => s[0].toUpperCase() + s.slice(1);
 
 /** English/Arabic string pair — the Arabic edition shows Arabic tooltips. */
 const tr = (en: string, ar: string): string => (ARABIC ? ar : en);
+/**
+ * A number for the Arabic line: Arabic-Indic digits, like the clock and the
+ * costs (fmtNum). English lines keep their plain digits.
+ */
+const ar = (n: number): string => formatNum(n, true);
 
 const RARITY_AR: Record<Rarity, string> = {
   common: "شائع",
@@ -41,7 +47,7 @@ export function cardStatLines(id: CardId): string[] {
     lines.push(
       tr(
         "Replays the last card you played, for its cost +1",
-        "تعيد لعب آخر بطاقة لعبتها مقابل كلفتها +1",
+        `تعيد لعب آخر بطاقة لعبتها مقابل كلفتها +${ar(1)}`,
       ),
     );
     return lines;
@@ -49,39 +55,39 @@ export function cardStatLines(id: CardId): string[] {
   if (card.kind === "spell") {
     lines.push(`${tr("Spell", "تعويذة")} · ${rarityLabel(card.rarity)}`);
     const bits: string[] = [];
-    if (card.damage > 0) bits.push(tr(`${card.damage} damage`, `${card.damage} ضرر`));
+    if (card.damage > 0) bits.push(tr(`${card.damage} damage`, `${ar(card.damage)} ضرر`));
     if (card.stunSeconds > 0) {
-      bits.push(tr(`${card.stunSeconds}s stun`, `صعق ${card.stunSeconds} ث`));
+      bits.push(tr(`${card.stunSeconds}s stun`, `صعق ${ar(card.stunSeconds)} ث`));
     }
     if (card.rageSeconds > 0) {
       bits.push(
-        tr(`${card.rageSeconds}s boost: faster troops`, `تسريع الوحدات ${card.rageSeconds} ث`),
+        tr(`${card.rageSeconds}s boost: faster troops`, `تسريع الوحدات ${ar(card.rageSeconds)} ث`),
       );
     }
-    if (card.heal > 0) bits.push(tr(`heals ${card.heal}`, `يشفي ${card.heal}`));
+    if (card.heal > 0) bits.push(tr(`heals ${card.heal}`, `يشفي ${ar(card.heal)}`));
     if (card.pull > 0) bits.push(tr("drags enemies to its center", "يسحب الأعداء إلى مركزها"));
     if (card.spawnUnit) {
       bits.push(
         tr(`unloads ${plural(cardDisplayName(card.spawnUnit))}`, `يطلق ${cardDisplayName(card.spawnUnit)}`),
       );
     }
-    bits.push(tr(`radius ${card.radius}`, `نصف قطر ${card.radius}`));
+    bits.push(tr(`radius ${card.radius}`, `نصف قطر ${ar(card.radius)}`));
     lines.push(bits.join(" · "));
     // Its own line, so the card sheet (which shows lines past the second)
     // tells kids the Comet takes a moment to fall.
     if ((card.landDelay ?? 0) > 0) {
-      lines.push(tr(`Lands after ${card.landDelay} s`, `يسقط بعد ${card.landDelay} ث`));
+      lines.push(tr(`Lands after ${card.landDelay} s`, `يسقط بعد ${ar(card.landDelay ?? 0)} ث`));
     }
     return lines;
   }
   const u = card.unit;
   const kind = card.kind === "building" ? tr("Building", "مبنى") : tr("Troop", "وحدة");
-  const count = card.kind === "troop" && card.count > 1 ? ` ×${card.count}` : "";
+  const count = card.kind === "troop" && card.count > 1 ? ` ×${tr(String(card.count), ar(card.count))}` : "";
   lines.push(`${kind}${count} · ${rarityLabel(card.rarity)}`);
   lines.push(
     u.damage > 0
-      ? tr(`${u.maxHp} HP · ${u.damage} damage`, `${u.maxHp} صحة · ${u.damage} ضرر`)
-      : tr(`${u.maxHp} HP`, `${u.maxHp} صحة`),
+      ? tr(`${u.maxHp} HP · ${u.damage} damage`, `${ar(u.maxHp)} صحة · ${ar(u.damage)} ضرر`)
+      : tr(`${u.maxHp} HP`, `${ar(u.maxHp)} صحة`),
   );
   const traits: string[] = [];
   if (card.kind === "troop") {
@@ -89,19 +95,19 @@ export function cardStatLines(id: CardId): string[] {
       ARABIC ? `سرعة ${SPEED_AR[u.speed] ?? u.speed}` : `${cap(u.speed)} speed`,
     );
   }
-  if (u.attackRange > 1) traits.push(tr(`range ${u.attackRange}`, `مدى ${u.attackRange}`));
+  if (u.attackRange > 1) traits.push(tr(`range ${u.attackRange}`, `مدى ${ar(u.attackRange)}`));
   if (u.flying) traits.push(tr("flies", "يطير"));
   if (u.targetsAir) traits.push(tr("hits air", "يضرب الجو"));
   if (u.targetsBuildingsOnly) traits.push(tr("targets buildings", "يستهدف المباني"));
   if (u.splashRadius > 0) traits.push(tr("splash", "ضرر منطقة"));
   if (u.pierce) traits.push(tr("pierces", "يخترق"));
   if (u.recoil > 0) traits.push(tr("recoil kick", "ارتداد"));
-  if (u.chargeDistance > 0) traits.push(tr("charges (2x)", "شحنة (×2)"));
+  if (u.chargeDistance > 0) traits.push(tr("charges (2x)", `شحنة (×${ar(2)})`));
   if (u.jumpsRiver) traits.push(tr("jumps the river", "يقفز النهر"));
   if (card.kind === "troop" && card.deployAnywhere) traits.push(tr("Digs to any spot", "يحفر إلى أي مكان"));
   if (u.towerDamageFactor !== 1) {
     const pct = Math.round(u.towerDamageFactor * 100);
-    traits.push(tr(`${pct}% damage to towers`, `${pct}٪ ضرر للأبراج`));
+    traits.push(tr(`${pct}% damage to towers`, `${ar(pct)}٪ ضرر للأبراج`));
   }
   if (traits.length) lines.push(traits.join(" · "));
   const powers: string[] = [];
@@ -119,17 +125,17 @@ export function cardStatLines(id: CardId): string[] {
     const name = cardDisplayName(u.deathSpawnId);
     powers.push(
       card.kind === "building"
-        ? tr(`Releases ${n} ${plural(name)} when it falls`, `يطلق ${n} من ${name} عند سقوطه`)
-        : tr(`Splits into ${n} ${plural(name)}`, `ينقسم إلى ${n} من ${name}`),
+        ? tr(`Releases ${n} ${plural(name)} when it falls`, `يطلق ${ar(n)} من ${name} عند سقوطه`)
+        : tr(`Splits into ${n} ${plural(name)}`, `ينقسم إلى ${ar(n)} من ${name}`),
     );
   }
   if (u.elixirInterval > 0) {
     powers.push(
-      tr(`+1 elixir / ${u.elixirInterval}s`, `+1 إكسير كل ${u.elixirInterval} ث`),
+      tr(`+1 elixir / ${u.elixirInterval}s`, `+${ar(1)} إكسير كل ${ar(u.elixirInterval)} ث`),
     );
   }
   if (card.kind === "building") {
-    powers.push(tr(`${card.lifetime}s lifetime`, `يدوم ${card.lifetime} ث`));
+    powers.push(tr(`${card.lifetime}s lifetime`, `يدوم ${ar(card.lifetime)} ث`));
   }
   if (powers.length) lines.push(powers.join(" · "));
   return lines;

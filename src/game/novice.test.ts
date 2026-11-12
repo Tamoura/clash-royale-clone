@@ -1,10 +1,11 @@
 /**
  * The first-session promise in numbers: a near-random player (a random
  * affordable card on a random legal tile every 3-5 s; see pilot.ts) wins
- * most of its games against the rookie bot, nearly all against practice
- * (where auto steps a kid down after two straight losses) and almost
- * never against hard. Bots play at level 1, as they do against a
- * brand-new deck.
+ * nearly all its games against practice (where auto steps a kid down
+ * after two straight losses), most against rookie, some against easy, a
+ * few against normal and almost never against hard. Bots play at level 1,
+ * as they do against a brand-new deck. match/ladder.test.ts pins the same
+ * staircase on a larger seed set; this one is a second, independent look.
  */
 import { describe, expect, it } from "vitest";
 import { createBattle } from "./battle";
@@ -17,7 +18,7 @@ import { DIFFICULTIES, archetypeTweak } from "../match/difficulty";
 const DT = 1 / 30;
 const SEEDS = 20;
 
-function pilotWinRate(tier: "practice" | "rookie" | "hard", profile: BotProfile = DIFFICULTIES[tier]): number {
+function pilotWinRate(tier: "practice" | "rookie" | "easy" | "normal" | "hard", profile: BotProfile = DIFFICULTIES[tier]): number {
   let wins = 0;
   for (let i = 0; i < SEEDS; i++) {
     const b = createBattle(DEFAULT_DECK, DEFAULT_DECK);
@@ -49,7 +50,19 @@ describe("a novice against each bot tier", () => {
     expect(pilotWinRate("practice", archetypeTweak(DIFFICULTIES.practice, "cycle"))).toBeGreaterThanOrEqual(0.7);
   }, 60_000);
 
-  it("wins under 15% against hard", () => {
-    expect(pilotWinRate("hard")).toBeLessThan(0.15);
+  it("wins some games against easy (20-55%)", () => {
+    const r = pilotWinRate("easy");
+    expect(r).toBeGreaterThanOrEqual(0.2);
+    expect(r).toBeLessThanOrEqual(0.55);
+  }, 60_000);
+
+  it("wins a few games against normal (5-30%)", () => {
+    const r = pilotWinRate("normal");
+    expect(r).toBeGreaterThanOrEqual(0.05);
+    expect(r).toBeLessThanOrEqual(0.3);
+  }, 60_000);
+
+  it("wins under 5% against hard", () => {
+    expect(pilotWinRate("hard")).toBeLessThan(0.05);
   }, 60_000);
 });

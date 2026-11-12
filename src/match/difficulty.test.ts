@@ -6,6 +6,7 @@ import {
   DIFF_BLURB,
   HISTORY_SIZE,
   ROOKIE_MATCHES,
+  SOLVER_PROFILE,
   autoTier,
   avgDeckLevel,
   botLevel,
@@ -24,6 +25,7 @@ import {
   keepsOwnPace,
   ladderProfile,
   tierProfile,
+  tierStep,
   type AutoState,
   type BotArchetype,
   type MatchSample,
@@ -41,10 +43,27 @@ describe("difficulty options", () => {
     }
   });
 
-  it("keeps easy, normal and hard exactly as they were", () => {
-    expect(DIFFICULTIES.easy).toEqual({ thinkInterval: 1.8, pushAt: 9 });
-    expect(DIFFICULTIES.normal).toEqual({ thinkInterval: 1.0, pushAt: 8 });
-    expect(DIFFICULTIES.hard).toEqual({ thinkInterval: 0.55, pushAt: 6 });
+  // The staircase measured in ladder.test.ts (notes/features/bot-ladder.md).
+  it("pins easy, normal and hard to the measured staircase", () => {
+    expect(DIFFICULTIES.easy).toEqual({ thinkInterval: 5, pushAt: 10, mistakeRate: 0.35, allowFinisher: false, spellIQ: 2, reactionDelay: 1.5 });
+    expect(DIFFICULTIES.normal).toEqual({ thinkInterval: 4, pushAt: 10, mistakeRate: 0.25, allowFinisher: true, spellIQ: 1.5, reactionDelay: 1 });
+    expect(DIFFICULTIES.hard).toEqual({ thinkInterval: 1, pushAt: 10, mistakeRate: 0, allowFinisher: true, spellIQ: 1, reactionDelay: 0 });
+    expect(DIFFICULTIES.auto).toEqual(DIFFICULTIES.normal);
+  });
+
+  it("moves every knob one way, weakest to strongest", () => {
+    const p = TIERS.map((t) => tierProfile(t));
+    for (let i = 1; i < p.length; i++) {
+      const [lo, hi] = [p[i - 1], p[i]];
+      expect(hi.thinkInterval, TIERS[i]).toBeLessThan(lo.thinkInterval);
+      expect(hi.mistakeRate!, TIERS[i]).toBeLessThan(lo.mistakeRate!);
+      expect(hi.reactionDelay!, TIERS[i]).toBeLessThan(lo.reactionDelay!);
+      expect(hi.spellIQ!, TIERS[i]).toBeLessThan(lo.spellIQ!);
+      expect(hi.pushAt, TIERS[i]).toBe(10); // every tier banks a full bar
+      if (lo.allowFinisher) expect(hi.allowFinisher, TIERS[i]).toBe(true);
+    }
+    // Hard plays clean: no slips, no late looks, the finisher on.
+    expect(tierProfile("hard")).toMatchObject({ mistakeRate: 0, reactionDelay: 0, allowFinisher: true });
   });
 
   it("makes the rookie slow, sloppy and polite", () => {
@@ -66,25 +85,41 @@ describe("difficulty options", () => {
   });
 });
 
+describe("the puzzle solver", () => {
+  it("is frozen at the Normal tier the puzzle stars were set with", () => {
+    expect(SOLVER_PROFILE).toEqual({ thinkInterval: 1.0, pushAt: 8 });
+    expect(Object.isFrozen(SOLVER_PROFILE)).toBe(true);
+    expect(() => {
+      (SOLVER_PROFILE as { pushAt: number }).pushAt = 10;
+    }).toThrow();
+  });
+
+  it("is its own object, not a ladder tier's", () => {
+    for (const k of Object.keys(DIFFICULTIES)) expect(DIFFICULTIES[k]).not.toBe(SOLVER_PROFILE);
+  });
+});
+
 describe("ladder personalities", () => {
   const ARCHETYPES: BotArchetype[] = ["balanced", "beatdown", "cycle", "siege"];
 
-  it("leave practice and rookie at their own pace", () => {
-    expect(TIERS.filter(keepsOwnPace)).toEqual(["practice", "rookie"]);
-    for (const a of ARCHETYPES) {
-      expect(ladderProfile("practice", a)).toEqual(DIFFICULTIES.practice);
-      expect(ladderProfile("rookie", a)).toEqual(DIFFICULTIES.rookie);
+  it("leave the novice-calibrated tiers (practice to normal) at their own pace", () => {
+    expect(TIERS.filter(keepsOwnPace)).toEqual(["practice", "rookie", "easy", "normal"]);
+    for (const t of ["practice", "rookie", "easy", "normal"] as const) {
+      for (const a of ARCHETYPES) expect(ladderProfile(t, a)).toEqual(DIFFICULTIES[t]);
     }
   });
 
-  it("tweak every other tier as main.ts always has", () => {
-    const n = tierProfile("normal");
-    expect(ladderProfile("normal", "balanced")).toEqual(n);
-    expect(ladderProfile("normal", "beatdown")).toEqual({ ...n, pushAt: 9 });
-    expect(ladderProfile("normal", "cycle")).toEqual({ ...n, thinkInterval: 0.85, pushAt: 6 });
-    expect(ladderProfile("normal", "siege")).toEqual({ ...n, thinkInterval: 1.1, pushAt: 10 });
-    expect(ladderProfile("hard", "cycle").pushAt).toBe(4);
-    expect(ladderProfile("easy", "beatdown").pushAt).toBe(10);
+  it("tweak hard as main.ts always has", () => {
+    const h = tierProfile("hard");
+    expect(ladderProfile("hard", "balanced")).toEqual(h);
+    expect(ladderProfile("hard", "beatdown")).toEqual({ ...h, pushAt: 10 });
+    expect(ladderProfile("hard", "cycle")).toEqual({ ...h, thinkInterval: 0.85, pushAt: 8 });
+    expect(ladderProfile("hard", "siege")).toEqual({ ...h, thinkInterval: 1.1, pushAt: 10 });
+    // The tweak itself is unchanged (an old-style profile, as main.ts always tweaked it).
+    const old = { thinkInterval: 1.0, pushAt: 8 };
+    expect(archetypeTweak(old, "beatdown")).toEqual({ ...old, pushAt: 9 });
+    expect(archetypeTweak(old, "cycle")).toEqual({ ...old, thinkInterval: 0.85, pushAt: 6 });
+    expect(archetypeTweak({ thinkInterval: 0.55, pushAt: 6 }, "cycle").pushAt).toBe(4);
   });
 
   it("keep practice slower than rookie even if the cycle speed-up were applied", () => {
@@ -100,13 +135,46 @@ describe("autoTier", () => {
     }
   });
 
-  it("steps up once the last three results add up to +3", () => {
-    expect(autoTier(diffs(1, 1, 1), 5, "rookie")).toBe("easy");
+  it("steps up only after two decisive windows in a row (+3 over the last three, and over the three before)", () => {
+    expect(HISTORY_SIZE).toBe(6);
+    expect(autoTier(diffs(1, 1, 1), 5, "rookie")).toBe("rookie"); // one window is not enough any more
+    expect(autoTier(diffs(1, 1, 1, 1, 1), 9, "rookie")).toBe("rookie");
+    expect(autoTier(diffs(1, 1, 1, 1, 1, 1), 9, "rookie")).toBe("easy");
+    expect(autoTier(diffs(3, 0, 0, 3, 0, 0), 9, "easy")).toBe("normal");
+    expect(autoTier(diffs(-1, 3, 1, -1, 3, 1), 9, "easy")).toBe("normal"); // four wins, two losses
+    expect(autoTier(diffs(3, 1, 0, 2, 1, 0), 9, "normal")).toBe("hard"); // a draw can close it
+    expect(autoTier(diffs(3, 3, 3, 3, 3, 3), 9, "hard")).toBe("hard"); // already at the top
+  });
+
+  it("never steps up on a defeat: the climb waits for a match that is not lost", () => {
+    // Both windows are decisive (+4, +3), but the latest match was lost.
+    expect(autoTier(diffs(3, 1, 0, 2, 2, -1), 9, "normal")).toBe("normal");
+    // A 0-0 tiebreak defeat is a defeat too.
+    expect(autoTier([...diffs(3, 1, 0, 2, 2), { crownDiff: 0, outcome: "loss" }], 9, "easy")).toBe("easy");
+
+    let s: AutoState = { v: 1, ladderMatches: 9, tier: "normal", history: diffs(3, 1, 0, 2, 2) };
+    s = recordAutoResult(s, -1, "loss");
+    expect(s.tier).toBe("normal");
+    expect(s.history).toHaveLength(HISTORY_SIZE); // the record is kept, not reset
+    // The next win still closes two decisive windows (1+0+2, 2-1+2): up it goes.
+    s = recordAutoResult(s, 2, "win");
+    expect(s.tier).toBe("hard");
+    expect(s.history).toEqual([]);
+
+    // A small win after the defeat no longer makes the latest window decisive (2-1+1).
+    let t: AutoState = { v: 1, ladderMatches: 9, tier: "normal", history: diffs(3, 1, 0, 2, 2) };
+    t = recordAutoResult(t, -1, "loss");
+    t = recordAutoResult(t, 1, "win");
+    expect(t.tier).toBe("normal");
+  });
+
+  it("does not step up on one lucky window or one big win counted twice", () => {
+    expect(autoTier(diffs(3, 3, 3, 0, 1, 0), 9, "easy")).toBe("easy"); // the latest window is +1
+    expect(autoTier(diffs(0, 1, 0, 3, 3, 3), 9, "easy")).toBe("easy"); // the earlier window is +1
     expect(autoTier(diffs(-3, 0, 3), 9, "easy")).toBe("easy"); // sums to 0
-    expect(autoTier(diffs(3, 3, 3, 0, 1, 0), 9, "easy")).toBe("easy"); // only the last three count
-    expect(autoTier(diffs(-3, 1, 1, 1), 9, "easy")).toBe("normal");
-    expect(autoTier(diffs(3, 1, 0), 9, "normal")).toBe("hard");
-    expect(autoTier(diffs(3, 3, 3), 9, "hard")).toBe("hard"); // already at the top
+    // Sliding windows would read +3 twice from one 3-crown win: two wins, two losses.
+    expect(autoTier(diffs(-1, 3, 1, -1), 9, "easy")).toBe("easy");
+    expect(autoTier(diffs(0, 3, 0, 0), 9, "easy")).toBe("easy");
   });
 
   it("steps down at -3 or less", () => {
@@ -192,19 +260,32 @@ describe("auto step-down to practice and back", () => {
 
   it("records matches as a ring and starts a fresh window after a step", () => {
     let s: AutoState = freshAutoState(0);
-    for (let i = 0; i < ROOKIE_MATCHES - 1; i++) s = recordAutoResult(s, 1);
-    expect(s.tier).toBe("rookie");
-    s = recordAutoResult(s, 1); // match 5: leaves the rookie window on +3
+    for (let i = 0; i < ROOKIE_MATCHES; i++) s = recordAutoResult(s, 1);
     expect(s.ladderMatches).toBe(ROOKIE_MATCHES);
+    expect(s.tier).toBe("rookie"); // match 5: +3, +3 not yet two whole windows
+    s = recordAutoResult(s, 1); // match 6: two windows of +3
     expect(s.tier).toBe("easy");
     expect(s.history).toEqual([]);
     s = recordAutoResult(s, 2);
     s = recordAutoResult(s, 0);
+    s = recordAutoResult(s, 1); // one decisive window at easy
     expect(s.tier).toBe("easy");
     s = recordAutoResult(s, 1);
+    s = recordAutoResult(s, 1);
+    expect(s.tier).toBe("easy");
+    s = recordAutoResult(s, 1); // the second one in a row
     expect(s.tier).toBe("normal");
+    expect(s.history).toEqual([]);
     for (let i = 0; i < 8; i++) s = recordAutoResult(s, 0);
     expect(s.history).toHaveLength(HISTORY_SIZE);
+  });
+
+  it("names the direction of a tier change", () => {
+    expect(tierStep("rookie", "easy")).toBe("up");
+    expect(tierStep("practice", "rookie")).toBe("up");
+    expect(tierStep("normal", "easy")).toBe("down");
+    expect(tierStep("rookie", "practice")).toBe("down");
+    expect(tierStep("hard", "hard")).toBeNull();
   });
 
   it("resolves the auto option, and passes real tiers through", () => {

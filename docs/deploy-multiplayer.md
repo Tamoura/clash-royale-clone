@@ -120,8 +120,8 @@ The `Dockerfile` builds the same thing for container hosts.
   compare a checksum to catch drift.
 * **Small traffic.** A frame is about 60–80 bytes and each side sends 30 per
   second: **about 1 MB per player** for a 3-minute match.
-* **Single instance.** Rooms, codes and the quick-match queue live in the
-  relay's memory, unseen by any other copy: run exactly **one** relay.
+* **Single instance.** Rooms and codes live in the relay's memory, unseen
+  by any other copy: run exactly **one** relay.
 * **One box or two.** On Render (or `npm start`, or the Docker image) the
   relay also serves the page, so both boxes above are the same server. GitHub
   Pages hosts only static files and cannot run the relay, so the Pages copy
@@ -377,16 +377,16 @@ socket glue would need rewriting. Not needed at kid-and-friends scale.
 | `STATIC_DIR`       | relay env       | the `dist/` beside the relay's folder     | Folder of the built game to serve at `/` (used when it has an `index.html`). `off`, or the `--relay-only` flag that `npm run relay:prod` passes, serves only the relay. |
 | `MAX_CONN_PER_IP`  | relay env       | `8`                                       | Open sockets per client IP. Raise it if a whole school shares one IP. |
 | `TRUST_PROXY`      | relay env       | off (`true-client-ip` on Render)          | Where the per-IP limits get the client IP behind a proxy. `1` = the right-most `X-Forwarded-For` entry (the one your proxy appended), for Caddy or nginx. Any other value names a header the edge sets itself: `true-client-ip` on Render (observed; Render does not document it, see [(j)](#j-operations-and-cost)), `fly-client-ip` on Fly, `cf-connecting-ip` behind Cloudflare. Leave it off when nothing sits in front of the relay, or clients could pick their own IP. |
-| `QUICK_MATCH`      | relay env       | on                                        | `off` disables the quick-match queue; codes still work. |
+| `QUICK_MATCH`      | relay env       | off                                       | Online play is friends-only: players meet only through a room code. `on` opens the stranger queue (Quick match) for developers testing it; the game has no button for it, and `render.yaml` pins it `off`. |
 | `NODE_ENV`         | relay env       | unset                                     | `production` tightens the default `ALLOWED_ORIGINS` of a relay-only server too. |
 | `LOG_LEVEL`        | relay env       | `info`                                    | `debug` adds IPs and invalid-message detail. Use it briefly. |
 | `VITE_RELAY_URL`   | page build env  | unset (`same-origin` in `npm run build:all`) | Relay baked into the page: a `wss://` address (from the `RELAY_URL` repo variable), or `same-origin` for the server the page came from. |
 | `?relay=`          | page link       | none                                      | Per-device override, remembered; `?relay=clear` forgets it. Only `ws://` and `wss://` are accepted. |
 
-Built-in limits: 4 KB per message; 60 messages per second per socket (bursts
-up to 90); 5 create/join/quick per IP per 10 seconds. A socket is closed
-after 5 invalid messages. There is a heartbeat ping every 15 seconds, and
-expired rooms are swept every 30 seconds.
+Built-in limits: 4 KB per message; 60 messages per second per socket (bursts up
+to 90); 5 create/join per IP per 10 s; 10 wrong codes in 10 minutes per address
+or socket (IPv6: per /64; 30 per /56, 60 per /48) pause joins for 10 minutes.
+5 invalid messages close a socket. Heartbeat 15 s; expired rooms swept every 5 s.
 
 Serving the game, the relay compresses text and 3D models (brotli/gzip), caches
 hashed `assets/` for a year and revalidates `index.html`, `sw.js` and the manifest.
@@ -436,19 +436,19 @@ The page and the relay must speak the same protocol. `PROTOCOL_VERSION` in
 
 ## (k) Kid safety
 
+* **Friends only, and codes are hard to guess.** No stranger matching
+  (`QUICK_MATCH` stays off). Codes are a word plus 3 digits (20,000); 10 wrong
+  codes in 10 minutes pause joins for 10 minutes (per address; per IPv6 /56
+  after 30). Unjoined rooms expire after 10 minutes, matches after 12.
 * **No chat.** Players can only send one of 8 built-in emotes. The relay
   rejects anything else.
 * **Names are cleaned** on the relay. Only letters, digits, spaces, `_` and
   `-` are kept, up to 12 characters, so links and markup cannot get through.
-* **Codes are short-lived.** An unjoined room expires after 10 minutes, a
-  match after 12, a quick-match wait after 2. Finished rooms free their code.
 * **No accounts and no storage.** The relay keeps nothing on disk and logs
   no IP addresses by default. Resume tokens are random, sent only to their
   owner, and forgotten with the room.
-* **Only your pages may connect** when the server hands out the game, and
-  in production: its own address and `ALLOWED_ORIGINS`. Rate limits and
-  connection caps stop spam. Quick match pairs anyone on the same server;
-  set `QUICK_MATCH=off` to allow only code games.
+* **Only your pages may connect** when the server hands out the game, and in
+  production: its own address and `ALLOWED_ORIGINS`. Rate and socket caps stop spam.
 
 ---
 
@@ -480,11 +480,11 @@ versions. Deploy the relay, re-run the Pages workflow, hard-refresh the phones.
 **Stuck on "waiting for friend".**
 * The code expired (10 minutes) or the relay restarted (a deploy). Create a
   new game.
-* The friend typed the code wrong. Codes are a word plus two digits (`LION42`).
+* The friend typed the code wrong. Codes are a word plus three digits
+  (`LION042`; old two-digit codes still work). "Too many wrong codes": 10 in
+  10 minutes from one home pause its joins for 10 minutes. Check the code.
 * The two phones use different relays. Check that both opened the same
   address (or the same `?relay=` link).
-* Quick match only pairs players who picked the same mode. A queue entry
-  gives up after 2 minutes.
 * `fly status` shows two machines. Run `fly scale count 1`.
 
 **"Connection out of sync" during a match.** Usually one phone has an old

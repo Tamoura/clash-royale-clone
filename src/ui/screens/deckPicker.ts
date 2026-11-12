@@ -669,7 +669,7 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
         size: "lg",
         icon: "sword",
         label: tr("Battle", "قتال"),
-        ariaLabel: "Start a battle against the bot",
+        ariaLabel: tr("Start a battle against the bot", "ابدأ معركة ضد الروبوت"),
         onClick: () => {
           if (!commitDeck()) return;
           sfx(ctx, "uiTap");
@@ -683,7 +683,7 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
         size: "lg",
         icon: "save",
         label: tr("Save deck", "حفظ المجموعة"),
-        ariaLabel: "Save deck",
+        ariaLabel: tr("Save deck", "حفظ المجموعة"),
         onClick: () => {
           if (!commitDeck()) return;
           sfx(ctx, "uiTap");
@@ -898,7 +898,7 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
     b.type = "button";
     b.className = `v2-tile rarity-${card.rarity}`;
     b.dataset.card = id;
-    b.setAttribute("aria-label", tr(`${cardDisplayName(id)}, ${card.cost} elixir`, `${cardDisplayName(id)}، ${card.cost} إكسير`));
+    b.setAttribute("aria-label", tr(`${cardDisplayName(id)}, ${card.cost} elixir`, `${cardDisplayName(id)}، ${fmtNum(card.cost)} إكسير`));
     const art = document.createElement("div");
     art.className = "v2-tile-art";
     art.appendChild(cardTileCanvas(id));

@@ -1,7 +1,9 @@
 /**
  * Damage numbers without a canvas per hit: the glyphs 0-9 - + ! and a star
  * are pre-rendered once, in the game font, into a 1024x256 atlas (8x2 cells
- * of 128px). A popup is a handful of pooled instanced quads with per-glyph
+ * of 128px). The Golden Age edition paints its digit cells with the
+ * Arabic-Indic digits (٠-٩), like the HP plates and the clock: popup text
+ * stays "160" inside (merging adds the numbers), only the ink changes. A popup is a handful of pooled instanced quads with per-glyph
  * UV cells and offsets; the vertex shader pops, raises and fades them over
  * POPUP_LIFE on the shared FX clock.
  *
@@ -16,7 +18,9 @@
  */
 import * as THREE from "three";
 import { POPUP_LIFE, damageLabel, popupRise } from "../../popups";
-import { GAME_FONT } from "../common";
+import { formatInt } from "../../../ui/i18n";
+import { ARABIC } from "../../theme";
+import { ARABIC_DIGIT_FACE, GAME_FONT } from "../common";
 
 /** Glyph order in the atlas; '*' is drawn as a star. */
 export const GLYPHS = "0123456789-+!*";
@@ -135,11 +139,19 @@ function paintStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: num
 }
 
 /**
+ * What an atlas cell shows for a GLYPHS character: a digit in the edition's
+ * digits (3 / ٣), anything else as itself.
+ */
+export function glyphFace(ch: string, arabic: boolean = ARABIC): string {
+  return /^[0-9]$/.test(ch) ? formatInt(Number(ch), arabic) : ch;
+}
+
+/**
  * Paint every glyph into the three masks and return the advances: on an
  * opaque black canvas, 'lighter' adds each layer's coverage into its own
- * channel (blue shadow, green stroke, red fill).
+ * channel (blue shadow, green stroke, red fill). Exported for tests.
  */
-function paintGlyphs(ctx: CanvasRenderingContext2D, advances: number[]): void {
+export function paintGlyphs(ctx: CanvasRenderingContext2D, advances: number[], arabic: boolean = ARABIC): void {
   ctx.save();
   ctx.globalCompositeOperation = "source-over";
   ctx.fillStyle = "#000000";
@@ -151,7 +163,7 @@ function paintGlyphs(ctx: CanvasRenderingContext2D, advances: number[]): void {
   ctx.lineJoin = "round";
   const at = (i: number): [number, number] => [(i % COLS) * CELL + CELL / 2, Math.floor(i / COLS) * CELL + CELL / 2 + 2];
   const shape = (i: number, x: number, y: number, mode: "stroke" | "fill", width = 0): void => {
-    const ch = GLYPHS[i];
+    const ch = glyphFace(GLYPHS[i], arabic);
     if (ch === "*") {
       paintStar(ctx, x, y, 34);
       if (mode === "stroke") {
@@ -187,7 +199,7 @@ function paintGlyphs(ctx: CanvasRenderingContext2D, advances: number[]): void {
       advances[i] = 0.78;
       continue;
     }
-    const w = ctx.measureText(GLYPHS[i]).width;
+    const w = ctx.measureText(glyphFace(GLYPHS[i], arabic)).width;
     // The stroke overlaps the neighbour's: ink merges, the run stays tight.
     advances[i] = w > 0 ? Math.min(0.92, (w + STROKE_PX * 0.55) / CELL) : DEFAULT_ADVANCE;
   }
@@ -296,15 +308,18 @@ export class GlyphLayer {
     tex.userData.shared = true;
     if (ctx) {
       paintGlyphs(ctx, this.advances);
-      // Repaint into the same canvas once the display face has loaded.
+      // Repaint into the same canvas once the display face has loaded (and,
+      // in the Golden Age edition, the face its Arabic-Indic digits come from).
       const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
-      fonts
-        ?.load(`${FONT_PX}px 'Lilita One'`)
-        .then(() => {
-          paintGlyphs(ctx, this.advances);
-          tex.needsUpdate = true;
-        })
-        .catch(() => undefined);
+      const repaint = (): void => {
+        paintGlyphs(ctx, this.advances);
+        tex.needsUpdate = true;
+      };
+      fonts?.load(`${FONT_PX}px 'Lilita One'`).then(repaint).catch(() => undefined);
+      if (ARABIC) {
+        const digits = Array.from("0123456789", (d) => glyphFace(d)).join("");
+        fonts?.load(`${FONT_PX}px ${ARABIC_DIGIT_FACE}`, digits).then(repaint).catch(() => undefined);
+      }
     }
     const geo = new THREE.PlaneGeometry(1, 1);
     const attr = (name: string, size: number): THREE.InstancedBufferAttribute => {

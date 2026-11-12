@@ -285,6 +285,26 @@ export function layersAt(def: TrackDef, level: Intensity): { arp: boolean; hats:
   return { arp: lv >= def.arpFrom, hats: lv >= def.hatsFrom, drums: lv >= def.drumsFrom };
 }
 
+/** How loud the hushed bed plays, relative to its normal level. */
+export const HUSH_LEVEL = 0.7;
+
+/**
+ * The layers a track keeps while the game waits on the player (a tutorial
+ * step holding the clock): only its quietest bed, the pad where the track
+ * has one, else the bass line. No lead, counter-melody, hats or drums,
+ * whatever the intensity. Existing material only: nothing new is played.
+ */
+export function hushedLayers(def: TrackDef): {
+  lead: boolean;
+  bass: boolean;
+  pad: boolean;
+  arp: boolean;
+  hats: boolean;
+  drums: boolean;
+} {
+  return { lead: false, bass: !def.pad, pad: def.pad, arp: false, hats: false, drums: false };
+}
+
 /** Seconds per step for a track at an intensity. */
 export function stepSeconds(def: TrackDef, level: Intensity): number {
   return def.stepSec[def.id === "menu" ? 0 : level];

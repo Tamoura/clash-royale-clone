@@ -9,6 +9,7 @@ import { DECK, type CardId } from "../game/cards";
 import { MAX_CARD_LEVEL } from "../meta/progress";
 import { on } from "../app/hooks";
 import { installCoachTips } from "./coachTips";
+import { installTierBanner, noteTierStep } from "./tierBanner";
 
 export const DIFF_KEY = "cr-clone-difficulty";
 export const AUTO_KEY = "cr-clone-auto-history";
@@ -18,14 +19,21 @@ export type Tier = "practice" | "rookie" | "easy" | "normal" | "hard";
 export const TIERS: readonly Tier[] = ["practice", "rookie", "easy", "normal", "hard"];
 
 /**
- * The two first-hour tiers are tuned against a near-random player
- * (novice.test.ts): it should beat rookie in most games and practice in
- * nearly all of them. Rookie thinks every 6.5 s, notices each invader late,
- * slips up on almost half its plays, only spells big clusters and never
- * finishes a tower with a spell. Practice (where auto steps a kid down to
- * after two straight losses) is slower and sloppier still: it thinks only
- * every 10 s, so even the cycle personality's speed-up (archetypeTweak:
- * 8.5 s, push at 8) stays well below rookie.
+ * The ladder is an even staircase (ladder.test.ts pins it; the numbers are
+ * in notes/features/bot-ladder.md). Each tier beats the one below it in
+ * most bot-against-bot games, and a near-random "kid" player (pilot.ts,
+ * novice.test.ts) wins about 9 in 10 against practice, 2 in 3 against
+ * rookie, 1 in 3 against easy, 1 in 7 against normal and almost never
+ * against hard.
+ *
+ * Every knob moves one way up the ladder: the bot thinks more often,
+ * slips up less (mistakeRate), notices invaders sooner (reactionDelay),
+ * spells smaller clusters (spellIQ) and, from normal up, finishes a tower
+ * with a spell. Every tier banks a full bar before it pushes: a bot that
+ * pushes on less sends half a push and loses to one that waits (the old
+ * hard pushed at 6 and lost to the old easy). Hard is the old normal's
+ * pace with that patience: it wins about four games in five against it.
+ * Practice is where auto steps a kid down to after two straight losses.
  */
 const TIER_PROFILES: Record<Tier, BotProfile> = {
   practice: {
@@ -44,9 +52,30 @@ const TIER_PROFILES: Record<Tier, BotProfile> = {
     spellIQ: 2.5,
     reactionDelay: 1.8,
   },
-  easy: { thinkInterval: 1.8, pushAt: 9 },
-  normal: { thinkInterval: 1.0, pushAt: 8 },
-  hard: { thinkInterval: 0.55, pushAt: 6 },
+  easy: {
+    thinkInterval: 5,
+    pushAt: 10,
+    mistakeRate: 0.35,
+    allowFinisher: false,
+    spellIQ: 2,
+    reactionDelay: 1.5,
+  },
+  normal: {
+    thinkInterval: 4,
+    pushAt: 10,
+    mistakeRate: 0.25,
+    allowFinisher: true,
+    spellIQ: 1.5,
+    reactionDelay: 1,
+  },
+  hard: {
+    thinkInterval: 1,
+    pushAt: 10,
+    mistakeRate: 0,
+    allowFinisher: true,
+    spellIQ: 1,
+    reactionDelay: 0,
+  },
 };
 
 /**
@@ -58,6 +87,16 @@ export const DIFFICULTIES: Record<string, BotProfile> = {
   auto: TIER_PROFILES.normal,
   ...TIER_PROFILES,
 };
+
+/**
+ * The puzzle solver: the bot that proves every challenge can be cleared
+ * and checks its star rating (challenges.test.ts). It is frozen at the
+ * Normal tier as it stood when the stars were set (think every 1 s, push
+ * at 8 elixir, no slips, no reaction delay) and never follows the ladder
+ * tiers, so re-tuning a tier can't move a puzzle's rating. Copy it before
+ * adding a side: `{ ...SOLVER_PROFILE, side: "player" }`.
+ */
+export const SOLVER_PROFILE: Readonly<BotProfile> = Object.freeze({ thinkInterval: 1.0, pushAt: 8 });
 
 export const DIFF_AR: Record<string, string> = {
   auto: "تلقائي",
@@ -110,7 +149,12 @@ export interface AutoState {
   history: MatchSample[];
 }
 
-export const HISTORY_SIZE = 5;
+/** Results a crown window adds up (the last WINDOW ladder matches). */
+export const WINDOW = 3;
+/** A window adding up to this many crowns or more (or minus this) is decisive. */
+export const DECISIVE_CROWNS = 3;
+/** Results kept: two back-to-back windows, for the step up. */
+export const HISTORY_SIZE = 2 * WINDOW;
 /** Auto plays rookie (or practice below it) for this many ladder matches. */
 export const ROOKIE_MATCHES = 5;
 /** Bots keep their taunts to themselves for this many ladder matches. */
@@ -126,14 +170,24 @@ export function sampleOutcome(m: MatchSample): MatchOutcome {
   return m.crownDiff > 0 ? "win" : m.crownDiff < 0 ? "loss" : "draw";
 }
 
+const crownSum = (window: readonly MatchSample[]): number => window.reduce((s, m) => s + m.crownDiff, 0);
+
 /**
  * The tier auto should play next, given the results so far at `current`
  * (the history restarts at every tier change):
  * - practice is a short breather: one win there returns to rookie;
  * - STEP_DOWN_LOSSES straight losses at rookie or easy drop one tier;
  * - the first ROOKIE_MATCHES ladder matches never climb above rookie;
- * - otherwise one step up when the last 3 crown diffs add up to +3 or
- *   more, one step down at -3 or less, else stay at `current`.
+ * - otherwise one step down when the last 3 crown diffs add up to -3 or
+ *   less, as before;
+ * - and one step up only after two decisive windows in a row: the last 3
+ *   crown diffs add up to +3 or more, and so do the 3 before them. So a
+ *   kid climbs after six good matches at a tier, not on one lucky run
+ *   (with one window, a big win plus two draws was enough), and lands on
+ *   the next step ready for it. Never on a defeat, though: the result
+ *   screen would show "The bot is getting smarter!" under DEFEAT, so the
+ *   climb waits for a match that is not lost and still closes two
+ *   decisive windows. Else stay at `current`.
  */
 export function autoTier(
   history: readonly MatchSample[],
@@ -141,6 +195,7 @@ export function autoTier(
   current: Tier = "rookie",
 ): Tier {
   const i = TIERS.indexOf(current);
+  const down = TIERS[Math.max(0, i - 1)];
   const last = history[history.length - 1];
   if (current === "practice" && last && sampleOutcome(last) === "win") return "rookie";
   if (
@@ -148,14 +203,27 @@ export function autoTier(
     history.length >= STEP_DOWN_LOSSES &&
     history.slice(-STEP_DOWN_LOSSES).every((m) => sampleOutcome(m) === "loss")
   ) {
-    return TIERS[Math.max(0, i - 1)];
+    return down;
   }
   if (ladderMatches < ROOKIE_MATCHES) return current === "practice" ? "practice" : "rookie";
-  if (history.length < 3) return current;
-  const sum = history.slice(-3).reduce((s, m) => s + m.crownDiff, 0);
-  if (sum >= 3) return TIERS[Math.min(TIERS.length - 1, i + 1)];
-  if (sum <= -3) return TIERS[Math.max(0, i - 1)];
+  if (history.length < WINDOW) return current;
+  const latest = crownSum(history.slice(-WINDOW));
+  if (latest <= -DECISIVE_CROWNS) return down;
+  if (
+    history.length >= 2 * WINDOW &&
+    sampleOutcome(last) !== "loss" &&
+    latest >= DECISIVE_CROWNS &&
+    crownSum(history.slice(-2 * WINDOW, -WINDOW)) >= DECISIVE_CROWNS
+  ) {
+    return TIERS[Math.min(TIERS.length - 1, i + 1)];
+  }
   return current;
+}
+
+/** Which way a tier change goes: "up" to a stronger bot, "down" to a softer one, or null. */
+export function tierStep(before: Tier, after: Tier): "up" | "down" | null {
+  const d = TIERS.indexOf(after) - TIERS.indexOf(before);
+  return d > 0 ? "up" : d < 0 ? "down" : null;
 }
 
 /**
@@ -257,11 +325,14 @@ export function tierProfile(tier: Tier): BotProfile {
 export type BotArchetype = "balanced" | "beatdown" | "cycle" | "siege";
 
 /**
- * The first-hour tiers are calibrated as a whole against a novice
- * (novice.test.ts), so a ladder personality never changes their pace.
+ * Practice to normal are calibrated as a whole against a novice
+ * (ladder.test.ts), so a ladder personality never changes their pace: the
+ * cycle speed-up (push at 8) alone made the novice's 1-in-3 easy bot a
+ * 1-in-10 one. Their personality still shows in the deck it drafts. Hard,
+ * the top step, keeps the personality tweaks for variety.
  */
 export function keepsOwnPace(tier: Tier): boolean {
-  return tier === "practice" || tier === "rookie";
+  return tier !== "hard";
 }
 
 /**
@@ -284,8 +355,8 @@ export function archetypeTweak(base: BotProfile, archetype: BotArchetype): BotPr
 
 /**
  * The ladder bot's profile for a tier and personality, before the champion
- * or mercy banding: practice and rookie keep their own pace, every other
- * tier gets the personality's tweak.
+ * or mercy banding: practice to normal keep their own pace, hard gets the
+ * personality's tweak.
  */
 export function ladderProfile(tier: Tier, archetype: BotArchetype): BotProfile {
   const base = tierProfile(tier);
@@ -302,23 +373,34 @@ export function outcomeFor(winner: string, mySide: string): MatchOutcome {
   return winner === "draw" ? "draw" : winner === mySide ? "win" : "loss";
 }
 
+/** Which way the bot the auto option plays moved between two auto records, if at all. */
+export function autoStep(before: AutoState, after: AutoState): "up" | "down" | null {
+  return tierStep(resolveTier("auto", before), resolveTier("auto", after));
+}
+
 /**
  * Keep the auto record current: every finished solo ladder match (not a
  * sandbox, replay or online game) adds its crown difference and outcome.
- * Also installs the defeat coaching tips (src/match/coachTips.ts), which
- * speak up after the same solo ladder matches, so main.ts wires both at once.
+ * When that moves the bot a player on the auto option meets, the result
+ * screen says so (src/match/tierBanner.ts). Also installs the defeat
+ * coaching tips (src/match/coachTips.ts), which speak up after the same
+ * solo ladder matches, so main.ts wires all three at once.
  */
 export function installAutoDifficulty(trophies: () => number): () => void {
   const off = on("matchEnd", (m) => {
     if (m.kind !== "ladder" || m.online || m.sandbox || m.replay) return;
-    saveAutoState(
-      recordAutoResult(loadAutoState(trophies()), m.myCrowns - m.theirCrowns, outcomeFor(m.winner, m.mySide)),
-    );
+    const before = loadAutoState(trophies());
+    const after = recordAutoResult(before, m.myCrowns - m.theirCrowns, outcomeFor(m.winner, m.mySide));
+    saveAutoState(after);
+    noteTierStep(m.battle, loadDifficulty() === "auto" ? autoStep(before, after) : null);
   });
+  // The banner first: on a loss that steps down it sits above the coach tip.
+  const offBanner = installTierBanner();
   const offTips = installCoachTips();
   return () => {
     off();
     offTips();
+    offBanner();
   };
 }
 

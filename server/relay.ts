@@ -2,8 +2,10 @@
 // internet behind TLS (see docs/deploy-multiplayer.md). Pure pairing/relay
 // logic lives in the tested src/net/rooms.ts and src/net/validate.ts; this
 // file is only the socket glue and the hardening around it: origin checks,
-// rate limits, a per-IP connection cap, heartbeats, expiry sweeps, a health
-// endpoint and graceful shutdown.
+// rate limits, a wrong-code limit (server/joinGuard.ts), a per-IP connection
+// cap, heartbeats, expiry sweeps, a health endpoint and graceful shutdown.
+// Online play is friends-only: rooms are met by code, and the stranger
+// queue (Quick match) stays off unless QUICK_MATCH=on (developers only).
 //
 // When a built game is next to it (dist/, see STATIC_DIR) it also serves the
 // game itself (server/static.ts), so one process at one address is the whole
@@ -22,6 +24,7 @@ import { makeCodeGen } from "../src/net/codewords";
 import { originAllowed, relayOriginPolicy } from "../src/net/origins";
 import { PROTOCOL_VERSION, type ErrorReason, type ServerMsg } from "../src/net/protocol";
 import { MAX_MESSAGE_BYTES, isParseError, parseClientMsg, playableCardIds } from "../src/net/validate";
+import { JoinGuard, addressKeys } from "./joinGuard";
 import { openStaticSite } from "./static";
 
 const env = process.env;
@@ -52,7 +55,13 @@ const TRUST_PROXY = (env.TRUST_PROXY ?? (env.RENDER_EXTERNAL_URL ? "true-client-
  */
 const RELAY_ONLY = process.argv.slice(2).includes("--relay-only");
 const STATIC_DIR = RELAY_ONLY ? "off" : (env.STATIC_DIR ?? "").trim();
-const QUICK_MATCH = env.QUICK_MATCH !== "off";
+/**
+ * Quick match pairs strangers, so it is OFF unless QUICK_MATCH is exactly
+ * "on" (for developers testing the queue). Crown Rush is friends-only: the
+ * game has no button for it, and a page that asks anyway gets
+ * "quick-disabled". Room codes are the only way to meet someone.
+ */
+const QUICK_MATCH = env.QUICK_MATCH === "on";
 /** "debug" adds client IPs and per-message detail; never on by default. */
 const LOG_LEVEL = env.LOG_LEVEL === "debug" ? "debug" : "info";
 
@@ -105,6 +114,8 @@ interface Conn {
 const conns = new Map<string, Conn>();
 const connsPerIp = new Map<string, number>();
 const pairAttempts = new Map<string, number[]>();
+/** Wrong room codes per address and per connection (server/joinGuard.ts). */
+const joinGuard = new JoinGuard();
 let nextId = 1;
 
 function clientIp(req: IncomingMessage): string {
@@ -203,10 +214,23 @@ function handle(conn: Conn, data: RawData, isBinary: boolean): void {
       log("info", "create", { conn: id, v: msg.v ?? 1 });
       deliver(hub.create(id, msg.deck, msg.mode, { loadout: msg.loadout, v: msg.v }));
       break;
-    case "join":
+    case "join": {
+      // Too many wrong codes from this address (an IPv6 address also counts
+      // toward its /56 and /48) or socket: refuse every join for a while, the
+      // right code included, so guessing learns nothing.
+      const keys = [...addressKeys(conn.ip), `conn:${id}`];
+      if (joinGuard.blocked(keys, now)) {
+        sendError(conn, "rate-limited");
+        log("info", "join-limited", { conn: id });
+        break;
+      }
       log("info", "join", { conn: id, v: msg.v ?? 1 });
-      deliver(hub.join(id, msg.code, msg.deck, { loadout: msg.loadout, v: msg.v }));
+      const out = hub.join(id, msg.code, msg.deck, { loadout: msg.loadout, v: msg.v });
+      const missed = out.some((o) => o.to === id && o.msg.t === "error" && o.msg.reason === "no-such-room");
+      if (missed && joinGuard.miss(keys, now)) log("info", "join-blocked", { conn: id });
+      deliver(out);
       break;
+    }
     case "quick":
       if (!QUICK_MATCH) {
         sendError(conn, "quick-disabled");
@@ -389,6 +413,7 @@ const sweeper = setInterval(() => {
     for (const [ip, times] of pairAttempts) {
       if (times.every((t) => now - t >= PAIR_WINDOW_MS)) pairAttempts.delete(ip);
     }
+    joinGuard.sweep(now);
   } catch (err) {
     log("error", "sweep", { err: String(err) });
   }

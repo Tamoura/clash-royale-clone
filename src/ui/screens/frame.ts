@@ -438,7 +438,7 @@ export function claimButton(ctx: AppCtx, state: ClaimState, reward: number, onCl
     b.setAttribute("aria-label", tr("Claimed", "تم الاستلام"));
   } else if (state === "claimable") {
     b.innerHTML = `${icon("coin")}<span>${fmtNum(reward)}</span>`;
-    b.setAttribute("aria-label", tr(`Claim ${reward} gold`, `استلم ${reward} ذهب`));
+    b.setAttribute("aria-label", tr(`Claim ${reward} gold`, `استلم ${fmtNum(reward)} ذهب`));
     b.addEventListener("click", () => {
       sfx(ctx, "claim");
       onClaim();
@@ -446,7 +446,7 @@ export function claimButton(ctx: AppCtx, state: ClaimState, reward: number, onCl
   } else {
     b.innerHTML = `${icon("lock")}<span>${fmtNum(reward)}</span>`;
     b.disabled = true;
-    b.setAttribute("aria-label", tr(`Locked: ${reward} gold when complete`, `مقفل: ${reward} ذهب عند الإكمال`));
+    b.setAttribute("aria-label", tr(`Locked: ${reward} gold when complete`, `مقفل: ${fmtNum(reward)} ذهب عند الإكمال`));
   }
   return b;
 }

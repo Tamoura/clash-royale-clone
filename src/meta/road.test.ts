@@ -67,10 +67,11 @@ describe("trophy road claims", () => {
     // Climb to 1400 and claim everything on the way.
     let road = claimAll(freshRoad(), 1400);
     expect(road.claimed).toHaveLength(28);
-    // The monthly soft reset drops 1400 to 1200.
+    // The monthly soft reset trims 1400 to 1300 (halving says 1200, but
+    // the reset never drops below Builder's Workshop, the arena at 1300).
     const season = checkSeason({ key: "2026-09", best: 1400, history: [] }, "2026-10", 1400);
     expect(season.reset).toBe(true);
-    expect(season.trophies).toBe(1200);
+    expect(season.trophies).toBe(1300);
     expect(claimable(season.trophies, road.claimed)).toEqual([]);
     // Climbing back over already-paid nodes pays nothing...
     expect(claimable(1400, road.claimed)).toEqual([]);

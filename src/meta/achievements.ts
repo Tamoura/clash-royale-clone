@@ -4,9 +4,11 @@
  * Achievements accumulate forever (unlike daily quests) from simple
  * counters, and pay gold once on claim. Seasons are keyed by calendar
  * month: on the first boot of a new month, trophies above the season
- * floor are halved back toward it (CR-style soft reset) and the previous
- * season's best is archived.
+ * floor are halved back toward it (CR-style soft reset), but never below
+ * the floor of the arena the player stands in, and the previous season's
+ * best is archived.
  */
+import { ARENAS, arenaIndexAt } from "./arenas";
 
 export interface AchievementDef {
   id: string;
@@ -31,16 +33,16 @@ export interface AchievementCounters {
 }
 
 export const ACHIEVEMENTS: AchievementDef[] = [
-  { id: "first-win", en: "Win your first battle", ar: "افز بأول معركة", counter: "wins", target: 1, reward: 50 },
-  { id: "win-10", en: "Win 10 battles", ar: "افز بـ ١٠ معارك", counter: "wins", target: 10, reward: 100 },
-  { id: "win-50", en: "Win 50 battles", ar: "افز بـ ٥٠ معركة", counter: "wins", target: 50, reward: 250 },
+  { id: "first-win", en: "Win your first battle", ar: "فُز بأول معركة", counter: "wins", target: 1, reward: 50 },
+  { id: "win-10", en: "Win 10 battles", ar: "فُز بـ ١٠ معارك", counter: "wins", target: 10, reward: 100 },
+  { id: "win-50", en: "Win 50 battles", ar: "فُز بـ ٥٠ معركة", counter: "wins", target: 50, reward: 250 },
   { id: "three-crown", en: "Score a 3-crown victory", ar: "حقق نصرًا بثلاثة تيجان", counter: "threeCrowns", target: 1, reward: 60 },
   { id: "three-crown-10", en: "Score 10 three-crown victories", ar: "حقق ١٠ انتصارات بثلاثة تيجان", counter: "threeCrowns", target: 10, reward: 150 },
   { id: "play-200", en: "Play 200 cards", ar: "العب ٢٠٠ بطاقة", counter: "plays", target: 200, reward: 80 },
   { id: "dmg-500k", en: "Deal 500,000 total damage", ar: "ألحق ٥٠٠ ألف ضرر إجمالي", counter: "damage", target: 500_000, reward: 120 },
   { id: "chest-10", en: "Open 10 chests", ar: "افتح ١٠ صناديق", counter: "chests", target: 10, reward: 80 },
-  { id: "champion-win", en: "Win with your Champion in the deck", ar: "افز وبطلك ضمن المجموعة", counter: "championWins", target: 1, reward: 70 },
-  { id: "quick-win", en: "Win a battle in under 2 minutes", ar: "افز بمعركة في أقل من دقيقتين", counter: "quickWins", target: 1, reward: 90 },
+  { id: "champion-win", en: "Win with your Champion in the deck", ar: "فُز وبطلك ضمن المجموعة", counter: "championWins", target: 1, reward: 70 },
+  { id: "quick-win", en: "Win a battle in under 2 minutes", ar: "فُز بمعركة في أقل من دقيقتين", counter: "quickWins", target: 1, reward: 90 },
   { id: "trophies-1k", en: "Reach 1000 trophies", ar: "اجمع ١٠٠٠ كأس", counter: "bestTrophies", target: 1000, reward: 150 },
 ];
 
@@ -191,19 +193,34 @@ export function onSeasonRollover(fn: (r: SeasonRollover) => void): () => void {
 }
 
 /**
+ * The trophies a season reset leaves: anything above the floor is halved
+ * back toward it, but never below the floor of the arena the player
+ * stands in, so a new season never takes an arena away (1600, the first
+ * step of Royal Arena, stays 1600; 1900 trims to 1600; 2500 to 2400).
+ */
+export function seasonResetTrophies(trophies: number): number {
+  if (!(trophies > SEASON_FLOOR)) return trophies;
+  const trimmed = SEASON_FLOOR + Math.floor((trophies - SEASON_FLOOR) / 2);
+  return Math.max(ARENAS[arenaIndexAt(trophies)].trophies, trimmed);
+}
+
+/**
  * Roll the season forward if the month changed. Returns the (possibly
- * soft-reset) trophy count and whether a reset banner should show.
+ * soft-reset) trophy count, whether the reset changed it (`reset`) and
+ * whether a saved season just rolled over to a new one (`rolled`, the
+ * cue for the season-start banner).
  */
 export function checkSeason(
   state: SeasonState | null,
   nowKey: string,
   trophies: number,
-): { state: SeasonState; trophies: number; reset: boolean } {
+): { state: SeasonState; trophies: number; reset: boolean; rolled: boolean } {
   if (state && state.key === nowKey) {
     return {
       state: { ...state, best: Math.max(state.best, trophies) },
       trophies,
       reset: false,
+      rolled: false,
     };
   }
   const history = state
@@ -219,15 +236,13 @@ export function checkSeason(
       }
     }
   }
-  const softReset =
-    trophies > SEASON_FLOOR
-      ? SEASON_FLOOR + Math.floor((trophies - SEASON_FLOOR) / 2)
-      : trophies;
+  const softReset = seasonResetTrophies(trophies);
   return {
     state: { key: nowKey, best: softReset, history },
     trophies: softReset,
-    // Only banner an actual change — a fresh profile just starts season 1.
     reset: state !== null && softReset !== trophies,
+    // A fresh profile just starts its first season: nothing to celebrate yet.
+    rolled: state !== null,
   };
 }
 

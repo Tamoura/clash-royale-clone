@@ -17,8 +17,8 @@ export interface QuestDef {
 }
 
 export const QUEST_POOL: QuestDef[] = [
-  { id: "win2", en: "Win 2 battles", ar: "افز في معركتين", measure: "wins", target: 2, reward: 40 },
-  { id: "win3", en: "Win 3 battles", ar: "افز في ٣ معارك", measure: "wins", target: 3, reward: 70 },
+  { id: "win2", en: "Win 2 battles", ar: "فُز في معركتين", measure: "wins", target: 2, reward: 40 },
+  { id: "win3", en: "Win 3 battles", ar: "فُز في ٣ معارك", measure: "wins", target: 3, reward: 70 },
   { id: "play20", en: "Play 20 cards", ar: "العب ٢٠ بطاقة", measure: "plays", target: 20, reward: 30 },
   { id: "play40", en: "Play 40 cards", ar: "العب ٤٠ بطاقة", measure: "plays", target: 40, reward: 60 },
   { id: "dmg30", en: "Deal 30,000 damage", ar: "ألحق ٣٠ ألف ضرر", measure: "damage", target: 30000, reward: 40 },

@@ -64,6 +64,10 @@ import {
 import { applyWaves, challengeStatus, type Challenge } from "./game/challenges";
 import { dailyDeck, dateKey } from "./game/daily";
 import { checkSeason, loadAchievements, loadSeason, saveSeason, seasonKey } from "./meta/achievements";
+import { SEASON_TOAST_MS, seasonStartText } from "./ui/seasonBanner";
+import { toast } from "./ui/components";
+import { EMOTES, EMOTE_PICKER, botReaction, emoteGlyph, type BotMoment } from "./ui/emotes";
+import { seasonName } from "./ui/screens/pass";
 import { loadQuests } from "./meta/quests";
 import { registerRewards } from "./meta/rewardsWire";
 import { registerNewCards } from "./ui/newCards";
@@ -80,12 +84,10 @@ import {
 } from "./app/hooks";
 import { beginCastBattle, castReady } from "./render3d/cast/index";
 import {
-  POLITE_MATCHES,
   avgDeckLevel,
   botLevels,
   installAutoDifficulty,
   ensureAutoState,
-  ladderMatchesPlayed,
   ladderProfile,
   loadAutoState,
   loadDifficulty,
@@ -145,6 +147,7 @@ import { applyMatchResult } from "./match/rewards";
 import { defaultKV } from "./meta/kv";
 import { reachedArenaIndex } from "./meta/unlocks";
 import { registerHomeSlot } from "./app/slots";
+import { localizeStaticMarkup } from "./app/brand";
 import { battleMenuOpen } from "./ui/battleMenu";
 import { signed } from "./render3d/result";
 
@@ -153,6 +156,8 @@ import "./audio/wire";
 
 // Apply edition-aware CSS variables before any DOM is rendered.
 applyEditionTokens(STORED_EDITION);
+// The tab title, splash and boot labels in the edition's language (Crown Rush).
+localizeStaticMarkup(document);
 // Canvas labels (unit names, banners) are painted once, so warm the
 // Arabic face up front in the Islamic edition.
 if (ARABIC) {
@@ -266,7 +271,7 @@ let abilityCursor = 0;
 const sandboxResetBtn = document.createElement("button");
 sandboxResetBtn.className = "sandbox-reset";
 sandboxResetBtn.textContent = tr("↺ Reset", "↺ إعادة");
-sandboxResetBtn.setAttribute("aria-label", "Reset the sandbox battle");
+sandboxResetBtn.setAttribute("aria-label", tr("Reset the sandbox battle", "أعد معركة ساحة التجربة من البداية"));
 sandboxResetBtn.style.display = "none";
 stage.appendChild(sandboxResetBtn);
 
@@ -295,18 +300,16 @@ let questsBattleRef: BattleState | null = null;
 
 saveSeason(meta.season);
 if (seasonRoll.reset) {
-  const from = meta.profile.trophies;
   meta.profile = { ...meta.profile, trophies: seasonRoll.trophies };
   saveProfile(localStorage, meta.profile);
-  // Banner once the UI exists — boot runs before the stage is built.
-  window.setTimeout(() => {
-    showBanner(
-      tr(
-        `New season! Trophies: ${from} → ${seasonRoll.trophies}`,
-        `موسم جديد! الكؤوس: ${from} ← ${seasonRoll.trophies}`,
-      ),
-    );
-  }, 1200);
+}
+if (seasonRoll.rolled) {
+  // A celebration, never a loss: the reset keeps the arena they reached.
+  // A toast once the UI exists (boot runs before the stage is built); the
+  // battle banner would sit behind Home's panels. It stays up long enough
+  // for a young reader (SEASON_TOAST_MS), not the usual 2.4 s.
+  const line = seasonStartText(seasonName(seasonRoll.state.key), seasonRoll.trophies, tr);
+  window.setTimeout(() => toast(line, "success", SEASON_TOAST_MS), 1200);
 }
 
 function persistProfile(): void {
@@ -336,11 +339,6 @@ applyTowerFlair();
 /** The tier the next bot plays at (the "auto" option follows your results). */
 function currentTier(): Tier {
   return resolveTier(meta.difficulty, loadAutoState(meta.profile.trophies));
-}
-
-/** Bots keep their taunts to themselves while a player finds their feet. */
-function politeBot(): boolean {
-  return ladderMatchesPlayed(meta.profile.trophies) < POLITE_MATCHES;
 }
 
 // ---- Bot archetypes: each ladder opponent has a personality -------------
@@ -575,8 +573,8 @@ function startLadder(): void {
   );
   // Personality tweaks (match/difficulty.ts archetypeTweak): beatdown banks
   // bigger pushes, cycle plays faster, siege turtles behind buildings and
-  // only commits when fully loaded. Practice and rookie are calibrated as a
-  // whole (novice.test), so they keep their own pace.
+  // only commits when fully loaded. Practice to normal are calibrated as a
+  // whole (ladder.test, keepsOwnPace), so they keep their own pace.
   const tuned: BotProfile = ladderProfile(tier, archetype);
   const banded: BotProfile = championBotMatch
     ? { ...tuned, thinkInterval: tuned.thinkInterval * 0.85, pushAt: Math.max(4, tuned.pushAt - 1) }
@@ -603,7 +601,7 @@ function startLadder(): void {
         showBanner(
           tr(
             `A Champion Bot approaches — beat it for +${CHAMPION_BONUS_GOLD} 🪙!`,
-            `بوت بطل يقترب — اهزمه مقابل +${CHAMPION_BONUS_GOLD} 🪙!`,
+            `بوت بطل يقترب — اهزمه مقابل +${fmtNum(CHAMPION_BONUS_GOLD)} 🪙!`,
           ),
         ),
       2600,
@@ -1003,11 +1001,11 @@ if (EDITION_CHOSEN && !tutorialDone()) {
 // ---- Emotes ------------------------------------------------------------
 
 // One chat bubble (CR): tap to open the tray, pick an emote, it closes.
-const EMOTES = ["😂", "😭", "👍", "😡"];
+// Only friendly emotes (ui/emotes.ts); the wire table keeps old ids stable.
 setOnlineEmotes(EMOTES);
 const emoteToggle = document.createElement("button");
 emoteToggle.className = "emote-toggle";
-emoteToggle.setAttribute("aria-label", "Emotes");
+emoteToggle.setAttribute("aria-label", tr("Emotes", "التعابير"));
 emoteToggle.setAttribute("aria-expanded", "false");
 emoteToggle.innerHTML = '<span class="bubble-dots"><i></i><i></i><i></i></span>';
 const emoteTray = document.createElement("div");
@@ -1020,12 +1018,14 @@ emoteToggle.addEventListener("click", (ev) => {
   ev.stopPropagation();
   setEmotesOpen(!emoteBar.classList.contains("open"));
 });
-for (const emoji of EMOTES) {
+for (const pick of EMOTE_PICKER) {
+  const emoji = EMOTES[pick.id];
   const btn = document.createElement("button");
   btn.textContent = emoji;
+  btn.setAttribute("aria-label", tr(...pick.label));
   btn.addEventListener("click", () => {
     // Online emotes travel in the lockstep and pop on both screens together.
-    if (!sendOnlineEmote(EMOTES.indexOf(emoji))) {
+    if (!sendOnlineEmote(pick.id)) {
       scene.showEmote(localSide(), emoji);
       audio.emotePop();
     }
@@ -1041,11 +1041,15 @@ window.addEventListener("pointerdown", (ev) => {
 
 let botEmoteCooldown = 0;
 
-/** The bot's chat bubble; `force` skips the cooldown (the post-match goodwill). */
-function botEmote(emoji: string, force = false): void {
-  if (botEmoteCooldown > 0 && !force) return;
+/**
+ * The bot's chat bubble, only ever kind (ui/emotes.ts botReaction: no
+ * laughing or gloating); `force` skips the cooldown (the post-match goodwill).
+ */
+function botEmote(moment: BotMoment, force = false): void {
+  const glyph = emoteGlyph(botReaction(moment) ?? -1);
+  if (!glyph || (botEmoteCooldown > 0 && !force)) return;
   botEmoteCooldown = 6;
-  scene.showEmote("enemy", emoji);
+  scene.showEmote("enemy", glyph);
   audio.emotePop();
 }
 
@@ -1286,9 +1290,8 @@ function finishMatch(winner: Side | "draw"): void {
     cardsPlayed: battleCardsPlayed,
   });
   if (settled.recorded) battleCardsPlayed = 0;
-  // Manners: a friendly thumbs-up when you win; no gloating while you're new.
-  if (settled.ladder && winner === "player") botEmote(EMOTES[2], true);
-  else if (settled.ladder && winner === "enemy" && !politeBot()) botEmote("🎉");
+  // Manners: a thumbs-up when you win, a friendly wave otherwise; never gloating.
+  if (settled.ladder) botEmote({ type: "end", kidWon: winner === "player" ? true : winner === "enemy" ? false : null }, true);
   const mine = mySide === "player" ? battle.player : battle.enemy;
   const theirs = mySide === "player" ? battle.enemy : battle.player;
   emit("matchEnd", {
@@ -1414,8 +1417,10 @@ function frame(now: number): void {
         }`,
       );
     }
-    if (ev.type === "crown" && mode() === "solo" && (ev.winner !== "enemy" || !politeBot())) {
-      botEmote(ev.winner === "enemy" ? "😂" : "😭");
+    // The bot says wow when you take its tower, and never laughs when it takes yours.
+    // The tower that ends the match gets only the end emote (finishMatch).
+    if (ev.type === "crown" && mode() === "solo") {
+      botEmote({ type: "crown", byKid: ev.winner === "player", matchOver: battle.result !== null });
     }
     if (ev.type === "finish") finishMatch(ev.winner);
   }

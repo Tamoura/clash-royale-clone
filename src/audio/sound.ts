@@ -4,12 +4,14 @@ import { getCard, type CardId } from "../game/cards";
 import { ARABIC } from "../render3d/theme";
 import { getPrefs, onPrefs, setPrefs, type Prefs } from "../ui/prefs";
 import {
+  HUSH_LEVEL,
   MAX_LOOKAHEAD_SEC,
   MUSIC_FADE_SEC,
   SCHEDULER_TICK_MS,
   TRACKS,
   compileTrack,
   dueSteps,
+  hushedLayers,
   layersAt,
   lookaheadFor,
   stepSeconds,
@@ -212,6 +214,7 @@ export class SoundEngine {
   intensity: Intensity = 0;
   /** Notes booked by the music scheduler (a test/debug counter). */
   notesScheduled = 0;
+  private hushOn = false;
 
   constructor(opts: { edition?: Edition } = {}) {
     this.edition = opts.edition ?? (ARABIC ? "arabic" : "classic");
@@ -396,6 +399,21 @@ export class SoundEngine {
     this.intensity = level;
   }
 
+  /** True while the battle track plays only its quiet bed (see setHushed). */
+  get hushed(): boolean {
+    return this.hushOn;
+  }
+
+  /**
+   * Drop the battle track to its quietest layer while the game waits on
+   * the player (a tutorial step holding the clock), and bring the rest back
+   * from the next step when play resumes. It keeps its place in the tune;
+   * the menu theme never hushes.
+   */
+  setHushed(on: boolean): void {
+    this.hushOn = on;
+  }
+
   private track(id: TrackId): CompiledTrack {
     let t = this.compiled.get(id);
     if (!t) {
@@ -466,6 +484,12 @@ export class SoundEngine {
     const layers = layersAt(def, this.intensity);
     const hz = (n: Note): number => def.rootHz * Math.pow(2, n.semis / 12);
     const out = deck.gain;
+    if (this.hushOn && def.id === "battle") {
+      const q = hushedLayers(def);
+      if (ev.bass && q.bass) this.voice(voices.bass, hz(ev.bass), t, ev.bass.len * sec * 0.9, LAYER.bass * HUSH_LEVEL, out);
+      if (ev.pad && q.pad) for (const n of ev.pad) this.voice("pad", hz(n), t, n.len * sec, LAYER.pad * HUSH_LEVEL, out);
+      return;
+    }
     if (ev.lead) this.voice(voices.lead, hz(ev.lead), t, ev.lead.len * sec, LAYER.lead, out);
     if (ev.bass) this.voice(voices.bass, hz(ev.bass), t, ev.bass.len * sec * 0.9, LAYER.bass, out);
     if (ev.arp && layers.arp) this.voice(voices.arp, hz(ev.arp), t, ev.arp.len * sec * 0.8, LAYER.arp, out);

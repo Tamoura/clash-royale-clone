@@ -37,6 +37,14 @@
   opacity: 0;
   transition: opacity var(--dur-slow) var(--ease-out);
 }
+/* While the mask is up, a touch on it stays the page's: no pan takes it
+   over (pointercancel), so a wrong card's slow drag ends in a pointerup and
+   its drop gets the coach's nudge. Set on the <svg> too: Chrome reads
+   touch-action from the outer svg, not from shapes inside it. */
+.tut-mask.on,
+.tut-mask.on .tut-mask-fill {
+  touch-action: none;
+}
 .tut-mask.on .tut-mask-fill {
   opacity: 1;
   pointer-events: visiblePainted;
@@ -129,6 +137,28 @@
   box-shadow: 0 0 0 2px var(--accent), var(--elev-2);
 }
 
+/* ── The target card's name, on a tinted chip just above the card ── */
+.tut-chip {
+  position: absolute;
+  z-index: 3;
+  transform: translate(-50%, -100%);
+  max-width: 40vw;
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-ink, #1a1030);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, #000), var(--elev-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.tut-chip[hidden] {
+  display: none;
+}
+
 /* ── Coach bubble ── */
 .tut-coach {
   position: absolute;
@@ -189,6 +219,14 @@
 }
 .tut-coach[data-place="center"].pop {
   animation-name: tut-pop-center;
+}
+/* A wrong press: the bubble names the right card, with a little shake. */
+.tut-coach.nudge {
+  border-color: var(--cta, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cta, var(--accent)) 45%, transparent), var(--elev-3);
+}
+.tut-coach.nudge.pop {
+  animation: tut-nudge 420ms var(--ease-out) both;
 }
 .tut-coach-avatar {
   flex: none;
@@ -399,6 +437,13 @@
     transform: scale(1.6);
     opacity: 0;
   }
+}
+@keyframes tut-nudge {
+  0%, 100% { transform: translateX(-50%); }
+  20% { transform: translateX(calc(-50% - 7px)); }
+  40% { transform: translateX(calc(-50% + 6px)); }
+  60% { transform: translateX(calc(-50% - 4px)); }
+  80% { transform: translateX(calc(-50% + 2px)); }
 }
 @keyframes tut-blink {
   50% {

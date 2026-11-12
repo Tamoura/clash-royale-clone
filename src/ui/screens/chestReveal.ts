@@ -2,9 +2,14 @@
  * The chest-opening moment: a full-screen sequence over everything (at
  * --z-modal). The chest drops in and shakes, bursts open in light, the gold
  * and gems count up, then each card flips (on tap, or by itself after
- * 700ms) with a rarity flash. A new card gets a NEW CARD! ribbon and an
- * "Add to deck" button; shards show as +N with the progress bar toward the
- * card's next level. A tap moves on, a long press skips to the summary.
+ * 700ms) with a rarity flash. A new card gets a NEW CARD! ribbon; shards
+ * show as +N with the progress bar toward the card's next level. A tap
+ * moves on, a long press skips to the summary.
+ *
+ * Nothing in the sequence itself can change the deck: the taps that move
+ * it on land in the middle of the screen, so "Add to deck" waits for the
+ * summary, below Collect, and opens a strip of the kid's deck where they
+ * tap which card goes out ("Keep my deck" is the default; see deckSwap.ts).
  * With reduced motion the same steps play as fades with instant flips.
  */
 import "../styles/rewards.css";
@@ -15,11 +20,12 @@ import { upgradeCost } from "../../meta/economy";
 import { cardDisplayName } from "../../render/cardNames";
 import { ARABIC } from "../../render3d/theme";
 import { makeCardCanvas } from "../cardFrame";
-import { button, confirm, rewardBursts } from "../components";
+import { button, rewardBursts } from "../components";
 import { fmtNum } from "../i18n";
 import { icon } from "../icons";
 import { getPrefs, reducedMotion } from "../prefs";
 import { mountSparkles } from "../sparkles";
+import { STRIP_ARM_MS, addWithoutSwap, pickSwapOut, swapIntoDeck } from "./deckSwap";
 
 // ---- Feedback contracts -------------------------------------------------------
 
@@ -67,6 +73,13 @@ export function buzz(kind: "claim" | "select" | "deploy"): void {
 
 const RARITY_RANK: Record<Rarity, number> = { common: 0, rare: 1, epic: 2, legendary: 3 };
 
+/**
+ * Collect ignores taps this long after the summary appears. It sits where
+ * the "tap to continue" taps land, so without this a fast tap-through
+ * collected at once and the kid never saw the summary or its new-card offer.
+ */
+export const COLLECT_ARM_MS = 1000;
+
 export function rarityLabel(r: Rarity, tr: AppCtx["tr"]): string {
   switch (r) {
     case "legendary":
@@ -82,20 +95,6 @@ export function rarityLabel(r: Rarity, tr: AppCtx["tr"]): string {
 
 export function chestLabel(r: ChestRarity, tr: AppCtx["tr"]): string {
   return r === "rare" ? tr("Rare Chest", "صندوق نادر") : tr("Wooden Chest", "صندوق خشبي");
-}
-
-/** Index of the deck card a new card replaces: the most expensive (the last one on ties). */
-export function swapOutIndex(deck: readonly CardId[]): number {
-  let best = -1;
-  let cost = -1;
-  deck.forEach((id, i) => {
-    const c = getCard(id).cost;
-    if (c >= cost) {
-      cost = c;
-      best = i;
-    }
-  });
-  return best;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
@@ -264,7 +263,7 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
     window.clearTimeout(pressTimer);
   });
   const onKey = (e: KeyboardEvent): void => {
-    if (document.querySelector(".ui-modal")) return; // the Add-to-deck question owns the keys
+    if (document.querySelector(".ui-modal")) return; // the deck strip owns the keys
     if (e.key === "Escape") skip();
     else if ((e.key === "Enter" || e.key === " ") && !(e.target as Element)?.closest?.("button")) advance?.();
   };
@@ -330,7 +329,12 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
         snd.newCard?.();
         snd.sting?.(card.rarity);
         if (!legendary) info.appendChild(el("div", "rw-card__ribbon", tr("NEW CARD!", "بطاقة جديدة!")));
-        info.appendChild(addToDeckButton(item.id));
+        // No button here: this is where "tap to continue" taps land.
+        if (!meta.playerDeck.includes(item.id)) {
+          info.appendChild(
+            el("div", "rw-card__later", tr("You can add it to your deck at the end.", "يمكنك إضافتها إلى مجموعتك في النهاية.")),
+          );
+        }
       } else {
         const level = meta.profile.levels[item.id] ?? 1;
         const have = meta.profile.shards[item.id] ?? 0;
@@ -363,38 +367,62 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
     return { flip, el: wrap };
   };
 
-  /** "Add to deck": swap the new card in for the deck's most expensive card. */
-  const addToDeckButton = (id: CardId): HTMLElement => {
-    if (meta.playerDeck.includes(id)) return el("div", "rw-card__indeck", tr("In your deck", "في مجموعتك"));
+  /**
+   * The summary's new-card offer. "Add to deck" opens the deck strip; the
+   * deck only changes when the kid taps the card that goes out. The button
+   * ignores taps for a moment after the summary appears, so the last tap of
+   * a tap-through never opens it.
+   */
+  const addToDeckOffer = (id: CardId): HTMLElement => {
+    const box = el("div", "rw-summary__offer");
+    if (meta.playerDeck.includes(id)) {
+      box.appendChild(el("div", "rw-card__indeck", tr("In your deck", "في مجموعتك")));
+      return box;
+    }
+    const shownAt = performance.now();
+    let busy = false;
+    const done = (text: string): void => {
+      snd.claim?.();
+      box.replaceChildren(el("div", "rw-card__indeck", text));
+    };
     const btn = button({
-      variant: "primary",
+      variant: "secondary",
       icon: "cards",
       label: tr("Add to deck", "أضف إلى المجموعة"),
       onClick: () => {
-        const i = swapOutIndex(meta.playerDeck);
-        if (i < 0) return;
-        const out = meta.playerDeck[i];
-        void confirm({
-          title: tr("Add to deck?", "إضافة إلى المجموعة؟"),
-          body: tr(
-            `${cardDisplayName(id)} takes the place of ${cardDisplayName(out)} (${getCard(out).cost} elixir), your most expensive card.`,
-            `تحلّ ${cardDisplayName(id)} محلّ ${cardDisplayName(out)} (${fmtNum(getCard(out).cost)} إكسير)، أغلى بطاقة في مجموعتك.`,
-          ),
-          okLabel: tr("Swap in", "استبدال"),
-          cancelLabel: tr("Keep my deck", "أبقِ مجموعتي"),
-        }).then((ok) => {
-          if (!ok || meta.playerDeck.includes(id)) return;
-          const deck = meta.playerDeck.slice();
-          deck[i] = id;
-          meta.playerDeck = deck;
+        if (busy || performance.now() - shownAt < STRIP_ARM_MS) return;
+        if (meta.playerDeck.includes(id)) return;
+        const roomy = addWithoutSwap(meta.playerDeck, id);
+        if (roomy) {
+          meta.playerDeck = roomy;
           ctx.persistProfile();
-          snd.claim?.();
-          btn.replaceWith(el("div", "rw-card__indeck", tr("Added to your deck", "أضيفت إلى مجموعتك")));
+          done(tr("Added to your deck", "أضيفت إلى مجموعتك"));
+          return;
+        }
+        busy = true;
+        void pickSwapOut(id, meta.playerDeck).then((i) => {
+          busy = false;
+          if (i === null) return; // kept their deck: nothing changed
+          const out = meta.playerDeck[i];
+          const next = swapIntoDeck(meta.playerDeck, i, id);
+          if (!next) return;
+          meta.playerDeck = next;
+          ctx.persistProfile();
+          done(
+            tr(
+              `Added to your deck! ${cardDisplayName(out)} is still in your cards.`,
+              `أضيفت إلى مجموعتك! وما زالت بطاقة ${cardDisplayName(out)} معك.`,
+            ),
+          );
         });
       },
     });
     btn.classList.add("rw-card__add");
-    return btn;
+    box.append(
+      el("p", "rw-summary__offer-text", tr(`${cardDisplayName(id)} is new! Want it in your deck?`, `بطاقة ${cardDisplayName(id)} جديدة! أتريدها في مجموعتك؟`)),
+      btn,
+    );
+    return box;
   };
 
   /** Where the chest's gold flies from when Collect is pressed (the summary's pills). */
@@ -425,19 +453,23 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
     }
     if (items.length > 0) summary.appendChild(grid);
     const newId = items.find((i) => i.isNew)?.id;
-    if (newId) summary.appendChild(addToDeckButton(newId));
+    const shownAt = performance.now();
     return new Promise((resolve) => {
       const ok = button({
         variant: "cta",
         size: "lg",
         label: tr("Collect", "استلام"),
         onClick: () => {
+          if (performance.now() - shownAt < COLLECT_ARM_MS) return; // the tap-through's last taps
           collectFrom = cur.getBoundingClientRect();
           resolve();
         },
       });
-      ok.classList.add("rw-summary__ok");
+      ok.classList.add("rw-summary__ok", "is-arming");
+      window.setTimeout(() => ok.classList.remove("is-arming"), COLLECT_ARM_MS);
       summary.appendChild(ok);
+      // The new card's offer goes below Collect, off the centre of the screen.
+      if (newId) summary.appendChild(addToDeckOffer(newId));
       hint.textContent = "";
       ok.focus({ preventScroll: true });
     });
