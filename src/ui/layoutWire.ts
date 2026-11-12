@@ -10,11 +10,14 @@
  *
  * Tall mode measures the scoreboard band floating over the top of the
  * board and frames the board under it (a little below the middle of what
- * is left over the tray, see TALL_ALIGN_Y); wide mode frames it between the
- * two side panels.
+ * is left over the tray, see TALL_ALIGN_Y). The far king's column (the
+ * box's crown: his canopy and HP plate) only has to clear the chips that
+ * sit over it, so where the band leaves the middle free (tablets) he rises
+ * between them instead of shrinking the board. Wide mode frames the board
+ * between the two side panels.
  */
 import type { Battle3D } from "../render3d/scene3d";
-import { TALL_ALIGN_Y, TALL_BOX, ZERO_INSETS, type Insets } from "../render3d/scene/fit";
+import { BAND_GAP_PX, TALL_ALIGN_Y, TALL_BOX, TRAY_MARK_PX, ZERO_INSETS, type Insets } from "../render3d/scene/fit";
 import { setEdgeShade } from "../render3d/scene/post";
 import { SIDE_ROOMY, SIDE_SLIM, battleLayout } from "./layout";
 
@@ -26,7 +29,7 @@ export interface LayoutControl {
 /** The parts of the scoreboard band; the board may start just under them. */
 const BAND_PARTS = ".crowns, .clock, .menu-toggle";
 /** Gap between the band and the board's far edging (CSS px). */
-const BAND_GAP = 4;
+const BAND_GAP = BAND_GAP_PX;
 /** The CSS variables a battle layout sets on :root (cleared between battles). */
 const LAYOUT_VARS = ["--side", "--field-w", "--card-w", "--card-h", "--next-w", "--king-w", "--gutter-w", "--gap-w", "--hand-cols", "--band"] as const;
 
@@ -48,18 +51,27 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
   };
 
   let battle = false;
-  // A high-water mark per match: the band never shrinks mid-battle, so the
-  // board does not jump when "OVERTIME" replaces the clock's digits.
+  // High-water marks per match: the band never shrinks mid-battle, so the
+  // board does not jump when "OVERTIME" replaces the clock's digits. `crown`
+  // is the same for the chips over the far king's column only.
   let band = 0;
-  const bandInset = (): number => {
-    const top = stage.getBoundingClientRect().top;
-    let bottom = top;
+  let crown = 0;
+  const bandInset = (safeTop: number): { top: number; crownTop: number } => {
+    const r = stage.getBoundingClientRect();
+    // The crown's column at its widest (a width-bound board), about the stage's middle.
+    const half = (TALL_BOX.crown?.halfW ?? 0) * (r.width / (2 * TALL_BOX.halfW));
+    const mid = r.left + r.width / 2;
+    let bottom = r.top;
+    let over = r.top + safeTop;
     topbar.querySelectorAll<HTMLElement>(BAND_PARTS).forEach((el) => {
-      const r = el.getBoundingClientRect();
-      if (r.height > 0) bottom = Math.max(bottom, r.bottom);
+      const q = el.getBoundingClientRect();
+      if (q.height <= 0) return;
+      bottom = Math.max(bottom, q.bottom);
+      if (q.right > mid - half && q.left < mid + half) over = Math.max(over, q.bottom);
     });
-    band = Math.max(band, bottom - top + BAND_GAP);
-    return band;
+    band = Math.max(band, bottom - r.top + BAND_GAP);
+    crown = Math.max(crown, over - r.top + BAND_GAP);
+    return { top: band, crownTop: Math.min(crown, band) };
   };
 
   const relayout = (): void => {
@@ -72,7 +84,8 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
       setEdgeShade(scene, 0);
       return;
     }
-    const lay = battleLayout(window.innerWidth, window.innerHeight, readSafeArea());
+    const safe = readSafeArea();
+    const lay = battleLayout(window.innerWidth, window.innerHeight, safe);
     // Set the mode first: the band's own size depends on it.
     root.dataset.layout = lay.mode;
     root.dataset.side = lay.side >= SIDE_ROOMY ? "roomy" : "narrow";
@@ -101,13 +114,14 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
     }
     // Tall: the board goes under the band; so do the stage's own top-corner
     // controls (the sandbox reset), which the band would otherwise cover.
-    const top = bandInset();
+    // The near plates keep clear of the tray's ornament under the board.
+    const { top, crownTop } = bandInset(safe.top);
     root.style.setProperty("--band", px(top));
-    scene.setFraming({ insets: { ...ZERO_INSETS, top }, box: TALL_BOX, alignY: TALL_ALIGN_Y });
+    scene.setFraming({ insets: { ...ZERO_INSETS, top, crownTop }, box: TALL_BOX, alignY: TALL_ALIGN_Y, plateFloor: TRAY_MARK_PX });
   };
 
   window.addEventListener("resize", () => {
-    band = 0; // a new screen size measures its band afresh
+    band = crown = 0; // a new screen size measures its band afresh
     relayout();
   });
   // Names, badges and the clock change the band's size (clock ticks do not).
@@ -116,7 +130,7 @@ export function installLayout(scene: Battle3D, topbar: HTMLElement): LayoutContr
   return {
     setBattle(on: boolean): void {
       battle = on;
-      band = 0;
+      band = crown = 0;
       relayout();
       // Size the canvas for the new layout before the next frame draws
       // (the container's own observer would only catch up after it).

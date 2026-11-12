@@ -9,10 +9,15 @@ import {
   TALL_BOX,
   ZERO_INSETS,
   fitBattleFrustum,
+  heightScale,
   type ContentBox,
   type Frustum,
   type Insets,
 } from "./fit";
+
+/** The content the frame fitted before the far king's crown: the field and its edging, no pads. */
+const LEGACY_BOX: ContentBox = { halfW: 9.95, height: 26.8, mid: 0.6 };
+const LEGACY_TALL: ContentBox = { ...LEGACY_BOX, halfW: 9.25 };
 
 /** The frame before fit.ts: frameOrtho's own math with only a top inset, verbatim. */
 function legacy(w: number, h: number, topInsetPx: number): Frustum {
@@ -53,11 +58,11 @@ function rng(seed: number): () => number {
 }
 
 describe("fitBattleFrustum", () => {
-  it("reproduces the old top-inset frame exactly", () => {
+  it("reproduces the old top-inset frame exactly (the old box: no pads, no crown)", () => {
     for (const w of [320, 390, 468, 614, 844, 1440]) {
       for (const h of [400, 653, 683, 914, 1180]) {
         for (const top of [0, 58, 97, 400]) {
-          const a = fitBattleFrustum(w, h, topOnly(top));
+          const a = fitBattleFrustum(w, h, topOnly(top), LEGACY_BOX);
           const b = legacy(w, h, top);
           expect(a.left).toBeCloseTo(b.left, 9);
           expect(a.right).toBeCloseTo(b.right, 9);
@@ -68,42 +73,61 @@ describe("fitBattleFrustum", () => {
     }
   });
 
-  it("matches the shipped phone frames (golden values)", () => {
-    const a = fitBattleFrustum(390, 653, topOnly(97));
+  it("matches the shipped phone frames for the old box (golden values)", () => {
+    const a = fitBattleFrustum(390, 653, topOnly(97), LEGACY_BOX);
     expect(a.left).toBeCloseTo(-9.95, 4);
     expect(a.right).toBeCloseTo(9.95, 4);
     expect(a.top).toBeCloseTo(19.7346, 4);
     expect(a.bottom).toBeCloseTo(-13.5851, 4);
-    const b = fitBattleFrustum(468, 683, topOnly(97));
+    const b = fitBattleFrustum(468, 683, topOnly(97), LEGACY_BOX);
     expect(b.left).toBeCloseTo(-10.7017, 4);
     expect(b.right).toBeCloseTo(10.7017, 4);
     expect(b.top).toBeCloseTo(18.4362, 4);
     expect(b.bottom).toBeCloseTo(-12.8, 4);
   });
 
-  it("keeps the content box inside the free rectangle, touching it", () => {
+  it("keeps the content inside the free rectangle (pads and crown included), touching it", () => {
     const r = rng(0xc0ffee);
-    for (let i = 0; i < 500; i++) {
+    const boxes: ContentBox[] = [BATTLE_BOX, TALL_BOX, LEGACY_BOX, LEGACY_TALL];
+    for (let i = 0; i < 800; i++) {
       const w = 200 + r() * 2400;
       const h = 200 + r() * 1400;
       const left = r() < 0.5 ? 0 : r() * w * 0.4;
       const right = r() < 0.5 ? left : r() * w * 0.4;
-      const ins: Insets = { left, right, top: r() * h * 0.4, bottom: r() * h * 0.4 };
-      const box: ContentBox = r() < 0.5 ? BATTLE_BOX : TALL_BOX;
+      const top = r() * h * 0.4;
+      // The chips over the crown's column cover at most what the band does.
+      const crownTop = r() < 0.4 ? undefined : r() * top;
+      const ins: Insets = { left, right, top, bottom: r() * h * 0.4, crownTop };
+      const box = boxes[Math.floor(r() * boxes.length)];
       const f = fitBattleFrustum(w, h, ins, box);
-      const top = Math.min(ins.top, MAX_TOP_FRAC * h);
-      const free = { x0: ins.left, x1: w - ins.right, y0: top, y1: h - ins.bottom };
+      const cap = (v: number): number => Math.min(v, MAX_TOP_FRAC * h);
+      const free = { x0: ins.left, x1: w - ins.right, y0: cap(top), y1: h - ins.bottom };
+      const bot = box.mid - box.height / 2;
+      const yOf = (u: number): number => toPx(f, w, h, 0, u).y;
       const a = toPx(f, w, h, -box.halfW, box.mid + box.height / 2);
-      const b = toPx(f, w, h, box.halfW, box.mid - box.height / 2);
+      const b = toPx(f, w, h, box.halfW, bot);
       const eps = 1e-6;
+      // Free rectangles too small to hold the content are not the point here.
+      if (free.y1 - free.y0 < 40 || free.x1 - free.x0 < 1) continue;
       expect(a.x).toBeGreaterThanOrEqual(free.x0 - eps);
       expect(b.x).toBeLessThanOrEqual(free.x1 + eps);
-      expect(a.y).toBeGreaterThanOrEqual(free.y0 - eps);
-      expect(b.y).toBeLessThanOrEqual(free.y1 + eps);
-      // As large as it goes: it spans the free rect on one axis.
-      const fillsW = Math.abs(b.x - a.x - (free.x1 - free.x0)) < 1e-6;
-      const fillsH = Math.abs(b.y - a.y - (free.y1 - free.y0)) < 1e-6;
-      expect(fillsW || fillsH).toBe(true);
+      const boardTop = a.y - (box.padTop ?? 0);
+      const bottom = b.y + (box.padBottom ?? 0);
+      expect(boardTop).toBeGreaterThanOrEqual(free.y0 - eps);
+      expect(bottom).toBeLessThanOrEqual(free.y1 + eps);
+      const tight = [Math.abs(b.x - a.x - (free.x1 - free.x0)) < 1e-6, Math.abs(bottom - boardTop - (free.y1 - free.y0)) < 1e-6];
+      if (box.crown) {
+        const crownTopPx = yOf(box.crown.top) - box.crown.padTop;
+        const crownFree = cap(crownTop ?? top);
+        expect(crownTopPx).toBeGreaterThanOrEqual(crownFree - eps);
+        tight.push(Math.abs(bottom - crownTopPx - (free.y1 - crownFree)) < 1e-6);
+      }
+      // As large as it goes: it spans the free rect's width, or a part of it spans the free height.
+      expect(tight.some(Boolean)).toBe(true);
+      // The predicted scale matches where nothing narrower covers the crown.
+      if (crownTop === undefined && b.x - a.x < free.x1 - free.x0 - 1e-6) {
+        expect(w / (f.right - f.left)).toBeCloseTo(heightScale(free.y1 - free.y0, box), 6);
+      }
       // The frustum keeps the canvas aspect: nothing stretches.
       expect((f.right - f.left) / (f.top - f.bottom)).toBeCloseTo(w / h, 9);
     }
@@ -116,23 +140,29 @@ describe("fitBattleFrustum", () => {
     }
   });
 
-  it("makes portrait troops bigger: the slim box under the measured band", () => {
+  it("makes portrait troops bigger: the slim box under the measured band (the same content)", () => {
     const before = scaleOf(390, legacy(390, 653, 97));
-    const after = scaleOf(390, fitBattleFrustum(390, 653, topOnly(83), TALL_BOX));
+    const after = scaleOf(390, fitBattleFrustum(390, 653, topOnly(83), LEGACY_TALL));
     expect(after / before).toBeGreaterThanOrEqual(1.07);
   });
 
   it("places the board along a free rectangle taller than it (the compact tray's spare height)", () => {
-    // A 390x844 phone: the stage over the 124px tray is 720px, the band 87px.
+    // A 390x844 phone: the stage over the 124px tray is 720px, the band 87px
+    // (its clock sits over the far king's column, so the crown goes under it too).
     const w = 390;
     const h = 720;
     const ins = topOnly(87);
+    const crown = TALL_BOX.crown!;
+    const bot = TALL_BOX.mid - TALL_BOX.height / 2;
     const s = w / (2 * TALL_BOX.halfW); // width-bound
-    const boxPx = TALL_BOX.height * s;
+    // The content's height on screen: the taller of the board and the crown, pads included.
+    const boxPx = Math.max(TALL_BOX.height * s + (TALL_BOX.padTop ?? 0), (crown.top - bot) * s + crown.padTop) + (TALL_BOX.padBottom ?? 0);
     const slack = h - 87 - boxPx;
-    expect(slack).toBeGreaterThan(50);
-    const boxTop = (f: Frustum): number => toPx(f, w, h, 0, TALL_BOX.mid + TALL_BOX.height / 2).y;
-    const boxBottom = (f: Frustum): number => toPx(f, w, h, 0, TALL_BOX.mid - TALL_BOX.height / 2).y;
+    // The far king's crown takes most of what the compact tray left over.
+    expect(slack).toBeGreaterThan(10);
+    const boxTop = (f: Frustum): number =>
+      Math.min(toPx(f, w, h, 0, TALL_BOX.mid + TALL_BOX.height / 2).y - (TALL_BOX.padTop ?? 0), toPx(f, w, h, 0, crown.top).y - crown.padTop);
+    const boxBottom = (f: Frustum): number => toPx(f, w, h, 0, bot).y + (TALL_BOX.padBottom ?? 0);
     // Centred by default, exactly as before.
     const mid = fitBattleFrustum(w, h, ins, TALL_BOX);
     expect(fitBattleFrustum(w, h, ins, TALL_BOX, 0.5)).toEqual(mid);
@@ -209,6 +239,10 @@ describe("pointer picks at the new framing", () => {
     ["wide 1440x900, compact panel", 1440, 900, { top: 0, bottom: 0, left: 271, right: 271 }, BATTLE_BOX],
     ["tall 390x720, compact tray", 390, 720, topOnly(87), TALL_BOX, TALL_ALIGN_Y],
     ["tall 360x530, compact tray", 360, 530, topOnly(62), TALL_BOX, TALL_ALIGN_Y],
+    // The far king's framing: a smaller board on laptops, his crown between the chips on a tablet.
+    ["wide 1440x900, king's crown", 1440, 900, { top: 0, bottom: 0, left: 261, right: 261 }, BATTLE_BOX],
+    ["wide 844x390, king's crown", 844, 390, { top: 0, bottom: 0, left: 152, right: 152 }, BATTLE_BOX],
+    ["tall 768x880, crown between the chips", 768, 880, { ...topOnly(58), crownTop: 4 }, TALL_BOX, TALL_ALIGN_Y],
   ];
   for (const [name, w, h, ins, box, alignY] of CASES) {
     for (const [view, camZ] of [

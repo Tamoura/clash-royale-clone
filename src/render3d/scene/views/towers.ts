@@ -62,6 +62,7 @@ import {
 } from "./towerStyles";
 import { onionDome } from "../arena/build";
 import { addShake, startKoZoom } from "../camera";
+import { PLATE_GAP_PX } from "../fit";
 import { markShadowsDirty, registerTroopCaster } from "../post";
 import { contactRing, crownPop, emitSparks, kingWakeBurst, puff } from "../fx/effects";
 import { floorDust } from "../fx/pool";
@@ -455,28 +456,28 @@ function placePlate(rig: TowerRig, spot: PlateSpot): void {
 
 const V = new THREE.Vector3();
 
-/** CSS px kept between a near plate and the card tray's top edge (its markers sit just above it). */
-export const PLATE_TRAY_GAP_PX = 8;
-
 /**
  * Keep the plate on screen and clear of the roofs and crew: the clearance is
  * held in screen px (at least PLATE_CLEAR_PX), and a plate that would leave
- * the screen, or slide under the HUD, flips to the tower's other side.
+ * the screen, or slide under the HUD, flips to the tower's other side. The
+ * frame (fit.ts) leaves room for both kings' plates where they belong; the
+ * far king's only has to clear the chips over his own column (crownTop), a
+ * near plate the tray's ornament (plateFloor).
  */
 function updatePlate(b: Battle3D, rig: TowerRig, root: THREE.Object3D): void {
   const cam = b.camera;
   const h = b.renderer.domElement.clientHeight || 1;
   const viewH = (cam.top - cam.bottom) / cam.zoom;
   const ppu = (h / viewH) * TOWER_SCALE; // CSS px per local unit
-  const clear = Math.max(0.12, (PLATE_CLEAR_PX + 2) / ppu);
+  const clear = Math.max(0.12, PLATE_GAP_PX / ppu);
   const ins = b.framing?.insets;
   root.getWorldPosition(V);
   V.applyMatrix4(cam.matrixWorldInverse);
   const footUp = V.y; // camera-up of the tower's foot
-  const screenTop = (cam.top / cam.zoom - (ins?.top ?? 0) / (ppu / TOWER_SCALE) - footUp) / TOWER_SCALE;
-  // The tray's top edge carries its markers above the inset: keep a gap over it.
-  const trayGap = (ins?.bottom ?? 0) > 0 ? PLATE_TRAY_GAP_PX : 0;
-  const screenBottom = (cam.bottom / cam.zoom + ((ins?.bottom ?? 0) + trayGap) / (ppu / TOWER_SCALE) - footUp) / TOWER_SCALE;
+  const topInset = (rig.king && rig.far ? ins?.crownTop : undefined) ?? ins?.top ?? 0;
+  const screenTop = (cam.top / cam.zoom - topInset / (ppu / TOWER_SCALE) - footUp) / TOWER_SCALE;
+  const floor = (ins?.bottom ?? 0) + (b.framing?.plateFloor ?? 0);
+  const screenBottom = (cam.bottom / cam.zoom + floor / (ppu / TOWER_SCALE) - footUp) / TOWER_SCALE;
   const want = platePlacement(rig.top, rig.foot, PLATE_HALF, clear, rig.far);
   const minClear = PLATE_CLEAR_PX / ppu; // the art bible's floor; `clear` adds 2 px of margin
   const spot = clampPlate(want, rig.top, rig.foot, PLATE_HALF, clear, screenTop, screenBottom, minClear);

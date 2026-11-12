@@ -20,6 +20,8 @@ export interface Framing {
   box: ContentBox;
   /** Where the board sits along a free rectangle taller than it (fit.ts; default 0.5, centred). */
   alignY?: number;
+  /** CSS px a near tower's HP plate keeps over the bottom inset (tall: the tray's ornament; default 0). */
+  plateFloor?: number;
 }
 
 /** Distance fog in the sky colour (gradeSky re-tints it every frame). */
@@ -90,11 +92,18 @@ export function showcase(b: Battle3D, on: boolean, windowFrac = 0.5): void {
  */
 export function applyFraming(b: Battle3D, f: Framing): void {
   const cur = b.framing;
-  if (cur && cur.box === f.box && (cur.alignY ?? 0.5) === (f.alignY ?? 0.5)) {
+  if (cur && cur.box === f.box && (cur.alignY ?? 0.5) === (f.alignY ?? 0.5) && (cur.plateFloor ?? 0) === (f.plateFloor ?? 0)) {
     const a = cur.insets;
     const n = f.insets;
     const near = (x: number, y: number): boolean => Math.abs(x - y) < 0.5;
-    if (near(a.top, n.top) && near(a.right, n.right) && near(a.bottom, n.bottom) && near(a.left, n.left)) return;
+    if (
+      near(a.top, n.top) &&
+      near(a.right, n.right) &&
+      near(a.bottom, n.bottom) &&
+      near(a.left, n.left) &&
+      near(a.crownTop ?? a.top, n.crownTop ?? n.top)
+    )
+      return;
   }
   b.framing = f;
   frameOrtho(b);
