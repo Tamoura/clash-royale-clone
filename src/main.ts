@@ -145,6 +145,7 @@ import { applyMatchResult } from "./match/rewards";
 import { defaultKV } from "./meta/kv";
 import { reachedArenaIndex } from "./meta/unlocks";
 import { registerHomeSlot } from "./app/slots";
+import { localizeStaticMarkup } from "./app/brand";
 import { battleMenuOpen } from "./ui/battleMenu";
 import { signed } from "./render3d/result";
 
@@ -153,6 +154,8 @@ import "./audio/wire";
 
 // Apply edition-aware CSS variables before any DOM is rendered.
 applyEditionTokens(STORED_EDITION);
+// The tab title, splash and boot labels in the edition's language (Crown Rush).
+localizeStaticMarkup(document);
 // Canvas labels (unit names, banners) are painted once, so warm the
 // Arabic face up front in the Islamic edition.
 if (ARABIC) {

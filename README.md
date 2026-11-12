@@ -1,8 +1,10 @@
-# Clash Royale Clone
+# Crown Rush
 
-A browser-based 3D clone of the Clash Royale core battle loop, built
-with TypeScript + Three.js. You play against an AI bot in a 3-minute,
-two-lane tower-defense battle, with fully synthesized sound. The art is
+Crown Rush is a browser-based 3D lane-battle card game for kids, built
+with TypeScript + Three.js (the repository keeps its first name,
+clash-royale-clone, so saved progress and links keep working). You play
+against an AI bot in a 3-minute, two-lane tower-defense battle, with fully
+synthesized sound. The art is
 procedural low-poly work of our own plus a CC0 character cast (see
 [Assets and licences](#assets-and-licences)); the audio is Web Audio
 synthesis. No Supercell assets are used.
