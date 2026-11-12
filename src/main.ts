@@ -65,6 +65,7 @@ import { applyWaves, challengeStatus, type Challenge } from "./game/challenges";
 import { dailyDeck, dateKey } from "./game/daily";
 import { checkSeason, loadAchievements, loadSeason, saveSeason, seasonKey } from "./meta/achievements";
 import { seasonStartText } from "./ui/seasonBanner";
+import { EMOTES, EMOTE_PICKER, botReaction, emoteGlyph, type BotMoment } from "./ui/emotes";
 import { seasonName } from "./ui/screens/pass";
 import { loadQuests } from "./meta/quests";
 import { registerRewards } from "./meta/rewardsWire";
@@ -82,12 +83,10 @@ import {
 } from "./app/hooks";
 import { beginCastBattle, castReady } from "./render3d/cast/index";
 import {
-  POLITE_MATCHES,
   avgDeckLevel,
   botLevels,
   installAutoDifficulty,
   ensureAutoState,
-  ladderMatchesPlayed,
   ladderProfile,
   loadAutoState,
   loadDifficulty,
@@ -334,11 +333,6 @@ applyTowerFlair();
 /** The tier the next bot plays at (the "auto" option follows your results). */
 function currentTier(): Tier {
   return resolveTier(meta.difficulty, loadAutoState(meta.profile.trophies));
-}
-
-/** Bots keep their taunts to themselves while a player finds their feet. */
-function politeBot(): boolean {
-  return ladderMatchesPlayed(meta.profile.trophies) < POLITE_MATCHES;
 }
 
 // ---- Bot archetypes: each ladder opponent has a personality -------------
@@ -1001,11 +995,11 @@ if (EDITION_CHOSEN && !tutorialDone()) {
 // ---- Emotes ------------------------------------------------------------
 
 // One chat bubble (CR): tap to open the tray, pick an emote, it closes.
-const EMOTES = ["😂", "😭", "👍", "😡"];
+// Only friendly emotes (ui/emotes.ts); the wire table keeps old ids stable.
 setOnlineEmotes(EMOTES);
 const emoteToggle = document.createElement("button");
 emoteToggle.className = "emote-toggle";
-emoteToggle.setAttribute("aria-label", "Emotes");
+emoteToggle.setAttribute("aria-label", tr("Emotes", "التعابير"));
 emoteToggle.setAttribute("aria-expanded", "false");
 emoteToggle.innerHTML = '<span class="bubble-dots"><i></i><i></i><i></i></span>';
 const emoteTray = document.createElement("div");
@@ -1018,12 +1012,14 @@ emoteToggle.addEventListener("click", (ev) => {
   ev.stopPropagation();
   setEmotesOpen(!emoteBar.classList.contains("open"));
 });
-for (const emoji of EMOTES) {
+for (const pick of EMOTE_PICKER) {
+  const emoji = EMOTES[pick.id];
   const btn = document.createElement("button");
   btn.textContent = emoji;
+  btn.setAttribute("aria-label", tr(...pick.label));
   btn.addEventListener("click", () => {
     // Online emotes travel in the lockstep and pop on both screens together.
-    if (!sendOnlineEmote(EMOTES.indexOf(emoji))) {
+    if (!sendOnlineEmote(pick.id)) {
       scene.showEmote(localSide(), emoji);
       audio.emotePop();
     }
@@ -1039,11 +1035,15 @@ window.addEventListener("pointerdown", (ev) => {
 
 let botEmoteCooldown = 0;
 
-/** The bot's chat bubble; `force` skips the cooldown (the post-match goodwill). */
-function botEmote(emoji: string, force = false): void {
-  if (botEmoteCooldown > 0 && !force) return;
+/**
+ * The bot's chat bubble, only ever kind (ui/emotes.ts botReaction: no
+ * laughing or gloating); `force` skips the cooldown (the post-match goodwill).
+ */
+function botEmote(moment: BotMoment, force = false): void {
+  const glyph = emoteGlyph(botReaction(moment) ?? -1);
+  if (!glyph || (botEmoteCooldown > 0 && !force)) return;
   botEmoteCooldown = 6;
-  scene.showEmote("enemy", emoji);
+  scene.showEmote("enemy", glyph);
   audio.emotePop();
 }
 
@@ -1284,9 +1284,8 @@ function finishMatch(winner: Side | "draw"): void {
     cardsPlayed: battleCardsPlayed,
   });
   if (settled.recorded) battleCardsPlayed = 0;
-  // Manners: a friendly thumbs-up when you win; no gloating while you're new.
-  if (settled.ladder && winner === "player") botEmote(EMOTES[2], true);
-  else if (settled.ladder && winner === "enemy" && !politeBot()) botEmote("🎉");
+  // Manners: a thumbs-up when you win, a friendly wave otherwise; never gloating.
+  if (settled.ladder) botEmote({ type: "end", kidWon: winner === "player" ? true : winner === "enemy" ? false : null }, true);
   const mine = mySide === "player" ? battle.player : battle.enemy;
   const theirs = mySide === "player" ? battle.enemy : battle.player;
   emit("matchEnd", {
@@ -1412,9 +1411,8 @@ function frame(now: number): void {
         }`,
       );
     }
-    if (ev.type === "crown" && mode() === "solo" && (ev.winner !== "enemy" || !politeBot())) {
-      botEmote(ev.winner === "enemy" ? "😂" : "😭");
-    }
+    // The bot says wow when you take its tower, and never laughs when it takes yours.
+    if (ev.type === "crown" && mode() === "solo") botEmote({ type: "crown", byKid: ev.winner === "player" });
     if (ev.type === "finish") finishMatch(ev.winner);
   }
   checkBanners(battle, audio);
