@@ -36,10 +36,9 @@ export interface DeckPickerOpts {
   mode: "battle" | "deck";
 }
 
+/** The online lobby is Play a friend only: no Quick match, no strangers. */
 export interface LobbyOpts {
-  /** Reserved for quick match (relay support lands separately). */
-  quick?: boolean;
-  /** Prefill the join code. */
+  /** Prefill the join code (and join it). */
   code?: string;
 }
 

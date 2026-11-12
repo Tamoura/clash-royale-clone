@@ -1,6 +1,8 @@
 /**
- * Online lobby: Quick match against anyone, or Play a friend with a short
- * code or an invite link. Shows who you are (name, crest, tower troop and
+ * Online lobby: Play a friend, with a short room code or an invite link.
+ * Online play is friends-only (the owner's decision): there is no Quick
+ * match and no other way to meet a stranger (src/ui/friendsOnly.test.ts
+ * keeps it that way). Shows who you are (name, crest, tower troop and
  * ability), the mode, and a four-step status for every attempt — with a
  * Cancel at each step and every relay error in plain words.
  */
@@ -29,34 +31,28 @@ import {
 import { cardDisplayName } from "../../render/cardNames";
 import { ARABIC } from "../../render3d/theme";
 import { button, screenHeader, segmented, toast } from "../components";
-import { fmtNum, fmtTime, tr } from "../i18n";
+import { fmtTime, tr } from "../i18n";
 import { icon, type CrestIndex } from "../icons";
 import { getPrefs, reducedMotion } from "../prefs";
 
-const TAB_KEY = "cr-clone-lobby-tab";
-/** Quick-match searches longer than this offer the bot instead. */
-const OFFER_BOT_AFTER_S = 30;
+/**
+ * The lobby once remembered its last tab ("quick" or "friend") here. There
+ * are no tabs any more, so the value is never read; it is cleared when the
+ * lobby opens, and whatever an old page stored stays harmless.
+ */
+const OLD_TAB_KEY = "cr-clone-lobby-tab";
 /** How long "Opponent found" shows before the match takes over. */
 const FOUND_MS = 1100;
 
-type Tab = "quick" | "friend";
-type Flow = "quick" | "create" | "join";
+type Flow = "create" | "join";
 /** The four steps every attempt walks through. */
 type Step = 0 | 1 | 2 | 3;
 
-function readTab(): Tab {
+function forgetOldTab(): void {
   try {
-    return localStorage.getItem(TAB_KEY) === "friend" ? "friend" : "quick";
+    localStorage.removeItem(OLD_TAB_KEY);
   } catch {
-    return "quick";
-  }
-}
-
-function saveTab(t: Tab): void {
-  try {
-    localStorage.setItem(TAB_KEY, t);
-  } catch {
-    // per-viewer convenience only
+    // storage blocked: nothing was stored either
   }
 }
 
@@ -84,11 +80,16 @@ export function failText(reason: FailReason, flow: Flow): string {
     case "room-full":
       return tr("That game already has two players.", "هذه المباراة فيها لاعبان بالفعل.");
     case "expired":
-      return flow === "quick"
-        ? tr("Nobody turned up this time.", "لم يحضر أحد هذه المرة.")
-        : tr("That game timed out. Make a new one.", "انتهت مهلة هذه المباراة. أنشئ واحدة جديدة.");
+      return tr("That game timed out. Make a new one.", "انتهت مهلة هذه المباراة. أنشئ واحدة جديدة.");
     case "rate-limited":
-      return tr("Too many tries. Wait a few seconds.", "محاولات كثيرة. انتظر بضع ثوانٍ.");
+      // A join is refused after too many wrong codes (server/joinGuard.ts),
+      // for up to ten minutes; a create only after very fast repeats.
+      return flow === "join"
+        ? tr(
+            "Too many wrong codes. Wait a few minutes, then check the code with your friend.",
+            "رموز خاطئة كثيرة. انتظر بضع دقائق، ثم تأكّد من الرمز مع صديقك.",
+          )
+        : tr("Too many tries. Wait a few seconds.", "محاولات كثيرة. انتظر بضع ثوانٍ.");
     case "server-restart":
       return tr("The game server is restarting. Try again in a minute.", "خادم اللعبة يُعاد تشغيله. حاول بعد دقيقة.");
     case "update-required":
@@ -98,7 +99,8 @@ export function failText(reason: FailReason, flow: Flow): string {
     case "resume-failed":
       return tr("Couldn't rejoin that match.", "تعذّرت العودة إلى تلك المباراة.");
     case "quick-disabled":
-      return tr("Quick match is off on this server. Play a friend with a code.", "المباراة السريعة متوقفة على هذا الخادم. العب مع صديق بالرمز.");
+      // Only an old page could ask for a stranger; online is friends-only.
+      return tr("Online games are with friends only. Make a game or type your friend's code.", "اللعب عبر الإنترنت مع الأصدقاء فقط. أنشئ مباراة أو اكتب رمز صديقك.");
     case "unreachable":
       return tr("Couldn't reach the game server.", "تعذّر الوصول إلى خادم اللعبة.");
   }
@@ -108,11 +110,7 @@ export function failText(reason: FailReason, flow: Flow): string {
 function stepLabels(flow: Flow): [string, string, string, string] {
   return [
     tr("Connecting", "الاتصال"),
-    flow === "quick"
-      ? tr("Searching", "البحث")
-      : flow === "join"
-        ? tr("Joining", "الانضمام")
-        : tr("Waiting for friend", "بانتظار صديقك"),
+    flow === "join" ? tr("Joining", "الانضمام") : tr("Waiting for friend", "بانتظار صديقك"),
     tr("Opponent found", "وجدنا خصمًا"),
     tr("Syncing", "المزامنة"),
   ];
@@ -129,12 +127,12 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
   const configured = target.url !== null;
   const { deck: netDeck, swappedFor } = onlineDeck(deck);
 
-  let tab: Tab = opts.code ? "friend" : opts.quick ? "quick" : readTab();
+  forgetOldTab();
   let modeId: OnlineModeId = (ONLINE_MODE_IDS as readonly string[]).includes(meta.gameMode.id)
     ? (meta.gameMode.id as OnlineModeId)
     : "classic";
   let session: OnlineSession | null = null;
-  let flow: Flow = "quick";
+  let flow: Flow = "create";
   let startedAt = 0;
   let found: MatchInfo | null = null;
   let foundTimer = 0;
@@ -145,7 +143,7 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
   if (ARABIC) root.dir = "rtl";
   pickerRoot.appendChild(root);
 
-  root.appendChild(screenHeader({ title: tr("Play online", "العب عبر الإنترنت"), onBack: () => ctx.openHome(), backLabel: tr("Back", "رجوع") }));
+  root.appendChild(screenHeader({ title: tr("Play a friend", "العب مع صديق"), onBack: () => ctx.openHome(), backLabel: tr("Back", "رجوع") }));
 
   // ---- Who I am
   const me = el("section", "lobby-me");
@@ -182,24 +180,6 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
     root.appendChild(off);
   }
 
-  // ---- Tabs
-  const tabs = segmented<Tab>({
-    options: [
-      { value: "quick", label: tr("Quick match", "مباراة سريعة"), icon: "bolt" },
-      { value: "friend", label: tr("Play a friend", "العب مع صديق"), icon: "handshake" },
-    ],
-    value: tab,
-    ariaLabel: tr("How to find an opponent", "طريقة إيجاد خصم"),
-    onChange: (t) => {
-      if (session) cancel();
-      tab = t;
-      saveTab(t);
-      render();
-    },
-  });
-  tabs.classList.add("lobby-tabs");
-  root.appendChild(tabs);
-
   // ---- Mode chips
   const modeWrap = el("section", "lobby-modes");
   modeWrap.appendChild(el("h3", "lobby-label", tr("Mode", "النمط")));
@@ -229,21 +209,7 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
   modeWrap.appendChild(modeSeg);
   root.appendChild(modeWrap);
 
-  // ---- Panels
-  const quickPanel = el("section", "lobby-panel lobby-panel--quick");
-  const findBtn = button({
-    variant: "cta",
-    size: "lg",
-    icon: "bolt",
-    label: tr("Find a match", "ابحث عن مباراة"),
-    onClick: () => startQuick(),
-  });
-  findBtn.classList.add("lobby-wide");
-  quickPanel.append(
-    findBtn,
-    el("p", "lobby-sub", tr("We'll pair you with someone playing the same mode.", "سنجمعك بلاعب يختار النمط نفسه.")),
-  );
-
+  // ---- Create or join
   const friendPanel = el("section", "lobby-panel lobby-panel--friend");
   const createBtn = button({
     variant: "cta",
@@ -313,7 +279,7 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
   const statusActions = el("div", "lobby-status__actions");
   status.append(steps, foundCard, statusLine, statusTime, statusActions);
 
-  root.append(quickPanel, friendPanel, invite, status);
+  root.append(friendPanel, invite, status);
 
   // ---- Notes
   const notes = el("section", "lobby-notes");
@@ -323,6 +289,13 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
     n.appendChild(el("p", "", text));
     notes.appendChild(n);
   };
+  note(
+    "info",
+    tr(
+      "Online games are only with friends who have your code. Share it with people you know.",
+      "اللعب عبر الإنترنت مع الأصدقاء الذين لديهم رمزك فقط. شاركه مع من تعرفهم.",
+    ),
+  );
   note("info", tr("Card levels are equal online, so skill decides.", "مستويات البطاقات متساوية عبر الإنترنت، فالمهارة هي الحَكَم."));
   if (swappedFor) {
     note(
@@ -339,7 +312,7 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
   root.appendChild(notes);
 
   if (!configured) {
-    for (const b of [findBtn, createBtn, joinBtn]) b.disabled = true;
+    for (const b of [createBtn, joinBtn]) b.disabled = true;
     codeInput.disabled = true;
   }
 
@@ -378,11 +351,6 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
     };
     render();
     return s;
-  }
-
-  function startQuick(): void {
-    const s = begin("quick");
-    s?.quick(netDeck, onlineMode(modeId).match);
   }
 
   function startCreate(): void {
@@ -456,11 +424,8 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
     if (disposed) return;
     const v = session?.view() ?? null;
     const active = v !== null && v.t !== "failed" && v.t !== "ended" && v.t !== "idle";
-    quickPanel.hidden = tab !== "quick" || active;
-    friendPanel.hidden = tab !== "friend" || active;
+    friendPanel.hidden = active;
     modeWrap.hidden = active;
-    tabs.classList.toggle("is-locked", active);
-    tabs.querySelectorAll("button").forEach((b) => (b.disabled = active));
 
     const waitingCode = v?.t === "waiting" ? v.code : null;
     invite.hidden = !waitingCode;
@@ -473,7 +438,7 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
     // Which step are we on?
     let step: Step = 0;
     if (found) step = foundTimer ? 2 : 3;
-    else if (v?.t === "waiting" || v?.t === "queued") step = 1;
+    else if (v?.t === "waiting") step = 1;
     // A join has no "waiting" reply: the first pong says the socket is up,
     // and any refusal other than "unreachable" came from the relay itself.
     else if (flow === "join" && (session?.rtt != null || (failed && failed !== "unreachable"))) step = 1;
@@ -491,7 +456,7 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
     if (found) {
       const opp = found.opponent;
       foundCard.innerHTML = `<span class="lobby-found__crest">${icon(`crest-${((opp?.crest ?? 0) % 12) as CrestIndex}`)}</span><span class="lobby-found__name"></span>`;
-      foundCard.querySelector(".lobby-found__name")!.textContent = opp?.name || opponentFallbackName(flow === "quick");
+      foundCard.querySelector(".lobby-found__name")!.textContent = opp?.name || opponentFallbackName(false);
     }
 
     // Status line.
@@ -500,14 +465,12 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
     else if (problem) line = problem;
     else if (found) line = foundTimer ? tr("Get ready!", "استعد!") : tr("Setting up the arena…", "نجهّز الساحة…");
     else if (v?.t === "connecting") line = tr("Connecting…", "جارٍ الاتصال…");
-    else if (v?.t === "queued")
-      line = tr(`Searching… position ${v.position}`, `جارٍ البحث… الترتيب ${fmtNum(v.position)}`);
     else if (v?.t === "waiting") line = tr("Waiting for your friend to join…", "بانتظار انضمام صديقك…");
     if (statusLine.textContent !== line) statusLine.textContent = line;
     tickTime();
 
     // Actions: cancel while busy; retry/reload when it failed.
-    const key = `${failed ?? ""}|${problem ?? ""}|${active}|${found ? 1 : 0}|${botOffered()}`;
+    const key = `${failed ?? ""}|${problem ?? ""}|${active}|${found ? 1 : 0}`;
     if (statusActions.dataset.key !== key) {
       statusActions.dataset.key = key;
       const btns: HTMLButtonElement[] = [];
@@ -526,12 +489,10 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
             },
           }),
         );
-        if (failed && flow !== "join") {
-          btns.push(button({ variant: "cta", label: tr("Try again", "حاول مجددًا"), onClick: () => (flow === "quick" ? startQuick() : startCreate()) }));
+        if (failed && flow === "create") {
+          btns.push(button({ variant: "cta", label: tr("Try again", "حاول مجددًا"), onClick: () => startCreate() }));
         }
-        if (failed && flow === "quick") btns.push(botButton());
       } else if (active && !found) {
-        if (botOffered()) btns.push(botButton());
         btns.push(button({ variant: "secondary", label: tr("Cancel", "إلغاء"), onClick: () => cancel() }));
       } else if (found) {
         btns.push(button({ variant: "ghost", label: tr("Cancel", "إلغاء"), onClick: () => cancel() }));
@@ -540,26 +501,9 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
     }
   }
 
-  function botOffered(): boolean {
-    return flow === "quick" && session?.view().t === "queued" && (performance.now() - startedAt) / 1000 >= OFFER_BOT_AFTER_S;
-  }
-
-  function botButton(): HTMLButtonElement {
-    return button({
-      variant: "cta",
-      icon: "sword",
-      label: tr("Play the bot instead", "العب مع الروبوت بدلًا من ذلك"),
-      onClick: () => {
-        cancel();
-        ctx.closeDeckPicker();
-        ctx.startLadder();
-      },
-    });
-  }
-
   function tickTime(): void {
     const v = session?.view();
-    const searching = !found && (v?.t === "queued" || v?.t === "waiting" || v?.t === "connecting");
+    const searching = !found && (v?.t === "waiting" || v?.t === "connecting");
     const text = searching ? fmtTime((performance.now() - startedAt) / 1000) : "";
     if (statusTime.textContent !== text) statusTime.textContent = text;
     statusTime.hidden = !text;
@@ -567,10 +511,7 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
 
   // Live updates: session changes, plus a 1 s clock for the elapsed time.
   const unChange = onOnlineChange(() => render());
-  const clock = window.setInterval(() => {
-    if (botOffered() && statusActions.dataset.key?.endsWith("false")) render();
-    else tickTime();
-  }, 1000);
+  const clock = window.setInterval(() => tickTime(), 1000);
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
@@ -594,7 +535,5 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
   if (opts.code && configured) {
     codeInput.value = opts.code;
     startJoin(opts.code);
-  } else if (opts.quick && configured) {
-    startQuick();
   }
 }

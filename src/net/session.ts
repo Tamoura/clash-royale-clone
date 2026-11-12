@@ -254,7 +254,11 @@ export class OnlineSession {
     this.dial().join(this.code, deck, this.loadout);
   }
 
-  /** Enter the quick-match queue. */
+  /**
+   * Enter the quick-match queue. Developer-only: online play is
+   * friends-only, so no screen calls this (src/ui/friendsOnly.test.ts) and
+   * the relay refuses it ("quick-disabled") unless QUICK_MATCH=on.
+   */
   quick(deck: CardId[], mode: MatchMode): void {
     this.quickPairing = true;
     this.dial().quick(deck, this.loadout, mode);

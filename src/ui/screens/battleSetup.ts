@@ -384,7 +384,7 @@ export function openBattleSetup(ctx: AppCtx, onChange: () => void = () => undefi
     tr("Play online", "العب عبر الإنترنت"),
     hasChampion
       ? tr("Your Champion is for bot battles only", "بطلك لمعارك الروبوت فقط")
-      : tr("Quick match or a friend's code", "مباراة سريعة أو رمز صديق"),
+      : tr("Play a friend with a code", "العب مع صديق بالرمز"),
     () => {
       close();
       ctx.openLobby();

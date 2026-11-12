@@ -90,13 +90,6 @@
 }
 
 /* Tabs and modes */
-.lobby-tabs .ui-seg__opt {
-  min-height: 48px;
-  font-size: var(--fs-md);
-}
-.lobby-tabs.is-locked .ui-seg__opt:not(.is-selected) {
-  opacity: 0.45;
-}
 .lobby-label {
   margin: 0 0 var(--sp-2);
   font-size: var(--fs-sm);
