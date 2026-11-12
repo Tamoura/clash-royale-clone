@@ -25,6 +25,7 @@ import {
   keepsOwnPace,
   ladderProfile,
   tierProfile,
+  tierStep,
   type AutoState,
   type BotArchetype,
   type MatchSample,
@@ -134,13 +135,24 @@ describe("autoTier", () => {
     }
   });
 
-  it("steps up once the last three results add up to +3", () => {
-    expect(autoTier(diffs(1, 1, 1), 5, "rookie")).toBe("easy");
+  it("steps up only after two decisive windows in a row (+3 over the last three, and over the three before)", () => {
+    expect(HISTORY_SIZE).toBe(6);
+    expect(autoTier(diffs(1, 1, 1), 5, "rookie")).toBe("rookie"); // one window is not enough any more
+    expect(autoTier(diffs(1, 1, 1, 1, 1), 9, "rookie")).toBe("rookie");
+    expect(autoTier(diffs(1, 1, 1, 1, 1, 1), 9, "rookie")).toBe("easy");
+    expect(autoTier(diffs(3, 0, 0, 3, 0, 0), 9, "easy")).toBe("normal");
+    expect(autoTier(diffs(-1, 3, 1, -1, 3, 1), 9, "easy")).toBe("normal"); // four wins, two losses
+    expect(autoTier(diffs(3, 1, 0, 2, 2, -1), 9, "normal")).toBe("hard");
+    expect(autoTier(diffs(3, 3, 3, 3, 3, 3), 9, "hard")).toBe("hard"); // already at the top
+  });
+
+  it("does not step up on one lucky window or one big win counted twice", () => {
+    expect(autoTier(diffs(3, 3, 3, 0, 1, 0), 9, "easy")).toBe("easy"); // the latest window is +1
+    expect(autoTier(diffs(0, 1, 0, 3, 3, 3), 9, "easy")).toBe("easy"); // the earlier window is +1
     expect(autoTier(diffs(-3, 0, 3), 9, "easy")).toBe("easy"); // sums to 0
-    expect(autoTier(diffs(3, 3, 3, 0, 1, 0), 9, "easy")).toBe("easy"); // only the last three count
-    expect(autoTier(diffs(-3, 1, 1, 1), 9, "easy")).toBe("normal");
-    expect(autoTier(diffs(3, 1, 0), 9, "normal")).toBe("hard");
-    expect(autoTier(diffs(3, 3, 3), 9, "hard")).toBe("hard"); // already at the top
+    // Sliding windows would read +3 twice from one 3-crown win: two wins, two losses.
+    expect(autoTier(diffs(-1, 3, 1, -1), 9, "easy")).toBe("easy");
+    expect(autoTier(diffs(0, 3, 0, 0), 9, "easy")).toBe("easy");
   });
 
   it("steps down at -3 or less", () => {
@@ -226,19 +238,32 @@ describe("auto step-down to practice and back", () => {
 
   it("records matches as a ring and starts a fresh window after a step", () => {
     let s: AutoState = freshAutoState(0);
-    for (let i = 0; i < ROOKIE_MATCHES - 1; i++) s = recordAutoResult(s, 1);
-    expect(s.tier).toBe("rookie");
-    s = recordAutoResult(s, 1); // match 5: leaves the rookie window on +3
+    for (let i = 0; i < ROOKIE_MATCHES; i++) s = recordAutoResult(s, 1);
     expect(s.ladderMatches).toBe(ROOKIE_MATCHES);
+    expect(s.tier).toBe("rookie"); // match 5: +3, +3 not yet two whole windows
+    s = recordAutoResult(s, 1); // match 6: two windows of +3
     expect(s.tier).toBe("easy");
     expect(s.history).toEqual([]);
     s = recordAutoResult(s, 2);
     s = recordAutoResult(s, 0);
+    s = recordAutoResult(s, 1); // one decisive window at easy
     expect(s.tier).toBe("easy");
     s = recordAutoResult(s, 1);
+    s = recordAutoResult(s, 1);
+    expect(s.tier).toBe("easy");
+    s = recordAutoResult(s, 1); // the second one in a row
     expect(s.tier).toBe("normal");
+    expect(s.history).toEqual([]);
     for (let i = 0; i < 8; i++) s = recordAutoResult(s, 0);
     expect(s.history).toHaveLength(HISTORY_SIZE);
+  });
+
+  it("names the direction of a tier change", () => {
+    expect(tierStep("rookie", "easy")).toBe("up");
+    expect(tierStep("practice", "rookie")).toBe("up");
+    expect(tierStep("normal", "easy")).toBe("down");
+    expect(tierStep("rookie", "practice")).toBe("down");
+    expect(tierStep("hard", "hard")).toBeNull();
   });
 
   it("resolves the auto option, and passes real tiers through", () => {

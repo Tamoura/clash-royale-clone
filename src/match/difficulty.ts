@@ -148,7 +148,12 @@ export interface AutoState {
   history: MatchSample[];
 }
 
-export const HISTORY_SIZE = 5;
+/** Results a crown window adds up (the last WINDOW ladder matches). */
+export const WINDOW = 3;
+/** A window adding up to this many crowns or more (or minus this) is decisive. */
+export const DECISIVE_CROWNS = 3;
+/** Results kept: two back-to-back windows, for the step up. */
+export const HISTORY_SIZE = 2 * WINDOW;
 /** Auto plays rookie (or practice below it) for this many ladder matches. */
 export const ROOKIE_MATCHES = 5;
 /** Bots keep their taunts to themselves for this many ladder matches. */
@@ -164,14 +169,21 @@ export function sampleOutcome(m: MatchSample): MatchOutcome {
   return m.crownDiff > 0 ? "win" : m.crownDiff < 0 ? "loss" : "draw";
 }
 
+const crownSum = (window: readonly MatchSample[]): number => window.reduce((s, m) => s + m.crownDiff, 0);
+
 /**
  * The tier auto should play next, given the results so far at `current`
  * (the history restarts at every tier change):
  * - practice is a short breather: one win there returns to rookie;
  * - STEP_DOWN_LOSSES straight losses at rookie or easy drop one tier;
  * - the first ROOKIE_MATCHES ladder matches never climb above rookie;
- * - otherwise one step up when the last 3 crown diffs add up to +3 or
- *   more, one step down at -3 or less, else stay at `current`.
+ * - otherwise one step down when the last 3 crown diffs add up to -3 or
+ *   less, as before;
+ * - and one step up only after two decisive windows in a row: the last 3
+ *   crown diffs add up to +3 or more, and so do the 3 before them. So a
+ *   kid climbs after six good matches at a tier, not on one lucky run
+ *   (with one window, a big win plus two draws was enough), and lands on
+ *   the next step ready for it. Else stay at `current`.
  */
 export function autoTier(
   history: readonly MatchSample[],
@@ -179,6 +191,7 @@ export function autoTier(
   current: Tier = "rookie",
 ): Tier {
   const i = TIERS.indexOf(current);
+  const down = TIERS[Math.max(0, i - 1)];
   const last = history[history.length - 1];
   if (current === "practice" && last && sampleOutcome(last) === "win") return "rookie";
   if (
@@ -186,14 +199,26 @@ export function autoTier(
     history.length >= STEP_DOWN_LOSSES &&
     history.slice(-STEP_DOWN_LOSSES).every((m) => sampleOutcome(m) === "loss")
   ) {
-    return TIERS[Math.max(0, i - 1)];
+    return down;
   }
   if (ladderMatches < ROOKIE_MATCHES) return current === "practice" ? "practice" : "rookie";
-  if (history.length < 3) return current;
-  const sum = history.slice(-3).reduce((s, m) => s + m.crownDiff, 0);
-  if (sum >= 3) return TIERS[Math.min(TIERS.length - 1, i + 1)];
-  if (sum <= -3) return TIERS[Math.max(0, i - 1)];
+  if (history.length < WINDOW) return current;
+  const latest = crownSum(history.slice(-WINDOW));
+  if (latest <= -DECISIVE_CROWNS) return down;
+  if (
+    history.length >= 2 * WINDOW &&
+    latest >= DECISIVE_CROWNS &&
+    crownSum(history.slice(-2 * WINDOW, -WINDOW)) >= DECISIVE_CROWNS
+  ) {
+    return TIERS[Math.min(TIERS.length - 1, i + 1)];
+  }
   return current;
+}
+
+/** Which way a tier change goes: "up" to a stronger bot, "down" to a softer one, or null. */
+export function tierStep(before: Tier, after: Tier): "up" | "down" | null {
+  const d = TIERS.indexOf(after) - TIERS.indexOf(before);
+  return d > 0 ? "up" : d < 0 ? "down" : null;
 }
 
 /**
