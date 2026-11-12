@@ -6,6 +6,7 @@ import {
   DIFF_BLURB,
   HISTORY_SIZE,
   ROOKIE_MATCHES,
+  SOLVER_PROFILE,
   autoTier,
   avgDeckLevel,
   botLevel,
@@ -63,6 +64,20 @@ describe("difficulty options", () => {
     expect(p.spellIQ!).toBeGreaterThan(r.spellIQ!);
     expect(DIFF_AR.practice).toBe("تمرين");
     expect(DIFF_BLURB.practice[0].length).toBeGreaterThan(0);
+  });
+});
+
+describe("the puzzle solver", () => {
+  it("is frozen at the Normal tier the puzzle stars were set with", () => {
+    expect(SOLVER_PROFILE).toEqual({ thinkInterval: 1.0, pushAt: 8 });
+    expect(Object.isFrozen(SOLVER_PROFILE)).toBe(true);
+    expect(() => {
+      (SOLVER_PROFILE as { pushAt: number }).pushAt = 10;
+    }).toThrow();
+  });
+
+  it("is its own object, not a ladder tier's", () => {
+    for (const k of Object.keys(DIFFICULTIES)) expect(DIFFICULTIES[k]).not.toBe(SOLVER_PROFILE);
   });
 });
 

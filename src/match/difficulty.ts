@@ -59,6 +59,16 @@ export const DIFFICULTIES: Record<string, BotProfile> = {
   ...TIER_PROFILES,
 };
 
+/**
+ * The puzzle solver: the bot that proves every challenge can be cleared
+ * and checks its star rating (challenges.test.ts). It is frozen at the
+ * Normal tier as it stood when the stars were set (think every 1 s, push
+ * at 8 elixir, no slips, no reaction delay) and never follows the ladder
+ * tiers, so re-tuning a tier can't move a puzzle's rating. Copy it before
+ * adding a side: `{ ...SOLVER_PROFILE, side: "player" }`.
+ */
+export const SOLVER_PROFILE: Readonly<BotProfile> = Object.freeze({ thinkInterval: 1.0, pushAt: 8 });
+
 export const DIFF_AR: Record<string, string> = {
   auto: "تلقائي",
   practice: "تمرين",

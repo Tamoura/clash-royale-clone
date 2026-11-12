@@ -16,7 +16,7 @@ import {
 } from "./challenges";
 import { isDeckable, type CardId } from "./cards";
 import { formatTime } from "../ui/i18n";
-import { DIFFICULTIES } from "../match/difficulty";
+import { SOLVER_PROFILE } from "../match/difficulty";
 import { tick } from "./sim";
 
 describe("challenge definitions", () => {
@@ -192,13 +192,15 @@ describe("challenge runtime", () => {
 });
 
 /**
- * Solvability: a normal-strength bot playing the challenge deck from the
+ * Solvability: the frozen puzzle solver (SOLVER_PROFILE, the Normal tier
+ * as it was when the stars were set) playing the challenge deck from the
  * player's side, against the scripted waves, exactly as main.ts runs a
- * challenge (tick, then the waves, then the status check).
+ * challenge (tick, then the waves, then the status check). It never
+ * follows the ladder tiers, so a tier re-tune can't move a rating.
  */
 function botClears(ch: Challenge, seed: number): boolean {
   const b = createBattle(ch.deck, ch.deck);
-  const bot = createBot(seed, { ...DIFFICULTIES.normal, side: "player" });
+  const bot = createBot(seed, { ...SOLVER_PROFILE, side: "player" });
   const cursor = { next: 0 };
   const DT = 1 / 30;
   for (let i = 0; i < Math.ceil((ch.surviveFor + 5) / DT); i++) {
