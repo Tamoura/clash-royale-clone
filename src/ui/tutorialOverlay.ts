@@ -147,8 +147,11 @@ function anchorElement(anchor: TutorialStep["anchor"]): HTMLElement | null {
 
 // ---- Wrong presses -------------------------------------------------------------
 
-/** How long the coach's nudge line stays up before the step's own line returns. */
-export const NUDGE_MS = 2800;
+/**
+ * How long the coach's nudge line stays up before the step's own line
+ * returns: long enough for a 6-8 year old to read its eight or so words.
+ */
+export const NUDGE_MS = 5000;
 /** A press this soon after the last nudge is part of the same burst: no second wiggle. */
 export const NUDGE_BURST_MS = 300;
 
@@ -202,10 +205,15 @@ export interface NudgeState {
   until: number;
   /** The pointer whose press started the nudge, while it is still down. */
   pointer: number | null;
+  /**
+   * The browser took that pointer over (a touch it cancelled, pointercancel):
+   * no pointerup will come, so the drop is the moment the touch ends.
+   */
+  lost: boolean;
 }
 
 export function newNudge(): NudgeState {
-  return { text: null, until: 0, pointer: null };
+  return { text: null, until: 0, pointer: null, lost: false };
 }
 
 /**
@@ -230,6 +238,7 @@ export function clearNudge(st: NudgeState): void {
   st.text = null;
   st.until = 0;
   st.pointer = null;
+  st.lost = false;
 }
 
 /**
@@ -276,7 +285,34 @@ export function pressNudge(
 export function releaseNudge(st: NudgeState, pointer: number, now: number): boolean | null {
   if (st.pointer === null || st.pointer !== pointer) return null;
   st.pointer = null;
+  st.lost = false;
   return st.text ? sayNudge(st, st.text, now) : null;
+}
+
+/**
+ * The browser cancelled a pointer (pointercancel). A touch that started a
+ * nudge is still on the glass, only taken over by the browser, and no
+ * pointerup will follow: its drop is answered when the touch ends
+ * (touchEndNudge), not now, in the middle of the drag. A mouse or pen
+ * cancel ends the press like a release.
+ */
+export function cancelNudge(st: NudgeState, pointer: number, pointerType: string, now: number): boolean | null {
+  if (st.pointer === null || st.pointer !== pointer) return null;
+  if (pointerType === "touch") {
+    st.lost = true;
+    return null;
+  }
+  return releaseNudge(st, pointer, now);
+}
+
+/**
+ * Every finger is off the glass (touchend with no touches left). A nudge
+ * whose touch the browser had taken over gets its drop's answer now. Null
+ * when there is none (its pointerup already answered, or nothing was lost).
+ */
+export function touchEndNudge(st: NudgeState, now: number): boolean | null {
+  if (!st.lost || st.pointer === null) return null;
+  return releaseNudge(st, st.pointer, now);
 }
 
 /** The tile's screen position and a radius of about one tile. */
@@ -802,6 +838,7 @@ function nudge(s: Session, b: BattleState, ev: PointerEvent): void {
   const r = pressNudge(s.nudge, s.machine, b, pressed, performance.now(), cardDisplayName);
   if (!r) return;
   s.nudge.pointer = ev.pointerId;
+  s.nudge.lost = false;
   s.nudges++;
   s.root.dataset.nudges = String(s.nudges);
   showNudge(s, b, r.fresh, r.target);
@@ -998,21 +1035,38 @@ function runTutorial(ctx: AppCtx): void {
     s.pointerIsDown = true;
     s.pointerDownAt = performance.now();
   };
-  const onUp = (ev: PointerEvent): void => {
+  const lifted = (): void => {
     s.pointerIsDown = false;
     if (s.swallowAfterUp) {
       s.swallowAfterUp = false;
       s.swallowUntil = Math.max(s.swallowUntil, performance.now() + SWALLOW_MS);
     }
-    // A wrong press let go (a slow drag ends here): the drop gets the nudge too.
+  };
+  // A wrong press let go (a slow drag ends here): the drop gets the nudge too.
+  const answerDrop = (fresh: boolean | null): void => {
     const b = s.battle;
-    const fresh = releaseNudge(s.nudge, ev.pointerId, performance.now());
     if (fresh === null || !b || s.ended || !effectiveHold(s, b)) return;
     showNudge(s, b, fresh, s.machine.current?.target?.(b)?.cardId ?? null);
   };
+  const onUp = (ev: PointerEvent): void => {
+    lifted();
+    answerDrop(releaseNudge(s.nudge, ev.pointerId, performance.now()));
+  };
+  // A touch the browser takes over (pointercancel) gets no pointerup: its
+  // drop is answered when the finger really lifts (touchend), not mid-drag.
+  const onCancel = (ev: PointerEvent): void => {
+    lifted();
+    answerDrop(cancelNudge(s.nudge, ev.pointerId, ev.pointerType, performance.now()));
+  };
+  const onTouchEnd = (ev: TouchEvent): void => {
+    if (ev.touches.length > 0) return;
+    answerDrop(touchEndNudge(s.nudge, performance.now()));
+  };
   window.addEventListener("pointerdown", onDown, true);
   window.addEventListener("pointerup", onUp, true);
-  window.addEventListener("pointercancel", onUp, true);
+  window.addEventListener("pointercancel", onCancel, true);
+  window.addEventListener("touchend", onTouchEnd, true);
+  window.addEventListener("touchcancel", onTouchEnd, true);
 
   s.offs.push(
     registerSimHold(
@@ -1068,7 +1122,9 @@ function runTutorial(ctx: AppCtx): void {
     () => {
       window.removeEventListener("pointerdown", onDown, true);
       window.removeEventListener("pointerup", onUp, true);
-      window.removeEventListener("pointercancel", onUp, true);
+      window.removeEventListener("pointercancel", onCancel, true);
+      window.removeEventListener("touchend", onTouchEnd, true);
+      window.removeEventListener("touchcancel", onTouchEnd, true);
     },
   );
   const onResize = (): void => {

@@ -73,6 +73,13 @@ export function buzz(kind: "claim" | "select" | "deploy"): void {
 
 const RARITY_RANK: Record<Rarity, number> = { common: 0, rare: 1, epic: 2, legendary: 3 };
 
+/**
+ * Collect ignores taps this long after the summary appears. It sits where
+ * the "tap to continue" taps land, so without this a fast tap-through
+ * collected at once and the kid never saw the summary or its new-card offer.
+ */
+export const COLLECT_ARM_MS = 1000;
+
 export function rarityLabel(r: Rarity, tr: AppCtx["tr"]): string {
   switch (r) {
     case "legendary":
@@ -446,17 +453,20 @@ export function playChestReveal(ctx: AppCtx, o: RevealOpts): Promise<void> {
     }
     if (items.length > 0) summary.appendChild(grid);
     const newId = items.find((i) => i.isNew)?.id;
+    const shownAt = performance.now();
     return new Promise((resolve) => {
       const ok = button({
         variant: "cta",
         size: "lg",
         label: tr("Collect", "استلام"),
         onClick: () => {
+          if (performance.now() - shownAt < COLLECT_ARM_MS) return; // the tap-through's last taps
           collectFrom = cur.getBoundingClientRect();
           resolve();
         },
       });
-      ok.classList.add("rw-summary__ok");
+      ok.classList.add("rw-summary__ok", "is-arming");
+      window.setTimeout(() => ok.classList.remove("is-arming"), COLLECT_ARM_MS);
       summary.appendChild(ok);
       // The new card's offer goes below Collect, off the centre of the screen.
       if (newId) summary.appendChild(addToDeckOffer(newId));

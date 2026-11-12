@@ -6,7 +6,7 @@ import { cardDisplayName } from "../../render/cardNames";
 import { FakeEvent, installFakeDom, pressKey, type FakeDocument, type FakeElement } from "../fakeDom.testkit";
 import { tr as uiTr } from "../i18n";
 import * as reveal from "./chestReveal";
-import { LEGENDARY_BUILD_MS, flipDelay, playChestReveal, rarityLabel, revealOrder } from "./chestReveal";
+import { COLLECT_ARM_MS, LEGENDARY_BUILD_MS, flipDelay, playChestReveal, rarityLabel, revealOrder } from "./chestReveal";
 import { STRIP_ARM_MS } from "./deckSwap";
 
 // Card art needs a real canvas, and the coins' flight needs a real wallet.
@@ -155,11 +155,39 @@ describe("chest reveal: the deck is safe from tap-through", () => {
     // A quick tap on Add as the summary appears is ignored, too.
     summaryParts(root).add.click();
     expect(doc.querySelector(".rw-swap")).toBeNull();
+    await vi.advanceTimersByTimeAsync(COLLECT_ARM_MS);
     summaryParts(root).ok.click();
     await vi.advanceTimersByTimeAsync(300);
     expect(closed()).toBe(true);
     expect(meta.playerDeck).toEqual(DECK);
     expect(saves).toEqual([]);
+  });
+
+  it("a fast tap-through cannot collect at once: the summary and its new-card offer stay up a moment", async () => {
+    const { root, closed } = open();
+    await tapThrough(root);
+    const { ok, offer } = summaryParts(root);
+    expect(offer.querySelector(".rw-card__add")).not.toBeNull();
+    // The tap-through's next taps land on Collect, under the tap spot: ignored.
+    // (tapThrough looks every 250 ms, so the summary may have been up that long.)
+    expect(ok.classList.contains("is-arming")).toBe(true);
+    for (let t = 0; t + 120 < COLLECT_ARM_MS - 250; t += 120) {
+      ok.click();
+      await vi.advanceTimersByTimeAsync(120);
+      expect(closed()).toBe(false);
+      expect(root.dataset.stage).toBe("summary");
+    }
+    // Then Collect lights up and works.
+    await vi.advanceTimersByTimeAsync(COLLECT_ARM_MS);
+    expect(ok.classList.contains("is-arming")).toBe(false);
+    ok.click();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(closed()).toBe(true);
+  });
+
+  it("Collect waits long enough to see the summary, not so long that it feels broken", () => {
+    expect(COLLECT_ARM_MS).toBeGreaterThanOrEqual(600);
+    expect(COLLECT_ARM_MS).toBeLessThanOrEqual(1500);
   });
 
   it("Add opens the deck strip; Keep, Esc and the backdrop all keep the deck", async () => {

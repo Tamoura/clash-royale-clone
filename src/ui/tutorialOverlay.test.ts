@@ -1,3 +1,6 @@
+// The project ships no Node typings (browser code only); Vitest runs in Node.
+// @ts-expect-error -- "node:fs" has no type declarations here.
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { createBattle } from "../game/battle";
 import { getCard, type CardId } from "../game/cards";
@@ -7,6 +10,7 @@ import { TUTORIAL_KEY, TUTORIAL_STEPS, Tutorial, prepareTutorialBattle, tutorial
 import {
   NUDGE_BURST_MS,
   NUDGE_MS,
+  cancelNudge,
   cardAt,
   clearNudge,
   controlsTop,
@@ -16,6 +20,7 @@ import {
   overlayPress,
   pressNudge,
   releaseNudge,
+  touchEndNudge,
 } from "./tutorialOverlay";
 
 const rect = (left: number, top: number, width: number, height: number) => ({
@@ -120,9 +125,10 @@ describe("tutorial: the wrong card gets a nudge, not silence", () => {
     expect(nudgeCopy({}, "fireball", "fireball", classicName)).toBeNull();
   });
 
-  it("the nudge line stays up long enough to read, then the lesson's line returns", () => {
-    expect(NUDGE_MS).toBeGreaterThanOrEqual(2000);
-    expect(NUDGE_MS).toBeLessThanOrEqual(4000);
+  it("the nudge line stays up long enough for a young reader, then the lesson's line returns", () => {
+    // About eight words: a 6-8 year old needs 4-5 s (the season toast's own measure).
+    expect(NUDGE_MS).toBeGreaterThanOrEqual(4500);
+    expect(NUDGE_MS).toBeLessThanOrEqual(6000);
   });
 });
 
@@ -271,5 +277,62 @@ describe("tutorial: the wrong press's release", () => {
     clearNudge(st);
     expect(releaseNudge(st, 7, 5000)).toBeNull();
     expect(nudgeLine(st, true, 5001)).toBeNull();
+  });
+});
+
+describe("tutorial: a wrong drag on a touch screen that the browser takes over", () => {
+  const copy: [string, string] = ["Not that one. Use the glowing Fireball card!", "ليست هذه. استخدم بطاقة قذيفة نفط المضيئة!"];
+  const pressed = (at: number, pointer = 7) => {
+    const st = newNudge();
+    st.text = copy;
+    st.until = at + NUDGE_MS;
+    st.pointer = pointer;
+    return st;
+  };
+
+  it("pointercancel at the drag's start says nothing; the drop, much later, gets the nudge", () => {
+    const st = pressed(0);
+    // The browser cancels the touch a second into the drag: no answer mid-drag.
+    expect(cancelNudge(st, 7, "touch", 1000)).toBeNull();
+    expect(st.pointer).toBe(7); // still waiting for the finger to lift
+    // A long, slow drag: the press's line has gone back by the time it drops.
+    expect(nudgeLine(st, true, NUDGE_MS + 2000)).toBeNull();
+    // The finger lifts (touchend, no touches left): a fresh nudge, line up again.
+    expect(touchEndNudge(st, NUDGE_MS + 2000)).toBe(true);
+    expect(nudgeLine(st, true, NUDGE_MS + 2001)).toEqual(copy);
+    expect(nudgeLine(st, true, 2 * NUDGE_MS + 1999)).toEqual(copy);
+    // Once per press: a later touchend or pointerup says nothing more.
+    expect(touchEndNudge(st, NUDGE_MS + 2100)).toBeNull();
+    expect(releaseNudge(st, 7, NUDGE_MS + 2100)).toBeNull();
+  });
+
+  it("a touch that was never taken over is answered by its pointerup, not again by touchend", () => {
+    const st = pressed(0);
+    expect(releaseNudge(st, 7, 4000)).toBe(true);
+    expect(touchEndNudge(st, 4001)).toBeNull();
+  });
+
+  it("a mouse or pen cancel ends the press like a release", () => {
+    const st = pressed(0);
+    expect(cancelNudge(st, 7, "mouse", 2000)).toBe(true);
+    expect(touchEndNudge(st, 2100)).toBeNull();
+  });
+
+  it("ignores another finger's cancel, a touchend with nothing lost, and a step that moved on", () => {
+    const st = pressed(0);
+    expect(cancelNudge(st, 8, "touch", 500)).toBeNull();
+    expect(touchEndNudge(st, 600)).toBeNull(); // nothing was taken over
+    expect(cancelNudge(st, 7, "touch", 700)).toBeNull();
+    clearNudge(st); // the kid found the right card: the step moved on
+    expect(touchEndNudge(st, 4000)).toBeNull();
+    expect(nudgeLine(st, true, 4001)).toBeNull();
+  });
+
+  it("the active mask keeps its touches from the browser (touch-action: none, on the svg too)", () => {
+    const css = (readFileSync(new URL("./styles/tutorial.css", import.meta.url), "utf8") as string).replace(/\/\*[\s\S]*?\*\//g, "");
+    const rule = /([^{}]+)\{[^}]*touch-action:\s*none[^}]*\}/g;
+    const selectors = [...css.matchAll(rule)].flatMap((m) => m[1].split(",").map((s: string) => s.trim()));
+    expect(selectors).toContain(".tut-mask.on");
+    expect(selectors).toContain(".tut-mask.on .tut-mask-fill");
   });
 });

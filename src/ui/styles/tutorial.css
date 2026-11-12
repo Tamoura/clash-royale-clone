@@ -37,6 +37,14 @@
   opacity: 0;
   transition: opacity var(--dur-slow) var(--ease-out);
 }
+/* While the mask is up, a touch on it stays the page's: no pan takes it
+   over (pointercancel), so a wrong card's slow drag ends in a pointerup and
+   its drop gets the coach's nudge. Set on the <svg> too: Chrome reads
+   touch-action from the outer svg, not from shapes inside it. */
+.tut-mask.on,
+.tut-mask.on .tut-mask-fill {
+  touch-action: none;
+}
 .tut-mask.on .tut-mask-fill {
   opacity: 1;
   pointer-events: visiblePainted;

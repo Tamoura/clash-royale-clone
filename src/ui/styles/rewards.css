@@ -673,6 +673,16 @@
 }
 .rw-summary__ok {
   min-width: 220px;
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    filter var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    opacity var(--dur-med) linear;
+}
+/* For its first moment Collect ignores taps (a tap-through's last taps land
+   on it); it shows that by lighting up when it is ready. */
+.rw-summary__ok.is-arming {
+  opacity: 0.6;
 }
 .rw-reveal__hint {
   position: absolute;

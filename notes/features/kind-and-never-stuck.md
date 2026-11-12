@@ -9,10 +9,11 @@ Round 1 of [enhancement-plan-2026-11.md](enhancement-plan-2026-11.md), items C02
 Before: in the Fireball lesson the coach said "Archers in a bunch! Throw a Fireball on them..." while the kid held an Archers card. Pressing any card other than the glowing one landed on the dim mask and was silently ignored: nothing deployed, nothing moved, the coach said nothing, the clock stayed frozen. The playtester dragged Archers 23 times.
 
 After (`src/ui/tutorialOverlay.ts`):
-- A press on the dimmed screen during a lesson nudges. The glowing target card wiggles (the KING button in the King lesson), the glove's drag replays from the start, and the coach line changes for about 3 s (`NUDGE_MS`) to "Not that one. Use the glowing Fireball card!" (or "Drag the glowing Fireball card onto the glowing spot!" for a press away from the cards), with a little shake of the bubble. The card names come from `cardDisplayName`, so Golden Age says "ليست هذه. استخدم بطاقة قذيفة نفط المضيئة!". Then the lesson's own line comes back. The clock stays held and nothing deploys.
+- A press on the dimmed screen during a lesson nudges. The glowing target card wiggles (the KING button in the King lesson), the glove's drag replays from the start, and the coach line changes for 5 s (`NUDGE_MS`; it was 2.8 s until the final review) to "Not that one. Use the glowing Fireball card!" (or "Drag the glowing Fireball card onto the glowing spot!" for a press away from the cards), with a little shake of the bubble. The card names come from `cardDisplayName`, so Golden Age says "ليست هذه. استخدم بطاقة قذيفة نفط المضيئة!". Then the lesson's own line comes back. The clock stays held and nothing deploys.
 - While a lesson holds the clock, the target card's name sits on an accent chip just above it ("Fireball" / "قذيفة نفط").
 - The line is drawn as soon as the finger lands, not on the next frame.
-- The finger that started a nudge says it again when it lifts. A slow wrong drag (longer than the 2.8 s line) gets the line, the wiggle and the glove's replay again at the drop. A quick tap's release only keeps the line up.
+- The finger that started a nudge says it again when it lifts. A slow wrong drag (longer than the 5 s line) gets the line, the wiggle and the glove's replay again at the drop. A quick tap's release only keeps the line up.
+- On a touch screen the drop is a real pointerup: the active mask has `touch-action: none` (on the `<svg>` too, since Chrome reads it there and not on the shape inside), so the browser never takes the finger over with a pointercancel. If a browser cancels anyway, the cancel says nothing mid-drag and the nudge waits for the touch's own `touchend` (`cancelNudge`, `touchEndNudge`).
 
 Step text (`src/game/tutorial.ts`, text strings only). No card lesson opens with another card's name:
 - Musketeer lesson: "A Giant is coming for your tower!" becomes "Something big is coming for your tower! Drop the Musketeer here to shoot it down." The Giant card is in the hand at that point.
@@ -23,7 +24,7 @@ Tests (`tutorialOverlay.test.ts`) cover:
 - the card under the finger;
 - the nudge copy in both languages, for a press away from the cards and for the King lesson;
 - the press wiring: a lesson's press on the dim area is a nudge (`overlayPress`; reverting it to "ignored" fails a test). The real tutorial battle is run to the Fireball and King lessons, and pressing Archers names the Fireball while the step, the held clock, elixir and units stay as they were;
-- bursts (one wiggle) and the release cases (a slow drop nudges again; another finger or a new step does not);
+- bursts (one wiggle) and the release cases (a slow drop nudges again; another finger or a new step does not), including a touch that the browser cancels at the start of the drag and that lifts much later (the drop gets the nudge, once), and the mask's `touch-action: none` rule;
 - the first card each lesson names is the card to play, in both editions. The Golden Age names are loaded with the Arabic edition stubbed in.
 
 ### C27 slice. Quiet tutorial waits
@@ -44,12 +45,13 @@ Before: the reveal said "Tap to continue · hold to skip", and each new card's "
 After (`src/ui/screens/chestReveal.ts`, new `src/ui/screens/deckSwap.ts` and `styles/deckSwap.css`):
 - The reveal sequence has no Add button. A new card shows its ribbon and the line "You can add it to your deck at the end."
 - The summary shows "<card> is new! Want it in your deck?" with an Add button below Collect, away from the centre of the screen. The button ignores taps for 450 ms after the summary appears.
+- Collect ignores taps for its first second (`COLLECT_ARM_MS` = 1000) and shows it: it starts at 60% opacity and lights up when ready. It sits under the tap-to-continue spot, so before this a fast tap-through collected about 120 ms after the summary appeared and the kid never saw the new-card offer.
 - Add opens a strip of the kid's 8 deck cards (two rows of four, names under each). They tap the card that goes out, and nothing changes until they do. "Keep my deck" is the big yellow, focused default (`confirmLook({ emphasis: "cancel" })`, the same look as the tutorial's skip question). Esc and a backdrop tap also keep the deck. The strip ignores taps for its first 450 ms, so a double tap on Add can't pick a card.
 - A deck with a free slot simply takes the new card.
 - `swapOutIndex` is gone. Nothing picks the outgoing card for the kid.
 
 Tests run the real screens on a small fake DOM (`src/ui/fakeDom.testkit.ts`, since vitest runs in node with no DOM library):
-- `chestReveal.test.ts` plays the reveal under fake timers while a kid taps the middle every quarter second. No button or dialog appears in the chest, open, loot or card stages. On the summary Collect comes first and the offer below it. Tapping on through and Collect keeps the deck. Add opens the strip; Keep, Esc and the backdrop keep the deck; tapping Archers swaps exactly that slot (not the most expensive card); a deck with room just takes the card.
+- `chestReveal.test.ts` plays the reveal under fake timers while a kid taps the middle every quarter second. No button or dialog appears in the chest, open, loot or card stages. On the summary Collect comes first and the offer below it. Tapping on through and Collect keeps the deck. Taps on Collect in its first second do nothing; then it collects. Add opens the strip; Keep, Esc and the backdrop keep the deck; tapping Archers swaps exactly that slot (not the most expensive card); a deck with room just takes the card.
 - `deckSwap.test.ts` opens the strip on its own. Keep my deck is the focused CTA with no OK button. A card or backdrop tap in the first 450 ms is ignored, a tap inside the box does nothing, and Tab stays inside. Also the pure swap helpers.
 
 ### C04. The season reset keeps their arena
@@ -125,9 +127,20 @@ Browser checks for these fixes are on the dev server at 390x844. Drivers are in 
 - **Season toast.** At 1600 trophies in Classic it showed for about 5.9 s and the trophies stayed 1600. At 1900 in Golden Age it showed for about 5.6 s, in Arabic digits, and trimmed to 1600. Before the fix it showed for about 2.3 s. Shot: `arabic-season-1900.png`.
 - **Bot.** In a Classic ladder match the bot showed wow when the kid took a princess tower. When the King fell, it showed only a thumbs up (no wow on the same tick).
 
+## Final review fixes (merged round, branch r1/ship)
+
+The blind final verifier passed the round with three minor findings. All three are fixed:
+- **A slow wrong drag on a touch screen got no second nudge at the drop.** The mask kept the default touch-action, so about 1 s into a touch drag the browser sent pointercancel; the old code treated the cancel as the release (a second nudge mid-drag) and the real drop got nothing. Now the active mask has `touch-action: none`, and a cancelled touch waits for its `touchend` (see C02 above).
+- **The nudge line went back after 2.8 s**, short for a young reader. It now stays 5 s, like the season toast's measure (about eight words for a 6-8 year old). `NUDGE_BURST_MS` is unchanged.
+- **A fast tap-through collected the chest at once.** Collect now ignores taps for its first second and shows it (see C18 above). The NEW badge on the Cards tab was not built.
+
+Browser checks, dev server, 390x844 phone with real CDP touch. Drivers are in /tmp/claude-0/r1/fix-1 (`nudgeprobe.cjs`, `chestfast.cjs`), shots in /tmp/claude-0/r1/fix-1/shots.
+- **Slow wrong drag, both editions.** Knight was pressed in the Fireball lesson, dragged half way, held still for 6.5 s, then dropped on the tile. No pointercancel fired; pointerup and touchend arrived at the drop. Classic: the nudge showed at the press, went back after 5.1 s, came back at the drop and went back 5.0 s later. Golden Age: the same, 5.1 s and 5.1 s, in Arabic. The battle clock stayed at 22.0 s and no page errors.
+- **Fast chest tap-through, both editions.** Centre taps about every 150-200 ms through the tutorial's chest and on into the summary. The summary stayed up for 1.07 s (Classic) and 1.18 s (Golden Age) while 5 taps landed on Collect and were ignored; Collect was at 0.6 opacity, and the "Skeletons is new! Want it in your deck?" / "بطاقة ميليشيا جديدة! أتريدها في مجموعتك؟" offer was on screen. Then a tap collected. The deck was unchanged. Shots: `chestfast-normal-phone-summary-early.png`, `chestfast-arabic-phone-summary-early.png`.
+
 ## Known gaps and follow-ups
 
-- On the summary, Collect sits at the centre of the screen, so a kid who keeps tapping there collects and skips the Add offer. Their deck is safe, and the card is in Cards. A NEW badge on the Cards tab (from the plan) was not built.
+- On the summary, Collect still sits at the centre of the screen. After its first second a kid who keeps tapping there collects and skips the Add offer. Their deck is safe, and the card is in Cards. A NEW badge on the Cards tab (from the plan) was not built.
 - The emotes are still device emoji drawn in the inked bubble. Original inked art for eight emotes is round 4 (C28 full).
 - The pause menu also hushes the battle music, because it holds the same clock. This seemed right, but it is a side effect.
 - `politeBot()` was removed from `main.ts` together with the `POLITE_MATCHES` and `ladderMatchesPlayed` imports there. `difficulty.ts` still exports and uses them. If the bot-difficulty package edits the same import block, expect a trivial merge.
