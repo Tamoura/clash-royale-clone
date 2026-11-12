@@ -11,7 +11,7 @@
  */
 import "./styles/components.css";
 import "./styles/rewards.css";
-import { fmtNum } from "./i18n";
+import { fmtNum, tr } from "./i18n";
 import { icon, type IconName } from "./icons";
 import { reducedMotion } from "./prefs";
 
@@ -271,7 +271,7 @@ export interface ScreenHeaderOpts {
 export function screenHeader(o: ScreenHeaderOpts): HTMLElement {
   const h = el("header", "ui-header");
   if (o.onBack) {
-    h.appendChild(button({ variant: "icon", icon: "back", ariaLabel: o.backLabel ?? "Back", onClick: o.onBack }));
+    h.appendChild(button({ variant: "icon", icon: "back", ariaLabel: o.backLabel ?? tr("Back", "رجوع"), onClick: o.onBack }));
   } else {
     h.appendChild(el("span", "ui-header__spacer"));
   }

@@ -31,16 +31,16 @@ export interface AchievementCounters {
 }
 
 export const ACHIEVEMENTS: AchievementDef[] = [
-  { id: "first-win", en: "Win your first battle", ar: "افز بأول معركة", counter: "wins", target: 1, reward: 50 },
-  { id: "win-10", en: "Win 10 battles", ar: "افز بـ ١٠ معارك", counter: "wins", target: 10, reward: 100 },
-  { id: "win-50", en: "Win 50 battles", ar: "افز بـ ٥٠ معركة", counter: "wins", target: 50, reward: 250 },
+  { id: "first-win", en: "Win your first battle", ar: "فُز بأول معركة", counter: "wins", target: 1, reward: 50 },
+  { id: "win-10", en: "Win 10 battles", ar: "فُز بـ ١٠ معارك", counter: "wins", target: 10, reward: 100 },
+  { id: "win-50", en: "Win 50 battles", ar: "فُز بـ ٥٠ معركة", counter: "wins", target: 50, reward: 250 },
   { id: "three-crown", en: "Score a 3-crown victory", ar: "حقق نصرًا بثلاثة تيجان", counter: "threeCrowns", target: 1, reward: 60 },
   { id: "three-crown-10", en: "Score 10 three-crown victories", ar: "حقق ١٠ انتصارات بثلاثة تيجان", counter: "threeCrowns", target: 10, reward: 150 },
   { id: "play-200", en: "Play 200 cards", ar: "العب ٢٠٠ بطاقة", counter: "plays", target: 200, reward: 80 },
   { id: "dmg-500k", en: "Deal 500,000 total damage", ar: "ألحق ٥٠٠ ألف ضرر إجمالي", counter: "damage", target: 500_000, reward: 120 },
   { id: "chest-10", en: "Open 10 chests", ar: "افتح ١٠ صناديق", counter: "chests", target: 10, reward: 80 },
-  { id: "champion-win", en: "Win with your Champion in the deck", ar: "افز وبطلك ضمن المجموعة", counter: "championWins", target: 1, reward: 70 },
-  { id: "quick-win", en: "Win a battle in under 2 minutes", ar: "افز بمعركة في أقل من دقيقتين", counter: "quickWins", target: 1, reward: 90 },
+  { id: "champion-win", en: "Win with your Champion in the deck", ar: "فُز وبطلك ضمن المجموعة", counter: "championWins", target: 1, reward: 70 },
+  { id: "quick-win", en: "Win a battle in under 2 minutes", ar: "فُز بمعركة في أقل من دقيقتين", counter: "quickWins", target: 1, reward: 90 },
   { id: "trophies-1k", en: "Reach 1000 trophies", ar: "اجمع ١٠٠٠ كأس", counter: "bestTrophies", target: 1000, reward: 150 },
 ];
 

@@ -31,5 +31,5 @@ export function localizeStaticMarkup(doc: Document): void {
   doc.title = gameName();
   const boot = doc.querySelector("#boot .boot-title");
   if (boot) boot.textContent = gameName();
-  doc.getElementById("emotes")?.setAttribute("aria-label", tr("Emotes", "الوجوه التعبيرية"));
+  doc.getElementById("emotes")?.setAttribute("aria-label", tr("Emotes", "التعابير"));
 }

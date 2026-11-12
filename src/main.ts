@@ -269,7 +269,7 @@ let abilityCursor = 0;
 const sandboxResetBtn = document.createElement("button");
 sandboxResetBtn.className = "sandbox-reset";
 sandboxResetBtn.textContent = tr("↺ Reset", "↺ إعادة");
-sandboxResetBtn.setAttribute("aria-label", "Reset the sandbox battle");
+sandboxResetBtn.setAttribute("aria-label", tr("Reset the sandbox battle", "أعد معركة ساحة التجربة من البداية"));
 sandboxResetBtn.style.display = "none";
 stage.appendChild(sandboxResetBtn);
 
@@ -606,7 +606,7 @@ function startLadder(): void {
         showBanner(
           tr(
             `A Champion Bot approaches — beat it for +${CHAMPION_BONUS_GOLD} 🪙!`,
-            `بوت بطل يقترب — اهزمه مقابل +${CHAMPION_BONUS_GOLD} 🪙!`,
+            `بوت بطل يقترب — اهزمه مقابل +${fmtNum(CHAMPION_BONUS_GOLD)} 🪙!`,
           ),
         ),
       2600,

@@ -17,6 +17,7 @@ import { spawnRecipe } from "../../spawnfx";
 import { FLYER_DISC_OPACITY, FLYER_DISC_SCALE, makeTeamDisc, refreshTeamDisc } from "../../teamBase";
 import { applyTeam, teamColor, teamCss, teamPalette } from "../../teamColors";
 import { onPrefs, type TeamPalette } from "../../../ui/prefs";
+import { formatInt } from "../../../ui/i18n";
 import { ARABIC } from "../../theme";
 import { registerTroopCaster } from "../post";
 import { castActiveForBattle, hasKitTroop, kitTroopCards, loadKitTroops, makeKitGhost, makeKitTroop, setCastPalette } from "../../cast/index";
@@ -147,9 +148,11 @@ export function updateHpText(t: HpText, hp: number): void {
   ctx.lineJoin = "round";
   ctx.lineWidth = 7 * k;
   ctx.strokeStyle = "rgba(31,26,46,0.92)";
-  ctx.strokeText(String(value), 64 * k, 26 * k);
+  // Golden Age plates use Arabic-Indic digits, like the clock and the costs.
+  const label = formatInt(value, ARABIC);
+  ctx.strokeText(label, 64 * k, 26 * k);
   ctx.fillStyle = HP_TEXT_FILL;
-  ctx.fillText(String(value), 64 * k, 26 * k);
+  ctx.fillText(label, 64 * k, 26 * k);
   t.tex.needsUpdate = true;
 }
 

@@ -369,7 +369,7 @@ function buildStudio(ctx: AppCtx, def: ChampionDef): void {
     tr("Reach", "المدى"),
     [
       { value: 0.8, text: tr("Melee", "التحام") },
-      ...[3, 4, 5, 6, 7, 8].map((n) => ({ value: n, text: tr(`${n} tiles`, `${n} بلاطات`) })),
+      ...[3, 4, 5, 6, 7, 8].map((n) => ({ value: n, text: tr(`${n} tiles`, `${fmtNum(n)} بلاطات`) })),
     ],
     () => cur.range,
     (v) => (cur.range = v),

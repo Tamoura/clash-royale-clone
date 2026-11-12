@@ -47,7 +47,7 @@ describe("the game's name is Crown Rush", () => {
     localizeStaticMarkup(doc);
     expect(doc.title).toBe(GAME_NAME_AR);
     expect(boot.textContent).toBe(GAME_NAME_AR);
-    expect(attrs["aria-label"]).toBe("الوجوه التعبيرية");
+    expect(attrs["aria-label"]).toBe("التعابير");
   });
 
   it("does not put dir=rtl on <html> (the battle HUD stays left to right)", () => {

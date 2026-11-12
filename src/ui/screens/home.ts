@@ -233,7 +233,7 @@ function battleTab(ctx: AppCtx, panel: HTMLElement, redraw: () => void): void {
   const go = document.createElement("button");
   go.type = "button";
   go.className = "battle-btn home-battle";
-  go.setAttribute("aria-label", "Start a battle against the bot");
+  go.setAttribute("aria-label", tr("Start a battle against the bot", "ابدأ معركة ضد الروبوت"));
   go.innerHTML = `${icon("sword")}<span>${tr("Battle", "قتال")}</span>`;
   go.addEventListener("click", () => startBattle(ctx));
   panel.appendChild(go);
@@ -505,7 +505,7 @@ function shopTab(ctx: AppCtx, panel: HTMLElement, redraw: () => void): void {
     buy.type = "button";
     buy.className = "v2-buy";
     buy.innerHTML = `${icon("coin")}<span>${fmtNum(o.price)}</span>`;
-    buy.setAttribute("aria-label", tr(`Craft ${o.missing} shards for ${o.price} gold`, `اصنع ${o.missing} شظايا مقابل ${o.price} ذهب`));
+    buy.setAttribute("aria-label", tr(`Craft ${o.missing} shards for ${o.price} gold`, `اصنع ${fmtNum(o.missing)} شظايا مقابل ${fmtNum(o.price)} ذهب`));
     buy.disabled = meta.profile.gold < o.price;
     buy.addEventListener("click", async () => {
       if (o.price >= CONFIRM_GOLD) {

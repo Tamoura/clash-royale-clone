@@ -94,7 +94,7 @@ export function cardTile(ctx: AppCtx, id: CardId, onTap: () => void): HTMLButton
         ? tr(`${name}, max level`, `${name}، أعلى مستوى`)
         : tr(
             `${name}, level ${p.level}, ${p.shards} of ${p.need} shards${state === "ready" ? ", ready to upgrade" : ""}`,
-            `${name}، المستوى ${p.level}، ${p.shards} من ${p.need} شظايا${state === "ready" ? "، جاهزة للترقية" : ""}`,
+            `${name}، المستوى ${fmtNum(p.level)}، ${fmtNum(p.shards)} من ${fmtNum(p.need ?? 0)} شظايا${state === "ready" ? "، جاهزة للترقية" : ""}`,
           ),
     );
   } else {

@@ -15,6 +15,7 @@ import { countFraction } from "../passText";
 import { icon, type CrestIndex, type IconName } from "../icons";
 import { CREST_COUNT, PLAYER_NAME_MAX, getPrefs, sanitizePlayerName, setPrefs } from "../prefs";
 import { claimButton, crestIcon, goalRow, refreshTopBars, section, type ClaimState } from "./frame";
+import { seasonName } from "./pass";
 import { openSettings } from "./settings";
 import { startTutorial } from "../tutorialOverlay";
 
@@ -94,7 +95,10 @@ function playerCard(ctx: AppCtx): HTMLElement {
   id.appendChild(nameLabel);
   const season = document.createElement("div");
   season.className = "v2-player-season";
-  season.textContent = tr(`Season ${meta.season.key}`, `موسم ${meta.season.key}`);
+  // The season by name, as the Crown Pass shows it ("November 2026" /
+  // "نوفمبر ٢٠٢٦"), never the raw key in Latin digits.
+  const seasonLabel = seasonName(meta.season.key);
+  season.textContent = tr(`Season: ${seasonLabel}`, `الموسم: ${seasonLabel}`);
   id.appendChild(season);
   top.appendChild(id);
   card.appendChild(top);
