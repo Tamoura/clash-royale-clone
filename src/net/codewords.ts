@@ -22,19 +22,30 @@ export const CODE_WORDS = [
   "WASP",
 ] as const;
 
+/** Digits after the word in a new room code (LION042). */
+export const CODE_NUMBER_DIGITS = 3;
+
 /**
- * A room-code generator: a word from {@link CODE_WORDS} plus two digits
- * (LION42), which gives 2,000 distinct codes. Randomness is injected.
+ * A room-code generator: a word from {@link CODE_WORDS} plus three digits
+ * (LION042), which gives 20,000 distinct codes. Together with the relay's
+ * wrong-code limit (server/joinGuard.ts) that makes a waiting room's code
+ * impractical to guess. Randomness is injected.
+ *
+ * Codes used to have two digits (LION42). Any digit count still joins: the
+ * relay looks codes up exactly, and normalizeCode, cleanCode and the code
+ * box (12 characters) all take 3 digits, including on pages cached before
+ * this change.
  */
 export function makeCodeGen(rand: () => number): () => string {
+  const span = 10 ** CODE_NUMBER_DIGITS;
   return () => {
     const word = CODE_WORDS[Math.floor(rand() * CODE_WORDS.length)];
-    const n = Math.floor(rand() * 100);
-    return word + String(n).padStart(2, "0");
+    const n = Math.floor(rand() * span);
+    return word + String(n).padStart(CODE_NUMBER_DIGITS, "0");
   };
 }
 
-/** The word part of a code (LION42 -> LION); v1 clients get bare words. */
+/** The word part of a code (LION042 -> LION); v1 clients get bare words. */
 export function wordPart(code: string): string {
   return code.replace(/\d+$/, "");
 }
@@ -49,7 +60,7 @@ export function base32Code(rand: () => number, len: number): string {
   return out;
 }
 
-/** The number part of a word code (the 42 in LION42): plain digits only. */
+/** The number part of a word code (the 042 in LION042): plain digits only. */
 export const CODE_DIGITS = "0123456789";
 
 /** Letters kids type for the digits they look like. */

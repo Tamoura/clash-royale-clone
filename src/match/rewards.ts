@@ -14,6 +14,7 @@ import { cardDisplayName } from "../render/cardNames";
 import type { AppCtx } from "../app/ctx";
 import type { BattleKind } from "../app/hooks";
 import { showBanner } from "../ui/banner";
+import { fmtNum } from "../ui/i18n";
 import { cardTileCanvas } from "../ui/screens/common";
 
 // ---- Challenge / daily completion ------------------------------------------
@@ -71,13 +72,13 @@ export function applySpecialReward(ctx: AppCtx, battleKind: BattleKind, activeCh
     markChallengeDone(activeChallenge.id);
     meta.profile = { ...meta.profile, gold: meta.profile.gold + activeChallenge.goldReward };
     ctx.persistProfile();
-    hud.setReward(tr(`First clear! +${activeChallenge.goldReward} 🪙`, `أول إنجاز! +${activeChallenge.goldReward} 🪙`));
+    hud.setReward(tr(`First clear! +${activeChallenge.goldReward} 🪙`, `أول إنجاز! +${fmtNum(activeChallenge.goldReward)} 🪙`));
   } else if (battleKind === "daily") {
     if (isDailyDone()) return;
     localStorage.setItem(DAILY_DONE_KEY, dateKey(new Date()));
     meta.profile = { ...meta.profile, gold: meta.profile.gold + 100 };
     ctx.persistProfile();
-    hud.setReward(tr("Daily complete! +100 🪙", "أنجزت التحدي اليومي! +100 🪙"));
+    hud.setReward(tr("Daily complete! +100 🪙", `أنجزت التحدي اليومي! +${fmtNum(100)} 🪙`));
   }
 }
 
@@ -232,7 +233,7 @@ export function settleMatch(ctx: AppCtx, m: SettleInput): Settlement {
       if (m.championBotMatch) {
         meta.profile = { ...meta.profile, gold: meta.profile.gold + CHAMPION_BONUS_GOLD };
         ctx.persistProfile();
-        showBanner(ctx.tr(`Champion beaten! +${CHAMPION_BONUS_GOLD} 🪙`, `هزمت البطل! +${CHAMPION_BONUS_GOLD} 🪙`));
+        showBanner(ctx.tr(`Champion beaten! +${CHAMPION_BONUS_GOLD} 🪙`, `هزمت البطل! +${fmtNum(CHAMPION_BONUS_GOLD)} 🪙`));
         streak = { wins: 0, losses: 0 }; // the gauntlet resets after the boss
       }
     } else if (m.winner === "enemy") {

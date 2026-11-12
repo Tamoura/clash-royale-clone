@@ -1,7 +1,8 @@
 # Render Blueprint: the whole game AND its multiplayer relay as ONE free web
 # service at one address (https://<name>.onrender.com). Kids open that
 # address, tap the sliders row under Battle → Play online → Play a friend,
-# and play; nothing else to wire up.
+# and play with a room code; nothing else to wire up. Online play is
+# friends-only: there is no matching with strangers.
 # Step by step: docs/deploy-multiplayer.md, "Easiest: one click on Render".
 #
 # Runtime: Render's native Node runtime rather than Docker. The build is the
@@ -57,3 +58,8 @@ services:
       # Pages copy of the game use this relay (see the docs, optional step).
       - key: ALLOWED_ORIGINS
         value: https://tamoura.github.io
+      # Friends-only: never match strangers (the owner's decision). Kids meet
+      # only through a room code. "off" is also the relay's default; it is
+      # written here so nobody turns the stranger queue on by accident.
+      - key: QUICK_MATCH
+        value: "off"

@@ -9,12 +9,18 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="CR Clone" />
+    <meta name="apple-mobile-web-app-title" content="Crown Rush" />
     <meta name="theme-color" content="#0f1829" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <link rel="icon" type="image/png" href="icon-192.png" />
-    <title>Clash Royale Clone</title>
+    <!-- The offline shell marker: public/sw.js keeps a page as the offline
+         shell only when it carries this line (src/app/sw.test.ts). It is not
+         the title, so renaming the game never breaks offline play. -->
+    <meta name="cr-app-shell" content="game" />
+    <!-- The game's name. src/app/brand.ts renames the tab in the Golden Age
+         edition at runtime; src/app/brand.test.ts keeps these in step. -->
+    <title>Crown Rush</title>
     <style>
       /* ── Critical baseline: prevents a white/unstyled flash before the
          Vite-bundled CSS loads.  All other rules live in src/ui/style.css
@@ -128,7 +134,7 @@
     <div id="deckpicker"></div>
     <div id="boot" aria-hidden="true">
       <div class="boot-crest"></div>
-      <div class="boot-title">Clash Royale Clone</div>
+      <div class="boot-title">Crown Rush</div>
       <div class="boot-bar"></div>
     </div>
     <script>

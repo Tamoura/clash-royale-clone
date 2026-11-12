@@ -26,8 +26,13 @@ const MODELS = new URL("models/", self.registration.scope).pathname;
 const CAST = ["anims", "barbarian", "knight", "mage", "rogue", "rogue_hooded", "skeleton_minion"].map(
   (f) => `models/troops/${f}.glb`,
 );
-/** Only the game's own index.html holds this (src/app/sw.test.ts checks it). */
-const SHELL_MARK = "<title>Clash Royale Clone</title>";
+/**
+ * Only the game's own index.html holds this marker (a <meta name="cr-app-shell">
+ * line; src/app/sw.test.ts checks it). It is a dedicated marker, not the
+ * <title>, so renaming the game (or translating its title) never stops the
+ * offline shell from being kept.
+ */
+const SHELL_MARK = 'name="cr-app-shell"';
 
 /**
  * Keep a navigation response as the offline shell only when it is the game's

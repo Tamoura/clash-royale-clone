@@ -21,6 +21,14 @@ export function formatNum(n: number, arabic: boolean): string {
   return nf(arabic).format(n);
 }
 
+/**
+ * A whole number with no grouping, for a number that sits on its own
+ * (a tower's HP plate): 2534 / ٢٥٣٤.
+ */
+export function formatInt(n: number, arabic: boolean): string {
+  return nf(arabic, { useGrouping: false, maximumFractionDigits: 0 }).format(n);
+}
+
 /** Whole seconds as m:ss (negative reads as 0; callers round first). */
 export function formatTime(sec: number, arabic: boolean): string {
   const s = Math.max(0, Math.floor(sec));

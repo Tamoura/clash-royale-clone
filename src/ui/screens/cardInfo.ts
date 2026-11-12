@@ -211,7 +211,7 @@ export function openCardInfo(ctx: AppCtx, id: CardId, opts: CardInfoOpts = {}): 
     const cost = document.createElement("span");
     cost.className = "v2-cost";
     cost.textContent = fmtNum(card.cost);
-    cost.setAttribute("aria-label", tr(`${card.cost} elixir`, `${card.cost} إكسير`));
+    cost.setAttribute("aria-label", tr(`${card.cost} elixir`, `${fmtNum(card.cost)} إكسير`));
     art.appendChild(cost);
     head.appendChild(art);
 

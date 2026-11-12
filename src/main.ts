@@ -147,6 +147,7 @@ import { applyMatchResult } from "./match/rewards";
 import { defaultKV } from "./meta/kv";
 import { reachedArenaIndex } from "./meta/unlocks";
 import { registerHomeSlot } from "./app/slots";
+import { localizeStaticMarkup } from "./app/brand";
 import { battleMenuOpen } from "./ui/battleMenu";
 import { signed } from "./render3d/result";
 
@@ -155,6 +156,8 @@ import "./audio/wire";
 
 // Apply edition-aware CSS variables before any DOM is rendered.
 applyEditionTokens(STORED_EDITION);
+// The tab title, splash and boot labels in the edition's language (Crown Rush).
+localizeStaticMarkup(document);
 // Canvas labels (unit names, banners) are painted once, so warm the
 // Arabic face up front in the Islamic edition.
 if (ARABIC) {
@@ -268,7 +271,7 @@ let abilityCursor = 0;
 const sandboxResetBtn = document.createElement("button");
 sandboxResetBtn.className = "sandbox-reset";
 sandboxResetBtn.textContent = tr("↺ Reset", "↺ إعادة");
-sandboxResetBtn.setAttribute("aria-label", "Reset the sandbox battle");
+sandboxResetBtn.setAttribute("aria-label", tr("Reset the sandbox battle", "أعد معركة ساحة التجربة من البداية"));
 sandboxResetBtn.style.display = "none";
 stage.appendChild(sandboxResetBtn);
 
@@ -598,7 +601,7 @@ function startLadder(): void {
         showBanner(
           tr(
             `A Champion Bot approaches — beat it for +${CHAMPION_BONUS_GOLD} 🪙!`,
-            `بوت بطل يقترب — اهزمه مقابل +${CHAMPION_BONUS_GOLD} 🪙!`,
+            `بوت بطل يقترب — اهزمه مقابل +${fmtNum(CHAMPION_BONUS_GOLD)} 🪙!`,
           ),
         ),
       2600,

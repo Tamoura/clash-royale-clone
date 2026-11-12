@@ -130,8 +130,11 @@ function bootSw(network: (path: string) => Promise<Response>) {
   };
 }
 
+/** The shell marker as public/sw.js spells it. */
+const SHELL_MARK = /const SHELL_MARK = (["'])(.+?)\1;/.exec(sw)?.[2];
+
 describe("service worker offline shell", () => {
-  const game = `<!doctype html><html><head><title>Clash Royale Clone</title></head><body></body></html>`;
+  const game = `<!doctype html><html><head><meta name="cr-app-shell" content="game" /><title>Crown Rush</title></head><body></body></html>`;
   const html = (body: string, status = 200) =>
     new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 
@@ -162,9 +165,29 @@ describe("service worker offline shell", () => {
   });
 
   it("uses a marker the real index.html carries", () => {
-    const mark = /const SHELL_MARK = "([^"]+)"/.exec(sw)?.[1];
-    expect(mark).toBeTruthy();
-    expect(indexHtml).toContain(mark!);
+    expect(SHELL_MARK).toBeTruthy();
+    expect(indexHtml).toContain(SHELL_MARK!);
+    // Exactly once, on its own meta line (not some text that could move).
+    expect(indexHtml.split(SHELL_MARK!).length).toBe(2);
+    expect(indexHtml).toMatch(new RegExp(`<meta ${SHELL_MARK!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} content="game" />`));
+  });
+
+  it("does not depend on the game's title (renaming the game keeps offline play)", async () => {
+    expect(SHELL_MARK).not.toMatch(/title/i);
+    const title = /<title>([^<]*)<\/title>/.exec(indexHtml)?.[1] ?? "";
+    expect(title).not.toBe("");
+    expect(title).not.toContain(SHELL_MARK!);
+    let page = "";
+    const sw = bootSw(async () => html(page));
+    // Another name, same marker: still the game, still kept.
+    page = `<html><head><meta name="cr-app-shell" content="game" /><title>Some new name</title></head></html>`;
+    await sw.navigate("/");
+    expect(await sw.shell()).toBe(page);
+    // The game's name without the marker (a host's page, say): never kept.
+    const kept = page;
+    page = `<html><head><title>${title}</title></head><body>Bad gateway</body></html>`;
+    await sw.navigate("/");
+    expect(await sw.shell()).toBe(kept);
   });
 });
 
@@ -188,7 +211,7 @@ describe("service worker: the modelled cast is precached per build", () => {
         if (path.endsWith("/mage.glb")) return new Response("nope", { status: 404 });
         return new Response(`glb:${path}`, { headers: { "content-type": "model/gltf-binary" } });
       }
-      return new Response("<title>Clash Royale Clone</title>", { headers: { "content-type": "text/html" } });
+      return new Response('<meta name="cr-app-shell" content="game" /><title>Crown Rush</title>', { headers: { "content-type": "text/html" } });
     });
     await sw.install();
     expect(await (await sw.cached("/models/troops/knight.glb"))!.text()).toBe("glb:/models/troops/knight.glb");

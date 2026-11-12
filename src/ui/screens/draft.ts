@@ -57,7 +57,7 @@ function buildDraft(ctx: AppCtx): void {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = `v2-tile v2-tile--big rarity-${card.rarity}`;
-        btn.setAttribute("aria-label", tr(`Keep ${cardDisplayName(id)}, ${card.cost} elixir`, `احتفظ بـ ${cardDisplayName(id)}، ${card.cost} إكسير`));
+        btn.setAttribute("aria-label", tr(`Keep ${cardDisplayName(id)}, ${card.cost} elixir`, `احتفظ بـ ${cardDisplayName(id)}، ${fmtNum(card.cost)} إكسير`));
         const art = document.createElement("div");
         art.className = "v2-tile-art";
         art.appendChild(cardTileCanvas(id));

@@ -9,12 +9,12 @@ describe("card stat lines", () => {
   it("describes a troop with hp and damage", () => {
     const lines = cardStatLines("knight").join(" | ");
     expect(lines).toMatch(/Troop|وحدة/);
-    expect(lines).toContain("1400");
-    expect(lines).toContain("160");
+    expect(lines).toMatch(/1400|١٬٤٠٠/);
+    expect(lines).toMatch(/160|١٦٠/);
   });
 
   it("describes spells by damage, radius and effects", () => {
-    expect(cardStatLines("fireball").join(" ")).toContain("570");
+    expect(cardStatLines("fireball").join(" ")).toMatch(/570|٥٧٠/);
     expect(cardStatLines("freeze").join(" ")).toMatch(/stun|صعق/i);
     expect(cardStatLines("rage").join(" ")).toMatch(/faster|boost|تسريع/i);
   });
@@ -33,17 +33,28 @@ describe("card stat lines", () => {
   });
 
   it("explains the card wave 3 mechanics", () => {
-    expect(cardStatLines("stone-golem").join(" ")).toMatch(/Splits into 2 Pebble Golems|ينقسم إلى 2 من حصاة/);
-    expect(cardStatLines("tombstone").join(" ")).toMatch(/Releases 4 Skeletons when it falls|يطلق 4 من ميليشيا عند سقوطه/);
+    expect(cardStatLines("stone-golem").join(" ")).toMatch(/Splits into 2 Pebble Golems|ينقسم إلى ٢ من حصاة/);
+    expect(cardStatLines("tombstone").join(" ")).toMatch(/Releases 4 Skeletons when it falls|يطلق ٤ من ميليشيا عند سقوطه/);
     expect(cardStatLines("digger").join(" ")).toMatch(/Digs to any spot|يحفر إلى أي مكان/);
-    expect(cardStatLines("digger").join(" ")).toMatch(/35% damage to towers|35٪ ضرر للأبراج/);
+    expect(cardStatLines("digger").join(" ")).toMatch(/35% damage to towers|٣٥٪ ضرر للأبراج/);
     const comet = cardStatLines("comet");
-    expect(comet[2]).toMatch(/Lands after 1\.8 s|يسقط بعد 1\.8 ث/);
+    expect(comet[2]).toMatch(/Lands after 1\.8 s|يسقط بعد ١٫٨ ث/);
     expect(cardStatLines("knight").join(" ")).not.toMatch(/towers|للأبراج/);
   });
 
   it("names a summon in the plural once, never 'Skeletonss'", () => {
     expect(cardStatLines("witch").join(" ")).not.toMatch(/Skeletonss/);
+  });
+
+  it("shows Golden Age numbers in Arabic-Indic digits, never Latin ones", () => {
+    // Node runs the Golden Age edition: every number in the tooltip and card
+    // sheet lines must read like the clock and the costs (fmtNum).
+    for (const id of DECK) {
+      const text = cardStatLines(id).join(" | ");
+      expect(text, id).not.toMatch(/[0-9]/);
+    }
+    expect(cardStatLines("knight")[1]).toBe("١٬٤٠٠ صحة · ١٦٠ ضرر");
+    expect(cardStatLines("archers")[0]).toMatch(/×٢/);
   });
 
   it("calls out piercing shots and recoil", () => {
