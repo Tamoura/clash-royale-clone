@@ -87,8 +87,11 @@ export const FAR_EDGE = 14;
 // ── Pixel gaps (they do not scale with the board) ──
 /** CSS px between an HP plate and the roofs or gate it labels (towers.ts: PLATE_CLEAR_PX and a 2 px margin). */
 export const PLATE_GAP_PX = 6;
-/** CSS px between an HP plate and the screen's edge or a scoreboard chip. */
-export const EDGE_GAP_PX = 6;
+/**
+ * CSS px between an HP plate and the screen's edge or a scoreboard chip:
+ * enough that a plate reads as framed, not pressed against the edge.
+ */
+export const EDGE_GAP_PX = 10;
 /** CSS px the tall band's inset already keeps under its chips (layoutWire.ts). */
 export const BAND_GAP_PX = 4;
 /**

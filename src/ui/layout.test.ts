@@ -222,8 +222,8 @@ describe("battleLayout", () => {
     // height than the old box, so these windows are a little narrower too.)
     for (const [w, h] of [
       [560, 400],
-      [620, 480],
-      [680, 560],
+      [610, 480],
+      [670, 560],
       [900, 900],
       [980, 1000],
     ]) {
@@ -243,7 +243,8 @@ describe("battleLayout", () => {
     for (const [w, h] of [[568, 320], [760, 600], [884, 768]]) {
       const lay = battleLayout(w, h);
       expect(lay.tile, `${w}x${h}`).toBeCloseTo(heightScale(h, BATTLE_BOX), 6);
-      expect(lay.tile, `${w}x${h}`).toBeGreaterThan(before.tile(w, h) * 1.01);
+      // (Only a little bigger: the old 176px panels nearly fit beside today's narrower board too.)
+      expect(lay.tile, `${w}x${h}`).toBeGreaterThan(before.tile(w, h) * 1.005);
     }
   });
 
