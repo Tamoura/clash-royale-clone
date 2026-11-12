@@ -7,7 +7,10 @@
  * - matchStart: remember the local side (the online guest is 'enemy'), then
  *   start the battle track the frame the countdown ends.
  * - frame: the clock ticks in the last 10 seconds, and a tap of haptics
- *   when the local towers take damage.
+ *   when the local towers take damage. While something holds the solo
+ *   clock mid-battle (a tutorial step waiting for the kid, the pause menu)
+ *   the battle track drops to its quiet bed, and comes back when play
+ *   resumes.
  * - battleEvent / matchEnd / input: haptics, the results duck. The new cards
  *   thud too: a Comet landing and a Stone Golem crumbling.
  * - Any button tap clicks (back buttons click "back") and buzzes lightly.
@@ -18,7 +21,7 @@
 import type { Side } from "../game/arena";
 import type { BattleState } from "../game/battle";
 import { BATTLE_DURATION, OVERTIME_DURATION } from "../game/sim";
-import { on } from "../app/hooks";
+import { on, simHeld } from "../app/hooks";
 import { buzz } from "../ui/feel";
 import { clockTickDue, type MusicId } from "./music";
 import { existingSoundEngine } from "./sound";
@@ -54,6 +57,17 @@ let replay = false;
 let lastTick = -1;
 let watched: BattleState | null = null;
 let lastHp = 0;
+/** The match is an online one (the lockstep never holds the clock). */
+let online = false;
+
+function setHush(on: boolean): void {
+  existingSoundEngine()?.setHushed(on);
+}
+
+/** Should the battle track hush this frame: a solo match whose clock is held mid-play. */
+export function shouldHush(phase: string, isOnline: boolean, held: boolean): boolean {
+  return phase === "playing" && !isOnline && held;
+}
 
 on("screen", ({ sceneMode }) => {
   const s = existingSoundEngine();
@@ -66,12 +80,15 @@ on("screen", ({ sceneMode }) => {
   }
   onMenu = true;
   armed = false;
+  setHush(false);
   s?.duck(false);
   s?.playMusic(music);
 });
 
-on("matchStart", ({ mySide: side, battle, replay: isReplay }) => {
+on("matchStart", ({ mySide: side, battle, replay: isReplay, online: isOnline }) => {
   const s = existingSoundEngine();
+  online = isOnline;
+  setHush(false);
   mySide = side;
   live = true;
   armed = true;
@@ -90,8 +107,10 @@ on("frame", ({ phase, battle }) => {
   const s = existingSoundEngine();
   if (battle.result) {
     armed = false;
+    setHush(false);
     return;
   }
+  setHush(shouldHush(phase, online, simHeld()));
   if (armed && phase === "playing") {
     armed = false;
     s?.playMusic("battle");
@@ -123,6 +142,7 @@ on("battleEvent", ({ ev }) => {
 on("matchEnd", ({ winner, mySide: side, replay: isReplay }) => {
   const s = existingSoundEngine();
   live = false;
+  setHush(false);
   armed = false;
   s?.playMusic("none");
   s?.duck(true);
