@@ -64,6 +64,8 @@ import {
 import { applyWaves, challengeStatus, type Challenge } from "./game/challenges";
 import { dailyDeck, dateKey } from "./game/daily";
 import { checkSeason, loadAchievements, loadSeason, saveSeason, seasonKey } from "./meta/achievements";
+import { seasonStartText } from "./ui/seasonBanner";
+import { seasonName } from "./ui/screens/pass";
 import { loadQuests } from "./meta/quests";
 import { registerRewards } from "./meta/rewardsWire";
 import { registerNewCards } from "./ui/newCards";
@@ -295,18 +297,14 @@ let questsBattleRef: BattleState | null = null;
 
 saveSeason(meta.season);
 if (seasonRoll.reset) {
-  const from = meta.profile.trophies;
   meta.profile = { ...meta.profile, trophies: seasonRoll.trophies };
   saveProfile(localStorage, meta.profile);
+}
+if (seasonRoll.rolled) {
+  // A celebration, never a loss: the reset keeps the arena they reached.
   // Banner once the UI exists — boot runs before the stage is built.
-  window.setTimeout(() => {
-    showBanner(
-      tr(
-        `New season! Trophies: ${from} → ${seasonRoll.trophies}`,
-        `موسم جديد! الكؤوس: ${from} ← ${seasonRoll.trophies}`,
-      ),
-    );
-  }, 1200);
+  const line = seasonStartText(seasonName(seasonRoll.state.key), seasonRoll.trophies, ARABIC);
+  window.setTimeout(() => showBanner(line), 1200);
 }
 
 function persistProfile(): void {

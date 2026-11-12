@@ -4,9 +4,11 @@
  * Achievements accumulate forever (unlike daily quests) from simple
  * counters, and pay gold once on claim. Seasons are keyed by calendar
  * month: on the first boot of a new month, trophies above the season
- * floor are halved back toward it (CR-style soft reset) and the previous
- * season's best is archived.
+ * floor are halved back toward it (CR-style soft reset), but never below
+ * the floor of the arena the player stands in, and the previous season's
+ * best is archived.
  */
+import { ARENAS, arenaIndexAt } from "./arenas";
 
 export interface AchievementDef {
   id: string;
@@ -191,19 +193,34 @@ export function onSeasonRollover(fn: (r: SeasonRollover) => void): () => void {
 }
 
 /**
+ * The trophies a season reset leaves: anything above the floor is halved
+ * back toward it, but never below the floor of the arena the player
+ * stands in, so a new season never takes an arena away (1600, the first
+ * step of Royal Arena, stays 1600; 1900 trims to 1600; 2500 to 2400).
+ */
+export function seasonResetTrophies(trophies: number): number {
+  if (!(trophies > SEASON_FLOOR)) return trophies;
+  const trimmed = SEASON_FLOOR + Math.floor((trophies - SEASON_FLOOR) / 2);
+  return Math.max(ARENAS[arenaIndexAt(trophies)].trophies, trimmed);
+}
+
+/**
  * Roll the season forward if the month changed. Returns the (possibly
- * soft-reset) trophy count and whether a reset banner should show.
+ * soft-reset) trophy count, whether the reset changed it (`reset`) and
+ * whether a saved season just rolled over to a new one (`rolled`, the
+ * cue for the season-start banner).
  */
 export function checkSeason(
   state: SeasonState | null,
   nowKey: string,
   trophies: number,
-): { state: SeasonState; trophies: number; reset: boolean } {
+): { state: SeasonState; trophies: number; reset: boolean; rolled: boolean } {
   if (state && state.key === nowKey) {
     return {
       state: { ...state, best: Math.max(state.best, trophies) },
       trophies,
       reset: false,
+      rolled: false,
     };
   }
   const history = state
@@ -219,15 +236,13 @@ export function checkSeason(
       }
     }
   }
-  const softReset =
-    trophies > SEASON_FLOOR
-      ? SEASON_FLOOR + Math.floor((trophies - SEASON_FLOOR) / 2)
-      : trophies;
+  const softReset = seasonResetTrophies(trophies);
   return {
     state: { key: nowKey, best: softReset, history },
     trophies: softReset,
-    // Only banner an actual change — a fresh profile just starts season 1.
     reset: state !== null && softReset !== trophies,
+    // A fresh profile just starts its first season: nothing to celebrate yet.
+    rolled: state !== null,
   };
 }
 
