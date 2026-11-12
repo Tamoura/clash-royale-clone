@@ -122,7 +122,7 @@ import {
 } from "./ui/banner";
 import { fmtNum, tr } from "./ui/i18n";
 import { installLayout } from "./ui/layoutWire";
-import { getPrefs } from "./ui/prefs";
+import { getPrefs, onPrefs, reducedMotion } from "./ui/prefs";
 import { isChestReady } from "./meta/chests";
 import { trophyLossAt } from "./meta/economy";
 import { openChallenges } from "./ui/screens/challenges";
@@ -134,7 +134,17 @@ import { buildHome } from "./ui/screens/home";
 import { openFriendLobby } from "./ui/screens/lobby";
 import { openStudio } from "./ui/screens/studio";
 import { startTutorial, tutorialDone } from "./ui/tutorialOverlay";
-import { MATCH_CLOCK, badSpotReason, badSpotText, challengeClock } from "./render3d/hudModel";
+import {
+  MATCH_CLOCK,
+  badSpotReason,
+  badSpotText,
+  challengeClock,
+  laneLabelText,
+  lanePillBox,
+  placeVerdict,
+  type ScreenRect,
+} from "./render3d/hudModel";
+import { applyMotionAttr } from "./ui/motionAttr";
 import { pickBotLoadout, type BotLoadout } from "./match/botLoadout";
 import {
   browserLiveMatchGuard,
@@ -459,6 +469,38 @@ try {
 const layout = installLayout(scene, topbar);
 const audio = new SoundEngine();
 
+/** The field's tiles 0..18 x 0..32 on screen (page px; either viewpoint). */
+function fieldRect(): ScreenRect {
+  const a = scene.arenaToClient(0, 0);
+  const b = scene.arenaToClient(18, 32);
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
+}
+
+/**
+ * Where the pointer last was over the page: kept on every move (even with no
+ * card held), so a card picked with a key, a tower falling or elixir arriving
+ * re-judges the spot under a resting finger or mouse every frame. Cleared
+ * when a finger or pen lifts, the window loses focus, and after a refused drop.
+ */
+let lastPointer: { x: number; y: number; type: string } | null = null;
+
+/** The board's viewpoint differs from the side you play (dev aids only): warned once per battle. */
+let viewWarned = false;
+
+// Reduced motion for CSS too: <html data-reduce-motion> follows the in-game
+// setting (and the OS while it is on "auto"), so stylesheet animations obey it.
+applyMotionAttr(document.documentElement, reducedMotion());
+onPrefs(() => applyMotionAttr(document.documentElement, reducedMotion()));
+try {
+  window.matchMedia?.("(prefers-reduced-motion: reduce)").addEventListener?.("change", () =>
+    applyMotionAttr(document.documentElement, reducedMotion()),
+  );
+} catch {
+  // an old browser without media-query listeners: the setting still applies on change
+}
+
 // Dev aid: ?viewpoint=enemy previews the online guest's flipped camera.
 if (import.meta.env.DEV) {
   const v = new URLSearchParams(location.search).get("viewpoint");
@@ -470,11 +512,14 @@ function selectCard(id: CardId | null): void {
   selectedCard = id;
   if (id !== null) emit("input", { kind: "select", cardId: id });
   hud.setSelected(id);
-  // Troops and buildings show where they may go (the Mirror as what it copies).
-  const kind = id === null ? null : (effectiveCard(battle, localSide(), id)?.card ?? getCard(id)).kind;
-  scene.setZoneVisible(kind === "troop" || kind === "building", id === null ? null : (effectiveCard(battle, localSide(), id)?.card ?? getCard(id)));
-  // Nothing selected, nothing previewed: a ghost never outlives its card.
+  // Troops and buildings show where they may go (the Mirror as what it copies);
+  // the placement map picks the lane map or the Digger's dig map from the card.
+  const plays = id === null ? null : (effectiveCard(battle, localSide(), id)?.card ?? getCard(id));
+  scene.setZoneVisible(plays !== null && plays.kind !== "spell", plays);
+  // Nothing selected, nothing previewed: a ghost never outlives its card. A
+  // card picked with a key previews at a resting mouse at once.
   if (id === null) clearPreview();
+  else refreshPreview();
 }
 
 // ---- Battle-start cast gate (render3d/cast) ------------------------------
@@ -1056,10 +1101,17 @@ function botEmote(moment: BotMoment, force = false): void {
 function clearPreview(): void {
   scene.setHover(null, 0, false);
   scene.setGhost(null, null);
+  scene.zoneCallBack(false);
+  hud.placePip(null, 0, 0, "mouse", { x: 0, y: 0, w: 0, h: 0 });
 }
 
-function showPreview(clientX: number, clientY: number): void {
-  if (!selectedCard) {
+/**
+ * The preview under the pointer, re-read from the sim: the hover disc and
+ * ring, the ghost, the placement map's call-back and the verdict pip. The
+ * disc judges the SPOT only (too little elixir is the hourglass, never red).
+ */
+function refreshPreview(): void {
+  if (!selectedCard || !lastPointer || replaying || battle.result) {
     clearPreview();
     return;
   }
@@ -1067,18 +1119,41 @@ function showPreview(clientX: number, clientY: number): void {
   // card it would copy (blast radius, troop ghost), not as itself.
   const card =
     effectiveCard(battle, localSide(), selectedCard)?.card ?? getCard(selectedCard);
-  const pos = scene.pick(clientX, clientY);
-  const valid =
-    pos !== null &&
-    checkDeploy(battle, localSide(), selectedCard, pos.x, pos.y) === "ok";
+  const pos = scene.pick(lastPointer.x, lastPointer.y);
+  const check = pos === null ? null : checkDeploy(battle, localSide(), selectedCard, pos.x, pos.y);
+  const placing = card.kind !== "spell";
+  const badSpot = check === "bad-spot";
   const radius =
     card.kind === "spell"
       ? card.radius
       : card.kind === "building"
         ? Math.max(0.7, card.unit.radius)
         : 0.55;
-  scene.setHover(pos, radius, card.kind === "spell", valid, card.id);
-  scene.setGhost(card.kind === "spell" ? null : card.id, pos);
+  scene.setHover(pos, radius, card.kind === "spell", pos !== null && !badSpot, card.id);
+  scene.setGhost(placing ? card.id : null, pos, placing && badSpot);
+  scene.zoneCallBack(placing && badSpot);
+  // Spells go anywhere: their pip only ever says "wait".
+  const verdict = placeVerdict(check);
+  const pip = verdict && (placing || verdict === "wait") ? verdict : null;
+  hud.placePip(pip, lastPointer.x, lastPointer.y, lastPointer.type, fieldRect());
+}
+
+/** The "Drop troops here now!" label over a pocket that just opened (never in replays or the tutorial). */
+function updateLanePill(): void {
+  const c =
+    !replaying && activeChallenge?.id !== "tutorial" && !battle.result && !scene.koZooming ? scene.laneCallout() : null;
+  if (!c) {
+    hud.lanePill(null, "", false, -1, 0);
+    return;
+  }
+  const x0 = c.lane === "left" ? 0 : 9;
+  const box = lanePillBox(
+    scene.arenaToClient(c.ax, c.ay),
+    scene.arenaToClient(x0, c.ay),
+    scene.arenaToClient(x0 + 9, c.ay),
+    fieldRect(),
+  );
+  hud.lanePill(box, laneLabelText(), reduceMotion(), c.id, c.age);
 }
 
 
@@ -1161,6 +1236,7 @@ function tryDeployAt(clientX: number, clientY: number): void {
         return;
       }
       emit("input", { kind: "deploy", cardId: selectedCard });
+      scene.dismissLaneCallout();
       flyCardToField(selectedCard, clientX, clientY);
       scene.deployFlash(pos.x, pos.y);
       selectCard(null);
@@ -1168,6 +1244,7 @@ function tryDeployAt(clientX: number, clientY: number): void {
       return;
     }
     if (deployCard(battle, side, selectedCard, pos.x, pos.y)) {
+      scene.dismissLaneCallout();
       // Replay tape: remember the card and the exact tick it went down.
       if (recording && mode() === "solo") {
         recording.deploys.push({ t: soloTick, c: selectedCard, x: pos.x, y: pos.y });
@@ -1188,19 +1265,26 @@ function tryDeployAt(clientX: number, clientY: number): void {
     hud.flashError("elixir");
     audio.error();
   } else if (verdict === "bad-spot") {
-    hud.flashError("spot");
+    // The answer is on the field, not in the hand: say why at the finger,
+    // flash the region the words mean, and drop the ghost there and then.
     audio.error();
-    // Say why at the finger, and drop the ghost there and then.
     const why = badSpotReason(battle, side, selectedCard, pos.x, pos.y);
     if (why) {
       scene.badSpotPulse(pos.x, pos.y);
       hud.dropHint(badSpotText(why), clientX, clientY);
+      scene.zoneRefuse(why, pos.x, pos.y);
     }
     clearPreview();
+    lastPointer = null;
   }
 }
 
-// Tap-to-place: release on the field deploys the selected card.
+// Tap-to-place: release on the field deploys the selected card. The press
+// already shows the map, the ghost and the pip under the finger.
+scene.renderer.domElement.addEventListener("pointerdown", (ev) => {
+  lastPointer = { x: ev.clientX, y: ev.clientY, type: ev.pointerType || "mouse" };
+  refreshPreview();
+});
 scene.renderer.domElement.addEventListener("pointerup", (ev) => {
   tryDeployAt(ev.clientX, ev.clientY);
 });
@@ -1210,10 +1294,19 @@ scene.renderer.domElement.addEventListener("pointerup", (ev) => {
 // the screen's width, so they float over its near corners).
 scene.renderer.domElement.addEventListener("click", () => {});
 
-// Show the ghost wherever the pointer goes while a card is selected
-// (window-level so a drag started on a hand card previews immediately).
+// Track the pointer everywhere (window-level so a drag started on a hand
+// card previews immediately); the frame loop re-judges it once per frame.
 window.addEventListener("pointermove", (ev) => {
-  showPreview(ev.clientX, ev.clientY);
+  lastPointer = { x: ev.clientX, y: ev.clientY, type: ev.pointerType || "mouse" };
+});
+// A lifted finger or pen leaves nothing under it (runs after the field's own pointerup).
+for (const type of ["pointerup", "pointercancel"] as const) {
+  window.addEventListener(type, (ev) => {
+    if (ev.pointerType !== "mouse") lastPointer = null;
+  });
+}
+window.addEventListener("blur", () => {
+  lastPointer = null;
 });
 
 // Right-click anywhere on the field cancels the selected card.
@@ -1385,6 +1478,7 @@ function frame(now: number): void {
     battleCardsPlayed = 0;
     towerTimeline.length = 0;
     hud.setTimeline(towerTimeline);
+    viewWarned = false;
   }
   for (const ev of battle.events.splice(0)) {
     audio.onEvent(ev);
@@ -1431,6 +1525,14 @@ function frame(now: number): void {
   }
   const scaledDt = presentDt * presentTimeScale();
   scene.sync(battle, scaledDt, alpha);
+  // The spot under a resting pointer is re-judged every frame (a tower falls,
+  // elixir arrives), and the "lane opened" label follows the board.
+  if (selectedCard) refreshPreview();
+  updateLanePill();
+  if (import.meta.env.DEV && !viewWarned && scene.viewpoint !== localSide()) {
+    viewWarned = true;
+    console.warn(`[placement] the board is drawn for '${scene.viewpoint}' but you play '${localSide()}' (dev viewpoint aid or staged view)`);
+  }
   if (shouldRender(now)) scene.render(scaledDt);
   hud.update(battle, localSide());
   emit("frame", { dt, presentDt, alpha, phase: getPhase(), battle });
@@ -1459,13 +1561,9 @@ if (import.meta.env.DEV) {
     phase: () => getPhase(),
     layout: () => ({ mode: document.documentElement.dataset.layout ?? null, framing: scene.framing }),
     /** The field's tiles 0..18 x 0..32 on screen (page px; either viewpoint). */
-    fieldRect: () => {
-      const a = scene.arenaToClient(0, 0);
-      const b = scene.arenaToClient(18, 32);
-      const x = Math.min(a.x, b.x);
-      const y = Math.min(a.y, b.y);
-      return { x, y, w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
-    },
+    fieldRect: () => fieldRect(),
+    /** The sim's verdict for the local player dropping `cardId` at (x, y). */
+    check: (cardId: CardId, x: number, y: number) => checkDeploy(battle, localSide(), cardId, x, y),
   };
 }
 

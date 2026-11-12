@@ -19,6 +19,10 @@ import { CARD_ASPECT } from "../ui/layout";
 import {
   DROP_HINT_GUTTER,
   MATCH_CLOCK,
+  PIP_SIZE,
+  pipPlacement,
+  type PlaceVerdict,
+  type ScreenRect,
   TowerDamageTracker,
   abilitySecondsLeft,
   buildResultStats,
@@ -34,6 +38,7 @@ import {
   type TimelineEntry,
 } from "./hudModel";
 import { ResultScreen } from "./result";
+import { teamCss } from "./teamColors";
 
 const ABILITY_ICON: Record<AbilityId, IconName> = { rally: "sword", restore: "heart", salvo: "bomb" };
 
@@ -89,6 +94,8 @@ export const LONG_PRESS_SLOP_PX = 8;
 /** How long the refused-drop label and the KING "Charging" bubble stay up. */
 const DROP_HINT_MS = 1200;
 const CHARGING_MS = 1500;
+/** A lane label narrower than this (px) stacks its padlock over the words. */
+const LANE_PILL_NARROW = 150;
 /** How long the challenge goal card stays up after the match starts. */
 const GOAL_CARD_MS = 5200;
 /** Replay speeds offered by the pill under the clock. */
@@ -204,6 +211,10 @@ export class Hud {
   private replayBattle: BattleState | null = null;
   private pillPlacedAt = 0;
   private chargingTimer = 0;
+  /** The placement verdict pip and the "lane opened" label (one element each, made on first use). */
+  private pipEl: HTMLDivElement | null = null;
+  private pillEl: HTMLDivElement | null = null;
+  private pillId = -1;
   private goalTimer = 0;
   private reason: string | null = null;
 
@@ -563,12 +574,13 @@ export class Hud {
   }
 
   /**
-   * Shake the elixir row (can't afford), the hand (bad spot) or the KING
-   * ring (not charged yet; it also pops a "Charging… Ns" bubble). The KING
-   * never shakes the elixir bar: its charge is not elixir.
+   * Shake the elixir row (can't afford) or the KING ring (not charged yet;
+   * it also pops a "Charging… Ns" bubble). The KING never shakes the elixir
+   * bar: its charge is not elixir. A bad spot shakes nothing in the hand:
+   * its answer is on the field (the placement map, the words at the finger).
    */
-  flashError(kind: "elixir" | "spot" | "ability"): void {
-    const target = kind === "elixir" ? this.elixirRow : kind === "spot" ? this.handRow : this.abilityBtn;
+  flashError(kind: "elixir" | "ability"): void {
+    const target = kind === "elixir" ? this.elixirRow : this.abilityBtn;
     if (kind === "ability" && this.abilityBtn.hidden) return;
     target.classList.remove("error-shake");
     void target.offsetWidth; // restart the animation
@@ -611,6 +623,79 @@ export class Hud {
     // Centred on the finger whenever its real width fits there.
     label.style.left = `${dropHintCenterX(clientX, label.offsetWidth, vw)}px`;
     window.setTimeout(() => label.remove(), DROP_HINT_MS);
+  }
+
+  /**
+   * The verdict pip over the pointer while a card is held: a tick (yes), a
+   * no-entry sign (no) or an hourglass (wait: the spot is fine, the elixir is
+   * not). Shapes and sizes differ, so colour is never the only cue. One
+   * element, reused; null hides it.
+   */
+  placePip(v: PlaceVerdict | null, x: number, y: number, pointerType: string, field: ScreenRect): void {
+    if (!v) {
+      if (this.pipEl) this.pipEl.hidden = true;
+      return;
+    }
+    if (!this.pipEl) {
+      const pip = document.createElement("div");
+      pip.className = "place-pip";
+      pip.setAttribute("aria-hidden", "true");
+      document.body.appendChild(pip);
+      this.pipEl = pip;
+    }
+    const pip = this.pipEl;
+    if (pip.dataset.kind !== v) {
+      pip.dataset.kind = v;
+      pip.innerHTML = icon(`place-${v}`);
+      pip.style.setProperty("--pip-yes", teamCss("player", "dark")); // the colour-blind palette's blue too
+    }
+    const at = pipPlacement(x, y, pointerType, field, PIP_SIZE[v]);
+    const left = `${Math.round(at.x)}px`;
+    const top = `${Math.round(at.y)}px`;
+    if (pip.style.left !== left) pip.style.left = left;
+    if (pip.style.top !== top) pip.style.top = top;
+    if (pip.hidden) pip.hidden = false;
+  }
+
+  /**
+   * "Drop troops here now!" with an open padlock, over a pocket that just
+   * opened. Rebuilt only when `id` (the reveal) changes, so its pop plays
+   * once; fades out from `age` 3.75 s; null removes it.
+   */
+  lanePill(box: { x: number; y: number; maxW: number } | null, text: string, still: boolean, id: number, age: number): void {
+    if (!box) {
+      this.pillEl?.remove();
+      this.pillEl = null;
+      this.pillId = -1;
+      return;
+    }
+    if (!this.pillEl || this.pillId !== id) {
+      this.pillEl?.remove();
+      const pill = document.createElement("div");
+      pill.className = "lane-pill" + (still ? " still" : "");
+      pill.setAttribute("role", "status");
+      pill.dir = "auto";
+      pill.innerHTML = icon("unlock");
+      const span = document.createElement("span");
+      span.textContent = text;
+      pill.appendChild(span);
+      pill.style.setProperty("--pill-bg", teamCss("player", "dark"));
+      document.body.appendChild(pill);
+      this.pillEl = pill;
+      this.pillId = id;
+    }
+    const pill = this.pillEl;
+    const left = `${Math.round(box.x)}px`;
+    const top = `${Math.round(box.y)}px`;
+    const maxW = `${Math.floor(box.maxW)}px`;
+    if (pill.style.left !== left) pill.style.left = left;
+    if (pill.style.top !== top) pill.style.top = top;
+    if (pill.style.maxWidth !== maxW) pill.style.maxWidth = maxW;
+    // A narrow pocket (landscape phones): the padlock goes on top, so the words keep two lines.
+    const narrow = box.maxW < LANE_PILL_NARROW;
+    if (pill.classList.contains("narrow") !== narrow) pill.classList.toggle("narrow", narrow);
+    const out = age >= 3.75;
+    if (pill.classList.contains("out") !== out) pill.classList.toggle("out", out);
   }
 
   /** Long-press info: art, name, cost, the kid one-liner, good-vs and watch-out portraits. */

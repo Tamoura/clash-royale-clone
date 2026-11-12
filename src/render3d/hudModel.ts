@@ -9,7 +9,7 @@
  * feeds it. Nothing in this file touches the DOM.
  */
 import { ABILITIES, type AbilityId } from "../game/abilities";
-import { canDeployTroopAt, type Side } from "../game/arena";
+import { canDeployTroopAt, inRiver, onBridge, type Side } from "../game/arena";
 import {
   checkDeploy,
   effectiveCard,
@@ -17,6 +17,7 @@ import {
   openLanes,
   type BattleEvent,
   type BattleState,
+  type DeployCheck,
   type Entity,
 } from "../game/battle";
 import { getCard, type CardId } from "../game/cards";
@@ -29,6 +30,7 @@ import {
 } from "../game/sim";
 import { cardDisplayName } from "../render/cardNames";
 import { fmtNum, fmtTime, tr } from "../ui/i18n";
+import { KING_KEEP_CLEAR, enemyKingSpot } from "./deployZone";
 
 export interface HandSlotModel {
   id: CardId;
@@ -266,27 +268,114 @@ export function chargingText(seconds: number): string {
 
 // ---- Refused drops -------------------------------------------------------------
 
-export type BadSpotReason = "side" | "tower";
+export type BadSpotReason = "side" | "lane" | "river" | "king" | "tower" | "dig";
 
 /**
- * Why a troop or building cannot go down at (x, y), mirroring checkDeploy:
- * outside the deployable area (canDeployTroopAt: the enemy half while its
- * lane is shut, the river) reads "side"; inside it, the only other refusal is
- * the clearance around a standing enemy tower, which reads "tower". Null when
- * the spot is fine or the refusal is not about the spot (spells, a Mirror
- * with nothing to copy).
+ * Why a troop or building cannot go down at (x, y), in the kid's words,
+ * mirroring checkDeploy (the placement map draws the same rule):
+ *   - the Digger: in the water off the bridges ("river"), else on a tower
+ *     or building body ("dig");
+ *   - outside the deployable area: with no enemy lane open yet, the enemy
+ *     half and the river are "side"; once one is open, the river is "river"
+ *     and the other, still-closed lane is "lane" (knock its tower down first);
+ *   - inside it, a standing enemy tower's clearance: the King's ("king") or a
+ *     princess's ("tower").
+ * Null when the spot is fine or the refusal is not about the spot (spells, a
+ * Mirror with nothing to copy).
  */
 export function badSpotReason(state: BattleState, side: Side, cardId: CardId, x: number, y: number): BadSpotReason | null {
   if (checkDeploy(state, side, cardId, x, y) !== "bad-spot") return null;
   const eff = effectiveCard(state, side, cardId);
   if (!eff || eff.card.kind === "spell") return null;
-  return canDeployTroopAt(side, x, y, openLanes(state, side)) ? "tower" : "side";
+  if (eff.card.kind === "troop" && eff.card.deployAnywhere === true) return inRiver(y) && !onBridge(x) ? "river" : "dig";
+  const open = openLanes(state, side);
+  if (!canDeployTroopAt(side, x, y, open)) {
+    if (!open.left && !open.right) return "side";
+    return inRiver(y) ? "river" : "lane";
+  }
+  const king = enemyKingSpot(side);
+  const dx = x - king.x;
+  const dy = y - king.y;
+  return Math.sqrt(dx * dx + dy * dy) < KING_KEEP_CLEAR ? "king" : "tower";
 }
 
 export function badSpotText(reason: BadSpotReason): string {
-  return reason === "side"
-    ? tr("Your side only!", "في جهتك فقط!")
-    : tr("Too close to a tower!", "قريب جدًا من البرج!");
+  switch (reason) {
+    case "side":
+      return tr("Your side only!", "في جهتك فقط!");
+    case "lane":
+      return tr("Knock down this tower first!", "أسقط هذا البرج أولًا!");
+    case "river":
+      return tr("Not in the water!", "ليس في الماء!");
+    case "king":
+      return tr("Too close to the King!", "قريب جدًا من الملك!");
+    case "dig":
+      return tr("Can't dig here!", "لا يمكن الحفر هنا!");
+    default:
+      return tr("Too close to a tower!", "قريب جدًا من البرج!");
+  }
+}
+
+// ---- Placement: the verdict pip and the "lane opened" label -------------------
+
+/** What the pip over the finger says about the spot: yes, no, or wait (the spot is fine, the elixir is not). */
+export type PlaceVerdict = "yes" | "no" | "wait";
+
+/** The spot verdict from checkDeploy: too little elixir is "wait", never "no". */
+export function placeVerdict(check: DeployCheck | null): PlaceVerdict | null {
+  return check === "ok" ? "yes" : check === "no-elixir" ? "wait" : check === "bad-spot" ? "no" : null;
+}
+
+/** The pip's diameter (CSS px) per verdict: different shapes AND sizes. */
+export const PIP_SIZE: Readonly<Record<PlaceVerdict, number>> = { yes: 26, no: 34, wait: 30 };
+/** How far above the pointer the pip floats: clear of a fingertip, closer to a mouse arrow. */
+export const PIP_LIFT_TOUCH = 62;
+export const PIP_LIFT_MOUSE = 40;
+
+export interface ScreenRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Where the pip's centre goes for a pointer at (x, y): lifted above it (a
+ * finger would hide it), kept inside the field; near the field's top a
+ * finger's pip moves beside it instead, toward the middle.
+ */
+export function pipPlacement(x: number, y: number, pointerType: string, field: ScreenRect, size: number): { x: number; y: number } {
+  const touch = pointerType !== "mouse";
+  const inset = size / 2 + 2;
+  const clampX = (v: number): number => Math.max(field.x + inset, Math.min(field.x + field.w - inset, v));
+  const top = field.y + inset;
+  const lifted = y - (touch ? PIP_LIFT_TOUCH : PIP_LIFT_MOUSE);
+  if (lifted >= top) return { x: clampX(x), y: lifted };
+  if (!touch) return { x: clampX(x), y: top };
+  const toward = x < field.x + field.w / 2 ? 1 : -1;
+  return { x: clampX(x + toward * (size / 2 + 30)), y: Math.max(top, y - 10) };
+}
+
+/** Keep the lane label at least this far inside the field's top and bottom (px). */
+export const LANE_PILL_INSET = 24;
+
+/**
+ * The "Drop troops here now!" label's box: centred on the lane on screen,
+ * never wider than the pocket (less 8 px, so it wraps instead of spilling
+ * into the other lane), its centre kept inside the field.
+ */
+export function lanePillBox(
+  anchor: { x: number; y: number },
+  edgeA: { x: number; y: number },
+  edgeB: { x: number; y: number },
+  field: ScreenRect,
+): { x: number; y: number; maxW: number } {
+  const y = Math.max(field.y + LANE_PILL_INSET, Math.min(field.y + field.h - LANE_PILL_INSET, anchor.y));
+  return { x: anchor.x, y, maxW: Math.max(0, Math.abs(edgeA.x - edgeB.x) - 8) };
+}
+
+export function laneLabelText(): string {
+  return tr("Drop troops here now!", "ضع جنودك هنا الآن!");
 }
 
 /** The refused-drop label never runs closer than this to a screen edge (px). */

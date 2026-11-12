@@ -21,7 +21,9 @@ export type IconName =
   | "users" | "sliders" | "clock" | "globe" | "vibrate" | "sparkle" | "palette"
   | "text" | "motion"
   // Battle clarity (replay speed, KING charging)
-  | "fast" | "hourglass";
+  | "fast" | "hourglass"
+  // Placement: the verdict pip over the finger and the "lane opened" padlock
+  | "place-yes" | "place-no" | "place-wait" | "unlock";
 
 export type CrestIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
 
@@ -145,6 +147,15 @@ const PATHS: Record<IconName, string> = {
   // ---- Battle clarity ----
   fast: `<path ${O} fill="#ffd23f" d="M2.5 5.5 11.5 12l-9 6.5z"/><path ${O} fill="#ffd23f" d="M12 5.5 21 12l-9 6.5z"/>`,
   hourglass: `<path ${O} fill="#f6e7c8" d="M6 3h12v2.2c0 3-2.4 4.9-4.6 6.8 2.2 1.9 4.6 3.8 4.6 6.8V21H6v-2.2c0-3 2.4-4.9 4.6-6.8C8.4 10.1 6 8.2 6 5.2z"/><path fill="#ffd23f" d="M8.4 19.4c.4-1.8 2-3 3.6-4.2 1.6 1.2 3.2 2.4 3.6 4.2zM9.2 6.4h5.6c-.6 1.2-1.6 2.1-2.8 3-1.2-.9-2.2-1.8-2.8-3z"/><path fill="none" stroke="#1a1030" stroke-width="1.6" stroke-linecap="round" d="M4.5 3h15M4.5 21h15"/>`,
+  // ---- Placement (shapes carry the meaning; colour is only a second cue) ----
+  // Yes: a white tick on the player's blue (--pip-yes follows the colour-blind palette).
+  "place-yes": `<circle cx="12" cy="12" r="10.5" style="fill:var(--pip-yes,#2463d6)" stroke="#1f1a2e" stroke-width="2"/><path fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" d="m6.8 12.4 3.4 3.4 7-7.6"/>`,
+  // No: a no-entry sign (white disc, red ring and slash, ink outer ring).
+  "place-no": `<circle cx="12" cy="12" r="10.8" fill="#fff" stroke="#1f1a2e" stroke-width="1.6"/><circle cx="12" cy="12" r="7.6" fill="none" stroke="#d81f2a" stroke-width="3"/><path stroke="#d81f2a" stroke-width="3" d="M6.6 6.6 17.4 17.4"/>`,
+  // Wait (the spot is fine, the elixir is not there yet): a white hourglass on magenta.
+  "place-wait": `<circle cx="12" cy="12" r="10.5" fill="#b0158a" stroke="#1f1a2e" stroke-width="2"/><path fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M8 6.2h8M8 17.8h8M9 6.2c0 3 3 4 3 5.8s-3 2.8-3 5.8M15 6.2c0 3-3 4-3 5.8s3 2.8 3 5.8"/><path fill="#fff" d="M9.8 17.3c.5-1.4 1.3-2 2.2-2.6.9.6 1.7 1.2 2.2 2.6z"/>`,
+  // The lock with its shackle lifted and swung open: a lane opened.
+  unlock: `${line("M14 10V6a4 4 0 0 1 8 0v2", "#9aa7b8")}<rect ${O} fill="#ffd23f" x="2.5" y="10" width="14" height="11" rx="2"/><path fill="#1a1030" d="M9.5 13.2a1.7 1.7 0 0 0-.9 3.1V18h1.8v-1.7a1.7 1.7 0 0 0-.9-3.1z"/>`,
 };
 
 /** An inline SVG icon, 1em square, for innerHTML use. */

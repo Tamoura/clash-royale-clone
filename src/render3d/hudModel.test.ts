@@ -19,8 +19,13 @@ import {
   MATCH_CLOCK,
   abilitySecondsLeft,
   DROP_HINT_GUTTER,
+  PIP_SIZE,
   badSpotReason,
   badSpotText,
+  laneLabelText,
+  lanePillBox,
+  pipPlacement,
+  placeVerdict,
   challengeClock,
   dropHintCenterX,
   chargingText,
@@ -321,13 +326,45 @@ describe("refused drops", () => {
     expect(badSpotReason(b, "enemy", b.enemy.hand.cards[0], 9, 24)).toBe("side");
   });
 
-  it("says 'too close to a tower' inside an opened lane", () => {
+  it("says 'too close to the King' inside the King's keep-clear of an opened lane", () => {
     const b = createBattle();
     const left = towers(b, "enemy").find((t) => t.kind === "princess-tower" && t.x < 9)!;
     b.entities = b.entities.filter((e) => e !== left); // the left lane opens
     expect(badSpotReason(b, "player", "knight", 3.5, 5)).toBeNull(); // clear of the king
-    expect(badSpotReason(b, "player", "knight", 8, 4)).toBe("tower"); // inside the king's buffer
+    expect(badSpotReason(b, "player", "knight", 8, 4)).toBe("king"); // inside the king's buffer
+    expect(badSpotText("king")).toBe(tr("Too close to the King!", "قريب جدًا من الملك!"));
     expect(badSpotText("tower")).toBe(tr("Too close to a tower!", "قريب جدًا من البرج!"));
+  });
+
+  it("once a lane is open, names the closed lane and the water", () => {
+    const b = createBattle();
+    b.entities = b.entities.filter((e) => !(e.side === "enemy" && e.kind === "princess-tower" && e.x < 9));
+    expect(badSpotReason(b, "player", "knight", 13, 10)).toBe("lane");
+    expect(badSpotReason(b, "player", "knight", 9, 16)).toBe("river");
+    expect(badSpotReason(b, "player", "knight", 3.5, 16)).toBe("river"); // a bridge is still the river for troops
+    expect(badSpotText("lane")).toBe(tr("Knock down this tower first!", "أسقط هذا البرج أولًا!"));
+    expect(badSpotText("river")).toBe(tr("Not in the water!", "ليس في الماء!"));
+  });
+
+  it("mirrors the reasons for the online guest", () => {
+    const b = createBattle();
+    // The guest's left lane opens when the player's right princess falls (x > 9 on the board).
+    b.entities = b.entities.filter((e) => !(e.side === "player" && e.kind === "princess-tower" && e.x > 9));
+    b.enemy.hand = { cards: ["knight", "archers", "giant", "fireball"], queue: [] };
+    const card: CardId = "knight";
+    expect(badSpotReason(b, "enemy", card, 5, 22)).toBe("lane");
+    expect(badSpotReason(b, "enemy", card, 10, 28)).toBe("king");
+    expect(badSpotReason(b, "enemy", card, 13, 22)).toBeNull();
+  });
+
+  it("speaks the Digger's own rule: water off the bridges, tower and building bodies", () => {
+    const b = createBattle();
+    b.player.hand = { cards: ["digger", "knight", "cannon", "fireball"], queue: [] };
+    expect(badSpotReason(b, "player", "digger", 8, 16)).toBe("river");
+    expect(badSpotReason(b, "player", "digger", 3.5, 16)).toBeNull(); // on a bridge
+    expect(badSpotReason(b, "player", "digger", 3.5, 6.5)).toBe("dig"); // an enemy princess
+    expect(badSpotReason(b, "player", "digger", 3.5, 25.5)).toBe("dig"); // your own princess
+    expect(badSpotText("dig")).toBe(tr("Can't dig here!", "لا يمكن الحفر هنا!"));
   });
 
   it("centres the label on the finger whenever it fits", () => {
@@ -341,6 +378,43 @@ describe("refused drops", () => {
     // A label wider than the screen less its gutters sits in the middle.
     expect(dropHintCenterX(20, 500, 360)).toBe(180);
     expect(dropHintCenterX(4, 0, 360)).toBe(DROP_HINT_GUTTER); // unmeasured: just the gutter
+  });
+
+  it("splits the spot from the elixir: too little elixir is 'wait', never 'no'", () => {
+    expect(placeVerdict("ok")).toBe("yes");
+    expect(placeVerdict("no-elixir")).toBe("wait");
+    expect(placeVerdict("bad-spot")).toBe("no");
+    expect(placeVerdict("finished")).toBeNull();
+    expect(placeVerdict("not-in-hand")).toBeNull();
+    expect(placeVerdict(null)).toBeNull();
+    expect(PIP_SIZE).toEqual({ yes: 26, no: 34, wait: 30 });
+  });
+
+  it("lifts the pip above the pointer and keeps it on the field", () => {
+    const field = { x: 5, y: 177, w: 379, h: 510 };
+    expect(pipPlacement(200, 500, "touch", field, 26)).toEqual({ x: 200, y: 438 });
+    expect(pipPlacement(200, 500, "pen", field, 26)).toEqual({ x: 200, y: 438 });
+    expect(pipPlacement(200, 500, "mouse", field, 26)).toEqual({ x: 200, y: 460 });
+    // Clamped inside the field's sides.
+    expect(pipPlacement(6, 500, "touch", field, 34).x).toBe(5 + 17 + 2);
+    expect(pipPlacement(383, 500, "touch", field, 34).x).toBe(5 + 379 - 17 - 2);
+    // Near the top a finger's pip moves beside it, toward the middle.
+    const near = pipPlacement(60, 200, "touch", field, 34);
+    expect(near.x).toBe(60 + 17 + 30);
+    expect(near.y).toBe(177 + 17 + 2); // max(field top, finger - 10)
+    expect(pipPlacement(330, 190, "touch", field, 34)).toEqual({ x: 330 - 47, y: 177 + 17 + 2 });
+    expect(pipPlacement(200, 240, "touch", field, 26)).toEqual({ x: 200 - 43, y: 230 });
+    // A mouse's pip just stops at the top.
+    expect(pipPlacement(60, 200, "mouse", field, 34)).toEqual({ x: 60, y: 177 + 17 + 2 });
+  });
+
+  it("sizes the lane label to its pocket and keeps it on the field", () => {
+    const field = { x: 304, y: 59, w: 236, h: 317 };
+    const box = lanePillBox({ x: 363, y: 200 }, { x: 304, y: 200 }, { x: 422, y: 200 }, field);
+    expect(box).toEqual({ x: 363, y: 200, maxW: 110 });
+    expect(lanePillBox({ x: 363, y: 40 }, { x: 304, y: 40 }, { x: 422, y: 40 }, field).y).toBe(59 + 24);
+    expect(lanePillBox({ x: 363, y: 400 }, { x: 304, y: 400 }, { x: 422, y: 400 }, field).y).toBe(59 + 317 - 24);
+    expect(laneLabelText()).toBe(tr("Drop troops here now!", "ضع جنودك هنا الآن!"));
   });
 
   it("has nothing to say for good spots, spells and cards not in hand", () => {
