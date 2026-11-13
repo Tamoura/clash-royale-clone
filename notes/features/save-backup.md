@@ -27,8 +27,8 @@ safe, or move them to another tablet." / "احفظ كؤوسك وبطاقاتك �
 | --- | --- |
 | Copy my save code / انسخ رمز الحفظ | Closes Settings, opens "Your save code": the code in a read-only box (left to right in both editions), **Copy** (clipboard; if refused, the box is selected for a copy by hand) and **Save to a file** (the same code). |
 | Save to a file / احفظ في ملف | Downloads `crown-rush-save-<yyyy-mm-dd>.txt` holding the code (one line). Toast: "Saved as …". |
-| Load a save / حمّل حفظًا | Closes Settings, opens "Load a save": a box to paste into, **Load this code**, **Pick a file** (`.txt`). A bad code gets one friendly line under the box (below). |
-| Undo the last load / تراجع عن آخر تحميل | Only while a pre-load backup exists. Asks first, the same way as a load. |
+| Load a save / حمّل حفظًا | Closes Settings, opens "Load a save": a box to paste into, **Load this code**, **Pick a file** (`.txt`). A bad code gets one friendly line under the box (below). Its icon is an arrow going down into a tray (drawn in `saveSheet.ts`; the shared icon set has no download glyph). |
+| Undo the last load / تراجع عن آخر تحميل | While the backup slot holds a pre-load backup. Asks first, the same way as a load. The undo keeps what the tablet has now in the slot, so the row then reads **Redo the last load / أعِد آخر تحميل**, which switches back the same way. Nothing is ever thrown away by an undo or a redo. |
 
 A good code opens the confirm sheet **"Load this save?" / "تحميل هذا
 الحفظ؟"**: "This save will take the place of the progress on this tablet. We
@@ -46,12 +46,27 @@ splash and reloads; Home then says "Save loaded! Welcome back." /
 "تم تحميل الحفظ! أهلًا بعودتك." (Undo: "Everything is back to how it was
 before the load.").
 
+The undo and redo confirm sheets use the same table ("Before the load" or
+"Before the undo" next to "This tablet now"), say "What this tablet has now
+is kept as a backup, so you can switch back." / "سنحتفظ بما في هذا الجهاز
+الآن كنسخة احتياطية، فيمكنك الرجوع إليه.", and warn "You will have fewer
+trophies than now." / "سيصبح عندك كؤوس أقل من الآن." when the slot has fewer
+trophies. Keep my progress is first, big and focused (it takes the focus back
+when the Settings sheet closing underneath returns it to the gear). After the
+reload Home says "Everything is back to how it was before the load." or
+"... before the undo.".
+
+The warning line sits above the table. On a small phone the table scrolls
+under the two buttons, which stay pinned to the bottom of the sheet; under
+360 px wide each row's label goes on its own line above its two values, so
+no word is split.
+
 Load errors (kid wording, both languages in `saveSheet.ts saveErrorText`):
 empty, too long, not a Crown Rush code, a deck code ("That's a deck code, not
 a save code."), a typo ("Part of this code is wrong or missing. Copy the
 whole code again and paste it."), a newer game ("This save is from a newer
-Crown Rush. Update the game, then try again."), another game, broken, a
-browser too old to unpack it, a save with nothing in it, no room to save.
+Crown Rush. Update the game, then try again."), another game, broken, a save
+with nothing in it, no room to save.
 
 After the kid's first real win (not a replay, not Sandbox) the game asks
 `navigator.storage.persist()` once. On an iPhone or iPad in a browser tab
@@ -83,6 +98,14 @@ not count), finds `'cr-clone-…'` literals, template starts and
 on a registered key nothing uses (the four pre-registered round-2 keys are
 exempt until they land).
 
+The exemption ends when a key lands: once one of `PENDING_ROUND2_KEYS` is
+used in src, the test "keeps a round-2 key pending only until it lands"
+fails, naming it. **Integration:** merging r2/shield (`cr-clone-problem-log`),
+r2/graphics (`cr-clone-gfx-memory`, `cr-clone-gfx-note-seen`) and r2/boot
+(`cr-clone-offline-ready-seen`) makes it fail on purpose; take those keys off
+`PENDING_ROUND2_KEYS` in `src/meta/saveKeys.ts` in the same merge (the set
+ends up empty, and the stale check then covers them like every other key).
+
 Decisions:
 - **Progress** (travels): trophies, gold, gems, levels, owned, shards, chests,
   deck, `cr-clone-meta-v1` (the migration flag: without it the next boot would
@@ -113,8 +136,14 @@ Decisions:
 - Inside: `{"g":"crown-rush","v":1,"t":<ms>,"k":{key: value},"w":{"n","c"}}`.
 - Packing `Z`: `CompressionStream("deflate-raw")`; `P`: plain bytes, used when
   the browser cannot make deflate-raw (older Chrome, Safari and Firefox
-  releases). A `Z` code on a browser with no `DecompressionStream("deflate-raw")`
-  gets "This browser is too old to open this code" (no JS inflate fallback).
+  releases). Reading a `Z` code uses `DecompressionStream("deflate-raw")`
+  where the browser has it, else `inflateRawJs` in `saveCode.ts`: a small
+  raw-DEFLATE decoder (RFC 1951, after zlib's "puff"; about 170 lines) with
+  the same 1,000,000-byte cap, so a tablet that cannot update past iOS 15
+  (Safari before 16.4) opens a code made on a new one. It is tested against
+  the platform's own `CompressionStream` output (stored, fixed and dynamic
+  blocks), with the stream removed entirely, on cut-short and junk input
+  (never throws), and by mutation (changing a table entry fails the tests).
 - Check: Luhn mod 64 over the whole code; catches every single wrong
   character (tested exhaustively on a sample) and a dropped character.
 - Reading strips spaces, line breaks and zero-width characters, then: size cap
@@ -138,18 +167,38 @@ Decisions:
 
 Then the page reloads (`holdSplashForReload`), so `loadProfile`'s sanitisers
 and migrations, the season roll and every module's own loader read the new
-progress exactly as on a normal boot. `undoLastLoad` writes the backup the
-same way and deletes it. The confirm table is read through the game's own
-`loadProfile` on an in-memory copy, so it shows what the game will show.
+progress exactly as on a normal boot. The confirm table is read through the
+game's own `loadProfile` on an in-memory copy, so it shows what the game will
+show.
+
+`undoLastLoad(store)` (Undo, and Redo after an undo) is a swap: it first
+writes this tablet's progress into `cr-clone-save-backup` (marked `"b":"undo"`
+after an undo of a load, `"b":"load"` after a redo), then writes the slot's
+old progress, the same way as a load. If storage fills up half way, the
+tablet and the slot are both put back. A backup from a tablet that had not
+played yet (no progress keys) still counts, so that load can be undone too.
+
+Other open tabs: every load and undo writes the backup slot first, so
+`keepSafeWire.ts` listens for the `storage` event on `cr-clone-save-backup`
+and reloads that tab 250 ms later (the rest of the other tab's writes land
+first), with the splash held. A match being played in that tab belonged to
+the old profile, so its left-match marker is dropped first and the reload is
+not counted as a loss on the loaded save.
 
 ## Checked
 
-Unit: `saveKeys.test.ts` (7), `saveCode.test.ts` (25: round trip packed and
-plain, typo and dropped character, wrong game, newer format in header and
-JSON, garbage, deck code, size caps, unpack bomb, key/value filtering, load
-keeps device keys, backup and exact undo, edition kept when absent, storage
-full before and half way, summary), `keepSafe.test.ts` (6),
-`keepSafeWire.test.ts` (3), `saveSheet.test.ts` (8, fake DOM).
+Unit (after the review round): `saveKeys.test.ts` (8), `saveCode.test.ts`
+(32: round trip packed and plain, typo and dropped character, wrong game,
+newer format in header and JSON, garbage, deck code, size caps, unpack bomb,
+key/value filtering, load keeps device keys, backup and exact undo, undo then
+redo with two weeks of play in between, undo on a tablet that had not
+played, undo with no or a broken backup, undo running out of room half way,
+edition kept when absent, storage full before and half way, the JS inflate
+on stored/fixed/dynamic blocks, with no DecompressionStream, on junk,
+summary), `keepSafe.test.ts` (6), `keepSafeWire.test.ts` (6: also the
+undo/redo toasts and the other-tab reload), `saveSheet.test.ts` (11, fake
+DOM: also Redo, the undo warning, the warning above the table, the focus
+taken back from the closing Settings sheet).
 
 Browser, production build (`dist-server/relay.mjs`, port 3413), phone
 390x844 with real touch, plus desktop 1440x900, both directions:
@@ -177,16 +226,44 @@ Browser, production build (`dist-server/relay.mjs`, port 3413), phone
 Screenshots: `/tmp/claude-0/r2/save/shots/` (`normal-to-arabic-extra-*`,
 `arabic-to-normal-*`, `loaded-toast-arabic.png`, `keepsafe-*`, `look-*`).
 
+Review round (fixes on top of the first build), production build on 3413,
+phone 390x844 with real touch unless noted; scripts and shots in
+`/tmp/claude-0/r2/save-fix/`:
+- Golden Age A to Classic B by paste: load, then Undo (the undo confirm shows
+  "سيصبح عندك كؤوس أقل من الآن." with 260 next to 1,180), then Settings shows
+  "Redo the last load", the slot holds the loaded 1,180; Redo brings every
+  key back exactly as loaded (empty diff), toast "... before the undo".
+- Classic A (a real ladder battle) to Golden Age B by file: the same; every
+  progress key equals A's after the load and after the redo, and Keep my
+  progress has the focus on the undo screen (it did not before).
+- Desktop 1440x900, Classic: the load confirm (warning above the table) and
+  the undo confirm lay out cleanly, Keep my progress focused on both.
+- 320x640 at 130% text, both editions: rows stack (label above its two
+  values), no word split, the warning and both buttons in view, no
+  horizontal scroll; scrolled to the end the last rows sit above the pinned
+  buttons.
+- No CompressionStream or DecompressionStream at all: the tablet's own code
+  is `CR1P`, and a `CR1Z` code from a modern browser opens, shows the right
+  summary and loads.
+- Two tabs in one browser, the second in the middle of a ladder battle: a
+  load in the first reloads the second, which then shows the loaded save,
+  with no left-match marker and no "You left your last battle" notice.
+
 ## Known limits
 
-- **Other tabs.** A second tab of the game left open keeps its old profile
-  in memory; if it then finishes a match it writes that profile back over
-  the loaded one. The load does not tell other tabs. Rare on a kid's tablet;
-  a BroadcastChannel "reload" would close it.
-- **Old browsers.** A packed code cannot be opened by a browser without
-  `DecompressionStream("deflate-raw")` (old Safari/Chrome); the kid is told
-  to update the browser. Codes made on such a browser are plain and open
-  anywhere.
+- **Other tabs.** Open tabs reload when another tab loads or undoes (above).
+  A tab the browser has frozen or thrown away in the background gets the
+  event (or a fresh page) only when the kid comes back to it; if it was in
+  the middle of a ladder battle and was thrown away, its next boot can still
+  count that battle as a loss on the loaded save. Rare: it needs a battle
+  left open in one tab while a save is loaded in another.
+- **Old browsers.** Fixed in the review round: a browser without
+  `DecompressionStream("deflate-raw")` unpacks with `inflateRawJs`. Codes
+  made on such a browser are plain (`P`) and open anywhere.
+- **The backup slot never expires.** Undo (or Redo) stays offered for as
+  long as the slot holds something. That is safe because both are swaps with
+  the fewer-trophies warning and the side-by-side table; deleting the slot
+  after a time instead would destroy the only copy of the other progress.
 - **No QR code.** The plan mentioned one as optional; not built.
 - **Not typeable.** A real code is about 900 characters: it is for copy and
   paste or the file, not for reading aloud. The check character still
