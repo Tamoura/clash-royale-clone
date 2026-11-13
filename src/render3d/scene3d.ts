@@ -1,8 +1,7 @@
 import * as THREE from "three";
-import { ARENA_HEIGHT, ARENA_WIDTH, type OpenLanes, type Side } from "../game/arena";
+import { ARENA_HEIGHT, ARENA_WIDTH, type Side } from "../game/arena";
 import {
   distance,
-  openLanes,
   type BattleEvent,
   type BattleState,
   type Entity,
@@ -70,6 +69,7 @@ import {
   buildBuildingMesh,
   buildGhost,
   buildTroopMesh,
+  hasGhost,
   loadGlbModels,
   isSwarmSized,
   makeLevelBadge,
@@ -85,11 +85,18 @@ import {
 import { beginDeath, updateTroop, updateTroopDeath, viewsOnEvent } from "./scene/views/animate";
 import { castActiveForBattle, setLeanCamera } from "./cast/index";
 import { towerCrewProvider as castCrewProvider } from "./cast/crew";
+import { DeployOverlay, type LaneCallout, type RefuseReason, type ZoneParts } from "./scene/deployOverlay";
+import { zoneModeFor } from "./deployZone";
+import { reducedMotion } from "../ui/prefs";
 
 // The scene's building blocks live in ./scene/ (arena, sky, camera, post,
 // views, fx); Battle3D wires them together behind the same public API.
 export { GAME_FONT, disposeDeep } from "./scene/common";
 export { setTowerFlair } from "./scene/views/towers";
+export { deploysAnywhere } from "./deployZone";
+
+/** The canvas's page rect, as getBoundingClientRect gives it (only what the conversions read). */
+export type CanvasRect = Pick<DOMRectReadOnly, "left" | "top" | "width" | "height">;
 
 /**
  * Tower crews from the cast (cast/crew.ts, shared rules 4). Towers build
@@ -117,26 +124,10 @@ const SPELL_TINT: Partial<Record<CardId, number>> = {
   "skeleton-barrel": 0xc9954a,
 };
 
-// Matches KING_DEPLOY_BUFFER in battle.ts: troops can't be deployed this close
-// to the enemy king even after a lane opens.
-const KING_NO_DEPLOY_RADIUS = 4.5;
-/**
- * How much darker the enemy half looks while a troop or building is
- * selected (0.45 = 45% darker on screen). Blending happens in linear light
- * before the sRGB output, so the material needs a higher alpha to look
- * this dark: 0.45 as a plain alpha read as barely 25% darker.
- */
-export const ENEMY_ZONE_OPACITY = 0.45;
-const ENEMY_ZONE_ALPHA = 1 - Math.pow(1 - ENEMY_ZONE_OPACITY, 2.2);
-/** Depth (tiles) of the red edge line along the near bank of the river. */
-const ENEMY_EDGE_DEPTH = 0.32;
 /** How long the refused-drop ring pulses (seconds). */
 export const BAD_SPOT_SECONDS = 1.2;
-
-/** A troop card that tunnels to any spot (the Digger) ignores the lane rules. */
-export function deploysAnywhere(card: Card | null): boolean {
-  return card?.kind === "troop" && card.deployAnywhere === true;
-}
+/** A ghost on a "no" spot fades to this fraction of its opacity. */
+export const GHOST_DIM = 0.4;
 
 /*
  * Fields marked @internal are shared with the ./scene/ modules, which take
@@ -163,8 +154,10 @@ export class Battle3D {
   private readonly seen = new Set<number>();
   /** @internal */
   readonly projSeen = new Set<number>();
-  private readonly hoverDisc: THREE.Mesh;
-  private readonly hoverRing: THREE.Mesh;
+  /** @internal The hover disc and ring under the finger (read by dev tools and the staging script). */
+  readonly hoverDisc: THREE.Mesh;
+  /** @internal */
+  readonly hoverRing: THREE.Mesh;
   /** @internal Everything that belongs to the arena stage (rebuilt per look). */
   arenaGroup = new THREE.Group();
   /** @internal Living sky: 0 = daylight, 1 = deep night (driven by match time). */
@@ -183,7 +176,14 @@ export class Battle3D {
   /** @internal The light rig (rebuilt with the look; graded by the living sky). */
   lightGroup = new THREE.Group();
   private hoverPulse = 0;
-  private ghost: { id: CardId; rig: TroopRig } | null = null;
+  /** Reduced motion, read once per sync (under "auto" every read asks matchMedia) and reused by render. */
+  private still = reducedMotion();
+  private ghost: {
+    id: CardId;
+    rig: TroopRig;
+    mats: { mat: THREE.Material; base: number }[];
+    dim: boolean;
+  } | null = null;
   /** @internal Trauma-based camera shake; big impacts punch harder than small ones. */
   readonly shakeCtl = new ShakeController();
   /** @internal */
@@ -221,22 +221,13 @@ export class Battle3D {
   edgeFieldW = 0;
   /** Shadow-map renders so far: shadows are static and re-render only when marked dirty. */
   shadowRenders = 0;
-  private readonly zonePlane: THREE.Mesh; // own-half deploy area (blue)
-  // Enemy half, split per lane: a dark "no-deploy" overlay that turns into a
-  // blue "deployable" strip once that lane's princess tower falls.
-  private readonly enemyDarkL: THREE.Mesh;
-  private readonly enemyDarkR: THREE.Mesh;
-  private readonly laneBlueL: THREE.Mesh;
-  private readonly laneBlueR: THREE.Mesh;
-  // Red "do not cross" edge where each shut enemy lane meets your half.
-  private readonly enemyEdgeL: THREE.Mesh;
-  private readonly enemyEdgeR: THREE.Mesh;
-  // Red "keep clear" disc around the enemy king (matches the deploy buffer).
-  private readonly kingNoDeploy: THREE.Mesh;
-  private zoneShown = false;
-  /** The selected card digs to any spot (the Digger): no enemy-half shade or red edge. */
-  private zoneAnywhere = false;
-  private lastOpen: OpenLanes = { left: false, right: false };
+  /**
+   * The placement map (scene/deployOverlay.ts): one plane whose shader draws
+   * where the held card may go, and lights a lane's pocket the moment its
+   * tower falls. A child of the scene, not the arena group, so a look rebuild
+   * never disposes it.
+   */
+  readonly zone: DeployOverlay;
   /** @internal */
   readonly container: HTMLElement;
   private readonly onResize = (): void => this.resize();
@@ -292,60 +283,10 @@ export class Battle3D {
     this.hoverRing.visible = false;
     this.scene.add(this.hoverRing);
 
-    this.zonePlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(ARENA_WIDTH, ARENA_HEIGHT / 2 - 1),
-      new THREE.MeshBasicMaterial({
-        color: 0x3b82f6,
-        transparent: true,
-        opacity: 0.1,
-        depthWrite: false,
-      }),
-    );
-    this.zonePlane.rotation.x = -Math.PI / 2;
-    this.zonePlane.position.set(0, 0.025, ARENA_HEIGHT / 4 + 0.5);
-    this.zonePlane.visible = false;
-    this.scene.add(this.zonePlane);
-
-    // Enemy half, one mesh per lane. Dark "can't deploy" by default; swapped
-    // for a blue "deployable" strip when that lane opens (tower fell).
-    const laneW = ARENA_WIDTH / 2;
-    const zoneStrip = (color: number, opacity: number, depth: number): THREE.Mesh => {
-      const m = new THREE.Mesh(
-        new THREE.PlaneGeometry(laneW, depth),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }),
-      );
-      m.rotation.x = -Math.PI / 2;
-      m.visible = false;
-      this.scene.add(m);
-      return m;
-    };
-    // A clear "not here" tint while a troop or building is in hand: kids
-    // read 0.45 dark plus a red edge at a glance (0.24 alone was invisible).
-    this.enemyDarkL = zoneStrip(0x14060a, ENEMY_ZONE_ALPHA, ARENA_HEIGHT / 2 + 1);
-    this.enemyDarkR = zoneStrip(0x14060a, ENEMY_ZONE_ALPHA, ARENA_HEIGHT / 2 + 1);
-    this.laneBlueL = zoneStrip(0x3b82f6, 0.12, ARENA_HEIGHT / 2 - 1);
-    this.laneBlueR = zoneStrip(0x3b82f6, 0.12, ARENA_HEIGHT / 2 - 1);
-    this.enemyEdgeL = zoneStrip(0xff3b3b, 0.95, ENEMY_EDGE_DEPTH);
-    this.enemyEdgeR = zoneStrip(0xff3b3b, 0.95, ENEMY_EDGE_DEPTH);
-    // Drawn over the river surface and its bank lip.
-    for (const edge of [this.enemyEdgeL, this.enemyEdgeR]) edge.renderOrder = 3;
-
-    // "Keep clear" disc around the enemy king (radius = the deploy buffer).
-    this.kingNoDeploy = new THREE.Mesh(
-      new THREE.CircleGeometry(KING_NO_DEPLOY_RADIUS, 40),
-      new THREE.MeshBasicMaterial({
-        color: 0xff3b3b,
-        transparent: true,
-        opacity: 0.2,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      }),
-    );
-    this.kingNoDeploy.rotation.x = -Math.PI / 2;
-    this.kingNoDeploy.visible = false;
-    const k0 = toWorld(ARENA_WIDTH / 2, 2.5);
-    this.kingNoDeploy.position.set(k0.x, 0.028, k0.z);
-    this.scene.add(this.kingNoDeploy);
+    this.zone = new DeployOverlay({ golden: arabic });
+    this.zone.setView(viewSide);
+    this.zone.setLook(LOOK);
+    this.scene.add(this.zone.mesh);
 
     const post = buildComposer(this);
     this.composer = post.composer;
@@ -390,6 +331,7 @@ export class Battle3D {
     buildLights(this);
     buildArena(this);
     applyGrade(this);
+    this.zone.setLook(LOOK);
   }
 
   /** @internal An unlit, fog-immune, bloom-ready glow material the living sky can dim. */
@@ -455,41 +397,31 @@ export class Battle3D {
     applyEndStrings(this);
     this.camera.position.set(CAM_HOME.x, CAM_HOME.y, cameraZForView());
     this.camera.lookAt(0, 0, 0);
-    const m = side === "player" ? 1 : -1;
-    this.zonePlane.position.z = m * (ARENA_HEIGHT / 4 + 0.5);
-    // Enemy half (opposite side); left lane at -x, right lane at +x.
-    const ez = -m * (ARENA_HEIGHT / 4 - 0.5); // dark overlay centre
-    const bz = -m * (ARENA_HEIGHT / 4 + 0.5); // blue strip centre (off the river)
-    const lx = ARENA_WIDTH / 4;
-    this.enemyDarkL.position.set(-lx, 0.026, ez);
-    this.enemyDarkR.position.set(lx, 0.026, ez);
-    this.laneBlueL.position.set(-lx, 0.027, bz);
-    this.laneBlueR.position.set(lx, 0.027, bz);
-    // The dark strip's edge on your side of the river, just inside it (above
-    // the water and the bank lip): the line a troop may not cross.
-    const edgeZ = ez + m * ((ARENA_HEIGHT / 2 + 1) / 2 - ENEMY_EDGE_DEPTH / 2);
-    this.enemyEdgeL.position.set(-lx, 0.09, edgeZ);
-    this.enemyEdgeR.position.set(lx, 0.09, edgeZ);
-    // Enemy king sits at arena y=2.5 (or mirrored for the guest viewpoint).
-    const kingW = toWorld(ARENA_WIDTH / 2, side === "player" ? 2.5 : ARENA_HEIGHT - 2.5);
-    this.kingNoDeploy.position.set(kingW.x, 0.028, kingW.z);
+    this.zone.setView(side);
   }
 
-  /** Convert a pointer event to arena tile coordinates, if on the field. */
+  /**
+   * The canvas's page rect. Callers that convert many points in one frame
+   * read it once and pass it to arenaToClient / pick: each read after a DOM
+   * style write forces a layout.
+   */
+  canvasRect(): CanvasRect {
+    return this.renderer.domElement.getBoundingClientRect();
+  }
+
   /** Arena point (tiles) at height `h` → page coordinates, for DOM effects. */
-  arenaToClient(ax: number, ay: number, h = 0): { x: number; y: number } {
+  arenaToClient(ax: number, ay: number, h = 0, rect: CanvasRect = this.canvasRect()): { x: number; y: number } {
     const w = toWorld(ax, ay);
     const v = new THREE.Vector3(w.x, h, w.z).project(this.camera);
-    const rect = this.renderer.domElement.getBoundingClientRect();
     return {
       x: rect.left + ((v.x + 1) / 2) * rect.width,
       y: rect.top + ((1 - v.y) / 2) * rect.height,
     };
   }
 
-  pick(clientX: number, clientY: number): { x: number; y: number } | null {
+  /** Convert a pointer position to arena tile coordinates, if on the field. */
+  pick(clientX: number, clientY: number, rect: CanvasRect = this.canvasRect()): { x: number; y: number } | null {
     if (koZoomActive(this)) return null; // the frame is moving under the finger
-    const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(
       ((clientX - rect.left) / rect.width) * 2 - 1,
       -((clientY - rect.top) / rect.height) * 2 + 1,
@@ -547,9 +479,12 @@ export class Battle3D {
   /**
    * Translucent preview of the selected troop under the cursor.
    * Pass null to clear; the rig is rebuilt only when the card changes.
+   * `dim` (a "no" spot) fades it to GHOST_DIM of its usual see-through.
+   * Only troops have a ghost (hasGhost): a building or spell clears it, and
+   * never reaches buildTroop, which has no rig for them and would throw.
    */
-  setGhost(cardId: CardId | null, pos: { x: number; y: number } | null): void {
-    if (!cardId || !pos) {
+  setGhost(cardId: CardId | null, pos: { x: number; y: number } | null, dim = false): void {
+    if (!cardId || !pos || !hasGhost(cardId)) {
       if (this.ghost) this.ghost.rig.group.visible = false;
       return;
     }
@@ -560,7 +495,19 @@ export class Battle3D {
       }
       const rig = buildGhost(cardId);
       this.scene.add(rig.group);
-      this.ghost = { id: cardId, rig };
+      const mats: { mat: THREE.Material; base: number }[] = [];
+      rig.group.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        for (const mat of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+          if (mat.transparent && !mats.some((m) => m.mat === mat)) mats.push({ mat, base: mat.opacity });
+        }
+      });
+      this.ghost = { id: cardId, rig, mats, dim: false };
+    }
+    if (this.ghost.dim !== dim) {
+      this.ghost.dim = dim;
+      for (const m of this.ghost.mats) m.mat.opacity = m.base * (dim ? GHOST_DIM : 1);
     }
     const w = toWorld(pos.x, pos.y);
     this.ghost.rig.group.visible = true;
@@ -568,49 +515,62 @@ export class Battle3D {
   }
 
   /**
-   * Show or hide the deploy overlay for the selected card. A card that may
-   * deploy anywhere (`deployAnywhere`, the Digger) lights the whole field
-   * as deployable instead of shading the enemy half.
+   * Show or hide the placement map for the selected card (pass the card it
+   * plays as: the Mirror's copy). Troops and buildings show the lane map, the
+   * Digger (`deployAnywhere`) its dig map, spells none.
    */
   setZoneVisible(visible: boolean, card: Card | null = null): void {
-    this.zoneShown = visible;
-    this.zoneAnywhere = deploysAnywhere(card);
-    this.applyDeployZone();
+    this.zone.hold(visible ? zoneModeFor(card) : null);
   }
 
-  /**
-   * Show the deploy overlay: own half blue; each enemy-half lane is dark
-   * (forbidden) until its tower falls, then it lights up blue (deployable).
-   * A dig-anywhere card shows both enemy lanes blue, with no dark shade, no
-   * red edge and no King keep-clear disc (its rule is tower clearance only).
-   */
-  private applyDeployZone(): void {
-    const v = this.zoneShown;
-    const open = this.zoneAnywhere ? { left: true, right: true } : this.lastOpen;
-    this.zonePlane.visible = v;
-    this.laneBlueL.visible = v && open.left;
-    this.laneBlueR.visible = v && open.right;
-    // The king buffer only matters once a lane is open into enemy territory.
-    this.kingNoDeploy.visible = v && !this.zoneAnywhere && (open.left || open.right);
-    this.enemyDarkL.visible = v && !open.left;
-    this.enemyDarkR.visible = v && !open.right;
-    this.enemyEdgeL.visible = v && !open.left;
-    this.enemyEdgeR.visible = v && !open.right;
+  /** What the placement map is showing (tests, dev tools and the staging script). */
+  get zoneParts(): ZoneParts {
+    return this.zone.parts;
   }
 
-  /** Which deploy-overlay parts are showing (tests and dev tools). */
-  get zoneParts(): { enemyDark: boolean; enemyEdge: boolean; laneBlue: boolean; kingDisc: boolean } {
-    return {
-      enemyDark: this.enemyDarkL.visible || this.enemyDarkR.visible,
-      enemyEdge: this.enemyEdgeL.visible || this.enemyEdgeR.visible,
-      laneBlue: this.laneBlueL.visible && this.laneBlueR.visible,
-      kingDisc: this.kingNoDeploy.visible,
-    };
-  }
-
-  /** Whether the deploy-zone overlay is up (a troop or building is selected). */
+  /** Whether the placement map is up for a held card (a troop or building is selected). */
   get zoneVisible(): boolean {
-    return this.zoneShown;
+    return this.zone.held !== null;
+  }
+
+  /** The pointer rests on a "no" spot: the map's outline thickens, calling the finger back inside. */
+  zoneCallBack(on: boolean): void {
+    this.zone.callBack(on);
+  }
+
+  /** A refused drop: the outline thickens and the region the words are about flashes. */
+  zoneRefuse(reason: RefuseReason, ax: number, ay: number): void {
+    this.zone.refuse(reason, ax, ay);
+  }
+
+  /** The "Drop troops here now!" label for a lane that just opened, or null. */
+  laneCallout(): LaneCallout | null {
+    return this.zone.callout();
+  }
+
+  /** Hide that label early (the kid just played a card). */
+  dismissLaneCallout(): void {
+    this.zone.dismissCallout();
+  }
+
+  /** Leaving the battle for a menu: the placement map and any reveal vanish now. */
+  leaveZone(): void {
+    this.zone.leave();
+  }
+
+  /** The drawn map's signed distance at an arena point, as the GPU reads it (+ = allowed). */
+  zoneSample(ax: number, ay: number): number {
+    return this.zone.sample(ax, ay);
+  }
+
+  /** Which side sits at the bottom of the screen. */
+  get viewpoint(): Side {
+    return viewSide;
+  }
+
+  /** The final-blow zoom is moving the frame (nothing may be pinned to the board). */
+  get koZooming(): boolean {
+    return koZoomActive(this);
   }
 
   /**
@@ -637,7 +597,15 @@ export class Battle3D {
     group.add(disc, ring);
     group.position.set(w.x, 0.08, w.z);
     group.renderOrder = 5;
+    const still = reducedMotion();
     this.addEffect(group, BAD_SPOT_SECONDS, (frac) => {
+      if (still) {
+        // Reduced motion: one still ring that fades, no beats.
+        ring.scale.setScalar(1);
+        ringMat.opacity = 0.95 * frac;
+        discMat.opacity = 0.3 * frac;
+        return;
+      }
       // Two beats over the effect's life: grow and fade, then again.
       const beat = ((1 - frac) * 2) % 1;
       ring.scale.setScalar(0.8 + beat * 1.1);
@@ -716,13 +684,10 @@ export class Battle3D {
     // Render-only telegraphs read straight off the sim: falling comets and digging Diggers.
     syncComets(this, state, dt, alpha);
     syncBurrows(this, state, dt, alpha);
-    // Keep the deploy overlay in step with opened lanes (a tower falling
-    // expands where you can deploy).
-    const open = openLanes(state, viewSide);
-    if (open.left !== this.lastOpen.left || open.right !== this.lastOpen.right) {
-      this.lastOpen = open;
-      this.applyDeployZone();
-    }
+    // The placement map follows opened lanes (a tower falling widens where
+    // you can deploy, and lights that pocket up the moment it happens).
+    this.still = reducedMotion();
+    this.zone.sync(state, viewSide, dt, this.still);
     const seen = this.seen;
     seen.clear();
     for (const e of state.entities) {
@@ -809,16 +774,24 @@ export class Battle3D {
     applyShake(this, dt);
     updateShowcase(this, dt);
 
-    // Spell / deploy telegraph ring pulse (dashed feel via opacity + scale).
+    // Spell / deploy telegraph ring pulse (dashed feel via opacity + scale);
+    // held still under reduced motion.
+    const still = this.still;
     if (this.hoverRing.visible) {
-      this.hoverPulse += dt;
-      const pulse = 0.92 + Math.sin(this.hoverPulse * 9) * 0.08;
       const base = this.hoverDisc.scale.x;
-      this.hoverRing.scale.setScalar(base * pulse);
-      (this.hoverRing.material as THREE.MeshBasicMaterial).opacity =
-        0.55 + Math.sin(this.hoverPulse * 11) * 0.3;
+      const ringMat = this.hoverRing.material as THREE.MeshBasicMaterial;
+      if (still) {
+        this.hoverRing.scale.setScalar(base);
+        ringMat.opacity = 0.85;
+      } else {
+        this.hoverPulse += dt;
+        const pulse = 0.92 + Math.sin(this.hoverPulse * 9) * 0.08;
+        this.hoverRing.scale.setScalar(base * pulse);
+        ringMat.opacity = 0.55 + Math.sin(this.hoverPulse * 11) * 0.3;
+      }
     }
 
+    this.zone.render(this.dayPhase, this.renderer.getPixelRatio(), still);
     updateEffects(this, dt);
     this.fx.update(dt);
 
@@ -879,6 +852,7 @@ export class Battle3D {
     this.shakeCtl.update(999, 1); // drain trauma to rest
     this.camera.position.set(CAM_HOME.x, CAM_HOME.y, cameraZForView());
     this.camera.lookAt(0, 0, 0);
+    this.zone.reset(); // the next sync seeds quietly: no reveal for lanes already open
   }
 
   /** Release renderer-owned resources when the battle view is permanently removed. */
@@ -887,6 +861,8 @@ export class Battle3D {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.reset();
+    this.scene.remove(this.zone.mesh);
+    this.zone.dispose();
     disposeDeep(this.scene);
     this.scene.clear();
     this.bloom.dispose();

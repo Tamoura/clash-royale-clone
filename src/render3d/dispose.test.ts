@@ -76,6 +76,7 @@ describe("Battle3D.reset after shatter deaths", () => {
       sparkMesh: { count: 0 },
       camera: new THREE.OrthographicCamera(),
       syncState: { time: 3 },
+      zone: { reset() {} }, // reset() forgets the placement map's battle too
     }) as InstanceType<typeof Battle3D>;
 
     const mats = new Set<THREE.Material>();

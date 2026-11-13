@@ -10,7 +10,7 @@
 import * as THREE from "three";
 import type { Side } from "../../../game/arena";
 import type { Entity } from "../../../game/battle";
-import type { CardId } from "../../../game/cards";
+import { getCard, type CardId } from "../../../game/cards";
 import { buildBuildingRig, buildTroop, type TroopRig } from "../../characters3d";
 import { bakeRig } from "../../rigBake";
 import { spawnRecipe } from "../../spawnfx";
@@ -709,7 +709,16 @@ export function isSwarmSized(e: Entity): boolean {
 }
 const SWARM_RADIUS = 0.3;
 
-/** Translucent preview rig of a troop card for the deploy cursor (always yours). */
+/**
+ * Whether a card has a see-through preview rig: troops only. Buildings and
+ * spells have no troop rig (buildTroop throws for them), so their preview
+ * is the hover disc alone.
+ */
+export function hasGhost(cardId: CardId): boolean {
+  return getCard(cardId).kind === "troop";
+}
+
+/** Translucent preview rig of a troop card for the deploy cursor (always yours). Troops only: see hasGhost. */
 export function buildGhost(cardId: CardId): TroopRig {
   // The preview is the modelled character the card will field.
   const kitGhost = castFor(cardId) ? makeKitGhost(cardId) : null;

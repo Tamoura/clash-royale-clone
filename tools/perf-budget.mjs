@@ -7,8 +7,12 @@
 //                              [--max-calls N] [--max-empty-calls N]
 //                              [--max-triangles N] [--max-empty-triangles N]
 //                              [--max-textures N]
-//   node tools/perf-budget.mjs --matrix [--url ...] [--arena <id>] [gate flags]
+//   node tools/perf-budget.mjs --matrix [--url ...] [--arena <id>] [gate flags] [--zone]
 //   npm run perf:budget            (the --matrix run on its own dev server)
+//
+// --zone (report only, never a gate) also reads the empty battle with the
+// placement map up (setZoneVisible(true) for a troop, as holding a Knight
+// does) and reports emptyZone and its delta against the empty frame.
 //
 // {"edition":..,"view":..,"cast":..,"empty":{calls,triangles,geometries,textures},"fight":{...}}
 //
@@ -38,6 +42,7 @@ const opt = (name, fallback) => {
   return i >= 0 ? args[i + 1] : fallback;
 };
 const MATRIX = args.includes("--matrix");
+const ZONE = args.includes("--zone");
 const ARENA = opt("arena", null);
 const limit = (name, fallback) => {
   const v = opt(name, String(fallback));
@@ -152,6 +157,16 @@ async function measure(browser, { edition, view }, errors) {
 
     await wait(1500);
     const empty = await frame();
+    let emptyZone = null;
+    if (ZONE) {
+      // The placement map for a held troop: one plane (scene/deployOverlay.ts).
+      await page.evaluate(() => window.__cr.scene().setZoneVisible(true, { kind: "troop" }));
+      for (let i = 0; i < 3; i++) await frame(); // past its 0.12 s fade-in
+      const z = await frame();
+      emptyZone = { calls: z.calls, triangles: z.triangles, delta: { calls: z.calls - empty.calls, triangles: z.triangles - empty.triangles } };
+      await page.evaluate(() => window.__cr.scene().setZoneVisible(false));
+      for (let i = 0; i < 2; i++) await frame();
+    }
 
     await page.evaluate(
       (player, enemy) => {
@@ -167,7 +182,7 @@ async function measure(browser, { edition, view }, errors) {
       polling: 50,
     });
     const fight = await frame();
-    return { edition, view: viewName(view), cast: castState ?? "timeout", empty, fight };
+    return { edition, view: viewName(view), cast: castState ?? "timeout", empty, ...(emptyZone ? { emptyZone } : {}), fight };
   } finally {
     await ctx.close();
   }
@@ -217,6 +232,13 @@ if (MATRIX) {
         `| ${r.view} | ${r.edition === "arabic" ? "Golden Age" : "Classic"} | ${r.cast} | ${mark(r.empty.calls, TARGETS.emptyCalls)} | ${mark(r.empty.triangles, TARGETS.emptyTriangles)} | ${mark(r.fight.calls, TARGETS.fightCalls)} | ${mark(r.fight.triangles, TARGETS.fightTriangles)} | ${r.fight.textures} |`,
     ),
     "",
+    ...(ZONE
+      ? [
+          "Placement map held (report only): " +
+            results.map((r) => `${r.view} ${r.edition === "arabic" ? "Golden Age" : "Classic"} ${r.emptyZone.delta.calls >= 0 ? "+" : ""}${r.emptyZone.delta.calls} calls, ${r.emptyZone.delta.triangles >= 0 ? "+" : ""}${fmt(r.emptyZone.delta.triangles)} tris`).join("; "),
+          "",
+        ]
+      : []),
     `Gates: empty ${GATES.emptyCalls ?? "off"} calls / ${GATES.emptyTriangles === null ? "off" : fmt(GATES.emptyTriangles)} tris; fight ${GATES.fightCalls ?? "off"} calls / ${GATES.fightTriangles === null ? "off" : fmt(GATES.fightTriangles)} tris / ${GATES.fightTextures ?? "off"} textures. Targets: empty ${TARGETS.emptyCalls} / ${fmt(TARGETS.emptyTriangles)}, fight ${TARGETS.fightCalls} / ${fmt(TARGETS.fightTriangles)}.`,
   ];
   console.log(lines.join("\n"));

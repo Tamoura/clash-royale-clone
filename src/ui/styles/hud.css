@@ -1591,3 +1591,146 @@
     animation: none;
   }
 }
+
+/* ── Placement: the verdict pip over the finger (render3d/hud.ts placePip) ──
+   A tick (yes), a no-entry sign (no) or an hourglass (wait): different shapes
+   and sizes, so colour is never the only cue. Never takes a tap. It paints
+   over the "lane opened" label (that one sits at z-hud). */
+.place-pip {
+  position: fixed;
+  z-index: calc(var(--z-hud) + 1);
+  width: 34px;
+  height: 34px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35));
+}
+.place-pip[data-kind="yes"] {
+  width: 26px;
+  height: 26px;
+}
+.place-pip[data-kind="wait"] {
+  width: 30px;
+  height: 30px;
+}
+.place-pip[hidden] {
+  display: none;
+}
+.place-pip .ui-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: none;
+}
+
+/* ── Placement: "Drop troops here now!" over a pocket that just opened
+   (render3d/hud.ts lanePill; its box comes from hudModel lanePillBox).
+   It sits UNDER the verdict pip and the refusal words (z-hud + 1): a finger
+   trying the new ground must see its tick or no-entry sign. Its width is
+   its words, capped by the JS max-width (the pocket): without width:
+   max-content a fixed box near the right edge would shrink to the room
+   left before the viewport edge and squash into a four-line blob. The
+   padlock is inline, right before the first word, so it never floats off
+   on its own when the balanced lines are shorter than the box. ── */
+.lane-pill {
+  position: fixed;
+  z-index: var(--z-hud);
+  display: block;
+  width: max-content;
+  box-sizing: border-box;
+  padding: 5px 14px 6px;
+  border-radius: var(--r-pill);
+  background: var(--pill-bg, #2463d6);
+  box-shadow: 0 0 0 2.5px #fff, 0 0 0 4px #1f1a2e, 0 4px 10px rgba(0, 0, 0, 0.3);
+  color: #fff;
+  font-family: var(--cr-font);
+  font-size: var(--fs-md);
+  line-height: 1.15;
+  white-space: normal;
+  text-align: center;
+  text-wrap: balance;
+  text-shadow: var(--cr-outline);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: lanePill 0.5s ease-out both;
+  /* Stepping off a held card's preview (hudModel lanePillY) is a short glide. */
+  transition: top 0.18s ease-out;
+}
+/* The words' even break (hud.ts fitLanePill) shows only when one line does
+   not fit the pocket; the pill then shrink-wraps the longer line. */
+.lane-pill:not(.two) br {
+  display: none;
+}
+.lane-pill .ui-icon {
+  display: inline-block;
+  width: 1.35em;
+  height: 1.35em;
+  margin-inline-end: 5px;
+  vertical-align: -0.3em;
+}
+.lane-pill.still {
+  animation: none;
+  transition: none;
+}
+/* The fade-out is not motion: it runs under reduced motion too. */
+.lane-pill.out,
+:root[data-reduce-motion] .lane-pill.out {
+  animation: lanePillOut 0.25s linear both;
+}
+:root[data-layout="wide"] .lane-pill {
+  font-size: var(--fs-sm);
+}
+/* A narrow pocket (landscape phones, about 110 px): the padlock sits on top,
+   the words are a size smaller and break evenly into two short lines, so
+   the pill covers as little of the new ground as it can (about 95 x 55 px
+   in a 118 x 149 px pocket). */
+:root .lane-pill.narrow {
+  padding: 4px 8px 5px;
+  border-radius: 16px;
+  font-size: calc(13px * var(--text-scale, 1));
+}
+.lane-pill.narrow .ui-icon {
+  display: block;
+  width: 1.15em;
+  height: 1.15em;
+  margin: 0 auto 1px;
+}
+@keyframes lanePill {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+  60% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes lanePillOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* ── The in-game "Reduce motion" setting (ui/motionAttr.ts sets
+   :root[data-reduce-motion]): the same stills as the OS-level blocks above,
+   plus the placement pieces and the error shake. ── */
+:root[data-reduce-motion] #hud.v2 .hud-ability.ready,
+:root[data-reduce-motion] #overlay.v2 .res-open-chest {
+  animation: none;
+}
+:root[data-reduce-motion] .drop-hint,
+:root[data-reduce-motion] .hud-goal.pop,
+:root[data-reduce-motion] #hud.v2 .card-bubble.show,
+:root[data-reduce-motion] #hud.v2 .hud-ability-bubble.pop,
+:root[data-reduce-motion] .lane-pill,
+:root[data-reduce-motion] .place-pip,
+:root[data-reduce-motion] .error-shake {
+  animation: none;
+}
+:root[data-reduce-motion] .lane-pill {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lane-pill,
+  .place-pip,
+  .error-shake {
+    animation: none;
+  }
+  .lane-pill {
+    transition: none;
+  }
+}

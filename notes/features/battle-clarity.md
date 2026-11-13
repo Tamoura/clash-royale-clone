@@ -16,17 +16,23 @@ lost, what a card does, and why a drop was refused.
   - **"Too close to a tower!"** when the spot is in an open lane but
     `checkDeploy` still refuses it: that can only be the sim's private
     `nearEnemyTower` clearance (not exported; the sim package owns it).
+  **Superseded by [placement-zone.md](placement-zone.md):** the reasons are
+  now `side`, `lane` ("Knock down this tower first!"), `river` ("Not in the
+  water!"), `king` ("Too close to the King!"), `tower` and `dig` ("Can't dig
+  here!"); a refused spot no longer shakes the hand row (elixir still does)
+  and also flashes the region the words mean.
   The ghost hides at once; the card stays selected so the next tap can land.
   The label is measured after it is added and centred on the finger
   whenever it fits (`dropHintCenterX`, 16 px screen gutter); only near an
   edge does it slide in.
 - While a troop **or building** is selected (the Mirror counts as the card
-  it copies), the enemy half is 45% darker on screen with a red line along
-  your bank of the river. Tuning: `ENEMY_ZONE_OPACITY` in `scene3d.ts`.
-  The material alpha is corrected for linear-light blending
-  (`1 - (1 - 0.45)^2.2` = 0.73): the old 0.24 alpha looked like nothing.
-  Measured on screen: the enemy half's mean luminance drops from 179 to
-  86 (ratio 0.48) with a Knight selected.
+  it copies), the board shows where it may go. **Superseded by
+  [placement-zone.md](placement-zone.md):** the 45% dark enemy half, the red
+  river edge, the blue strips and the red King disc (`ENEMY_ZONE_OPACITY` and
+  friends in `scene3d.ts`) are gone; one plane (`scene/deployOverlay.ts`)
+  draws the exact deploy map: a white outline round the allowed ground, the
+  opened pocket lit, everything else darker with ink stripes, the King's
+  keep-clear a striped bite. A lane that opens lights its pocket up at once.
 
 ### 2. KING not ready
 - `triggerAbility` failure calls `hud.flashError("ability")`: the KING
@@ -141,7 +147,8 @@ the bot tower-troop / ability rule lives there (main.ts only calls
   390x844 touch viewport:
   - drag a Knight onto the enemy half: "Your side only!" at the finger, a
     red ring, no ghost afterwards; with the Knight selected the enemy half
-    is clearly darker with a red river edge;
+    is darker and striped behind a white outline along your bank (the
+    placement map, placement-zone.md);
   - tap KING early: KING shakes and says "Charging… 54s";
   - long-press a hand card: the bubble; nothing is spent;
   - Events > Challenges > Giant Trouble: "SURVIVE 0:45" and the goal card;
@@ -201,7 +208,7 @@ page or console errors in any of these flows.
 ## Tuning numbers
 | Knob | Value | Where |
 | --- | --- | --- |
-| Enemy-half darkening | 45% on screen (alpha 0.73) | `ENEMY_ZONE_OPACITY`, scene3d.ts |
+| Placement map (replaces the enemy-half darkening) | see placement-zone.md | `scene/deployOverlay.ts` |
 | Refused-drop ring / label | 1.2 s | `BAD_SPOT_SECONDS`, `DROP_HINT_MS` |
 | KING "Charging" bubble | 1.5 s | `CHARGING_MS`, hud.ts |
 | Long-press | 450 ms, 8 px slop | `LONG_PRESS_MS`, `LONG_PRESS_SLOP_PX` |

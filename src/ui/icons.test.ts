@@ -27,6 +27,11 @@ describe("icons", () => {
     for (const name of ["fast", "hourglass", "tv", "clock", "flag"] as IconName[]) expect(ICON_NAMES).toContain(name);
   });
 
+  it("has the placement glyphs (verdict pip, lane opened)", () => {
+    for (const name of ["place-yes", "place-no", "place-wait", "unlock"] as IconName[]) expect(ICON_NAMES).toContain(name);
+    expect(icon("place-yes")).toContain("var(--pip-yes");
+  });
+
   it("passes the extra class through", () => {
     expect(icon("back", "icon-back")).toContain('class="ui-icon icon-back"');
   });
