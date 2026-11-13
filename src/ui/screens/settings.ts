@@ -12,8 +12,8 @@ import { fmtNum, tr } from "../i18n";
 import { icon, type IconName } from "../icons";
 import { getPrefs, onPrefs, setPrefs, type Prefs, type QualityPref, type ReduceMotion, type TeamPalette, type TextScale } from "../prefs";
 import { EDITION_COPY, editionArt, switchEdition } from "./editionGate";
-import { ask, openSheet } from "./frame";
 import { problemReportRow } from "./problemReport";
+import { ask, openSheet } from "./frame";
 
 export interface SettingsOpts {
   onClose?: () => void;
