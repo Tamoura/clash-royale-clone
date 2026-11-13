@@ -74,17 +74,20 @@ const STYLE = `
   font-weight: 400;
   line-height: 1.15;
   text-shadow: 0 3px 0 #1a1030;
+  text-wrap: balance;
 }
 .nogl__kid {
   margin: 0 0 8px;
   font-size: 20px;
   line-height: 1.35;
+  text-wrap: balance;
 }
 .nogl__ask {
   margin: 0 0 18px;
   color: #ffd98a;
   font-size: 18px;
   line-height: 1.35;
+  text-wrap: balance;
 }
 .nogl__grown {
   margin: 0 0 20px;
