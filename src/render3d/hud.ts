@@ -20,6 +20,8 @@ import {
   DROP_HINT_GUTTER,
   MATCH_CLOCK,
   PIP_SIZE,
+  balancedLines,
+  lanePillY,
   pipPlacement,
   type PlaceVerdict,
   type ScreenRect,
@@ -215,6 +217,10 @@ export class Hud {
   private pipEl: HTMLDivElement | null = null;
   private pillEl: HTMLDivElement | null = null;
   private pillId = -1;
+  /** The pocket width the label was last fitted to (px), and its size then: read once per fit, not per frame. */
+  private pillFitW = -1;
+  private pillW = 0;
+  private pillH = 0;
   private goalTimer = 0;
   private reason: string | null = null;
 
@@ -660,9 +666,20 @@ export class Hud {
   /**
    * "Drop troops here now!" with an open padlock, over a pocket that just
    * opened. Rebuilt only when `id` (the reveal) changes, so its pop plays
-   * once; fades out from `age` 3.75 s; null removes it.
+   * once; fades out from `age` 3.75 s; null removes it. With `room` (the
+   * pocket band it may use, screen y) and `avoid` (the held card's preview
+   * on screen), it steps to the band's top or bottom instead of hiding the
+   * ghost, the hover disc or a spell's aim ring (hudModel lanePillY).
    */
-  lanePill(box: { x: number; y: number; maxW: number } | null, text: string, still: boolean, id: number, age: number): void {
+  lanePill(
+    box: { x: number; y: number; maxW: number } | null,
+    text: string,
+    still: boolean,
+    id: number,
+    age: number,
+    room: { top: number; bottom: number } | null = null,
+    avoid: ScreenRect | null = null,
+  ): void {
     if (!box) {
       this.pillEl?.remove();
       this.pillEl = null;
@@ -676,27 +693,46 @@ export class Hud {
       pill.setAttribute("role", "status");
       pill.dir = "auto";
       pill.innerHTML = icon("unlock");
-      // A bare text node, not a span: under Golden Age every span is its own
-      // bidi isolate (unicode-bidi: plaintext), which would hide the Arabic
-      // from dir="auto" and leave the padlock at the END of the line.
-      pill.appendChild(document.createTextNode(text));
+      // Bare text nodes and a <br>, not spans: under Golden Age every span is
+      // its own bidi isolate (unicode-bidi: plaintext), which would hide the
+      // Arabic from dir="auto" and leave the padlock at the END of the line.
+      // The <br> (the most even word gap) only shows when the words need two
+      // lines (.two), so the pill shrink-wraps them.
+      const [first, second] = balancedLines(text);
+      pill.appendChild(document.createTextNode(second ? `${first} ` : first));
+      if (second) pill.append(document.createElement("br"), document.createTextNode(second));
       pill.style.setProperty("--pill-bg", teamCss("player", "dark"));
       document.body.appendChild(pill);
       this.pillEl = pill;
       this.pillId = id;
+      this.pillFitW = -1;
     }
     const pill = this.pillEl;
+    const maxW = Math.floor(box.maxW);
+    if (maxW !== this.pillFitW) this.fitLanePill(pill, maxW);
     const left = `${Math.round(box.x)}px`;
-    const top = `${Math.round(box.y)}px`;
-    const maxW = `${Math.floor(box.maxW)}px`;
+    const top = `${Math.round(lanePillY(box, this.pillW, this.pillH, room, avoid))}px`;
     if (pill.style.left !== left) pill.style.left = left;
     if (pill.style.top !== top) pill.style.top = top;
-    if (pill.style.maxWidth !== maxW) pill.style.maxWidth = maxW;
-    // A narrow pocket (landscape phones): the padlock goes on top, so the words keep two lines.
-    const narrow = box.maxW < LANE_PILL_NARROW;
-    if (pill.classList.contains("narrow") !== narrow) pill.classList.toggle("narrow", narrow);
     const out = age >= 3.75;
     if (pill.classList.contains("out") !== out) pill.classList.toggle("out", out);
+  }
+
+  /**
+   * Fit the lane label to a pocket `maxW` px wide (a new label, or a new
+   * layout): one line when the words fit, else two even lines that the pill
+   * shrink-wraps; in a narrow pocket (landscape phones) the padlock goes on
+   * top and the words get a smaller size. Its size is read here, once per
+   * fit, never per frame.
+   */
+  private fitLanePill(pill: HTMLDivElement, maxW: number): void {
+    this.pillFitW = maxW;
+    pill.style.maxWidth = `${maxW}px`;
+    pill.classList.toggle("narrow", maxW < LANE_PILL_NARROW);
+    pill.classList.remove("two");
+    if (pill.offsetWidth >= maxW) pill.classList.add("two"); // one line hit the pocket's width: it wraps
+    this.pillW = pill.offsetWidth;
+    this.pillH = pill.offsetHeight;
   }
 
   /** Long-press info: art, name, cost, the kid one-liner, good-vs and watch-out portraits. */

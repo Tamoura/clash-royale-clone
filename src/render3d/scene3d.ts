@@ -95,6 +95,9 @@ export { GAME_FONT, disposeDeep } from "./scene/common";
 export { setTowerFlair } from "./scene/views/towers";
 export { deploysAnywhere } from "./deployZone";
 
+/** The canvas's page rect, as getBoundingClientRect gives it (only what the conversions read). */
+export type CanvasRect = Pick<DOMRectReadOnly, "left" | "top" | "width" | "height">;
+
 /**
  * Tower crews from the cast (cast/crew.ts, shared rules 4). Towers build
  * on the first sync after the battle latched its roster, so `make` asks
@@ -397,21 +400,28 @@ export class Battle3D {
     this.zone.setView(side);
   }
 
-  /** Convert a pointer event to arena tile coordinates, if on the field. */
+  /**
+   * The canvas's page rect. Callers that convert many points in one frame
+   * read it once and pass it to arenaToClient / pick: each read after a DOM
+   * style write forces a layout.
+   */
+  canvasRect(): CanvasRect {
+    return this.renderer.domElement.getBoundingClientRect();
+  }
+
   /** Arena point (tiles) at height `h` → page coordinates, for DOM effects. */
-  arenaToClient(ax: number, ay: number, h = 0): { x: number; y: number } {
+  arenaToClient(ax: number, ay: number, h = 0, rect: CanvasRect = this.canvasRect()): { x: number; y: number } {
     const w = toWorld(ax, ay);
     const v = new THREE.Vector3(w.x, h, w.z).project(this.camera);
-    const rect = this.renderer.domElement.getBoundingClientRect();
     return {
       x: rect.left + ((v.x + 1) / 2) * rect.width,
       y: rect.top + ((1 - v.y) / 2) * rect.height,
     };
   }
 
-  pick(clientX: number, clientY: number): { x: number; y: number } | null {
+  /** Convert a pointer position to arena tile coordinates, if on the field. */
+  pick(clientX: number, clientY: number, rect: CanvasRect = this.canvasRect()): { x: number; y: number } | null {
     if (koZoomActive(this)) return null; // the frame is moving under the finger
-    const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(
       ((clientX - rect.left) / rect.width) * 2 - 1,
       -((clientY - rect.top) / rect.height) * 2 + 1,

@@ -6,13 +6,17 @@ import { deploysAnywhere } from "./scene3d";
 import {
   FIELD_H,
   FIELD_W,
+  KING_KEEP_CLEAR,
+  LABEL_BAND_MARGIN,
   digKey,
   laneAnchor,
+  laneLabelBand,
   paintZoneField,
   ruinSpot,
   troopKey,
   troopShapeFor,
   zoneModeFor,
+  zoneSd,
 } from "./deployZone";
 
 describe("deploy overlay for a dig-anywhere card", () => {
@@ -77,5 +81,27 @@ describe("lane spots", () => {
     expect(ruinSpot("enemy", "left")).toEqual({ x: 3.5, y: 25.5 });
     expect(laneAnchor("player", "left")).toEqual({ x: 4.5, y: 11 });
     expect(laneAnchor("enemy", "right")).toEqual({ x: 13.5, y: 21 });
+  });
+
+  it("gives the label a band between the King's keep-clear and the river, in both views", () => {
+    const host = laneLabelBand("player");
+    expect(host.far).toBeCloseTo(2.5 + KING_KEEP_CLEAR + LABEL_BAND_MARGIN.king, 9); // 7.2
+    expect(host.near).toBeCloseTo(15 - LABEL_BAND_MARGIN.river, 9); // 14.7
+    const guest = laneLabelBand("enemy");
+    expect(guest.far).toBeCloseTo(32 - host.far, 9);
+    expect(guest.near).toBeCloseTo(32 - host.near, 9);
+    // The whole band is allowed ground in an open lane, clear of the King's bite even at the seam.
+    for (const side of ["player", "enemy"] as Side[]) {
+      const band = laneLabelBand(side);
+      const shape = troopShapeFor(side, { left: true, right: true });
+      for (let x = 0.2; x <= 17.8; x += 0.2) {
+        for (const y of [band.far, (band.far + band.near) / 2, band.near]) {
+          expect(zoneSd(shape, x, y), `${side} (${x.toFixed(1)}, ${y})`).toBeGreaterThan(0.15);
+        }
+      }
+      // The anchor sits inside the band.
+      const a = laneAnchor(side, "left");
+      expect(Math.min(band.far, band.near) < a.y && a.y < Math.max(band.far, band.near)).toBe(true);
+    }
   });
 });

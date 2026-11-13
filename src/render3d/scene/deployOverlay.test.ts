@@ -1,23 +1,39 @@
 import { describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
-import type { Side } from "../../game/arena";
+import {
+  ARENA_HEIGHT,
+  ARENA_WIDTH,
+  BRIDGE_HALF_WIDTH,
+  BRIDGE_XS,
+  RIVER_HALF_WIDTH,
+  RIVER_Y,
+  type Side,
+} from "../../game/arena";
 import { checkDeploy, createBattle, deployCard, type BattleState } from "../../game/battle";
 import type { CardId } from "../../game/cards";
 import {
   CALLOUT_FROM,
   CALLOUT_TO,
+  DIG_THICK,
   DeployOverlay,
+  FILL_CLASSIC,
+  FILL_GOLDEN,
+  NIGHT_EDGE_ALPHA,
+  NIGHT_FILL_CUT,
+  NIGHT_FILL_CUT_GOLDEN,
   REVEAL_DONE,
   REVEAL_LIFE,
   REVEAL_RADIUS,
   VIEW_SHIFT,
   floorSwatch,
+  glslFloat,
   laneMixAt,
   revealEnvelope,
   revealRadius,
+  srgbLuma,
 } from "./deployOverlay";
 import { CAM_HOME } from "./common";
-import { ruinSpot } from "../deployZone";
+import { KING_KEEP_CLEAR, ruinSpot } from "../deployZone";
 import { ISLAMIC_LOOKS, LOOKS } from "../arenaLooks";
 
 const DT = 1 / 60;
@@ -336,6 +352,55 @@ describe("the plane", () => {
     expect(o.mesh.name).toBe("deploy-overlay");
   });
 
+  it("knows the guest's enemy half and King: the lit fill, cross-fade and pocket mask follow uSideSign", () => {
+    // The texture is right in either view (the grid tests), but the shader's
+    // cosmetics read `theirs = uSideSign * (16 - y)`: an unflipped sign would
+    // light the guest's OWN half as the "new pocket".
+    const o = new DeployOverlay({ golden: false });
+    const u = uniforms(o);
+    const king = (): number[] => (u.uKing.value as THREE.Vector2).toArray();
+    expect(u.uSideSign.value).toBe(1);
+    expect(king()).toEqual([9, 2.5]);
+    o.setView("enemy");
+    expect(u.uSideSign.value).toBe(-1);
+    expect(king()).toEqual([9, 29.5]);
+    o.setView("player");
+    expect(u.uSideSign.value).toBe(1);
+    expect(king()).toEqual([9, 2.5]);
+    // A sync from the guest's side sets the view by itself.
+    o.sync(createBattle(), "enemy", DT, false);
+    expect(u.uSideSign.value).toBe(-1);
+    expect(king()).toEqual([9, 29.5]);
+  });
+
+  it("grows each view's reveal from that view's ruin", () => {
+    for (const side of ["player", "enemy"] as Side[]) {
+      const o = new DeployOverlay({ golden: false });
+      const b = createBattle();
+      run(o, b, 0.2, false, side);
+      fell(b, side === "player" ? "enemy" : "player", "right");
+      run(o, b, 1.0, false, side);
+      const w = uniforms(o).uWaveR.value as THREE.Vector3;
+      const ruin = ruinSpot(side, "right");
+      expect([w.x, w.y]).toEqual([ruin.x, ruin.y]);
+      expect(w.z).toBeGreaterThan(0);
+      expect(w.z).toBeLessThan(REVEAL_DONE);
+    }
+  });
+
+  it("builds the shader's geometry from the sim's exported constants", () => {
+    const frag = (new DeployOverlay({ golden: false }).mesh.material as THREE.ShaderMaterial).fragmentShader;
+    const f = glslFloat;
+    expect(f(16)).toBe("16.0");
+    expect(f(3.5)).toBe("3.5");
+    expect(frag).toContain(`uSideSign * (${f(RIVER_Y)} - vTile.y)`);
+    expect(frag).toContain(`bool isL = vTile.x < ${f(ARENA_WIDTH / 2)};`);
+    for (const bx of BRIDGE_XS) expect(frag).toContain(`abs(vTile.x - ${f(bx)}) <= ${f(BRIDGE_HALF_WIDTH)}`);
+    expect(frag).toContain(`abs(vTile.y - ${f(RIVER_Y)}) < ${f(RIVER_HALF_WIDTH)}`);
+    expect(frag).toContain(`step(length(vTile - uKing), ${f(KING_KEEP_CLEAR + 0.2)})`);
+    expect(frag).toContain(`texture2D(uField, vTile / vec2(${f(ARENA_WIDTH)}, ${f(ARENA_HEIGHT)}))`);
+  });
+
   it("draws every line over the ground point it describes, in both views and any framing", () => {
     const vs = (o: DeployOverlay): string => (o.mesh.material as THREE.ShaderMaterial).vertexShader;
     const o = new DeployOverlay({ golden: false });
@@ -403,6 +468,76 @@ describe("the plane", () => {
       o.setLook(l);
       expect(o.lightStripes, l.id).toBe(false);
     }
+  });
+
+  it("gives the ink stripes of mid-dark floors a light hairline that comes with the night", () => {
+    const o = new DeployOverlay({ golden: false });
+    const edged = (looks: Record<string, Parameters<DeployOverlay["setLook"]>[0] & { id: string }>): string[] =>
+      Object.values(looks)
+        .filter((l) => (o.setLook(l), o.nightEdges))
+        .map((l) => l.id)
+        .sort();
+    // The looks whose ink stripes all but vanished by night in the review's look sheet.
+    expect(edged(LOOKS)).toEqual(["jungle", "mystic", "swamp"]);
+    expect(edged(ISLAMIC_LOOKS)).toEqual(["copper", "medina", "souk"]);
+    // Never on the forge (its stripes are light already) or a pale floor.
+    o.setLook(LOOKS.forge);
+    expect(o.nightEdges).toBe(false);
+    o.setLook(LOOKS.meadow);
+    expect(o.nightEdges).toBe(false);
+    // The hairline fades in with the night, from nothing by day.
+    o.setLook(LOOKS.swamp);
+    o.hold("troop");
+    o.sync(createBattle(), "player", DT, false);
+    o.render(0, 1, false);
+    expect(uniforms(o).uEdgeA.value).toBe(0);
+    o.render(0.5, 1, false);
+    expect(uniforms(o).uEdgeA.value).toBeCloseTo(NIGHT_EDGE_ALPHA * 0.5, 6);
+    o.render(1, 1, false);
+    expect(uniforms(o).uEdgeA.value).toBeCloseTo(NIGHT_EDGE_ALPHA, 6);
+    o.setLook(LOOKS.meadow);
+    o.render(1, 1, false);
+    expect(uniforms(o).uEdgeA.value).toBe(0);
+  });
+
+  it("lights the Golden Age pocket brighter than the sand, calmer by night", () => {
+    const lit = (golden: boolean): { fill: (day: number) => number; luma: number } => {
+      const o = new DeployOverlay({ golden });
+      o.hold("troop");
+      o.sync(createBattle(), "player", DT, false);
+      const c = uniforms(o).uLit.value as THREE.Color;
+      const s = c.clone().convertLinearToSRGB();
+      return {
+        fill: (day: number) => (o.render(day, 1, false), uniforms(o).uFill.value as number),
+        luma: 0.2126 * s.r + 0.7152 * s.g + 0.0722 * s.b,
+      };
+    };
+    const g = lit(true);
+    const c = lit(false);
+    expect(g.fill(0)).toBe(FILL_GOLDEN);
+    expect(c.fill(0)).toBe(FILL_CLASSIC);
+    expect(FILL_GOLDEN).toBeGreaterThan(FILL_CLASSIC);
+    expect(c.fill(1)).toBeCloseTo(FILL_CLASSIC * (1 - NIGHT_FILL_CUT), 6);
+    expect(g.fill(1)).toBeCloseTo(FILL_GOLDEN * (1 - NIGHT_FILL_CUT_GOLDEN), 6);
+    expect(g.fill(1)).toBeLessThanOrEqual(c.fill(1)); // brighter by day, never milkier by night
+    // Lighter than every Golden Age plaster: a tint that only shifts the hue does not read as lit.
+    for (const l of Object.values(ISLAMIC_LOOKS)) expect(g.luma, l.id).toBeGreaterThan(srgbLuma(floorSwatch(l)) + 0.1);
+  });
+
+  it("draws the Digger's collars with a bolder line (they hide mostly under the towers)", () => {
+    const o = new DeployOverlay({ golden: false });
+    const b = createBattle();
+    o.hold("troop");
+    o.sync(b, "player", DT, false);
+    o.render(0, 1, false);
+    expect(uniforms(o).uThick.value).toBe(1);
+    o.hold("dig");
+    o.sync(b, "player", DT, false);
+    o.render(0, 1, false);
+    expect(uniforms(o).uThick.value).toBe(DIG_THICK);
+    o.refuse("dig", 3.5, 6.5);
+    o.render(0, 1, false);
+    expect(uniforms(o).uThick.value).toBeCloseTo(DIG_THICK * 1.35, 6);
   });
 
   it("samples what it draws: the open pocket is allowed, the King's keep-clear is not", () => {

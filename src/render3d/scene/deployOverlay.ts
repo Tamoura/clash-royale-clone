@@ -22,15 +22,26 @@
  * rebuilds never dispose it) and frees it with dispose().
  */
 import * as THREE from "three";
-import { ARENA_HEIGHT, ARENA_WIDTH, type OpenLanes, type Side } from "../../game/arena";
+import {
+  ARENA_HEIGHT,
+  ARENA_WIDTH,
+  BRIDGE_HALF_WIDTH,
+  BRIDGE_XS,
+  RIVER_HALF_WIDTH,
+  RIVER_Y,
+  type OpenLanes,
+  type Side,
+} from "../../game/arena";
 import { openLanes, type BattleState } from "../../game/battle";
 import type { ArenaLook } from "../arenaLooks";
 import {
   FIELD_H,
   FIELD_W,
+  KING_KEEP_CLEAR,
   digKey,
   enemyKingSpot,
   laneAnchor,
+  laneLabelBand,
   paintZoneField,
   ruinSpot,
   sampleField,
@@ -87,9 +98,19 @@ const LINE_GAIN = 0.88; // linear: under the 0.92 bloom threshold
 const LINE_CLASSIC = 0xffffff;
 const LINE_GOLDEN = 0xfff3d6;
 const LIT_GOLDEN = 0x2bb7b0;
+/** How far the lit colour is mixed toward white (Golden Age: lighter than the sand it sits on, so it reads as lit). */
+export const LIT_WHITE_CLASSIC = 0.45;
+export const LIT_WHITE_GOLDEN = 0.4;
+/** The open pocket's fill alpha by day (Golden Age: its mint barely shows on sand at the Classic 0.20). */
+export const FILL_CLASSIC = 0.2;
+export const FILL_GOLDEN = 0.3;
 const WELCOME_GAIN = 0.16;
+/** The Digger's collars hide mostly under the tower bodies: its outline and rim are this much bolder. */
+export const DIG_THICK = 1.6;
 /** How much the pocket's fill, glows and lit colour calm down by night (dayPhase 1). */
 export const NIGHT_FILL_CUT = 0.6;
+/** Golden Age's brighter day fill calms down further, to about the Classic night fill (0.075 vs 0.08): never milky. */
+export const NIGHT_FILL_CUT_GOLDEN = 0.75;
 export const NIGHT_GLOW_CUT = 0.45;
 export const NIGHT_LIT_CUT = 0.2;
 const FLASH_ALPHA = 0.22;
@@ -100,6 +121,14 @@ const FLASH_ALPHA = 0.22;
  * all but gone in the look sheet. The next darkest floor is 0.45 (mystic).
  */
 export const DARK_FLOOR_LUMA = 0.36;
+/**
+ * Mid-dark floors (swamp, jungle, mystic; Golden Age souk, copper, medina)
+ * keep their ink stripes, but by night ink on a darkened floor all but
+ * vanishes: each stripe gets a light hairline on one edge that fades in with
+ * the night (alpha NIGHT_EDGE_ALPHA x dayPhase).
+ */
+export const NIGHT_EDGE_LUMA = 0.53;
+export const NIGHT_EDGE_ALPHA = 0.2;
 
 /** The colour a look's field floor is painted: Golden Age courts are plaster (their `floor` is the shared base's). */
 export function floorSwatch(look: Pick<ArenaLook, "floor" | "islamic">): string {
@@ -109,12 +138,33 @@ export function floorSwatch(look: Pick<ArenaLook, "floor" | "islamic">): string 
 export type RefuseReason = "side" | "lane" | "river" | "king" | "tower" | "dig";
 const FLASH_KIND: Record<RefuseReason, number> = { side: 1, lane: 2, king: 3, river: 4, tower: 5, dig: 5 };
 
+/** A number as a GLSL float literal (always with a decimal point). */
+export function glslFloat(n: number): string {
+  return Number.isInteger(n) ? n.toFixed(1) : String(n);
+}
+
+// The arena's geometry, from the sim's exported constants: the shader's
+// cosmetics (calmer water, which half is lit, the lane split, the flash
+// regions) follow them if they ever change. The allowed shape itself comes
+// only from the texture (pinned by deployZone.grid.test.ts).
+const G = {
+  W: glslFloat(ARENA_WIDTH),
+  H: glslFloat(ARENA_HEIGHT),
+  MID: glslFloat(ARENA_WIDTH / 2),
+  HALF_H: glslFloat(ARENA_HEIGHT / 2),
+  RIVER: glslFloat(RIVER_Y),
+  RIVER_HALF: glslFloat(RIVER_HALF_WIDTH),
+  BRIDGE: BRIDGE_XS.map((bx) => `abs(vTile.x - ${glslFloat(bx)}) <= ${glslFloat(BRIDGE_HALF_WIDTH)}`).join(" || "),
+  /** The King flash: the keep-clear and a hair more, so its arc flashes too. */
+  KING_FLASH: glslFloat(KING_KEEP_CLEAR + 0.2),
+};
+
 const VERT = /* glsl */ `
   varying vec2 vTile;
   void main() {
     // LOCAL position: the mesh's z shift (VIEW_SHIFT) carries the content
     // along the camera ray, so lines land over the ground they describe.
-    vTile = vec2(position.x + ${(ARENA_WIDTH / 2).toFixed(1)}, position.z + ${(ARENA_HEIGHT / 2).toFixed(1)});
+    vTile = vec2(position.x + ${G.MID}, position.z + ${G.HALF_H});
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -136,6 +186,7 @@ const FRAG = /* glsl */ `
   uniform float uLitGain;
   uniform vec3 uStripe;
   uniform float uStripeA;
+  uniform float uEdgeA;     // light hairline on each ink stripe (mid-dark floors by night)
   uniform float uNoBase;
   uniform float uFill;
   uniform float uGlowP;
@@ -155,11 +206,11 @@ const FRAG = /* glsl */ `
   }
 
   void main() {
-    float field = (texture2D(uField, vTile / vec2(${ARENA_WIDTH.toFixed(1)}, ${ARENA_HEIGHT.toFixed(1)})).r - 0.5) * 4.0;
-    float theirs = uSideSign * (16.0 - vTile.y);     // > 0 on the viewer's enemy half
-    bool isL = vTile.x < 9.0;
-    bool bridge = abs(vTile.x - 3.5) <= 1.0 || abs(vTile.x - 14.5) <= 1.0;
-    float water = (abs(vTile.y - 16.0) < 1.0 && !(uDig > 0.5 && bridge)) ? 1.0 : 0.0;
+    float field = (texture2D(uField, vTile / vec2(${G.W}, ${G.H})).r - 0.5) * 4.0;
+    float theirs = uSideSign * (${G.RIVER} - vTile.y);     // > 0 on the viewer's enemy half
+    bool isL = vTile.x < ${G.MID};
+    bool bridge = ${G.BRIDGE};
+    float water = (abs(vTile.y - ${G.RIVER}) < ${G.RIVER_HALF} && !(uDig > 0.5 && bridge)) ? 1.0 : 0.0;
 
     // A lane revealing with no card held: its pocket is a disc growing from the
     // ruin. Both lanes' wave distances and every derivative are taken without
@@ -177,7 +228,7 @@ const FRAG = /* glsl */ `
     float aa = max(cut ? (isL ? aaWL : aaWR) : aaField, 1e-4);
     float px = length(fwidth(vTile)) * 0.70710678 * uDpr;   // tiles per CSS px
     float W = max(0.16, 3.0 * px) * uThick;                   // outline core, inside the edge
-    float E = max(0.06, 1.5 * px);                            // ink rim, outside
+    float E = max(0.06, 1.5 * px) * (1.0 + (${glslFloat(DIG_THICK)} - 1.0) * uDig); // ink rim, outside
     float inside = smoothstep(-aa, aa, d);
     float core = inside * (1.0 - smoothstep(W - aa, W + aa, d));
     float rim = (1.0 - inside) * smoothstep(-E - aa, -E + aa, d);
@@ -189,6 +240,13 @@ const FRAG = /* glsl */ `
     float sw = fwidth(s);
     float stripe = smoothstep(0.325 - sw, 0.325 + sw, abs(fract(s) - 0.5)) * (1.0 - water);
     vec4 no = over(vec4(uStripe, uStripeA * stripe), vec4(uInk, uNoBase * mix(1.0, 0.5, water)));
+    if (uEdgeA > 0.0) {
+      // A light hairline just past each ink band's trailing edge (fract 0.175).
+      float g = fract(s) - 0.175;
+      float lw = max(0.06, 2.0 * px) / period;
+      float edge = smoothstep(-sw, sw, g) * (1.0 - smoothstep(lw - sw, lw + sw, g)) * (1.0 - water);
+      no = over(vec4(1.0, 1.0, 1.0, uEdgeA * edge), no);
+    }
 
     // YES: the opened pocket lit as new ground; your own half only a glow along its line.
     float pocket = inside * step(0.0, theirs) * (1.0 - uDig);
@@ -209,17 +267,17 @@ const FRAG = /* glsl */ `
     if (uFlash > 0.0) {
       float region = 0.0;
       if (uFlashKind < 1.5) region = step(-1.0, theirs);
-      else if (uFlashKind < 2.5) region = step(0.0, theirs) * ((vTile.x < 9.0) == (uFlashAt.x < 9.0) ? 1.0 : 0.0);
-      else if (uFlashKind < 3.5) region = step(length(vTile - uKing), 4.7) * step(0.0, theirs) * (isL ? uOpen.x : uOpen.y);
-      else if (uFlashKind < 4.5) region = step(abs(vTile.y - 16.0), 1.0);
+      else if (uFlashKind < 2.5) region = step(0.0, theirs) * (isL == (uFlashAt.x < ${G.MID}) ? 1.0 : 0.0);
+      else if (uFlashKind < 3.5) region = step(length(vTile - uKing), ${G.KING_FLASH}) * step(0.0, theirs) * (isL ? uOpen.x : uOpen.y);
+      else if (uFlashKind < 4.5) region = step(abs(vTile.y - ${G.RIVER}), ${G.RIVER_HALF});
       else region = step(length(vTile - uFlashAt), 2.5);
       col = over(vec4(1.0, 1.0, 1.0, uFlash * region * (1.0 - inside)), col);
     }
 
     // Pocket-only (no card held): each open lane's enemy half, the revealing
     // one cut to its wave; water only where the line's rim crosses it.
-    float mL = uOpen.x * step(vTile.x, 9.0 + 0.1 * (1.0 - uOpen.y)) * uEnv.x * step(-(E + max(aaWL, 1e-4)), wdL);
-    float mR = uOpen.y * step(9.0 - 0.1 * (1.0 - uOpen.x), vTile.x) * uEnv.y * step(-(E + max(aaWR, 1e-4)), wdR);
+    float mL = uOpen.x * step(vTile.x, ${G.MID} + 0.1 * (1.0 - uOpen.y)) * uEnv.x * step(-(E + max(aaWL, 1e-4)), wdL);
+    float mR = uOpen.y * step(${G.MID} - 0.1 * (1.0 - uOpen.x), vTile.x) * uEnv.y * step(-(E + max(aaWR, 1e-4)), wdR);
     float pm = step(-0.12, theirs) * max(mL, mR) * mix(1.0, rim, water);
     float a = col.a * max(uHold, pm);
     if (a < 0.004) discard;
@@ -245,6 +303,13 @@ export interface LaneCallout {
   /** Arena point the label centres on. */
   ax: number;
   ay: number;
+  /**
+   * The pocket band (arena y) the label may step along to keep off the held
+   * card's preview: `far` just below the King's keep-clear, `near` just
+   * above the river (laneLabelBand).
+   */
+  far: number;
+  near: number;
   age: number;
 }
 
@@ -295,6 +360,7 @@ export function srgbLuma(hex: string): number {
 }
 
 const LANES: readonly Lane[] = ["left", "right"];
+const WHITE = new THREE.Color(0xffffff);
 
 export interface DeployOverlayOptions {
   /** Golden Age: ivory line and a turquoise lit pocket. */
@@ -341,9 +407,23 @@ export class DeployOverlay {
   private still = false;
   /** Draw once, invisibly, on the first render of a battle: compiles the program and uploads the texture. */
   private warm = false;
+  /** The open pocket's fill by day, and how much of it the night takes away (per edition). */
+  private readonly fillBase: number;
+  private readonly fillNightCut: number;
+  /** The look's floor is mid-dark: its ink stripes get a light hairline by night. */
+  private nightEdge = false;
+  /** The two enemy ruins for the viewer (the reveal grows from them), kept per view: no per-frame lookups. */
+  private readonly ruins: Record<Lane, { x: number; y: number }> = {
+    left: ruinSpot("player", "left"),
+    right: ruinSpot("player", "right"),
+  };
+  /** Where the "lane opened" label may sit (arena y, see laneLabelBand), kept per view. */
+  private band = laneLabelBand("player");
 
   constructor(opts: DeployOverlayOptions) {
     this.golden = opts.golden;
+    this.fillBase = this.golden ? FILL_GOLDEN : FILL_CLASSIC;
+    this.fillNightCut = this.golden ? NIGHT_FILL_CUT_GOLDEN : NIGHT_FILL_CUT;
     this.teamTint = opts.teamTint ?? (() => teamColor("player", "main"));
     this.data = new Uint8Array(FIELD_W * FIELD_H);
     this.tex = new THREE.DataTexture(this.data, FIELD_W, FIELD_H, THREE.RedFormat, THREE.UnsignedByteType);
@@ -374,8 +454,9 @@ export class DeployOverlay {
         uLitGain: { value: 1 },
         uStripe: { value: new THREE.Color(INK) },
         uStripeA: { value: 0.67 },
+        uEdgeA: { value: 0 },
         uNoBase: { value: 0.58 },
-        uFill: { value: 0.2 },
+        uFill: { value: this.fillBase },
         uGlowP: { value: 0.22 },
         uGlowOwn: { value: 0.16 },
         uWelcome: { value: new THREE.Vector2(0, 0) },
@@ -413,19 +494,36 @@ export class DeployOverlay {
     u.uSideSign.value = side === "player" ? 1 : -1;
     const k = enemyKingSpot(side);
     (u.uKing.value as THREE.Vector2).set(k.x, k.y);
+    for (const lane of LANES) {
+      const r = ruinSpot(side, lane);
+      this.ruins[lane].x = r.x;
+      this.ruins[lane].y = r.y;
+    }
+    this.band = laneLabelBand(side);
     if (this.cacheSide !== side) this.key = -1; // repaint for this side
   }
 
-  /** The arena look: on a dark floor, ink stripes would vanish, so they turn light. */
+  /**
+   * The arena look: on a dark floor, ink stripes would vanish, so they turn
+   * light; on a mid-dark one they keep their ink and gain a light hairline
+   * as night falls.
+   */
   setLook(look: Pick<ArenaLook, "floor" | "islamic">): void {
-    const dark = srgbLuma(floorSwatch(look)) < DARK_FLOOR_LUMA;
+    const luma = srgbLuma(floorSwatch(look));
+    const dark = luma < DARK_FLOOR_LUMA;
     (this.mat.uniforms.uStripe.value as THREE.Color).set(dark ? 0xffffff : INK);
     this.mat.uniforms.uStripeA.value = dark ? 0.18 : 0.67;
+    this.nightEdge = !dark && luma < NIGHT_EDGE_LUMA;
   }
 
   /** Whether the light-stripe fallback is on (tests). */
   get lightStripes(): boolean {
     return this.mat.uniforms.uStripeA.value < 0.5;
+  }
+
+  /** Whether the ink stripes gain a light hairline by night (tests). */
+  get nightEdges(): boolean {
+    return this.nightEdge;
   }
 
   /** Pick up (a mode) or put down (null) a card. */
@@ -449,8 +547,8 @@ export class DeployOverlay {
 
   private refreshLit(): void {
     const lit = this.mat.uniforms.uLit.value as THREE.Color;
-    if (this.golden) lit.set(LIT_GOLDEN).lerp(new THREE.Color(0xffffff), 0.25);
-    else lit.set(this.teamTint()).lerp(new THREE.Color(0xffffff), 0.45);
+    if (this.golden) lit.set(LIT_GOLDEN).lerp(WHITE, LIT_WHITE_GOLDEN);
+    else lit.set(this.teamTint()).lerp(WHITE, LIT_WHITE_CLASSIC);
   }
 
   /** Per sync: notice lanes opening, keep the map's texture in step, run the clocks. */
@@ -599,23 +697,25 @@ export class DeployOverlay {
       const r = this.recordFor(lane);
       const w = (lane === "left" ? u.uWaveL.value : u.uWaveR.value) as THREE.Vector3;
       if (r && r.wave && !still && this.held === null) {
-        const spot = ruinSpot(this.side, lane);
+        const spot = this.ruins[lane];
         w.set(spot.x, spot.y, revealRadius(r.age, false));
       } else w.set(0, 0, REVEAL_DONE);
     }
-    u.uDig.value = this.shownMode === "dig" ? 1 : 0;
+    const dig = this.shownMode === "dig";
+    u.uDig.value = dig ? 1 : 0;
     u.uDpr.value = dpr;
     const day = Math.max(0, Math.min(1, dayPhase));
     u.uNoBase.value = 0.58 + (0.44 - 0.58) * day;
+    u.uEdgeA.value = this.nightEdge ? NIGHT_EDGE_ALPHA * day : 0;
     // The map is unlit while the field darkens toward night: it calms down
     // with the sky, so the pocket stays "lit ground", never milky.
-    u.uFill.value = 0.2 * (1 - NIGHT_FILL_CUT * day);
+    u.uFill.value = this.fillBase * (1 - this.fillNightCut * day);
     u.uGlowP.value = 0.22 * (1 - NIGHT_GLOW_CUT * day);
     u.uGlowOwn.value = 0.16 * (1 - NIGHT_GLOW_CUT * day);
     u.uLitGain.value = 1 - NIGHT_LIT_CUT * day;
     (u.uWelcome.value as THREE.Vector2).set(welcomeBump(this.welcomeAge.left), welcomeBump(this.welcomeAge.right));
     const refusing = this.refuseAge < REFUSE_OUTLINE ? 1 : 0;
-    u.uThick.value = 1 + 0.35 * Math.max(this.callBackEase, refusing);
+    u.uThick.value = (dig ? DIG_THICK : 1) * (1 + 0.35 * Math.max(this.callBackEase, refusing));
     if (this.flashAge < REFUSE_FLASH) {
       const t = this.flashAge;
       const envelope = still ? 1 : 0.5 - 0.5 * Math.cos((4 * Math.PI * t) / REFUSE_FLASH);
@@ -643,7 +743,7 @@ export class DeployOverlay {
     const r = this.records[this.records.length - 1];
     if (r.dismissed || r.age < CALLOUT_FROM || r.age >= CALLOUT_TO) return null;
     const a = laneAnchor(this.side, r.lane);
-    return { id: r.id, lane: r.lane, ax: a.x, ay: a.y, age: r.age };
+    return { id: r.id, lane: r.lane, ax: a.x, ay: a.y, far: this.band.far, near: this.band.near, age: r.age };
   }
 
   /** Hide the label early (the kid just played a card). */

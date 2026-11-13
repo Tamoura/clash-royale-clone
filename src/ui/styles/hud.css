@@ -1653,6 +1653,13 @@
   transform: translate(-50%, -50%);
   pointer-events: none;
   animation: lanePill 0.5s ease-out both;
+  /* Stepping off a held card's preview (hudModel lanePillY) is a short glide. */
+  transition: top 0.18s ease-out;
+}
+/* The words' even break (hud.ts fitLanePill) shows only when one line does
+   not fit the pocket; the pill then shrink-wraps the longer line. */
+.lane-pill:not(.two) br {
+  display: none;
 }
 .lane-pill .ui-icon {
   display: inline-block;
@@ -1663,6 +1670,7 @@
 }
 .lane-pill.still {
   animation: none;
+  transition: none;
 }
 /* The fade-out is not motion: it runs under reduced motion too. */
 .lane-pill.out,
@@ -1672,14 +1680,19 @@
 :root[data-layout="wide"] .lane-pill {
   font-size: var(--fs-sm);
 }
-/* A narrow pocket (landscape phones, about 110 px): the padlock sits on top
-   and the words get the whole width, so they wrap to two lines at most. */
-.lane-pill.narrow {
+/* A narrow pocket (landscape phones, about 110 px): the padlock sits on top,
+   the words are a size smaller and break evenly into two short lines, so
+   the pill covers as little of the new ground as it can (about 95 x 55 px
+   in a 118 x 149 px pocket). */
+:root .lane-pill.narrow {
   padding: 4px 8px 5px;
   border-radius: 16px;
+  font-size: calc(13px * var(--text-scale, 1));
 }
 .lane-pill.narrow .ui-icon {
   display: block;
+  width: 1.15em;
+  height: 1.15em;
   margin: 0 auto 1px;
 }
 @keyframes lanePill {
@@ -1708,10 +1721,16 @@
 :root[data-reduce-motion] .error-shake {
   animation: none;
 }
+:root[data-reduce-motion] .lane-pill {
+  transition: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .lane-pill,
   .place-pip,
   .error-shake {
     animation: none;
+  }
+  .lane-pill {
+    transition: none;
   }
 }

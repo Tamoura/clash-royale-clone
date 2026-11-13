@@ -18,7 +18,9 @@
 import {
   ARENA_HEIGHT,
   ARENA_WIDTH,
+  BRIDGE_HALF_WIDTH,
   BRIDGE_XS,
+  RIVER_HALF_WIDTH,
   RIVER_Y,
   opposite,
   towerSpots,
@@ -80,9 +82,9 @@ const R = ARENA_WIDTH + PAST_WALL;
 const T = -PAST_WALL;
 const B = ARENA_HEIGHT + PAST_WALL;
 const MID = ARENA_WIDTH / 2;
-/** Last dry row on each side of the river (inRiver is |y - 16| < 1). */
-const NEAR = RIVER_Y - 1; // 15
-const FAR = RIVER_Y + 1; // 17
+/** Last dry row on each side of the river (inRiver is |y - RIVER_Y| < RIVER_HALF_WIDTH). */
+const NEAR = RIVER_Y - RIVER_HALF_WIDTH; // 15
+const FAR = RIVER_Y + RIVER_HALF_WIDTH; // 17
 
 function ownHalf(side: Side): Rect {
   return side === "player" ? { x0: L, y0: FAR, x1: R, y1: B } : { x0: L, y0: T, x1: R, y1: NEAR };
@@ -118,7 +120,8 @@ export function digShape(state: BattleState, side: Side): ZoneShape {
   const rects: Rect[] = [
     { x0: L, y0: T, x1: R, y1: NEAR },
     { x0: L, y0: FAR, x1: R, y1: B },
-    ...BRIDGE_XS.map((bx) => ({ x0: bx - 1, y0: NEAR - 1, x1: bx + 1, y1: FAR + 1 })),
+    // Each bridge across the water (onBridge), overlapping the dry banks by a tile so no seam is drawn.
+    ...BRIDGE_XS.map((bx) => ({ x0: bx - BRIDGE_HALF_WIDTH, y0: NEAR - 1, x1: bx + BRIDGE_HALF_WIDTH, y1: FAR + 1 })),
   ];
   const digHoles: Hole[] = [];
   for (const e of state.entities) {
@@ -232,4 +235,23 @@ export function laneAnchor(side: Side, lane: Lane): { x: number; y: number } {
 export function enemyKingSpot(side: Side): { x: number; y: number } {
   const t = towerSpots(opposite(side)).find((s) => s.kind === "king")!;
   return { x: t.x, y: t.y };
+}
+
+/** The label keeps this far (tiles) off the King's keep-clear and off the river bank. */
+export const LABEL_BAND_MARGIN = { king: 0.2, river: 0.3 };
+
+/**
+ * The band of an opened pocket the "Drop troops here now!" label may use,
+ * as arena y for `side` (either lane: they mirror across the middle seam):
+ * `far` just below the King's keep-clear, which reaches deepest at the seam,
+ * and `near` just above the river bank. The label steps along it to keep off
+ * a held card's preview, and never onto the King's striped bite.
+ */
+export function laneLabelBand(side: Side): { far: number; near: number } {
+  const king = enemyKingSpot(side);
+  const sign = side === "player" ? 1 : -1; // toward the river, in arena y
+  return {
+    far: king.y + sign * (KING_KEEP_CLEAR + LABEL_BAND_MARGIN.king),
+    near: (side === "player" ? NEAR : FAR) - sign * LABEL_BAND_MARGIN.river,
+  };
 }

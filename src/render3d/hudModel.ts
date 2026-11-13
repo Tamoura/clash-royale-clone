@@ -9,7 +9,7 @@
  * feeds it. Nothing in this file touches the DOM.
  */
 import { ABILITIES, type AbilityId } from "../game/abilities";
-import { canDeployTroopAt, inRiver, onBridge, type Side } from "../game/arena";
+import { ARENA_HEIGHT, ARENA_WIDTH, canDeployTroopAt, inRiver, onBridge, type Side } from "../game/arena";
 import {
   checkDeploy,
   effectiveCard,
@@ -376,6 +376,81 @@ export function lanePillBox(
 
 export function laneLabelText(): string {
   return tr("Drop troops here now!", "ضع جنودك هنا الآن!");
+}
+
+/**
+ * The label's words as two lines broken at the most even word gap, for a
+ * pocket too narrow for one line: the pill then shrink-wraps the longer
+ * line instead of filling the pocket's whole width with a balanced
+ * paragraph. One word: one line ("" second).
+ */
+export function balancedLines(text: string): [string, string] {
+  const words = text.split(" ").filter((w) => w.length > 0);
+  if (words.length < 2) return [words.join(" "), ""];
+  let best = 1;
+  let bestLen = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const len = Math.max(words.slice(0, i).join(" ").length, words.slice(i).join(" ").length);
+    if (len < bestLen) {
+      bestLen = len;
+      best = i;
+    }
+  }
+  return [words.slice(0, best).join(" "), words.slice(best).join(" ")];
+}
+
+/**
+ * The held card's preview on screen around the pointer at (x, y): the hover
+ * disc or a spell's aim ring (`radius` tiles) and, for a troop, its ghost
+ * standing up from the disc. The lane label steps off this box. The field
+ * rect gives the scale: px per tile across (w / 18) and down (h / 32, the
+ * camera's tilt shortens it).
+ */
+export function previewBox(x: number, y: number, radius: number, ghost: boolean, field: ScreenRect): ScreenRect {
+  const across = field.w / ARENA_WIDTH;
+  const down = field.h / ARENA_HEIGHT;
+  const halfW = Math.max(radius, 0.8) * across;
+  const below = Math.max(radius * down, 0.5 * across);
+  const above = Math.max(radius * down, (ghost ? 1.5 : 0.5) * across);
+  return { x: x - halfW, y: y - above, w: 2 * halfW, h: above + below };
+}
+
+/** The lane label keeps this far (px) off the held card's preview. */
+export const LANE_PILL_GAP = 4;
+
+/**
+ * Where the lane label's centre y goes so it does not hide the held card's
+ * preview (`avoid`: the ghost, the hover disc, a spell's aim ring): its
+ * usual spot when that is clear; else the top or the bottom of `room` (the
+ * pocket band between the King's keep-clear and the river, screen y),
+ * whichever hides less of the preview (the one farther from it on a tie).
+ * Only three places, so the label steps aside once instead of sliding after
+ * the finger; it stays put when stepping aside would not help. `w` x `h` is
+ * the label's size.
+ */
+export function lanePillY(
+  box: { x: number; y: number },
+  w: number,
+  h: number,
+  room: { top: number; bottom: number } | null,
+  avoid: ScreenRect | null,
+): number {
+  if (!room || !avoid || w <= 0 || h <= 0) return box.y;
+  const acrossOverlap = Math.min(box.x + w / 2, avoid.x + avoid.w) - Math.max(box.x - w / 2, avoid.x);
+  if (acrossOverlap <= 0) return box.y;
+  const hidden = (cy: number): number =>
+    Math.max(0, Math.min(cy + h / 2 + LANE_PILL_GAP, avoid.y + avoid.h) - Math.max(cy - h / 2 - LANE_PILL_GAP, avoid.y));
+  const here = hidden(box.y);
+  if (here === 0) return box.y;
+  const top = room.top + h / 2;
+  const bottom = room.bottom - h / 2;
+  if (top > bottom) return box.y; // the band is shorter than the label: nowhere to go
+  const a = hidden(top);
+  const b = hidden(bottom);
+  if (Math.min(a, b) >= here) return box.y;
+  if (a !== b) return a < b ? top : bottom;
+  const mid = avoid.y + avoid.h / 2;
+  return Math.abs(top - mid) >= Math.abs(bottom - mid) ? top : bottom;
 }
 
 /** The refused-drop label never runs closer than this to a screen edge (px). */

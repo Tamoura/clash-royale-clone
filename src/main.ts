@@ -38,10 +38,10 @@ import {
   setCardOverrides,
   type CardId,
 } from "./game/cards";
-import type { Side } from "./game/arena";
+import { ARENA_WIDTH, type Side } from "./game/arena";
 import { isDoubleElixir, tick } from "./game/sim";
 import { Hud } from "./render3d/hud";
-import { Battle3D, setTowerFlair } from "./render3d/scene3d";
+import { Battle3D, setTowerFlair, type CanvasRect } from "./render3d/scene3d";
 import {
   ARENA_THEME_KEY,
   ARABIC,
@@ -142,6 +142,7 @@ import {
   laneLabelText,
   lanePillBox,
   placeVerdict,
+  previewBox,
   type ScreenRect,
 } from "./render3d/hudModel";
 import { applyMotionAttr } from "./ui/motionAttr";
@@ -469,10 +470,22 @@ try {
 const layout = installLayout(scene, topbar);
 const audio = new SoundEngine();
 
+/**
+ * The canvas's page rect. Inside frame()'s preview-and-label step it is read
+ * once and shared, so the conversions after the pip's style writes never
+ * force another layout; anywhere else each call reads it fresh.
+ */
+let frameCanvasRect: CanvasRect | null = null;
+let sharingCanvasRect = false;
+function canvasRect(): CanvasRect {
+  if (!sharingCanvasRect) return scene.canvasRect();
+  return (frameCanvasRect ??= scene.canvasRect());
+}
+
 /** The field's tiles 0..18 x 0..32 on screen (page px; either viewpoint). */
-function fieldRect(): ScreenRect {
-  const a = scene.arenaToClient(0, 0);
-  const b = scene.arenaToClient(18, 32);
+function fieldRect(rect: CanvasRect = canvasRect()): ScreenRect {
+  const a = scene.arenaToClient(0, 0, 0, rect);
+  const b = scene.arenaToClient(18, 32, 0, rect);
   const x = Math.min(a.x, b.x);
   const y = Math.min(a.y, b.y);
   return { x, y, w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
@@ -485,6 +498,9 @@ function fieldRect(): ScreenRect {
  * when a finger or pen lifts, the window loses focus, and after a refused drop.
  */
 let lastPointer: { x: number; y: number; type: string } | null = null;
+
+/** The held card's preview on screen (ghost, hover disc, aim ring), or null: the lane label steps off it. */
+let previewOnScreen: ScreenRect | null = null;
 
 /** An empty rect for a hidden pip (no allocation per frame). */
 const NO_RECT: ScreenRect = { x: 0, y: 0, w: 0, h: 0 };
@@ -1111,6 +1127,7 @@ function botEmote(moment: BotMoment, force = false): void {
 }
 
 function clearPreview(): void {
+  previewOnScreen = null;
   scene.setHover(null, 0, false);
   scene.setGhost(null, null);
   scene.zoneCallBack(false);
@@ -1131,7 +1148,8 @@ function refreshPreview(): void {
   // card it would copy (blast radius, troop ghost), not as itself.
   const card =
     effectiveCard(battle, localSide(), selectedCard)?.card ?? getCard(selectedCard);
-  const pos = scene.pick(lastPointer.x, lastPointer.y);
+  const rect = canvasRect();
+  const pos = scene.pick(lastPointer.x, lastPointer.y, rect);
   const check = pos === null ? null : checkDeploy(battle, localSide(), selectedCard, pos.x, pos.y);
   const placing = card.kind !== "spell";
   const badSpot = check === "bad-spot";
@@ -1148,7 +1166,9 @@ function refreshPreview(): void {
   // Spells go anywhere: their pip only ever says "wait".
   const verdict = placeVerdict(check);
   const pip = verdict && (placing || verdict === "wait") ? verdict : null;
-  hud.placePip(pip, lastPointer.x, lastPointer.y, lastPointer.type, pip ? fieldRect() : NO_RECT);
+  const field = pos || pip ? fieldRect(rect) : NO_RECT;
+  previewOnScreen = pos ? previewBox(lastPointer.x, lastPointer.y, radius, card.kind === "troop", field) : null;
+  hud.placePip(pip, lastPointer.x, lastPointer.y, lastPointer.type, pip ? field : NO_RECT);
 }
 
 /**
@@ -1181,14 +1201,16 @@ function updateLanePill(): void {
     hud.lanePill(null, "", false, -1, 0);
     return;
   }
-  const x0 = c.lane === "left" ? 0 : 9;
-  const box = lanePillBox(
-    scene.arenaToClient(c.ax, c.ay),
-    scene.arenaToClient(x0, c.ay),
-    scene.arenaToClient(x0 + 9, c.ay),
-    fieldRect(),
-  );
-  hud.lanePill(box, laneLabelText(), reduceMotion(), c.id, c.age);
+  const rect = canvasRect();
+  const at = (x: number, y: number): { x: number; y: number } => scene.arenaToClient(x, y, 0, rect);
+  const half = ARENA_WIDTH / 2;
+  const x0 = c.lane === "left" ? 0 : half;
+  const box = lanePillBox(at(c.ax, c.ay), at(x0, c.ay), at(x0 + half, c.ay), fieldRect(rect));
+  // The pocket band the label may step along to keep off the held card's preview.
+  const far = at(c.ax, c.far).y;
+  const near = at(c.ax, c.near).y;
+  const room = { top: Math.min(far, near), bottom: Math.max(far, near) };
+  hud.lanePill(box, laneLabelText(), reduceMotion(), c.id, c.age, room, previewOnScreen);
 }
 
 
@@ -1342,6 +1364,11 @@ for (const type of ["pointerup", "pointercancel"] as const) {
 }
 window.addEventListener("blur", () => {
   lastPointer = null;
+});
+// A mouse that leaves the page leaves nothing behind either: no ghost, disc,
+// pip or thickened outline parked at the field's edge until it comes back.
+document.addEventListener("pointerout", (ev) => {
+  if (ev.relatedTarget === null) lastPointer = null;
 });
 
 // Right-click anywhere on the field cancels the selected card.
@@ -1561,9 +1588,14 @@ function frame(now: number): void {
   const scaledDt = presentDt * presentTimeScale();
   scene.sync(battle, scaledDt, alpha);
   // The spot under a resting pointer is re-judged every frame (a tower falls,
-  // elixir arrives), and the "lane opened" label follows the board.
+  // elixir arrives), and the "lane opened" label follows the board. Both
+  // share one read of the canvas rect (the pip's style writes come between).
+  sharingCanvasRect = true;
+  frameCanvasRect = null;
   if (selectedCard) safely(refreshPreview);
   safely(updateLanePill);
+  sharingCanvasRect = false;
+  frameCanvasRect = null;
   if (import.meta.env.DEV && !viewWarned && scene.viewpoint !== localSide()) {
     viewWarned = true;
     console.warn(`[placement] the board is drawn for '${scene.viewpoint}' but you play '${localSide()}' (dev viewpoint aid or staged view)`);

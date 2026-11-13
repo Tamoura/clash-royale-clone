@@ -22,9 +22,12 @@ import {
   PIP_SIZE,
   badSpotReason,
   badSpotText,
+  balancedLines,
   laneLabelText,
   lanePillBox,
+  lanePillY,
   pipPlacement,
+  previewBox,
   placeVerdict,
   challengeClock,
   dropHintCenterX,
@@ -415,6 +418,51 @@ describe("refused drops", () => {
     expect(lanePillBox({ x: 363, y: 40 }, { x: 304, y: 40 }, { x: 422, y: 40 }, field).y).toBe(59 + 24);
     expect(lanePillBox({ x: 363, y: 400 }, { x: 304, y: 400 }, { x: 422, y: 400 }, field).y).toBe(59 + 317 - 24);
     expect(laneLabelText()).toBe(tr("Drop troops here now!", "ضع جنودك هنا الآن!"));
+  });
+
+  it("breaks the label's words at the most even gap, in both editions", () => {
+    expect(balancedLines("Drop troops here now!")).toEqual(["Drop troops", "here now!"]);
+    expect(balancedLines("ضع جنودك هنا الآن!")).toEqual(["ضع جنودك", "هنا الآن!"]);
+    expect(balancedLines("Go!")).toEqual(["Go!", ""]);
+    expect(balancedLines("a  b")).toEqual(["a", "b"]);
+  });
+
+  it("measures the held card's preview around the pointer", () => {
+    // A phone field: 18 tiles across 378 px (21 px a tile), 32 tiles down 512 px (16 px a tile).
+    const field = { x: 6, y: 170, w: 378, h: 512 };
+    // A troop: its ghost stands 1.5 tiles above the disc; the disc reaches half a tile below.
+    expect(previewBox(100, 300, 0.55, true, field)).toEqual({ x: 100 - 16.8, y: 300 - 31.5, w: 33.6, h: 31.5 + 10.5 });
+    // A Fireball's aim ring (2.5 tiles): wide, and shortened down the field by the camera's tilt.
+    const ring = previewBox(100, 300, 2.5, false, field);
+    expect(ring).toEqual({ x: 100 - 52.5, y: 300 - 40, w: 105, h: 80 });
+  });
+
+  it("steps the lane label off the held card's preview, to the top or bottom of its band", () => {
+    // The phone's left pocket: label 150 x 51 centred at (100, 350); its band from 270 to 390.
+    const box = { x: 100, y: 350 };
+    const room = { top: 270, bottom: 390 };
+    const W = 150;
+    const H = 51;
+    // Nothing held, or the preview elsewhere: the label stays put.
+    expect(lanePillY(box, W, H, room, null)).toBe(350);
+    expect(lanePillY(box, W, H, room, { x: 250, y: 330, w: 34, h: 42 })).toBe(350); // the other lane
+    expect(lanePillY(box, W, H, room, { x: 80, y: 200, w: 34, h: 42 })).toBe(350); // above it, clear
+    // A Knight's ghost right under it, low in the band: the label goes to the top.
+    expect(lanePillY(box, W, H, room, { x: 83, y: 335, w: 34, h: 42 })).toBe(270 + H / 2);
+    // High in the band: it goes to the bottom.
+    expect(lanePillY(box, W, H, room, { x: 83, y: 300, w: 34, h: 42 })).toBe(390 - H / 2);
+    // Too big to clear (a Fireball ring): whichever end hides less of it.
+    expect(lanePillY(box, W, H, room, { x: 48, y: 280, w: 105, h: 80 })).toBe(390 - H / 2);
+    expect(lanePillY(box, W, H, room, { x: 48, y: 300, w: 105, h: 80 })).toBe(270 + H / 2);
+    // A band no taller than the label (landscape, before the fit): nowhere to go.
+    expect(lanePillY(box, W, 130, room, { x: 83, y: 335, w: 34, h: 42 })).toBe(350);
+    // Unmeasured (w or h 0): stays put.
+    expect(lanePillY(box, 0, 0, room, { x: 83, y: 335, w: 34, h: 42 })).toBe(350);
+    // Always inside the band.
+    for (let py = 250; py <= 420; py += 5) {
+      const y = lanePillY(box, W, H, room, { x: 83, y: py, w: 34, h: 42 });
+      expect(y === 350 || (y - H / 2 >= room.top && y + H / 2 <= room.bottom)).toBe(true);
+    }
   });
 
   it("has nothing to say for good spots, spells and cards not in hand", () => {
