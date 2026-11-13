@@ -394,8 +394,16 @@ function countShadowRenders(b: Battle3D): void {
 /** Renderers drawing the home diorama: lighter settings (see setDioramaQuality). */
 const dioramaMode = new WeakSet<Battle3D>();
 
-/** Auto levels from which a battle start prepares the other light state (L3 and L4). */
-export const PREPARE_FROM = 3;
+/**
+ * Whether a battle start prepares the other light state (see
+ * prepareLightVariants): whenever Auto is in charge, at any level. From L0
+ * to L3 a step into L4 may come later in the fight (a slideshow jumps
+ * straight there from any level; a walk gets there through L3), and from
+ * L4 the once-per-session try goes up to L3. A pin never steps by itself.
+ */
+export function wantsLightPrepare(q: { mode: string }): boolean {
+  return q.mode === "auto";
+}
 /** Scenes whose next battle frame should prepare the other light state first. */
 const preparePending = new WeakSet<Battle3D>();
 
@@ -409,9 +417,11 @@ function rimLights(b: Battle3D): THREE.Light[] {
 /**
  * C44: compile, without drawing, the shader variants for the other side of
  * the light-state line between L3 and L4 (the shadow map and the rim light
- * on or off), so a later step across it mid-fight (L3 down to L4, or the
+ * on or off), so a later step across it mid-fight (L0-L3 down to L4, or the
  * once-per-session try from L4 up to L3) finds every lit program ready
- * instead of compiling them all in one long frame. three keeps each
+ * instead of compiling them all in one long frame. L0 to L3 share one
+ * light state (only the map's size changes), so this covers every level.
+ * three keeps each
  * material's programs per light state, so both sets stay live until the
  * material is disposed. Compiled as the composer's scene pass draws (into
  * its render target: linear, no tone mapping), so the keys match. Returns
@@ -453,10 +463,10 @@ export function prepareLightVariants(b: Battle3D): number {
 export function setDioramaQuality(b: Battle3D, on: boolean): void {
   if (!on) {
     b.quality.rearm();
-    // A battle (or the deck picker over one) is starting on a device Auto
-    // runs at L3 or L4: get the other side of the light-state line ready
-    // during its countdown (see prepareLightVariants).
-    if (b.quality.mode === "auto" && b.quality.index >= PREPARE_FROM) preparePending.add(b);
+    // A battle (or the deck picker over one) is starting under Auto: get
+    // the other side of the light-state line ready during its countdown
+    // (see prepareLightVariants), so no later step compiles mid-fight.
+    if (wantsLightPrepare(b.quality)) preparePending.add(b);
   }
   if (on === dioramaMode.has(b)) return;
   if (on) dioramaMode.add(b);
@@ -644,8 +654,10 @@ export function sampleQuality(b: Battle3D): void {
     // the other light state, inside the start-up grace, before any step.
     preparePending.delete(b);
     try {
+      const before = b.renderer.info?.programs?.length ?? 0;
       const ms = prepareLightVariants(b);
-      console.info(`[graphics] prepared the other light state in ${Math.round(ms)} ms`);
+      const added = (b.renderer.info?.programs?.length ?? 0) - before;
+      console.info(`[graphics] prepared the other light state at L${b.quality.index} in ${Math.round(ms)} ms (${added} new programs)`);
     } catch {
       // never worth a broken frame: a later step just compiles as before
     }

@@ -12,14 +12,15 @@ import {
   edgeShadeStops,
   finalFragmentShader,
   gradeFor,
-  PREPARE_FROM,
   prepareLightVariants,
   registerTroopCaster,
   renderDpr,
   rendererName,
   sampleQuality,
+  setDioramaQuality,
   setFlash,
   troopShadowLevel,
+  wantsLightPrepare,
 } from "./post";
 import { LIGHT_RIG, SHADOW_SLOPE, SUN_DIRECTION } from "./sky";
 import { CAM_HOME } from "./common";
@@ -306,6 +307,57 @@ describe("art bible contract (stage)", () => {
     expect(shadowMap.needsUpdate).toBe(true); // one more render clears the old troop shadows
     gov.setPref("high");
   });
+
+  it("prepares at every Auto start (L0 to L3 share one light state), never under a pin", () => {
+    for (let level = 0; level < QUALITY_LEVELS.length; level++) {
+      const gov = new QualityGovernor("auto", "auto");
+      gov.configure({ level, helped: false, reprobe: false, source: "memory" });
+      expect(wantsLightPrepare(gov)).toBe(true);
+    }
+    for (const pin of ["high", "medium", "low"] as const) expect(wantsLightPrepare(new QualityGovernor("auto", pin))).toBe(false);
+    expect(wantsLightPrepare(new QualityGovernor("low", "auto"))).toBe(false); // a ?quality= pin
+    // L0 to L3 draw with the shadow map and the rim light, so preparing at
+    // any of them compiles exactly L4's state.
+    for (const l of QUALITY_LEVELS.slice(0, -1)) expect([l.shadowSize > 0, l.rimLight]).toEqual([true, true]);
+    const l4 = QUALITY_LEVELS[QUALITY_LEVELS.length - 1];
+    expect([l4.shadowSize > 0, l4.rimLight]).toEqual([false, false]);
+    new QualityGovernor("auto", "high");
+  });
+
+  it("a battle start at L0 under Auto prepares on its first frame, once; a pin never does", () => {
+    const build = (pin: "auto" | "high") => {
+      const gov = new QualityGovernor("auto", pin);
+      const sun = new THREE.DirectionalLight();
+      sun.castShadow = true;
+      const fill = new THREE.DirectionalLight();
+      const lightGroup = new THREE.Group();
+      lightGroup.add(sun, fill, new THREE.DirectionalLight());
+      let compiles = 0;
+      const renderer = {
+        shadowMap: { enabled: true, needsUpdate: false },
+        getRenderTarget: () => null,
+        setRenderTarget: () => {},
+        compile: () => void compiles++,
+        info: { programs: [] },
+      };
+      const b = {
+        quality: gov, sun, fillLight: fill, lightGroup, renderer, composer: { readBuffer: {} },
+        scene: new THREE.Scene(), camera: new THREE.OrthographicCamera(), dying: [], lastFrameAt: 0, resize: () => {},
+      } as unknown as Battle3D;
+      return { gov, b, compiles: () => compiles };
+    };
+    const auto = build("auto");
+    expect(auto.gov.index).toBe(0);
+    setDioramaQuality(auto.b, false); // the battle's screen takes over
+    sampleQuality(auto.b);
+    sampleQuality(auto.b);
+    expect(auto.compiles()).toBe(1);
+    const pinned = build("high");
+    setDioramaQuality(pinned.b, false);
+    sampleQuality(pinned.b);
+    expect(pinned.compiles()).toBe(0);
+    new QualityGovernor("auto", "high");
+  });
 });
 
 describe("auto graphics wiring (C44)", () => {
@@ -349,7 +401,6 @@ describe("auto graphics wiring (C44)", () => {
       compile: () => void seen.push({ map: renderer.shadowMap.enabled, cast: sun.castShadow, rim: rim.visible, fill: fill.visible, target }),
     };
     const b = { quality: gov, sun, fillLight: fill, lightGroup, renderer, composer: { readBuffer }, scene: new THREE.Scene(), camera: new THREE.OrthographicCamera() } as unknown as Battle3D;
-    expect(PREPARE_FROM).toBe(3);
     prepareLightVariants(b);
     // At L3 (shadows and rim on) it compiles L4's state: no shadow map, no rim; the fill stays.
     expect(seen).toEqual([{ map: false, cast: false, rim: false, fill: true, target: readBuffer }]);
