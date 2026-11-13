@@ -1,6 +1,6 @@
 /* The crash shield's "Oops! Something went wrong." overlay (src/ui/oops.ts).
    Built on the confirm modal (.ui-modal), a little roomier and centred, with
-   buttons that stack on a phone so long Arabic labels never squeeze. */
+   its buttons stacked so long Arabic labels never squeeze. */
 .oops-modal {
   /* Over the battle HUD, result screen and battle menu sheet; under toasts. */
   z-index: calc(var(--z-modal) + 1);
@@ -31,15 +31,14 @@
 .oops-body {
   margin-bottom: var(--sp-5);
 }
+/* One big button per row, on every screen: the labels (Arabic ones are the
+   longest) never wrap or squeeze, and the first button is the one to press. */
 .oops-actions {
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
 }
 .oops-actions .ui-btn {
-  flex: 1 1 140px;
+  flex: none;
+  width: 100%;
   min-height: 52px;
-}
-/* A phone: one big button per row (long labels, Arabic included, never squeeze). */
-@media (max-width: 479px) {
-  .oops-actions { flex-direction: column; }
-  .oops-actions .ui-btn { flex: none; width: 100%; }
 }
