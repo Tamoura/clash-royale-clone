@@ -5,8 +5,20 @@ import { join } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 import { composeBuildId, stampBuildId } from "./src/app/swStamp";
 
-/** A new id for every build (see src/app/swStamp.ts): short git sha plus the build time. */
+/** The id this config load uses (computed once, so every caller shares it). */
+let onceBuildId: string | null = null;
+
+/**
+ * A new id for every build (see src/app/swStamp.ts): short git sha plus the
+ * build time. Computed once per config load, so the service worker's stamp
+ * and the app's __APP_BUILD__ (src/app/buildInfo.ts) are the same id.
+ */
 function buildId(): string {
+  onceBuildId ??= freshBuildId();
+  return onceBuildId;
+}
+
+function freshBuildId(): string {
   let sha = "";
   try {
     sha = execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
@@ -38,6 +50,9 @@ export default defineConfig({
   // to "/clash-royale-clone/" so asset URLs resolve under the project subpath.
   base: process.env.VITE_BASE || "/",
   plugins: [swBuildId()],
+  // The build id in the app (problem log, Problem report): the same id the
+  // service worker is stamped with. Dev and vitest read "dev" (buildInfo.ts).
+  define: { __APP_BUILD__: JSON.stringify(buildId()) },
   build: {
     rollupOptions: {
       // three.js is most of the bundle and changes far less often than the
