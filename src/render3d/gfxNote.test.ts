@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { GFX_NOTE_KEY, QualityGovernor, gfxBuildTag, type StorageLike } from "./quality";
-import { LowNote, lowNoteText } from "./gfxNote";
+import { LowNote, autoOnLow, lowNoteText } from "./gfxNote";
 import { autoGraphicsLabel } from "../ui/screens/settings";
 import { tr } from "../ui/i18n";
 
 const LOW = tr("Auto (now: Low)", "تلقائي (الآن: منخفض)");
+/** Auto is on Low throughout (the governor itself is exercised below). */
+const onLow = (): boolean => true;
 
 function store(init: Record<string, string> = {}): StorageLike & { data: Record<string, string> } {
   const data = { ...init };
@@ -15,7 +17,7 @@ describe("the one-time 'Graphics set to Low' note", () => {
   it("waits for a calm screen after a battle, then shows once per device", () => {
     const shown: string[] = [];
     const s = store();
-    const note = new LowNote({ store: s, show: (t) => shown.push(t) });
+    const note = new LowNote({ store: s, show: (t) => shown.push(t), isLow: onLow });
     note.screen("diorama");
     note.low(); // the step happened mid-battle
     expect(note.screen("battle")).toBe(false); // never mid-fight
@@ -27,7 +29,7 @@ describe("the one-time 'Graphics set to Low' note", () => {
     note.screen("battle");
     expect(note.screen("none")).toBe(false);
     // A new session on the same device: already seen.
-    const again = new LowNote({ store: s, show: (t) => shown.push(t) });
+    const again = new LowNote({ store: s, show: (t) => shown.push(t), isLow: onLow });
     again.low();
     again.screen("battle");
     expect(again.screen("diorama")).toBe(false);
@@ -36,7 +38,7 @@ describe("the one-time 'Graphics set to Low' note", () => {
 
   it("a guess at boot waits for the end of the first battle", () => {
     const shown: string[] = [];
-    const note = new LowNote({ store: store(), show: (t) => shown.push(t) });
+    const note = new LowNote({ store: store(), show: (t) => shown.push(t), isLow: onLow });
     note.low();
     expect(note.screen("diorama")).toBe(false); // first-run Home: not yet
     note.screen("battle");
@@ -53,13 +55,55 @@ describe("the one-time 'Graphics set to Low' note", () => {
         throw new Error("blocked");
       },
     };
-    const note = new LowNote({ store: broken, show: (t) => shown.push(t) });
+    const note = new LowNote({ store: broken, show: (t) => shown.push(t), isLow: onLow });
     for (let i = 0; i < 3; i++) {
       note.low();
       note.screen("battle");
       note.screen("diorama");
     }
     expect(shown).toHaveLength(1);
+  });
+
+  it("says nothing (and keeps the flag unset) when Auto is no longer on Low by the calm screen", () => {
+    const shown: string[] = [];
+    const s = store();
+    let low = true;
+    const note = new LowNote({ store: s, show: (t) => shown.push(t), isLow: () => low });
+    note.low(); // a guess at boot: L4
+    low = false; // then a grown-up picks High in Settings (or the try up keeps Medium)
+    note.screen("battle");
+    expect(note.screen("diorama")).toBe(false);
+    expect(shown).toEqual([]);
+    expect(s.data[GFX_NOTE_KEY]).toBeUndefined();
+    // Later Auto really drops to Low: now the note comes, once.
+    low = true;
+    note.low();
+    note.screen("battle");
+    expect(note.screen("diorama")).toBe(true);
+    expect(shown).toEqual([lowNoteText()]);
+    expect(s.data[GFX_NOTE_KEY]).toBe("1");
+  });
+
+  it("re-checks the live governor by default: a Settings pin after the guess means no note", () => {
+    const shown: string[] = [];
+    const s = store();
+    const gov = new QualityGovernor();
+    gov.configure({ level: 4, helped: true, reprobe: false, source: "guess" });
+    const note = new LowNote({ store: s, show: (t) => shown.push(t) });
+    expect(autoOnLow()).toBe(true);
+    note.low();
+    gov.setPref("high");
+    expect(autoOnLow()).toBe(false);
+    note.screen("battle");
+    expect(note.screen("diorama")).toBe(false);
+    expect(shown).toEqual([]);
+    expect(s.data[GFX_NOTE_KEY]).toBeUndefined();
+    // Back to Auto: it starts at L4 again, so the note may come after a battle.
+    gov.setPref("auto");
+    note.low();
+    note.screen("battle");
+    expect(note.screen("diorama")).toBe(true);
+    expect(s.data[GFX_NOTE_KEY]).toBe("1");
   });
 
   it("says it in the edition's words", () => {
