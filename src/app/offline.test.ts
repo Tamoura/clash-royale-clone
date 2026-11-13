@@ -7,10 +7,12 @@ import {
   FRESH_PARAM,
   OFFLINE_READY_SEEN_KEY,
   READY_MESSAGE,
+  calmGate,
   freshUrl,
   reloadToNewest,
   startOfflineSupport,
   withoutFresh,
+  type CalmDeps,
   type ContainerLike,
   type OfflineDeps,
   type ReloadDeps,
@@ -150,7 +152,7 @@ function container() {
 function offlineDeps(over: Partial<OfflineDeps> = {}) {
   const store = new Map<string, string>();
   const shown: string[] = [];
-  const boot: (() => void)[] = [];
+  const calm: (() => void)[] = [];
   const replaced: string[] = [];
   const deps: OfflineDeps = {
     container: container(),
@@ -159,11 +161,11 @@ function offlineDeps(over: Partial<OfflineDeps> = {}) {
     href: "https://game.example/",
     replaceHref: (h) => void replaced.push(h),
     afterLoad: (fn) => fn(),
-    afterBoot: (fn) => void boot.push(fn),
+    whenCalm: (fn) => void calm.push(fn),
     onReady: () => void shown.push("ready"),
     ...over,
   };
-  return { deps, store, shown, boot, replaced, booted: () => boot.splice(0).forEach((fn) => fn()) };
+  return { deps, store, shown, replaced, calmed: () => calm.splice(0).forEach((fn) => fn()) };
 }
 
 describe("startOfflineSupport", () => {
@@ -178,22 +180,22 @@ describe("startOfflineSupport", () => {
     expect(c.posted).toEqual([{ type: ASK_READY_MESSAGE }]);
   });
 
-  it("says 'ready to play offline' once per device, and only once the game is on screen", () => {
+  it("says 'ready to play offline' once per device, and only once the kid is on a menu", () => {
     const t = offlineDeps();
     startOfflineSupport(t.deps);
     const c = t.deps.container as ReturnType<typeof container>;
     c.send({ type: "something-else" });
     c.send({ type: READY_MESSAGE });
     c.send({ type: READY_MESSAGE }); // the broadcast and the answer to the question
-    expect(t.shown).toEqual([]); // the splash is still up
-    t.booted();
+    expect(t.shown).toEqual([]); // the splash, a battle or the tutorial is on screen
+    t.calmed();
     expect(t.shown).toEqual(["ready"]);
     expect(t.store.get(OFFLINE_READY_SEEN_KEY)).toBe("1");
     // Next launch: never again.
     const next = offlineDeps({ storage: t.deps.storage });
     startOfflineSupport(next.deps);
     (next.deps.container as ReturnType<typeof container>).send({ type: READY_MESSAGE });
-    next.booted();
+    next.calmed();
     expect(next.shown).toEqual([]);
   });
 
@@ -219,16 +221,85 @@ describe("startOfflineSupport", () => {
     });
     expect(() => startOfflineSupport(t.deps)).not.toThrow();
     (t.deps.container as ReturnType<typeof container>).send({ type: READY_MESSAGE });
-    expect(() => t.booted()).not.toThrow();
+    expect(() => t.calmed()).not.toThrow();
     expect(t.shown).toEqual(["ready"]);
   });
 
   it("is started by main.ts, with the worker only in production builds", () => {
+    // At the top of main.ts, before the boot shows its first screen (calmGate needs to see it).
+    expect(mainSrc.indexOf("startOfflineSupport({")).toBeLessThan(mainSrc.indexOf('openHome();\n'));
     const at = mainSrc.indexOf("startOfflineSupport({");
     expect(at).toBeGreaterThan(0);
     const block = mainSrc.slice(at, at + 400);
     expect(block).toContain("import.meta.env.PROD ? {} : { container: null }");
     expect(block).toContain('tr("Ready to play offline!", "اللعبة جاهزة للعب بلا إنترنت!")');
     expect(mainSrc).not.toMatch(/serviceWorker\.register\(/);
+  });
+});
+
+/** A fake page for calmGate: the boot and the screen hook, driven by the test. */
+function calmPage() {
+  let booted = false;
+  const bootFns: (() => void)[] = [];
+  const screenFns: ((s: { sceneMode: string }) => void)[] = [];
+  const deps: CalmDeps = {
+    booted: () => booted,
+    onBooted: (fn) => void bootFns.push(fn),
+    onScreen: (fn) => void screenFns.push(fn),
+  };
+  return {
+    deps,
+    boot: () => {
+      booted = true;
+      bootFns.splice(0).forEach((fn) => fn());
+    },
+    screen: (sceneMode: string) => screenFns.forEach((fn) => fn({ sceneMode })),
+    watchingBoot: () => bootFns.length,
+  };
+}
+
+describe("the offline note waits for a calm screen (never over a battle's cards)", () => {
+  it("a first visit: the note waits through the guided battle and shows on the first Home", () => {
+    const page = calmPage();
+    const whenCalm = calmGate(page.deps);
+    const shown: string[] = [];
+    // The tutorial starts the boot in a battle; the worker finishes caching mid-battle.
+    page.screen("battle");
+    page.boot();
+    whenCalm(() => shown.push("note"));
+    expect(shown).toEqual([]);
+    page.screen("battle"); // "Play again"
+    expect(shown).toEqual([]);
+    page.screen("diorama"); // Home
+    expect(shown).toEqual(["note"]);
+    page.screen("none");
+    page.screen("diorama");
+    expect(shown).toEqual(["note"]); // once
+  });
+
+  it("waits for the splash to go, even on Home", () => {
+    const page = calmPage();
+    const whenCalm = calmGate(page.deps);
+    const shown: string[] = [];
+    page.screen("diorama"); // Home is built under the splash
+    whenCalm(() => shown.push("note"));
+    expect(shown).toEqual([]);
+    expect(page.watchingBoot()).toBe(1);
+    page.boot();
+    expect(shown).toEqual(["note"]);
+  });
+
+  it("shows at once on a menu, and nothing counts as calm before a first screen", () => {
+    const page = calmPage();
+    const whenCalm = calmGate(page.deps);
+    const shown: string[] = [];
+    page.boot();
+    whenCalm(() => shown.push("before"));
+    expect(shown).toEqual([]); // no screen seen yet
+    page.screen("none"); // a picker (collection, lobby)
+    expect(shown).toEqual(["before"]);
+    whenCalm(() => shown.push("now"));
+    expect(shown).toEqual(["before", "now"]);
+    expect(page.watchingBoot()).toBe(0); // already booted: no boot watch
   });
 });

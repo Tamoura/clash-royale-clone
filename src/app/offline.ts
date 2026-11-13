@@ -5,7 +5,8 @@
  *   dev it would cache Vite's module graph and fight hot reload), takes the
  *   one-shot ?cr-fresh mark back off the address, and says "Ready to play
  *   offline!" once per device when the worker reports the whole build
- *   cached (OFFLINE_READY_SEEN_KEY).
+ *   cached (OFFLINE_READY_SEEN_KEY), on the first menu screen after that
+ *   (never over a battle's cards: see calmGate).
  * - reloadToNewest() is the "update needed" reload: it asks the browser for
  *   the newest worker and gives it a moment to take over, then reloads with
  *   ?cr-fresh, which the worker answers with the network's newest page
@@ -17,6 +18,7 @@
  */
 import { toast } from "../ui/components";
 import { tr } from "../ui/i18n";
+import { on } from "./hooks";
 
 /** Set once the "Ready to play offline!" note was shown on this device. */
 export const OFFLINE_READY_SEEN_KEY = "cr-clone-offline-ready-seen";
@@ -163,8 +165,8 @@ export interface OfflineDeps {
   replaceHref(href: string): void;
   /** Run `fn` once the page has finished loading (window "load"), or now if it has. */
   afterLoad(fn: () => void): void;
-  /** Run `fn` once the game is on screen (body.booted), or now if it is. */
-  afterBoot(fn: () => void): void;
+  /** Run `fn` once the game is on screen and the kid is on a menu, or now if so (calmGate). */
+  whenCalm(fn: () => void): void;
   /** Show the note (a toast). */
   onReady(): void;
 }
@@ -184,7 +186,7 @@ export function startOfflineSupport(deps: OfflineDeps): void {
     if (done || (e.data as { type?: unknown } | null)?.type !== READY_MESSAGE) return;
     done = true;
     sw.removeEventListener("message", onMessage);
-    deps.afterBoot(() => {
+    deps.whenCalm(() => {
       if (seen(deps.storage)) return;
       markSeen(deps.storage);
       deps.onReady();
@@ -196,7 +198,46 @@ export function startOfflineSupport(deps: OfflineDeps): void {
   void sw.ready.then((reg) => reg.active?.postMessage({ type: ASK_READY_MESSAGE })).catch(() => undefined);
 }
 
-/** startOfflineSupport's browser wiring. */
+/** What calmGate watches: the boot (body.booted) and the screen hook. */
+export interface CalmDeps {
+  /** True once the game is on screen (body.booted). */
+  booted(): boolean;
+  /** Run `fn` once, when the game comes on screen (only asked while it is not). */
+  onBooted(fn: () => void): void;
+  /** Every screen change (the "screen" hook: sceneMode "battle", "diorama" or "none"). */
+  onScreen(fn: (screen: { sceneMode: string }) => void): void;
+}
+
+/**
+ * A gate for the one-time offline note: the returned `whenCalm(fn)` runs fn
+ * once the game is on screen and the kid is on a menu (Home, a picker, the
+ * lobby), never during a battle or the guided first battle, where a note
+ * would sit over the card tray. It must be made before the boot shows its
+ * first screen: until a screen is seen, nothing counts as calm.
+ */
+export function calmGate(deps: CalmDeps): (fn: () => void) => void {
+  let mode: string | null = null;
+  let watching = false;
+  const queued: (() => void)[] = [];
+  const flush = (): void => {
+    if (mode === null || mode === "battle" || !deps.booted()) return;
+    for (const fn of queued.splice(0)) fn();
+  };
+  deps.onScreen((screen) => {
+    mode = screen.sceneMode;
+    flush();
+  });
+  return (fn) => {
+    queued.push(fn);
+    if (!watching && !deps.booted()) {
+      watching = true;
+      deps.onBooted(flush);
+    }
+    flush();
+  };
+}
+
+/** startOfflineSupport's browser wiring. Make it before the boot shows a screen (see calmGate). */
 export function browserOfflineDeps(base: string, onReady: () => void): OfflineDeps {
   let storage: Storage | null = null;
   try {
@@ -211,16 +252,19 @@ export function browserOfflineDeps(base: string, onReady: () => void): OfflineDe
     href: location.href,
     replaceHref: (href) => history.replaceState(history.state, "", href),
     afterLoad: (fn) => (document.readyState === "complete" ? fn() : window.addEventListener("load", fn, { once: true })),
-    afterBoot: (fn) => {
-      const body = document.body;
-      if (body.classList.contains("booted")) return fn();
-      const watch = new MutationObserver(() => {
-        if (!body.classList.contains("booted")) return;
-        watch.disconnect();
-        fn();
-      });
-      watch.observe(body, { attributes: true, attributeFilter: ["class"] });
-    },
+    whenCalm: calmGate({
+      booted: () => document.body.classList.contains("booted"),
+      onBooted: (fn) => {
+        const body = document.body;
+        const watch = new MutationObserver(() => {
+          if (!body.classList.contains("booted")) return;
+          watch.disconnect();
+          fn();
+        });
+        watch.observe(body, { attributes: true, attributeFilter: ["class"] });
+      },
+      onScreen: (fn) => void on("screen", fn),
+    }),
     onReady,
   };
 }

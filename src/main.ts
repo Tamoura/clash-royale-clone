@@ -16,7 +16,9 @@ import { showNoWebgl } from "./app/noWebgl";
 
 // Offline play (src/app/offline.ts): the service worker registers in
 // production builds only (in dev it would cache Vite's module graph and
-// fight hot reload). Once per device, a note says the game is ready offline.
+// fight hot reload). Once per device, a note says the game is ready offline,
+// on a menu screen (never over a battle's cards). It runs before the boot
+// shows its first screen, so the note's gate sees every screen.
 startOfflineSupport({
   ...browserOfflineDeps(import.meta.env.BASE_URL, () =>
     toast(tr("Ready to play offline!", "اللعبة جاهزة للعب بلا إنترنت!"), "success", 4000),
