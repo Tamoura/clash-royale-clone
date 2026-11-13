@@ -84,10 +84,14 @@ address starts a new profile. To move progress across (or to a new tablet),
 open **Settings** (the gear) → **Backup & move** where the progress is, tap
 **Copy my save code** (or **Save to a file**), then on the other address tap
 **Load a save**, paste the code (or **Pick a file**), check the summary and
-tap **Load the save**. **Undo the last load** puts back what was there. The
-code never goes through a server. Volume, graphics and text size stay with
-each tablet; the edition, name and crest come along. Copy the save codes
-before moving the home-screen icon or renaming the Render service.
+tap **Load the save**. On a new tablet or address, first pick an edition and
+tap **Skip tutorial** to reach Settings. **Undo the last load** puts back
+what was there. The code never goes through a server. Volume, graphics and
+text size stay with each tablet; the edition, name and crest come along.
+Copy the save codes before moving the home-screen icon or renaming the
+Render service. On an iPhone or iPad, a game added to the Home Screen also
+keeps its own save, apart from Safari's: copy the code in Safari first, then
+tap **Load my save** when the new icon opens (it offers this once).
 
 **Any other Node host or your own computer.** Build once, then start:
 
