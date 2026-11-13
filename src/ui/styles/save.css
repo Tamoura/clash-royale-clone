@@ -46,7 +46,7 @@
 .v2-save-error[hidden] { display: none; }
 
 .v2-save-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-.v2-save-actions .ui-btn { flex: 1 1 140px; }
+.v2-save-actions .ui-btn { flex: 1 1 180px; }
 /* The confirm screen: two big buttons, the safe one first. */
 .v2-save-actions--confirm { flex-direction: column; }
 .v2-save-actions--confirm .ui-btn { flex: none; width: 100%; }
