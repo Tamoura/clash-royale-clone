@@ -209,9 +209,9 @@ export async function currentCode(deps: SaveSheetDeps = {}): Promise<string | nu
   return encodeSave(gatherSave(r.store, r.now()));
 }
 
-/** Download crown-rush-save-<date>.txt holding the code. */
-export async function saveToFile(deps: SaveSheetDeps = {}): Promise<void> {
-  const code = await currentCode(deps);
+/** Download crown-rush-save-<date>.txt holding `shown` (the code on screen) or a fresh code. */
+export async function saveToFile(deps: SaveSheetDeps = {}, shown?: string): Promise<void> {
+  const code = shown || (await currentCode(deps));
   if (!code) {
     toast(saveErrorText("storage"), "danger");
     return;
@@ -261,7 +261,8 @@ export async function openCodeSheet(deps: SaveSheetDeps = {}): Promise<{ close: 
     size: "lg",
     icon: "save",
     label: tr("Save to a file", "احفظ في ملف"),
-    onClick: () => void saveToFile(deps),
+    // The same code as in the box, so the file and the copied code match.
+    onClick: () => void saveToFile(deps, box.value.startsWith("CR") ? box.value : undefined),
   });
   file.classList.add("v2-save-tofile");
   const actions = document.createElement("div");

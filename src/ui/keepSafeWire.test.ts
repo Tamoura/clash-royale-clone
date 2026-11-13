@@ -28,6 +28,8 @@ const end = (o: Partial<MatchEndPayload>): MatchEndPayload => ({
   ...o,
 });
 
+const FRAME = { dt: 0.016, presentDt: 0.016, alpha: 0, phase: "menu", battle: null };
+
 const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 Version/17.4 Mobile/15E148 Safari/604.1";
 
 describe("keep-the-save-safe wiring", () => {
@@ -67,11 +69,15 @@ describe("keep-the-save-safe wiring", () => {
     expect(persist).toHaveBeenCalledTimes(1);
     expect(local.data[PERSIST_ASKED_KEY]).toBe("1");
     emit("screen", { id: "home", sceneMode: "diorama" });
-    await vi.advanceTimersByTimeAsync(1000);
     expect(local.data[HOME_TIP_SEEN_KEY]).toBe("1");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(toasts().length).toBe(0); // waits for a drawn frame (the boot splash lifts on the first)
+    emit("frame", FRAME);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(toasts().length).toBe(1);
     emit("matchEnd", end({}));
     emit("screen", { id: "home", sceneMode: "diorama" });
+    emit("frame", FRAME);
     await vi.advanceTimersByTimeAsync(1000);
     expect(persist).toHaveBeenCalledTimes(1);
     expect(toasts().length).toBe(1);
@@ -81,6 +87,12 @@ describe("keep-the-save-safe wiring", () => {
     session.setItem(SAVE_LOADED_KEY, "load");
     emit("screen", { id: "home", sceneMode: "diorama" });
     expect(session.data[SAVE_LOADED_KEY]).toBeUndefined();
+    emit("frame", FRAME);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(toasts().length).toBe(1);
+    emit("screen", { id: "home", sceneMode: "diorama" });
+    emit("frame", FRAME);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(toasts().length).toBe(1);
   });
 });

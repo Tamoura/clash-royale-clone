@@ -48,22 +48,38 @@ on("matchEnd", (m) => {
   if (shouldShowHomeTip(kv, deviceInfo())) tipDue = true;
 });
 
+/**
+ * Run `fn` a moment after the next drawn frame: after a reload Home is built
+ * under the boot splash, which lifts on the first frame, so a toast shown at
+ * once could fade out unseen.
+ */
+function soonAfterAFrame(fn: () => void, ms: number): void {
+  const off = on("frame", () => {
+    off();
+    window.setTimeout(fn, ms);
+  });
+}
+
 on("screen", ({ id }) => {
   if (id !== "home") return;
   const loaded = takeSessionFlag(SAVE_LOADED_KEY);
   if (loaded) {
-    toast(
-      loaded === "undo"
-        ? tr("Everything is back to how it was before the load.", "عاد كل شيء كما كان قبل التحميل.")
-        : tr("Save loaded! Welcome back.", "تم تحميل الحفظ! أهلًا بعودتك."),
-      "success",
-      4000,
+    soonAfterAFrame(
+      () =>
+        toast(
+          loaded === "undo"
+            ? tr("Everything is back to how it was before the load.", "عاد كل شيء كما كان قبل التحميل.")
+            : tr("Save loaded! Welcome back.", "تم تحميل الحفظ! أهلًا بعودتك."),
+          "success",
+          4000,
+        ),
+      600,
     );
   }
   if (tipDue) {
     tipDue = false;
     markHomeTipSeen(defaultKV());
-    window.setTimeout(
+    soonAfterAFrame(
       () =>
         toast(
           tr(
