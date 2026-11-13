@@ -268,6 +268,37 @@ function stalled(then: Net): { net: Net; release: () => void } {
   return { net: async (url, init) => gate.then(() => then(url, init)), release };
 }
 
+/**
+ * A server whose game page sends its headers and first bytes at once, then
+ * holds the rest until `finish` is called (a weak signal in the car).
+ * Every other file is `build`'s, as serverOf serves it.
+ */
+function stallingBody(build: string): { net: Net; finish: () => void } {
+  const page = pageOf(build);
+  const head = new TextEncoder().encode(page.slice(0, 120));
+  const rest = new TextEncoder().encode(page.slice(120));
+  const held: ReadableStreamDefaultController<Uint8Array>[] = [];
+  const files = serverOf(build);
+  return {
+    net: async (url, init) => {
+      if (url.pathname !== "/") return files(url, init);
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(head);
+          held.push(c);
+        },
+      });
+      return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
+    },
+    finish: () => {
+      for (const c of held.splice(0)) {
+        c.enqueue(rest);
+        c.close();
+      }
+    },
+  };
+}
+
 /** Watch a pending response: `shown()` is the response once the browser has one. */
 function watch(response: Promise<Response>): () => Response | undefined {
   let shown: Response | undefined;
@@ -502,6 +533,34 @@ describe("service worker navigations: the cached game never waits on a sleeping 
     expect(await w.shellIn(cacheOf("b1"))).toBe(pageOf("b1"));
   });
 
+  it("a page that starts and then stalls: the cached game after 2.5 s all the same, the page kept once whole", async () => {
+    const weak = stallingBody("b1");
+    const { w, worker } = await installed(weak.net);
+    w.stores.get(cacheOf("b1"))!.set(w.scope, html(pageOf("b1").replace("<title>", "<title>kept ")));
+    const nav = worker.navigate("");
+    const shown = watch(nav.response);
+    await w.advance(2000);
+    expect(shown()).toBeUndefined(); // the first bytes are in, the rest is still on its way
+    await w.advance(600);
+    expect(shown()).toBeDefined(); // the deadline covers the whole page, not just its first bytes
+    expect(await shown()!.text()).toContain("<title>kept ");
+    await w.advance(70_000);
+    weak.finish();
+    await nav.done;
+    expect(await w.shellIn(cacheOf("b1"))).toBe(pageOf("b1"));
+    // ?cr-fresh gives a stalling page longer, but not for ever.
+    const weak2 = stallingBody("b1");
+    w.setNetwork(weak2.net);
+    const fresh = worker.navigate("?cr-fresh=1");
+    const freshShown = watch(fresh.response);
+    await w.advance(11_000);
+    expect(freshShown()).toBeUndefined();
+    await w.advance(1100);
+    expect(await freshShown()!.text()).toBe(pageOf("b1"));
+    weak2.finish();
+    await fresh.done;
+  });
+
   it("a wake-up page, an error page or JSON is never shown or kept: the cached game at once", async () => {
     const nets: Net[] = [
       async () => html("<html><head><title>Service waking up</title></head><body>Please wait</body></html>"),
@@ -672,6 +731,59 @@ describe("service worker upgrades: a cached page always finds its own files", ()
     w.openPage("new-tab");
     await w.advance(10_000);
     await w2.get("assets/index-b2.js", "new-tab");
+    expect(w.cacheNames()).toEqual([cacheOf("b2")]);
+  });
+
+  it("an older build's page from the network (an HTTP or CDN cache) keeps its build's cache while it may need it", async () => {
+    const w = world();
+    w.setNetwork(serverOf("b1"));
+    const w1 = w.startWorker(workerOf("b1"));
+    await w1.deploy();
+    await w1.open("", "kid-1");
+    w.setNetwork(serverOf("b2"));
+    const w2 = w.startWorker(workerOf("b2"));
+    await w2.deploy();
+    expect(w.cacheNames()).toEqual([cacheOf("b1"), cacheOf("b2")]);
+    w.closePage("kid-1");
+    // The kid relaunches with nothing else open, and a cache on the way
+    // (Pages' max-age, a CDN) answers at once with b1's page; b1's files are
+    // already gone from the server.
+    const b2 = serverOf("b2");
+    w.setNetwork(async (url, init) => (url.pathname === "/" ? html(pageOf("b1")) : b2(url, init)));
+    expect((await w2.open("", "kid-2")).text).toBe(pageOf("b1"));
+    expect(w.cacheNames()).toContain(cacheOf("b1"));
+    // Minutes later that page still finds every file it links or loads lazily.
+    await w.advance(60_000);
+    for (const f of filesOf("b1")) expect(await bodyOf(await w2.get(f, "kid-2"))).toContain(f);
+    expect(w.cacheNames()).toContain(cacheOf("b1"));
+    // Once it closes and the new build opens, b1's cache goes.
+    w.closePage("kid-2");
+    w.setNetwork(serverOf("b2"));
+    expect((await w2.open("", "kid-3")).text).toBe(pageOf("b2"));
+    expect(w.cacheNames()).toEqual([cacheOf("b2")]);
+  });
+
+  it("a navigation that never became a page holds older caches only for a while", async () => {
+    const w = world();
+    w.setNetwork(serverOf("b1"));
+    const w1 = w.startWorker(workerOf("b1"));
+    await w1.deploy();
+    await w1.open("", "kid-1");
+    w.setNetwork(serverOf("b2"));
+    const w2 = w.startWorker(workerOf("b2"));
+    await w2.deploy();
+    w.closePage("kid-1");
+    // An older page handed over, then the kid backs out before it starts.
+    const b2 = serverOf("b2");
+    w.setNetwork(async (url, init) => (url.pathname === "/" ? html(pageOf("b1")) : b2(url, init)));
+    const nav = w2.navigate("", "gone");
+    await nav.response;
+    await nav.done;
+    await w.advance(10_000);
+    await w2.get("icon-192.png", "nobody");
+    expect(w.cacheNames()).toContain(cacheOf("b1"));
+    await w.advance(25_000);
+    await w2.get("icon-192.png", "nobody");
     expect(w.cacheNames()).toEqual([cacheOf("b2")]);
   });
 

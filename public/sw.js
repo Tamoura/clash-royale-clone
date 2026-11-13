@@ -11,18 +11,19 @@
  *
  * The game's page (the scope's root) races the network against a short
  * timer once a shell is cached: a sleeping server (Render's free tier wakes
- * in about a minute) or a slow or missing connection gets the cached game in
- * under three seconds, and the network's copy is kept for next time when it
- * arrives. A response that is not the game's page (a host's wake-up or error
+ * in about a minute), a page that starts and then stalls, or a slow or
+ * missing connection gets the cached game in under three seconds, and the
+ * network's copy is kept for next time when it arrives. A response that is not the game's page (a host's wake-up or error
  * page) is never shown in its place, nor kept. The very first visit has
  * nothing cached, so it waits for the network. A URL carrying ?cr-fresh asks
  * for the network's newest page (the "update needed" reload, see
  * src/app/offline.ts); it still falls back to the cached game.
  *
  * Every build has its own cache (cr-clone-<build id>). After a deploy the old
- * cache stays until nothing can need it: the new build's cache is complete
- * and every open page was served by this worker (a page from an older build
- * keeps loading its lazy files from its own cache). Files are looked up in
+ * cache stays until nothing can need it: the new build's cache is complete,
+ * every open page was served this build's page by this worker, and no
+ * navigation is still bringing a page in (a page from an older build keeps
+ * loading its lazy files from its own cache). Files are looked up in
  * this build's cache first, then in any older one. At most OLD_KEPT older
  * builds wait on disk.
  *
@@ -72,8 +73,19 @@ const ASK_READY = "cr-offline?";
 const noop = () => undefined;
 const wait = (ms) => new Promise((resolve) => setTimeout(() => resolve(null), ms));
 
-/** Windows (pages) this worker served a page to: they never need an older build's cache. Memory only. */
+/** Windows (pages) this worker served this build's page to: they never need an older build's cache. Memory only. */
 const served = new Set();
+/**
+ * Navigations whose page is not (or not yet known to be) this build's, with
+ * when it was handed over (Infinity while still deciding). The browser only
+ * lists a page once it has started, so until then an older build's page
+ * (from the HTTP or a CDN cache, or an older cached shell) is invisible to
+ * sweep: these hold every older cache. An entry goes once its page is listed
+ * (from then on the served check covers it) or ARRIVE_MS after handover (a
+ * navigation that never became a page). Memory only.
+ */
+const arriving = new Map();
+const ARRIVE_MS = 30000;
 
 /** The page's HTML when `res` is the game's own page, else null (healthz, a wake-up or error page). */
 async function gamePage(res) {
@@ -179,10 +191,32 @@ function topUp() {
   return topping;
 }
 
+/** Record how a navigation ended: this build's page (`own`), or anything else. */
+function handedOver(id, own) {
+  if (!id) return;
+  if (own) {
+    arriving.delete(id);
+    served.add(id);
+  } else if (!served.has(id)) {
+    arriving.set(id, Date.now());
+  }
+}
+
+/** True while a navigation's page may still need an older cache before the browser lists it. */
+function stillArriving(pages) {
+  const listed = new Set(pages.map((page) => page.id));
+  const now = Date.now();
+  for (const [id, at] of arriving) {
+    if (listed.has(id) || now - at > ARRIVE_MS) arriving.delete(id);
+  }
+  return arriving.size > 0;
+}
+
 /**
  * Delete older builds' caches once nothing can need them: this build is fully
- * cached and every open page was served by this worker. However long an old
- * page stays open, only the newest OLD_KEPT older caches are kept.
+ * cached, every open page was served this build's page by this worker, and no
+ * navigation is still bringing another page in. However long an old page
+ * stays open, only the newest OLD_KEPT older caches are kept.
  */
 async function sweep() {
   const older = await olderCaches();
@@ -190,19 +224,29 @@ async function sweep() {
   let drop = [];
   if (await isReady()) {
     const pages = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-    if (pages.every((page) => served.has(page.id))) drop = older;
+    if (!stillArriving(pages) && pages.every((page) => served.has(page.id))) drop = older;
   }
   if (!drop.length && older.length > OLD_KEPT) drop = older.slice(0, older.length - OLD_KEPT);
   await Promise.all(drop.map((name) => caches.delete(name)));
 }
 
 let tidiedAt = -Infinity;
-/** Top up and sweep now and then (every fetch may ask; it runs at most every 10 s unless `now`). */
-function tidy(event, now = false) {
+/**
+ * Top up and sweep now and then: every fetch may ask, and it runs at most
+ * every 10 s, unless `after` is given (a navigation: it runs once that
+ * navigation has settled which page it hands over).
+ */
+function tidy(event, after) {
   const t = Date.now();
-  if (!now && t - tidiedAt < 10000) return;
+  if (!after && t - tidiedAt < 10000) return;
   tidiedAt = t;
-  event.waitUntil(topUp().then(sweep).catch(noop));
+  event.waitUntil(
+    Promise.resolve(after)
+      .catch(noop)
+      .then(topUp)
+      .then(sweep)
+      .catch(noop),
+  );
 }
 
 self.addEventListener("install", (event) => {
@@ -250,30 +294,44 @@ async function navigate(event, url) {
   if (!cached) {
     // The very first visit (nothing cached that can start): wait for the network, as ever.
     const res = await network;
-    event.waitUntil(gamePage(res).then(keepShell).catch(noop));
-    if (id) served.add(id);
+    handedOver(id, false); // until the page turns out to be this build's (below)
+    event.waitUntil(
+      gamePage(res)
+        .then((html) => {
+          if (html && ownBuild(html)) handedOver(id, true);
+          return keepShell(html);
+        })
+        .catch(noop),
+    );
     return res;
   }
   if (!appPage) {
+    handedOver(id, false);
     try {
       return await network;
     } catch {
       return cached.res;
     }
   }
+  // One deadline for the whole page, its first bytes and its last: a page
+  // that starts arriving and then stalls (a weak signal in the car) must not
+  // hold the cached game back any longer than a server that never answers.
   const fresh = url.searchParams.has(FRESH_PARAM);
-  const first = await Promise.race([network.catch(noop), wait(fresh ? FRESH_TIMEOUT_MS : NAV_TIMEOUT_MS)]);
-  const html = await gamePage(first);
-  if (html) {
-    // The network's game page, in time: shown, and kept if it is this build's.
-    event.waitUntil(keepShell(html).catch(noop));
-    if (id) served.add(id);
-    return first;
+  const page = network.then(async (res) => ({ res, html: await gamePage(res) }));
+  const won = await Promise.race([page.catch(noop), wait(fresh ? FRESH_TIMEOUT_MS : NAV_TIMEOUT_MS)]);
+  if (won && won.html) {
+    // The network's game page, whole and in time: shown, and kept if it is
+    // this build's. Another build's page (the HTTP or a CDN cache, a host
+    // switching over) may still need its own build's cache: not "served".
+    event.waitUntil(keepShell(won.html).catch(noop));
+    handedOver(id, ownBuild(won.html));
+    return won.res;
   }
-  // Slow, offline, or not the game (a wake-up or error page): the cached game
-  // now, and the network's page kept for next time if it turns out to be ours.
-  event.waitUntil(network.then(gamePage).then(keepShell).catch(noop));
-  if (id && cached.own) served.add(id);
+  // Slow, stalled, offline, or not the game (a wake-up or error page): the
+  // cached game now, and the network's page kept for next time if it turns
+  // out to be ours.
+  event.waitUntil(page.then((late) => keepShell(late.html)).catch(noop));
+  handedOver(id, cached.own);
   return cached.res;
 }
 
@@ -286,8 +344,15 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname === WORKER) return;
 
   if (req.mode === "navigate") {
-    event.respondWith(navigate(event, url));
-    tidy(event, true);
+    const id = event.resultingClientId;
+    if (id) arriving.set(id, Infinity); // deciding: sweep holds every older cache meanwhile
+    const answer = navigate(event, url);
+    event.respondWith(answer);
+    // Tidy once this navigation has settled which page it hands over.
+    tidy(
+      event,
+      answer.then(noop, () => handedOver(id, false)),
+    );
     return;
   }
   tidy(event);
