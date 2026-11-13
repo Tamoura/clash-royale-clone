@@ -158,7 +158,12 @@ sim repeats every frame and becomes a storm within three frames.
 `localStorage['cr-clone-problem-log']`: a JSON array, newest first, at most
 **20** entries. Each entry: first and last seen (ms), repeat count `n`
 (identical messages are merged and moved to the front), kind (`frame`,
-`error`, `promise`, `preview`), message (one line, at most 240 chars), the
+`hook`, `error`, `promise`, `preview`), where it was caught when the kind
+alone does not say (the shield's label such as `battle event 'death'`,
+`settling the match`, `the end emote`, a no-contest step such as `leave the
+room`, or `<hook> listener` for kind `hook`; at most 48 chars, absent for a
+whole frame and the page-wide traps; a merged repeat keeps the first one),
+message (one line, at most 240 chars), the
 first **4** stack lines (at most 160 chars each, with the site's origin and
 query strings taken off), build id, screen (`battle/playing`, `home`...),
 graphics (`<pref> L<n>`: L0 is the fullest level, L4 the lightest), edition
@@ -176,6 +181,18 @@ graphics (`<pref> L<n>`: L0 is the fullest level, L4 the lightest), edition
   browser's benign `ResizeObserver loop` notice.
 - Errors before the screens exist are recorded with screen `boot` and the
   edition read straight from storage.
+- A hook's listener that throws (`emit()` in src/app/hooks.ts skips it and
+  the frame goes on) is recorded as kind `hook`, where `frame listener`,
+  `battleEvent listener`... hooks.ts has a small reporter seam,
+  `setHookErrorReporter(fn)`, called from emit's catch in place of its plain
+  `console.error` (a reporter that throws, or none, falls back to it);
+  `installCrashShield` registers the problem log there, with the same print
+  throttle as the shield (an identical message at most once per 5 s, then
+  "(and N more like it)"). It never counts toward a storm: the battle itself
+  is fine, only one feature is not, and holding the battle for it would cost
+  the kid more than it saves. Errors in the other listener lists
+  (`ui/prefs.ts`, the season rollover in `meta/achievements.ts`) still only
+  print.
 
 ## Build id
 
@@ -201,18 +218,22 @@ the same id.
 
 A row under "Replay the tutorial" opens a sheet: "Things that went wrong
 lately, newest first.", a short list (time, `×3` count, the message as
-recorded, the screen), or "No problems so far!" / "لا مشكلات حتى الآن!".
+recorded, the screen and where it was caught), or "No problems so far!" /
+"لا مشكلات حتى الآن!".
 Buttons: **Copy / انسخ** and **Clear / امسح** (off when empty). Copy uses
 `navigator.clipboard.writeText`; if that is missing or refused, the report
-appears in a read-only box below, selected, and `execCommand("copy")` is
-tried, with a toast either way. Small print: "Problems are kept on this
+appears in a read-only box below, selected (`select()` and then
+`setSelectionRange(0, length)`, each on its own: iOS Safari does not
+reliably select a text field on `select()`; this path is reached on an http
+LAN address, which has no `navigator.clipboard`), and `execCommand("copy")`
+is tried, with a toast either way. Not tried on a real iOS device. Small print: "Problems are kept on this
 device only. Nothing is ever sent anywhere." and the `?oops=1` test switch.
 The chrome is in the edition's language (Arabic-Indic digits through
 fmtNum); recorded technical lines stay exactly as recorded, left to right.
 
 In the copied report only the title, the header labels and the count line
 follow the edition. Every problem's own lines (`#n ... · seen N times, last
-... · kind`, the message, the stack, `Where: ...`) are in one plain Latin
+... · kind (where)`, the message, the stack, `Where: ...`) are in one plain Latin
 form with Latin digits in both editions: a line mixing Arabic words with
 Latin times and ids could be reordered by the bidi algorithm when pasted into
 a chat app, and these are the lines a grown-up forwards. A test checks that
@@ -304,15 +325,42 @@ contest, like a real storm.
   Pass, marker cleared, 350 trophies after a reload, no "You left" note (the
   error still shows as a page error: loud in development); the same for a
   forfeit hit by a one-off throw (Golden Age): -20 once, no left note.
+- After the second review (fix round 2): unit tests for the `where` field
+  (sanitise, storage round trip, the `#n` line, the sheet's row), the hooks
+  reporter seam (`src/app/hooks.test.ts`: the reporter instead of the
+  console, a throwing reporter falls back, an old uninstall keeps a newer
+  reporter), the hook reporter's log entry and print throttle with no storm
+  (`src/app/shieldWire.test.ts`), and the copy fallback's selection range
+  even when `select()` throws (`problemReport.test.ts`). Browser, phone
+  390x844:
+  - Production build `17adf86-mwf3j7hfqas4` (relay), both editions:
+    `createOscillator` patched to throw inside frames, each throw with its
+    own message. The report lists `frame (battle event 'deploy')`,
+    `frame (battle event 'attack')`, `frame (battle event 'death')` and one
+    plain `frame` (a sound outside the event steps); the sheet rows read
+    `battle/playing · battle event 'attack'`; the storm opened the overlay
+    and Back to menu kept trophies at 320. Copy put the same lines on the
+    clipboard (Golden Age: Arabic title and labels, Latin entry lines).
+  - Production, no `navigator.clipboard` (as on an http LAN address): Copy
+    shows the box with all 524 characters selected (`selectionStart` 0,
+    `selectionEnd` 524, focused) and the "Copied!" toast; a stored entry
+    with `where` loads and shows it. Not tried on a real iOS device (none
+    here, and only Chromium is installed for Playwright).
+  - Dev server, both editions: a `frame` listener registered through
+    `/src/app/hooks.ts` throwing on every frame for 12 s (60 and 77
+    throws): no overlay, the battle clock kept running (2:59 to 2:48), the
+    console printed it 3 times (at once, then "(and 18 more like it)" every
+    5 s), and the report has one `hook (frame listener)` entry, seen 60 /
+    77 times. No page errors in any run.
 
 ## Known limits
 
 - History: commit b106594 is a "WIP checkpoint" saved after a container
   restart; 259f54c replaces its CSS and explains the change. History is not
   rewritten.
-- `emit()` (src/app/hooks.ts) already catches a throwing hook listener and
-  prints it with `console.error`; those are not in the problem log (hooks.ts
-  is outside this package).
+- hooks.ts is shared infrastructure, outside this package's own files; the
+  fix round 2 reporter seam is the only change there, additive (no other
+  round-2 branch touches the file, so it merges cleanly).
 
 - Errors outside the frame (a tap handler, a timer) are recorded by the
   window listeners but never open the overlay: the UI around them keeps
