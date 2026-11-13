@@ -1,3 +1,6 @@
+// First: page-wide error listeners feed the local problem log before any
+// other module runs (src/app/errorTraps.ts; nothing leaves the device).
+import "./app/errorTraps";
 import "./ui/tokens.css";
 import "@fontsource/lilita-one/400.css";
 // Arabic glyphs: a rounded display face to pair with Lilita One (SIL OFL).
@@ -161,6 +164,9 @@ import { registerHomeSlot } from "./app/slots";
 import { localizeStaticMarkup } from "./app/brand";
 import { battleMenuOpen } from "./ui/battleMenu";
 import { signed } from "./render3d/result";
+import { installCrashShield } from "./app/shieldWire";
+import { problemLog } from "./app/problemLog";
+import { QUALITY_LEVELS, currentQuality } from "./render3d/quality";
 
 // ---- Feature registration: side-effect modules that subscribe to src/app/hooks.
 import "./audio/wire";
@@ -1185,6 +1191,7 @@ function safely(work: () => void): void {
       previewFailed = true;
       console.error("[placement] preview failed; the battle goes on without it", err);
     }
+    problemLog.record("preview", err);
     try {
       clearPreview();
     } catch {
@@ -1464,7 +1471,32 @@ function finishMatch(winner: Side | "draw"): void {
   });
 }
 
+// ---- Crash shield (src/app/shieldWire.ts): never a frozen battle ----------
+// Every frame runs through the shield, which schedules the next one whatever
+// throws; a glitch storm holds the battle behind a friendly "Oops!" overlay.
+const crash = installCrashShield({
+  kv: defaultKV(),
+  onMenu: () => pickerRoot.classList.contains("show"),
+  online: onlineSession,
+  battleOver: () => battle.result !== null,
+  leaveOnline,
+  releaseLiveMatch: () => liveMatch.release(),
+  dismissHud: () => hud.dismiss(),
+  openHome,
+  context: () => ({
+    screen: screenNow === "battle" ? `battle/${getPhase()}` : screenNow || "boot",
+    quality: `${getPrefs().quality} L${QUALITY_LEVELS.indexOf(currentQuality())}`,
+    edition: STORED_EDITION === "arabic" ? "golden-age" : STORED_EDITION === "normal" ? "classic" : "unset",
+    online: onlineSession() !== null,
+  }),
+});
+
 function frame(now: number): void {
+  crash.shield.runFrame(() => frameBody(now), () => requestAnimationFrame(frame));
+}
+
+/** One frame of the game (frame() schedules the next one, whatever happens here). */
+function frameBody(now: number): void {
   const dt = Math.min(0.25, (now - last) / 1000);
   last = now;
 
@@ -1479,11 +1511,12 @@ function frame(now: number): void {
     scene.sync(battle, 0); // towers etc. exist for the home diorama
     if (shouldRender(now)) scene.render(dt);
     emit("frame", { dt, presentDt, alpha: 1, phase: getPhase(), battle });
-    requestAnimationFrame(frame);
     return;
   }
 
   const online = onlineSession();
+  // ?oops=1 (a grown-up's test): the next battle throws here a few times.
+  crash.oops.tick(getPhase() === "playing" && !battle.result && (online !== null || !simHeld()), dt);
   let alpha = 1;
   if (!online && simHeld()) {
     // A feature (pause menu, tutorial…) holds the solo sim, countdown included.
@@ -1603,7 +1636,6 @@ function frame(now: number): void {
   if (shouldRender(now)) scene.render(scaledDt);
   hud.update(battle, localSide());
   emit("frame", { dt, presentDt, alpha, phase: getPhase(), battle });
-  requestAnimationFrame(frame);
 }
 
 requestAnimationFrame(frame);
