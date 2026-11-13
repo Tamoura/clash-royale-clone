@@ -4,30 +4,52 @@
  * - After a win (any real match: not a replay, not Sandbox), ask the
  *   browser once to keep this site's storage, and on an iPhone or iPad in
  *   a browser tab queue the one-time 'Add to Home Screen' tip.
- * - The next time Home shows, the tip appears; and after a save was loaded
- *   or undone (Settings > Backup & move reloads the page), Home says so.
+ * - The next time Home shows, the tip opens (a small sheet: the Home
+ *   Screen game starts empty, so it offers to copy the save code first).
+ *   In the Home Screen game itself, the first Home with no trophies yet
+ *   (often the edition gate) opens the one-time 'Played in Safari
+ *   before?' hint, with a button straight to Load a save. Both wait until
+ *   no other sheet, dialog or chest reveal is up, and a Home left first
+ *   tries again next time.
+ * - After a save was loaded or undone (Settings > Backup & move reloads
+ *   the page), Home says so.
  * - When another open tab of the game loads a save or undoes one, this tab
  *   reloads too, before it can write its old profile back over the new one.
  *
  * A side-effect module: main.ts imports it with the other feature wiring.
  */
 import { on } from "../app/hooks";
-import { GAME_NAME, GAME_NAME_AR } from "../app/brand";
 import { clearMatchMarker } from "../match/leftMatch";
-import { askToKeepSaveOnce, deviceInfo, markHomeTipSeen, shouldShowHomeTip, type PersistApi } from "../meta/keepSafe";
+import {
+  askToKeepSaveOnce,
+  deviceInfo,
+  markHomeTipSeen,
+  markStandaloneHintSeen,
+  shouldShowHomeTip,
+  shouldShowStandaloneHint,
+  type PersistApi,
+} from "../meta/keepSafe";
 import { defaultKV, type KV } from "../meta/kv";
-import { SAVE_BACKUP_KEY } from "../meta/saveCode";
+import { SAVE_BACKUP_KEY, gatherSave, summarize, type SaveStore } from "../meta/saveCode";
+import { EDITION_CHOSEN } from "../render3d/theme";
 import { toast } from "./components";
 import { tr } from "./i18n";
 import { holdSplashForReload } from "./screens/editionGate";
+import { openHomeScreenTip, openStandaloneHint } from "./screens/keepSafeSheet";
 import { SAVE_LOADED_KEY } from "./screens/saveSheet";
 
-/** How long the Home Screen tip stays up (it is long for a toast, and shown once). */
-const TIP_MS = 8000;
 /** After another tab's load starts, wait this long so all of its writes have arrived. */
 export const OTHER_TAB_RELOAD_MS = 250;
+/** While another sheet, dialog or the chest reveal is up, look again this often. */
+export const CLEAR_POLL_MS = 700;
+/** What owns the screen: a sheet, a dialog, the chest reveal. A keep-safe sheet waits for them. */
+const BUSY = ".ui-sheet, .ui-modal, .rw-reveal";
 
 let tipDue = false;
+/** A keep-safe sheet is waiting to open (one at a time). */
+let sheetPending = false;
+/** The screen showing now ('home' covers the edition gate too). */
+let screenNow = "";
 /** A match is being played in this tab (set on matchStart, cleared on matchEnd). */
 let inMatch = false;
 
@@ -62,6 +84,13 @@ export function onOtherTabStorage(
 /** Tests only: forget a scheduled reload. */
 export function resetOtherTabForTests(): void {
   otherTabReloading = false;
+}
+
+/** Tests only: forget a queued tip and a waiting sheet. */
+export function resetKeepSafeForTests(): void {
+  tipDue = false;
+  sheetPending = false;
+  screenNow = "";
 }
 
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
@@ -120,7 +149,54 @@ function soonAfterAFrame(fn: () => void, ms: number): void {
   });
 }
 
+function localStore(): SaveStore | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** No progress on this device yet (no trophies), read without writing anything. */
+function freshProfile(): boolean {
+  const store = localStore();
+  if (!store) return false;
+  try {
+    return summarize(gatherSave(store)).trophies === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Open a keep-safe sheet on Home once nothing else owns the screen. Gives
+ * up when Home is left first (`leftHome`, so it can try again next time).
+ */
+function openWhenClear(open: () => void, leftHome: () => void): void {
+  const look = (): void => {
+    if (screenNow !== "home") {
+      sheetPending = false;
+      leftHome();
+      return;
+    }
+    let busy = false;
+    try {
+      busy = document.querySelector(BUSY) !== null;
+    } catch {
+      busy = false;
+    }
+    if (busy) {
+      window.setTimeout(look, CLEAR_POLL_MS);
+      return;
+    }
+    sheetPending = false;
+    open();
+  };
+  look();
+}
+
 on("screen", ({ id }) => {
+  screenNow = id;
   if (id !== "home") return;
   const loaded = takeSessionFlag(SAVE_LOADED_KEY);
   if (loaded) {
@@ -138,18 +214,34 @@ on("screen", ({ id }) => {
       600,
     );
   }
+  if (sheetPending) return;
   if (tipDue) {
-    tipDue = false;
-    markHomeTipSeen(defaultKV());
+    sheetPending = true;
     soonAfterAFrame(
       () =>
-        toast(
-          tr(
-            `Add ${GAME_NAME} to your Home Screen so your progress stays safe.`,
-            `أضف ${GAME_NAME_AR} إلى الشاشة الرئيسية ليبقى تقدّمك في أمان.`,
-          ),
-          "accent",
-          TIP_MS,
+        openWhenClear(
+          () => {
+            tipDue = false;
+            markHomeTipSeen(defaultKV());
+            openHomeScreenTip();
+          },
+          () => undefined, // still due: the next Home tries again
+        ),
+      900,
+    );
+    return;
+  }
+  const kv = defaultKV();
+  if (shouldShowStandaloneHint(kv, deviceInfo(), freshProfile())) {
+    sheetPending = true;
+    soonAfterAFrame(
+      () =>
+        openWhenClear(
+          () => {
+            markStandaloneHintSeen(kv);
+            openStandaloneHint({}, { both: !EDITION_CHOSEN });
+          },
+          () => undefined,
         ),
       900,
     );

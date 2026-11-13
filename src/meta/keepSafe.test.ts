@@ -3,10 +3,13 @@ import { memoryKV } from "./kv";
 import {
   HOME_TIP_SEEN_KEY,
   PERSIST_ASKED_KEY,
+  STANDALONE_HINT_SEEN_KEY,
   askToKeepSaveOnce,
   isAppleTouchDevice,
   markHomeTipSeen,
+  markStandaloneHintSeen,
   shouldShowHomeTip,
+  shouldShowStandaloneHint,
   type DeviceInfo,
   type PersistApi,
 } from "./keepSafe";
@@ -74,5 +77,24 @@ describe("the Home Screen tip", () => {
     expect(shouldShowHomeTip(memoryKV(), { ...iphone, standalone: true })).toBe(false);
     const android: DeviceInfo = { userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/126.0 Mobile", platform: "Linux armv8l", maxTouchPoints: 5, standalone: false };
     expect(shouldShowHomeTip(memoryKV(), android)).toBe(false);
+  });
+});
+
+describe("the Home Screen game's 'Played in Safari before?' hint", () => {
+  const icon: DeviceInfo = { ...iphone, standalone: true };
+
+  it("shows once, in the Home Screen game, while it has no progress", () => {
+    const kv = memoryKV();
+    expect(shouldShowStandaloneHint(kv, icon, true)).toBe(true);
+    markStandaloneHintSeen(kv);
+    expect(kv.data[STANDALONE_HINT_SEEN_KEY]).toBe("1");
+    expect(shouldShowStandaloneHint(kv, icon, true)).toBe(false);
+  });
+
+  it("stays quiet with progress, in a Safari tab, and where an installed app shares the browser's storage", () => {
+    expect(shouldShowStandaloneHint(memoryKV(), icon, false)).toBe(false);
+    expect(shouldShowStandaloneHint(memoryKV(), iphone, true)).toBe(false);
+    const android: DeviceInfo = { userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/126.0 Mobile", platform: "Linux armv8l", maxTouchPoints: 5, standalone: true };
+    expect(shouldShowStandaloneHint(memoryKV(), android, true)).toBe(false);
   });
 });

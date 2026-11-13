@@ -144,6 +144,12 @@ export const SAVE_KEYS: readonly SaveKeyDef[] = [
   { key: "cr-clone-persist-asked", cls: D, shape: "text", note: "storage persistence asked for once (keepSafe.ts)" },
   { key: "cr-clone-home-tip-seen", cls: D, shape: "text", note: "iPhone/iPad 'Add to Home Screen' tip shown (keepSafe.ts)" },
   {
+    key: "cr-clone-standalone-hint-seen",
+    cls: D,
+    shape: "text",
+    note: "the Home Screen game's 'Played in Safari before?' hint shown (keepSafe.ts)",
+  },
+  {
     key: "cr-clone-save-loaded",
     cls: D,
     shape: "text",

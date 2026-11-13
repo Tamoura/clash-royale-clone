@@ -108,3 +108,12 @@
   .v2-save-compare tbody tr > .v2-save-load-col { border-radius: 0; border-end-start-radius: var(--r-md); }
   .v2-save-compare tbody tr > .v2-save-here-col { border-radius: 0; border-end-end-radius: var(--r-md); }
 }
+
+/*
+ * The keep-safe sheets (keepSafeSheet.ts). Before an edition is picked the
+ * Home Screen game's hint reads in both languages, English over Arabic, as
+ * the edition gate does.
+ */
+.v2-keep-both { display: flex; flex-direction: column; gap: var(--sp-1); }
+.v2-keep-both > span { display: block; }
+.v2-keep-ar { font-family: "Baloo Bhaijaan 2", var(--cr-font); }

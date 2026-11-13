@@ -9,9 +9,13 @@
  * - On an iPhone or iPad in a browser tab (not opened from the Home
  *   Screen), Safari can clear a site's storage after a week without a
  *   visit, so a one-time tip suggests adding Crown Rush to the Home Screen.
+ * - But a game opened from the Home Screen keeps its own storage, apart
+ *   from Safari's, so it starts empty: the tip says to copy the save code
+ *   first, and the Home Screen game, while it has no trophies yet, says
+ *   once where a save comes from and offers to load one.
  *
- * Both flags are device keys (saveKeys.ts). Pure apart from the injected
- * store and environment; ui/keepSafeWire.ts calls it from the match hooks.
+ * The flags are device keys (saveKeys.ts). Pure apart from the injected
+ * store and environment; ui/keepSafeWire.ts calls it from the app hooks.
  */
 import type { KV } from "./kv";
 
@@ -19,6 +23,8 @@ import type { KV } from "./kv";
 export const PERSIST_ASKED_KEY = "cr-clone-persist-asked";
 /** Set once the 'Add to Home Screen' tip was shown. */
 export const HOME_TIP_SEEN_KEY = "cr-clone-home-tip-seen";
+/** Set once the Home Screen game's 'Played in Safari before?' hint was shown. */
+export const STANDALONE_HINT_SEEN_KEY = "cr-clone-standalone-hint-seen";
 
 /** The parts of navigator.storage used here. */
 export interface PersistApi {
@@ -82,6 +88,20 @@ export function shouldShowHomeTip(kv: KV | null, d: DeviceInfo): boolean {
 
 export function markHomeTipSeen(kv: KV | null): void {
   set(kv, HOME_TIP_SEEN_KEY, "1");
+}
+
+/**
+ * Show the 'Played in Safari before?' hint: an Apple touch device, opened
+ * from the Home Screen (its own, separate storage), with no progress yet
+ * (`fresh`: no trophies), not shown before. Android and desktop browsers
+ * share one storage with their installed apps, so they never need it.
+ */
+export function shouldShowStandaloneHint(kv: KV | null, d: DeviceInfo, fresh: boolean): boolean {
+  return isAppleTouchDevice(d) && d.standalone && fresh && get(kv, STANDALONE_HINT_SEEN_KEY) === null;
+}
+
+export function markStandaloneHintSeen(kv: KV | null): void {
+  set(kv, STANDALONE_HINT_SEEN_KEY, "1");
 }
 
 /** This browser's DeviceInfo (safe anywhere). */
