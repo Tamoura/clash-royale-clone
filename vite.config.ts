@@ -1,9 +1,9 @@
 /// <reference types="vitest/config" />
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { defineConfig, type Plugin } from "vite";
-import { composeBuildId, stampBuildId } from "./src/app/swStamp";
+import { composeBuildId, precacheList, stampBuildId, stampPrecache, unlisted } from "./src/app/swStamp";
 
 /** A new id for every build (see src/app/swStamp.ts): short git sha plus the build time. */
 function buildId(): string {
@@ -16,19 +16,57 @@ function buildId(): string {
   return composeBuildId(sha, Date.now(), process.hrtime.bigint());
 }
 
-/** Replace __BUILD_ID__ in the built service worker (dist/sw.js is copied verbatim from public/). */
-function swBuildId(): Plugin {
-  const id = buildId();
+/** Every file under `dir` (sub-folders too), relative to it, with forward slashes. */
+function filesUnder(dir: string): string[] {
+  const out: string[] = [];
+  const walk = (at: string): void => {
+    for (const entry of readdirSync(at, { withFileTypes: true })) {
+      const path = join(at, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else out.push(relative(dir, path).split("\\").join("/"));
+    }
+  };
+  walk(dir);
+  return out;
+}
+
+/** This build's id, worked out once so everything stamped with it agrees. */
+const BUILD_ID = buildId();
+
+/**
+ * Stamp the built service worker (dist/sw.js is copied verbatim from
+ * public/): its cache name gets this build's id, and its precache list gets
+ * every file the build emitted under assets/ (see src/app/swStamp.ts). The
+ * build fails if a file on disk in dist/assets is missing from the list, so
+ * an installed game always has every file it needs to open offline.
+ */
+function swStamp(): Plugin {
+  let assetsDir = "assets";
   return {
-    name: "sw-build-id",
+    name: "sw-stamp",
     apply: "build",
-    writeBundle(options) {
-      const file = join(options.dir ?? "dist", "sw.js");
+    configResolved(config) {
+      assetsDir = config.build.assetsDir;
+    },
+    writeBundle(options, bundle) {
+      const outDir = options.dir ?? "dist";
+      const file = join(outDir, "sw.js");
+      let source: string;
       try {
-        writeFileSync(file, stampBuildId(readFileSync(file, "utf8"), id));
+        source = readFileSync(file, "utf8");
       } catch {
-        // no sw.js in this build: nothing to stamp
+        return; // no sw.js in this build: nothing to stamp
       }
+      const list = precacheList(Object.keys(bundle), assetsDir);
+      let onDisk: string[] = [];
+      try {
+        onDisk = filesUnder(join(outDir, assetsDir));
+      } catch {
+        // no assets folder: nothing on disk to check against
+      }
+      const missing = unlisted(list, onDisk, assetsDir);
+      if (missing.length) throw new Error(`sw-stamp: files in ${assetsDir}/ missing from the precache list: ${missing.join(", ")}`);
+      writeFileSync(file, stampPrecache(stampBuildId(source, BUILD_ID), list));
     },
   };
 }
@@ -37,7 +75,7 @@ export default defineConfig({
   // Base path: "/" for local dev; the GitHub Pages workflow sets VITE_BASE
   // to "/clash-royale-clone/" so asset URLs resolve under the project subpath.
   base: process.env.VITE_BASE || "/",
-  plugins: [swBuildId()],
+  plugins: [swStamp()],
   build: {
     rollupOptions: {
       // three.js is most of the bundle and changes far less often than the
