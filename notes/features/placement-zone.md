@@ -39,8 +39,11 @@ Shots (DPR 2, SwiftShader, staged with `/tmp/claude-0/place/stage.cjs`):
    the board; everything you may not use darker with 45-degree ink stripes
    (the closed lane, the King's bite; the river calmer, no stripes). With
    both towers down (`S6`) the two pockets are one, with no middle line.
-   If a lane opens while a card is held, that lane cross-fades from its
-   closed look to its open look over 0.25 s.
+   If a lane opens while a troop or building is held, that lane
+   cross-fades from its closed look to its open look over 0.25 s (not
+   under a held Digger: its map does not change when a lane opens).
+   Troops show a see-through ghost under the pointer; buildings show only
+   their disc (they have no troop rig to ghost).
 3. **Pointing at a spot** (`S1` yes, `S2` no, `extra/S1-wait.png` wait).
    A pip floats over the pointer (62 px above a finger, 40 px above a
    mouse): a tick, a no-entry sign or an hourglass. Different shapes and
@@ -126,7 +129,20 @@ King distance.
   `zone.dispose()` (texture, material, geometry) before `disposeDeep`.
   `reset()` (new battle, context restore) forgets the battle, so the next
   sync seeds the open lanes quietly: no reveal for a lane that was already
-  open.
+  open. `leave()` (`Battle3D.leaveZone()`, called by main.ts `showPicker`
+  whenever a menu screen opens) also puts the card down and hides the plane
+  at once: the menus sync with dt 0, so a reveal left running would stay
+  frozen over the home diorama.
+- Anti-aliasing: `aa` is the field's own `fwidth`, or the revealing wave's
+  where the wave cuts the pocket. Both lanes' wave distances and all three
+  derivatives are taken without branching on the lane; picking the wave
+  first made `d` jump across x = 9 inside one pixel quad, and the blown-up
+  `fwidth` smeared a hairline down the whole middle seam before the wave
+  got there (review round 1).
+- Per frame the overlay allocates nothing: the envelopes go into one
+  reused object, records are only re-filtered when one ends, and a held
+  Digger's body list (a string) is rebuilt at most 4 times a second.
+  Battle3D reads `reducedMotion()` once per sync and reuses it in render.
 - Reveal clocks run on presentation time (`scaledDt`), so a 4x replay still
   shows the reveal at reading speed.
 - DOM: one reused `.place-pip` element (`hud.placePip`) and one
@@ -134,11 +150,27 @@ King distance.
   their placement is pure (`pipPlacement`, `lanePillBox` in hudModel.ts).
   The pill is never wider than the pocket on screen minus 8 px; in a
   narrow pocket (landscape phones) the padlock sits on top so the words
-  wrap to two lines inside the pocket.
+  wrap to two lines inside the pocket. The pill is `width: max-content`
+  (capped by that max-width): a `position: fixed` box otherwise shrinks to
+  the room left before the viewport's right edge, and a right-hand pocket
+  on a portrait phone squashed it into a four-line blob (review round 1).
+  The padlock is inline right before the first word, and the words are a
+  bare text node, not a span: under Golden Age every span is its own bidi
+  isolate (`unicode-bidi: plaintext`), which hid the Arabic from
+  `dir="auto"` and put the padlock at the end of the line. The pill sits
+  at `z-hud`, under the pip and the refusal words (`z-hud + 1`), so a
+  finger trying the new ground always sees its verdict.
 - main.ts: `lastPointer` is kept on every pointer move; `refreshPreview()`
   runs once per frame after `scene.sync` (one `pick` + one `checkDeploy`)
   and on a canvas `pointerdown`; it is cleared when a finger or pen lifts,
-  on window blur and after a refused drop. `updateLanePill()` shows the
+  on window blur and after a refused drop. Every call of it and of
+  `updateLanePill()` goes through `safely()`: a throw there is logged once
+  and clears the preview, and can never end the game loop (whose next
+  frame is only scheduled at the end of `frame()`). Review round 1 found
+  exactly that: a held Cannon reached `buildTroop`, which has no rig for
+  buildings, and the per-frame refresh froze the battle for good. Only
+  troops get a ghost now (`hasGhost` in scene/views/troops.ts, checked in
+  both main.ts and `Battle3D.setGhost`). `updateLanePill()` shows the
   newest reveal's label unless replaying, in the tutorial, after the result
   or during the final-blow zoom. DEV builds warn once per battle when the
   board's viewpoint differs from the side you play (only the staged S8
@@ -223,11 +255,20 @@ here", "knock down a tower").
   `checkDeploy` to 1e-7 in both views (the sim's edge must be
   `KING_KEEP_CLEAR` within 1e-6), the guest's map is the host's turned 180
   degrees (analytic and byte for byte), and the four precomputed lane maps
-  are byte-equal to the live ones.
-  **Mutation check (done):** `KING_KEEP_CLEAR = 4.4` and `4.6` each fail
-  22 of the 46 tests, every failure saying "sim King buffer changed: update
+  are byte-equal to a map built the long way from the live battle (holes
+  at the standing towers' actual positions, princess holes only for towers
+  that stand). The princess keep-clear is pinned too: no real battle lets
+  a standing princess's circle decide anything, so a staged one (left lane
+  open, the standing right princess moved to x 9.5, still the right lane
+  for `openLanes`) bisects 12 rays per view on `checkDeploy`; the sim's
+  edge must be `PRINCESS_KEEP_CLEAR` within 1e-6 ("sim princess buffer
+  changed").
+  **Mutation check (done, round 1 again):** `KING_KEEP_CLEAR = 4.4` and
+  `4.6` fail 22 and 23 tests across the grid, overlay and hudModel files,
+  every grid failure saying "sim King buffer changed: update
   KING_KEEP_CLEAR in src/render3d/deployZone.ts", the bisection pin
-  included. To repeat: edit the constant, run
+  included; `PRINCESS_KEEP_CLEAR = 0` and `3.1` (which passed everything
+  before round 1) now fail the two princess pins. To repeat: edit the constant, run
   `npx vitest run src/render3d/deployZone.grid.test.ts`, revert.
 - `src/render3d/deployZone.test.ts`: `deploysAnywhere`, `zoneModeFor`, the
   8 troop keys, the dig key after a building dies, a paint under 30 ms, the
@@ -242,6 +283,17 @@ here", "knock down a tower").
   points within 1e-6 for both cameras and KO-scaled frustums, and the
   vertex shader reads the local `position`); one mesh of 2 triangles;
   `dispose()` frees all three; light stripes on a dark floor; `sample()`.
+  Since round 1 also: what the GPU reads is `checkDeploy`'s map, through
+  the overlay's own texture choice (one overlay, both views in turn with
+  the cache switching sides, every lane state, Knight / Cannon / Digger,
+  0.25-tile grid, 0 of 300k+ disagree; a swapped troop key or a stale
+  side cache fails it); a lane opening under a held Digger is not striped
+  and does not count as the troop map's welcome; `leave()` drops the
+  reveal, the label and a held map even with dt-0 syncs.
+- `src/render3d/scene/ghostPreview.test.ts`: only troops have a ghost;
+  every troop's ghost builds; `Battle3D.setGhost` with every building, a
+  spell and the Mirror neither throws nor builds anything, and hides a
+  troop's ghost.
 - `src/render3d/hudModel.test.ts` "refused drops": every reason in both
   views (and the Digger's), all six texts, `placeVerdict`, `pipPlacement`
   and `lanePillBox`.
@@ -412,6 +464,47 @@ All under `/tmp/claude-0/place/build/final/`, DPR 2 unless noted; every
   the five standing towers, the water dimmed and outlined with both
   bridges inside.
 
+### Review round 1 fixes, re-checked in the browser
+
+Dev server on port 3335, DPR 1, under `/tmp/claude-0/place/fix-r1/`:
+
+- **A held building no longer freezes the battle** (`cannon/cannon-held.png`,
+  `review.cjs --case cannon` with a Cannon in the hand): the sim clock ran
+  4 → 10.5 → 19.7 s across the two 8 s windows (20 frames each under
+  SwiftShader; 0 before the fix), no page error, map up, tick pip, green
+  disc, no ghost. A Cannon dropped at (4, 24) deploys and the battle goes
+  on (`S1-cannon-tap.png`).
+- **Leaving mid-reveal** (`leave.cjs`, Sandbox, Menu > Leave once the
+  label shows, with and without a Knight held): 8 s later on the home
+  screen there is no `.lane-pill`, the pip is hidden, `zoneParts` is
+  `shown false, reveals []` and the plane is not drawn
+  (`leave-home-held.png`: a clean diorama).
+- **Right-hand pocket label on a phone** (`S4-phone-right-pill.png`,
+  `S4 --view 390x844 --card none --after 2`): 181 x 51 px, two lines, the
+  same as the left pocket's (`S5-fd2.2.png`; it was 100 x 85, four lines),
+  inside its pocket. Landscape (`S7-land-pill.png`): 110 x 61 inside the
+  118 px pocket, padlock on top. Golden Age (`zoom-S3-pill-fixed.png`):
+  the padlock now sits before "ضع", at the right.
+- **The pip paints over the label** (`S1-pip-over-pill.png`, pointer at
+  (4, 14) 2 s after the fall).
+- **No seam hairline**: the middle-seam band (x 188-202) of the 0.75 s
+  reveal frame is pixel-identical to the 0.5 s frame, when nothing is
+  drawn yet (the round-0 build differed by up to 135 in 258 pixels there),
+  and below the wave front at 1.25 s it is identical too
+  (`S5-fd0.75.png`, `S5-fd1.2.png`; `tools/seam.cjs`).
+- **Still agreeing**: `--probe` on S1 9,242, S6 9,204 and the Digger 9,111
+  points, 0 mismatches; `S2 --tap` "Too close to the King!" with no hand
+  shake.
+- **With the game fonts** (`fonts/`, a server started with
+  `vite.wt.config.mjs`): every label sits inside its pocket: phone left,
+  right, Golden Age and the staged guest 181 x 51; landscape Classic and
+  Golden Age 110 x 61 in the 118 px pocket (`fonts/zoom-right.png`,
+  `fonts/zoom-land-golden.png`).
+- **Render cost** after the shader change (`perf-budget --matrix`, "4
+  run(s) within every gate"): empty 102 / 251,230, 106 / 276,298, 107 /
+  259,444, 115 / 277,648 calls / triangles; fight 178-207 calls, 628k-680k
+  triangles; the same as before round 1 within wobble.
+
 ## 9. Known gaps
 
 - **Dev server and the fonts.** The worktree's `node_modules` is a symlink
@@ -441,4 +534,8 @@ All under `/tmp/claude-0/place/build/final/`, DPR 2 unless noted; every
 - **The replay check** used a tape made with the sim, not one recorded from
   a hand-played match (see above).
 - **The princess keep-clear (3 tiles)** is drawn by the same code but never
-  shows with today's tower layout.
+  shows with today's tower layout (its radius is pinned by a staged test).
+- **The label covers the ghost at the lane centre** for its 3 s when a kid
+  points right there (as the spec designed); the pip stays on top of it.
+- **A building has no ghost**, only its disc, as before this change (the
+  old build threw inside the pointer handler instead).
