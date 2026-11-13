@@ -12,11 +12,15 @@ import {
   edgeShadeStops,
   finalFragmentShader,
   gradeFor,
+  prepareLightVariants,
   registerTroopCaster,
   renderDpr,
+  rendererName,
   sampleQuality,
+  setDioramaQuality,
   setFlash,
   troopShadowLevel,
+  wantsLightPrepare,
 } from "./post";
 import { LIGHT_RIG, SHADOW_SLOPE, SUN_DIRECTION } from "./sky";
 import { CAM_HOME } from "./common";
@@ -301,6 +305,114 @@ describe("art bible contract (stage)", () => {
     sampleQuality(b);
     expect(caster.castShadow).toBe(false);
     expect(shadowMap.needsUpdate).toBe(true); // one more render clears the old troop shadows
+    gov.setPref("high");
+  });
+
+  it("prepares at every Auto start (L0 to L3 share one light state), never under a pin", () => {
+    for (let level = 0; level < QUALITY_LEVELS.length; level++) {
+      const gov = new QualityGovernor("auto", "auto");
+      gov.configure({ level, helped: false, reprobe: false, source: "memory" });
+      expect(wantsLightPrepare(gov)).toBe(true);
+    }
+    for (const pin of ["high", "medium", "low"] as const) expect(wantsLightPrepare(new QualityGovernor("auto", pin))).toBe(false);
+    expect(wantsLightPrepare(new QualityGovernor("low", "auto"))).toBe(false); // a ?quality= pin
+    // L0 to L3 draw with the shadow map and the rim light, so preparing at
+    // any of them compiles exactly L4's state.
+    for (const l of QUALITY_LEVELS.slice(0, -1)) expect([l.shadowSize > 0, l.rimLight]).toEqual([true, true]);
+    const l4 = QUALITY_LEVELS[QUALITY_LEVELS.length - 1];
+    expect([l4.shadowSize > 0, l4.rimLight]).toEqual([false, false]);
+    new QualityGovernor("auto", "high");
+  });
+
+  it("a battle start at L0 under Auto prepares on its first frame, once; a pin never does", () => {
+    const build = (pin: "auto" | "high") => {
+      const gov = new QualityGovernor("auto", pin);
+      const sun = new THREE.DirectionalLight();
+      sun.castShadow = true;
+      const fill = new THREE.DirectionalLight();
+      const lightGroup = new THREE.Group();
+      lightGroup.add(sun, fill, new THREE.DirectionalLight());
+      let compiles = 0;
+      const renderer = {
+        shadowMap: { enabled: true, needsUpdate: false },
+        getRenderTarget: () => null,
+        setRenderTarget: () => {},
+        compile: () => void compiles++,
+        info: { programs: [] },
+      };
+      const b = {
+        quality: gov, sun, fillLight: fill, lightGroup, renderer, composer: { readBuffer: {} },
+        scene: new THREE.Scene(), camera: new THREE.OrthographicCamera(), dying: [], lastFrameAt: 0, resize: () => {},
+      } as unknown as Battle3D;
+      return { gov, b, compiles: () => compiles };
+    };
+    const auto = build("auto");
+    expect(auto.gov.index).toBe(0);
+    setDioramaQuality(auto.b, false); // the battle's screen takes over
+    sampleQuality(auto.b);
+    sampleQuality(auto.b);
+    expect(auto.compiles()).toBe(1);
+    const pinned = build("high");
+    setDioramaQuality(pinned.b, false);
+    sampleQuality(pinned.b);
+    expect(pinned.compiles()).toBe(0);
+    new QualityGovernor("auto", "high");
+  });
+});
+
+describe("auto graphics wiring (C44)", () => {
+  /** A WebGL context stub answering RENDERER (and the debug extension's unmasked name). */
+  const fakeRenderer = (plain: unknown, unmasked: unknown | undefined, throws = false): THREE.WebGLRenderer =>
+    ({
+      getContext: () => {
+        if (throws) throw new Error("context lost");
+        return {
+          RENDERER: 0x1f01,
+          getParameter: (p: number) => (p === 0x1f01 ? plain : p === 0x9246 ? unmasked : null),
+          getExtension: (name: string) => (name === "WEBGL_debug_renderer_info" && unmasked !== undefined ? { UNMASKED_RENDERER_WEBGL: 0x9246 } : null),
+        };
+      },
+    }) as unknown as THREE.WebGLRenderer;
+
+  it("reads the renderer string: plain where the browser gives it, unmasked where it masks it", () => {
+    expect(rendererName(fakeRenderer("Mali-G52 MC2", "ignored"))).toBe("Mali-G52 MC2"); // Firefox, mobile
+    expect(rendererName(fakeRenderer("WebKit WebGL", "ANGLE (Google, SwiftShader)"))).toBe("ANGLE (Google, SwiftShader)"); // Chrome
+    expect(rendererName(fakeRenderer("WebKit WebGL", undefined))).toBe("WebKit WebGL"); // no extension: the masked name keys the device
+    expect(rendererName(fakeRenderer("", undefined))).toBe("");
+    expect(rendererName(fakeRenderer(null, null, true))).toBe(""); // never throws
+  });
+
+  it("compiles the other light state into the composer's target, then puts everything back", () => {
+    const gov = new QualityGovernor("auto", "auto");
+    gov.configure({ level: 3, helped: true, reprobe: false, source: "memory" });
+    const sun = new THREE.DirectionalLight();
+    sun.castShadow = true;
+    const fill = new THREE.DirectionalLight();
+    const rim = new THREE.DirectionalLight();
+    const lightGroup = new THREE.Group();
+    lightGroup.add(sun, fill, rim);
+    const readBuffer = { isRenderTarget: true };
+    const seen: { map: boolean; cast: boolean; rim: boolean; fill: boolean; target: unknown }[] = [];
+    let target: unknown = null;
+    const renderer = {
+      shadowMap: { enabled: true },
+      getRenderTarget: () => target,
+      setRenderTarget: (t: unknown) => void (target = t),
+      compile: () => void seen.push({ map: renderer.shadowMap.enabled, cast: sun.castShadow, rim: rim.visible, fill: fill.visible, target }),
+    };
+    const b = { quality: gov, sun, fillLight: fill, lightGroup, renderer, composer: { readBuffer }, scene: new THREE.Scene(), camera: new THREE.OrthographicCamera() } as unknown as Battle3D;
+    prepareLightVariants(b);
+    // At L3 (shadows and rim on) it compiles L4's state: no shadow map, no rim; the fill stays.
+    expect(seen).toEqual([{ map: false, cast: false, rim: false, fill: true, target: readBuffer }]);
+    expect([renderer.shadowMap.enabled, sun.castShadow, rim.visible, target]).toEqual([true, true, true, null]);
+    // At L4 it compiles the way back up (shadows and rim on), and restores L4's state.
+    gov.setPref("low");
+    renderer.shadowMap.enabled = false;
+    sun.castShadow = false;
+    rim.visible = false;
+    prepareLightVariants(b);
+    expect(seen[1]).toEqual({ map: true, cast: true, rim: true, fill: true, target: readBuffer });
+    expect([renderer.shadowMap.enabled, sun.castShadow, rim.visible, target]).toEqual([false, false, false, null]);
     gov.setPref("high");
   });
 });
