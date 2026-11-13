@@ -1,0 +1,137 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ProblemLog, type ProblemStore } from "../../app/problemLog";
+import { installFakeDom, type FakeElement } from "../fakeDom.testkit";
+import { buildProblemReport, deviceHeader, OOPS_PARAM, problemReportRow, reportText } from "./problemReport";
+
+// The sheet itself mounts through frame.ts (Home's chrome and its styles).
+vi.mock("./frame", () => ({ openSheet: () => ({ el: document.createElement("div"), close: () => undefined }) }));
+// Toasts are module-level (one host per page); this test reads what they said.
+const said: string[] = [];
+vi.mock("../components", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components")>()),
+  toast: (text: string) => {
+    said.push(text);
+    return document.createElement("div");
+  },
+}));
+
+function memLog(): ProblemLog {
+  const data: Record<string, string> = {};
+  const store: ProblemStore = {
+    getItem: (k) => data[k] ?? null,
+    setItem: (k, v) => void (data[k] = v),
+    removeItem: (k) => void delete data[k],
+  };
+  let t = Date.UTC(2026, 10, 13, 10, 0, 0);
+  const log = new ProblemLog({ store: () => store, now: () => (t += 1000), build: "abc1234-xyz", later: () => undefined });
+  log.setContext(() => ({ screen: "battle/playing", quality: "auto L2", edition: "golden-age", online: false }));
+  return log;
+}
+
+const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+// vitest has no localStorage, so this is the Golden Age (Arabic) chrome.
+describe("the Problem report sheet", () => {
+  beforeEach(() => {
+    installFakeDom();
+    said.length = 0;
+    vi.stubGlobal("devicePixelRatio", 2);
+    vi.stubGlobal("navigator", { userAgent: "TestBrowser/1.0" });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const toasts = (): string[] => said;
+
+  it("says there are no problems, with Clear off", () => {
+    const { el } = buildProblemReport({ log: memLog(), clipboard: null });
+    const empty = el.querySelector(".v2-problem-empty") as unknown as FakeElement;
+    expect(empty.hidden).toBe(false);
+    expect(empty.textContent).toContain("لا مشكلات حتى الآن!");
+    expect((el.querySelector(".v2-problem-clear") as unknown as FakeElement).disabled).toBe(true);
+    expect(el.textContent).toContain(OOPS_PARAM);
+  });
+
+  it("lists problems newest first, with repeat counts, and follows the log while open", () => {
+    const log = memLog();
+    const { el, dispose } = buildProblemReport({ log, clipboard: null });
+    log.record("frame", new Error("first"));
+    log.record("frame", new TypeError("second"));
+    log.record("frame", new TypeError("second"));
+    const rows = el.querySelectorAll(".v2-problem") as unknown as FakeElement[];
+    expect(rows.map((r) => r.querySelector(".v2-problem-msg")!.textContent)).toEqual(["TypeError: second", "Error: first"]);
+    expect(rows[0].querySelector(".v2-problem-count")!.textContent).toBe("×٢"); // Arabic-Indic digits
+    expect(rows[0].querySelector(".v2-problem-msg")!.dir).toBe("ltr"); // recorded lines stay as recorded
+    dispose();
+    log.record("frame", new Error("after close"));
+    expect(el.querySelectorAll(".v2-problem")).toHaveLength(2);
+  });
+
+  it("Copy puts the whole plain-text report on the clipboard", async () => {
+    const log = memLog();
+    log.record("frame", new Error("boom"));
+    const written: string[] = [];
+    const { el } = buildProblemReport({ log, clipboard: { writeText: async (t) => void written.push(t) } });
+    (el.querySelector(".v2-problem-copy") as unknown as FakeElement).click();
+    await flush();
+    expect(written).toHaveLength(1);
+    const text = written[0];
+    expect(text.split("\n").slice(1, 6)).toEqual([
+      "الإصدار: abc1234-xyz",
+      "المتصفح: TestBrowser/1.0",
+      "الشاشة: 390x844 @2x",
+      "الرسومات: auto L2",
+      "النسخة: golden-age",
+    ]);
+    expect(text).toContain("Error: boom");
+    expect(toasts().join(" ")).toContain("تم النسخ!");
+  });
+
+  it("falls back to a selected box when the clipboard refuses", async () => {
+    const log = memLog();
+    log.record("frame", new Error("boom"));
+    const { el } = buildProblemReport({
+      log,
+      clipboard: { writeText: () => Promise.reject(new Error("NotAllowedError")) },
+    });
+    const box = el.querySelector(".v2-problem-text") as unknown as FakeElement & { value: string };
+    expect(box.hidden).toBe(true);
+    (el.querySelector(".v2-problem-copy") as unknown as FakeElement).click();
+    await flush();
+    expect(box.hidden).toBe(false);
+    expect(box.value).toContain("Error: boom");
+    expect(toasts().join(" ")).toContain("التقرير محدد في الأسفل");
+  });
+
+  it("Clear empties the log and the list", () => {
+    const log = memLog();
+    log.record("frame", new Error("boom"));
+    const { el } = buildProblemReport({ log, clipboard: null });
+    (el.querySelector(".v2-problem-clear") as unknown as FakeElement).click();
+    expect(log.list()).toEqual([]);
+    expect(el.querySelectorAll(".v2-problem")).toHaveLength(0);
+    expect((el.querySelector(".v2-problem-empty") as unknown as FakeElement).hidden).toBe(false);
+  });
+
+  it("the report header describes this device", () => {
+    const log = memLog();
+    expect(deviceHeader(log, 5)).toEqual({
+      build: "abc1234-xyz",
+      browser: "TestBrowser/1.0",
+      screen: "390x844 @2x",
+      quality: "auto L2",
+      edition: "golden-age",
+      now: 5,
+    });
+    expect(reportText(log, 0).split("\n").at(-1)).toBe("لا مشكلات حتى الآن!");
+  });
+
+  it("the Settings row closes Settings first", () => {
+    let closed = 0;
+    const row = problemReportRow(() => closed++) as unknown as FakeElement;
+    expect(row.textContent).toBe("تقرير المشكلات");
+    row.click();
+    expect(closed).toBe(1);
+  });
+});

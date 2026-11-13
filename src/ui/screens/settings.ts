@@ -13,6 +13,7 @@ import { icon, type IconName } from "../icons";
 import { getPrefs, onPrefs, setPrefs, type Prefs, type QualityPref, type ReduceMotion, type TeamPalette, type TextScale } from "../prefs";
 import { EDITION_COPY, editionArt, switchEdition } from "./editionGate";
 import { ask, openSheet } from "./frame";
+import { problemReportRow } from "./problemReport";
 
 export interface SettingsOpts {
   onClose?: () => void;
@@ -261,6 +262,7 @@ export function buildSettings(opts: SettingsOpts = {}, close?: () => void): HTML
   // ---- Help
   const help = group(tr("Help", "المساعدة"));
   help.appendChild(tutorialRow(opts, close));
+  help.appendChild(problemReportRow(close));
   root.appendChild(help);
 
   root.appendChild(creditsGroup());
