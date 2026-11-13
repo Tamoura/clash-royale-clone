@@ -12,8 +12,11 @@ import {
   edgeShadeStops,
   finalFragmentShader,
   gradeFor,
+  PREPARE_FROM,
+  prepareLightVariants,
   registerTroopCaster,
   renderDpr,
+  rendererName,
   sampleQuality,
   setFlash,
   troopShadowLevel,
@@ -301,6 +304,64 @@ describe("art bible contract (stage)", () => {
     sampleQuality(b);
     expect(caster.castShadow).toBe(false);
     expect(shadowMap.needsUpdate).toBe(true); // one more render clears the old troop shadows
+    gov.setPref("high");
+  });
+});
+
+describe("auto graphics wiring (C44)", () => {
+  /** A WebGL context stub answering RENDERER (and the debug extension's unmasked name). */
+  const fakeRenderer = (plain: unknown, unmasked: unknown | undefined, throws = false): THREE.WebGLRenderer =>
+    ({
+      getContext: () => {
+        if (throws) throw new Error("context lost");
+        return {
+          RENDERER: 0x1f01,
+          getParameter: (p: number) => (p === 0x1f01 ? plain : p === 0x9246 ? unmasked : null),
+          getExtension: (name: string) => (name === "WEBGL_debug_renderer_info" && unmasked !== undefined ? { UNMASKED_RENDERER_WEBGL: 0x9246 } : null),
+        };
+      },
+    }) as unknown as THREE.WebGLRenderer;
+
+  it("reads the renderer string: plain where the browser gives it, unmasked where it masks it", () => {
+    expect(rendererName(fakeRenderer("Mali-G52 MC2", "ignored"))).toBe("Mali-G52 MC2"); // Firefox, mobile
+    expect(rendererName(fakeRenderer("WebKit WebGL", "ANGLE (Google, SwiftShader)"))).toBe("ANGLE (Google, SwiftShader)"); // Chrome
+    expect(rendererName(fakeRenderer("WebKit WebGL", undefined))).toBe("WebKit WebGL"); // no extension: the masked name keys the device
+    expect(rendererName(fakeRenderer("", undefined))).toBe("");
+    expect(rendererName(fakeRenderer(null, null, true))).toBe(""); // never throws
+  });
+
+  it("compiles the other light state into the composer's target, then puts everything back", () => {
+    const gov = new QualityGovernor("auto", "auto");
+    gov.configure({ level: 3, helped: true, reprobe: false, source: "memory" });
+    const sun = new THREE.DirectionalLight();
+    sun.castShadow = true;
+    const fill = new THREE.DirectionalLight();
+    const rim = new THREE.DirectionalLight();
+    const lightGroup = new THREE.Group();
+    lightGroup.add(sun, fill, rim);
+    const readBuffer = { isRenderTarget: true };
+    const seen: { map: boolean; cast: boolean; rim: boolean; fill: boolean; target: unknown }[] = [];
+    let target: unknown = null;
+    const renderer = {
+      shadowMap: { enabled: true },
+      getRenderTarget: () => target,
+      setRenderTarget: (t: unknown) => void (target = t),
+      compile: () => void seen.push({ map: renderer.shadowMap.enabled, cast: sun.castShadow, rim: rim.visible, fill: fill.visible, target }),
+    };
+    const b = { quality: gov, sun, fillLight: fill, lightGroup, renderer, composer: { readBuffer }, scene: new THREE.Scene(), camera: new THREE.OrthographicCamera() } as unknown as Battle3D;
+    expect(PREPARE_FROM).toBe(3);
+    prepareLightVariants(b);
+    // At L3 (shadows and rim on) it compiles L4's state: no shadow map, no rim; the fill stays.
+    expect(seen).toEqual([{ map: false, cast: false, rim: false, fill: true, target: readBuffer }]);
+    expect([renderer.shadowMap.enabled, sun.castShadow, rim.visible, target]).toEqual([true, true, true, null]);
+    // At L4 it compiles the way back up (shadows and rim on), and restores L4's state.
+    gov.setPref("low");
+    renderer.shadowMap.enabled = false;
+    sun.castShadow = false;
+    rim.visible = false;
+    prepareLightVariants(b);
+    expect(seen[1]).toEqual({ map: true, cast: true, rim: true, fill: true, target: readBuffer });
+    expect([renderer.shadowMap.enabled, sun.castShadow, rim.visible, target]).toEqual([false, false, false, null]);
     gov.setPref("high");
   });
 });
