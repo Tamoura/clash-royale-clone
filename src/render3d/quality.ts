@@ -629,6 +629,17 @@ export function writeGfxMemory(store: StorageLike | null, entries: readonly GfxE
   }
 }
 
+/**
+ * The build tag stored with a device's memory: the hashed name of the
+ * script this code shipped in ("index-CgoAUPGQ" from .../assets/index-CgoAUPGQ.js),
+ * which changes whenever the game code does; "dev" on the dev server.
+ */
+export function gfxBuildTag(moduleUrl: string, dev: boolean): string {
+  if (dev) return "dev";
+  const m = /\/([\w.-]+)\.m?js(?:[?#].*)?$/.exec(moduleUrl);
+  return m ? cleanText(m[1], BUILD_MAX) : "";
+}
+
 /** The memory after device `key` settled (`s`) under `build` at `now` (pure). */
 export function recordGfx(entries: readonly GfxEntry[], key: string, s: Settled, build: string, now: number): GfxEntry[] {
   const k = cleanText(key, KEY_MAX);

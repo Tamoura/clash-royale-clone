@@ -15,7 +15,21 @@ import { getPrefs, onPrefs } from "../../ui/prefs";
 import { LOOK } from "./common";
 import { setOutlinesVisible } from "../outlineMaterial";
 import { SCREEN_FLASH_MAX } from "../look/material";
-import { currentQuality, outlinesEnabled, type QualityLevel } from "../quality";
+import {
+  QUALITY_LEVELS,
+  autoStartFor,
+  currentQuality,
+  deviceKey,
+  firstGuessLevel,
+  gfxBuildTag,
+  outlinesEnabled,
+  readGfxMemory,
+  recordGfx,
+  writeGfxMemory,
+  type QualityLevel,
+  type StorageLike,
+} from "../quality";
+import { noteLowGraphics, registerGfxNote } from "../gfxNote";
 import { applyArenaQuality } from "./arena/build";
 
 /**
@@ -277,13 +291,87 @@ export function buildComposer(b: Battle3D): PostStack {
   applyGrade(b);
   countShadowRenders(b);
 
+  // Auto starts where this device left off (or at a first guess); then
   // Settings → Quality applies live (a ?quality= URL pin still wins).
+  configureAutoQuality(b);
   b.quality.setPref(getPrefs().quality);
+  noteIfLow(b);
   onPrefs((p) => {
     // (A disposed scene has left the page; it no longer follows Settings.)
-    if (b.quality.setPref(p.quality) && b.renderer.domElement.isConnected) b.resize();
+    if (b.quality.setPref(p.quality) && b.renderer.domElement.isConnected) {
+      b.resize();
+      noteIfLow(b);
+    }
   });
+  if (typeof document !== "undefined") {
+    // Back from another tab: the gap says nothing about speed.
+    document.addEventListener("visibilitychange", () => {
+      b.lastFrameAt = 0;
+      if (!document.hidden) b.quality.rearm();
+    });
+  }
   return { composer, bloom, finalPass };
+}
+
+/**
+ * The WebGL renderer string, unmasked where the browser allows it (Chrome
+ * masks gl.RENDERER as "WebKit WebGL" and answers through
+ * WEBGL_debug_renderer_info; Firefox answers gl.RENDERER directly and warns
+ * about the extension), or "" when it is hidden.
+ */
+export function rendererName(renderer: THREE.WebGLRenderer): string {
+  try {
+    const gl = renderer.getContext();
+    const plain: unknown = gl.getParameter(gl.RENDERER);
+    if (typeof plain === "string" && plain.trim() !== "" && !/^(webkit webgl|mozilla)$/i.test(plain.trim())) return plain;
+    const ext = gl.getExtension("WEBGL_debug_renderer_info");
+    const unmasked: unknown = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : null;
+    if (typeof unmasked === "string" && unmasked.trim() !== "") return unmasked;
+    return typeof plain === "string" ? plain : "";
+  } catch {
+    return "";
+  }
+}
+
+function gfxStorage(): StorageLike | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Where Auto starts on this device (C44): its remembered level
+ * ('cr-clone-gfx-memory'), else a first guess from the renderer string,
+ * else the top of the ladder; and where it settles is remembered for next
+ * time. ?gfxguess=off skips the first guess (for testing the slow-window
+ * path on a software renderer). Never breaks boot: on any error Auto just
+ * starts at the top, as before.
+ */
+function configureAutoQuality(b: Battle3D): void {
+  try {
+    registerGfxNote();
+    const store = gfxStorage();
+    const renderer = rendererName(b.renderer);
+    const scr = typeof screen === "undefined" ? null : screen;
+    const key = deviceKey(renderer, scr?.width ?? 0, scr?.height ?? 0, window.devicePixelRatio || 1);
+    const build = gfxBuildTag(import.meta.url, import.meta.env.DEV);
+    const guessOff = new URLSearchParams(location.search).get("gfxguess") === "off";
+    const entry = readGfxMemory(store).find((e) => e.key === key);
+    const start = autoStartFor(entry, guessOff ? 0 : firstGuessLevel(renderer), build, Date.now());
+    b.quality.configure(start, (settled) => {
+      writeGfxMemory(store, recordGfx(readGfxMemory(store), key, settled, build, Date.now()));
+    });
+    console.info(`[graphics] auto starts at L${start.level} (${start.source}) on ${key}`);
+  } catch {
+    // no memory, no guess: Auto starts at the top as before
+  }
+}
+
+/** Auto graphics is on Low (the bottom level): queue the one-time note. */
+function noteIfLow(b: Battle3D): void {
+  if (b.quality.mode === "auto" && b.quality.index === QUALITY_LEVELS.length - 1) noteLowGraphics();
 }
 
 /** Count real shadow-map renders into b.shadowRenders (for budgets and tests). */
@@ -497,6 +585,11 @@ export function sampleQuality(b: Battle3D): void {
     b.lastFrameAt = 0;
     return;
   }
-  if (b.lastFrameAt > 0 && b.quality.sample((now - b.lastFrameAt) / 1000)) b.resize();
+  const visible = typeof document === "undefined" || document.visibilityState !== "hidden";
+  if (b.lastFrameAt > 0 && b.quality.sample((now - b.lastFrameAt) / 1000, visible)) {
+    b.resize();
+    if (b.quality.mode === "auto") console.info(`[graphics] auto: L${b.quality.index}`);
+    noteIfLow(b);
+  }
   b.lastFrameAt = now;
 }

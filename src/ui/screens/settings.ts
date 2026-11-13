@@ -11,6 +11,7 @@ import { segmented, toast } from "../components";
 import { fmtNum, tr } from "../i18n";
 import { icon, type IconName } from "../icons";
 import { getPrefs, onPrefs, setPrefs, type Prefs, type QualityPref, type ReduceMotion, type TeamPalette, type TextScale } from "../prefs";
+import { levelName, liveQuality } from "../../render3d/quality";
 import { EDITION_COPY, editionArt, switchEdition } from "./editionGate";
 import { ask, openSheet } from "./frame";
 
@@ -86,6 +87,19 @@ function switchRow(ic: IconName, label: string, key: "muted" | "haptics"): HTMLE
   show();
   row.appendChild(sw);
   return row;
+}
+
+/**
+ * The Auto graphics choice, saying what it picked while Auto is in charge
+ * ("Auto (now: Low)"), read fresh each time Settings opens. Under a pin it
+ * is plain "Auto".
+ */
+export function autoGraphicsLabel(q: { index: number; mode: string } = liveQuality()): string {
+  if (q.mode !== "auto") return tr("Auto", "تلقائي");
+  const name = levelName(q.index);
+  if (name === "low") return tr("Auto (now: Low)", "تلقائي (الآن: منخفض)");
+  if (name === "medium") return tr("Auto (now: Medium)", "تلقائي (الآن: متوسط)");
+  return tr("Auto (now: High)", "تلقائي (الآن: عالٍ)");
 }
 
 /** A labelled segmented control bound to a pref. */
@@ -218,7 +232,7 @@ export function buildSettings(opts: SettingsOpts = {}, close?: () => void): HTML
       "sparkle",
       tr("Graphics", "الرسوميات"),
       [
-        { value: "auto", label: tr("Auto", "تلقائي"), blurb: tr("Adapts to keep the game smooth", "يتكيّف لتبقى اللعبة سلسة") },
+        { value: "auto", label: autoGraphicsLabel(), blurb: tr("Adapts to keep the game smooth", "يتكيّف لتبقى اللعبة سلسة") },
         { value: "low", label: tr("Low", "منخفض"), blurb: tr("Saves battery on older phones", "يوفّر البطارية في الهواتف القديمة") },
         { value: "medium", label: tr("Medium", "متوسط"), blurb: tr("Balanced detail and speed", "توازن بين التفاصيل والسرعة") },
         { value: "high", label: tr("High", "عالٍ"), blurb: tr("Every shadow and glow", "كل الظلال والتوهج") },
