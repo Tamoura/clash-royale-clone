@@ -7,7 +7,9 @@
  * - Save to a file: downloads crown-rush-save-<date>.txt holding the code.
  * - Load a save: paste a code or pick a file. A friendly line says what is
  *   wrong with a bad code; a good one opens the confirm screen.
- * - Undo the last load: while a pre-load backup exists.
+ * - Undo the last load: while a pre-load backup exists. An undo keeps what
+ *   was here in the backup slot instead, so the row then offers "Redo the
+ *   last load": switching back and forth never throws progress away.
  *
  * The confirm screen shows what the save holds next to what this tablet
  * has now (trophies, arena, cards, gold, gems; the name and the edition
@@ -25,10 +27,11 @@ import {
   decodeSave,
   encodeSave,
   gatherSave,
-  readBackup,
+  readBackupSlot,
   saveFileName,
   summarize,
   undoLastLoad,
+  type BackupKind,
   type SaveData,
   type SaveError,
   type SaveStore,
@@ -47,11 +50,14 @@ export const SAVE_LOOK = confirmLook({ emphasis: "cancel" });
 /** Set (this session) just before the reload, so Home can say it worked. */
 export const SAVE_LOADED_KEY = "cr-clone-save-loaded";
 
+/** What just happened, for the toast after the reload (SAVE_LOADED_KEY). */
+export type SaveSwitch = "load" | "undo" | "redo";
+
 export interface SaveSheetDeps {
   /** localStorage (null when blocked). */
   store?: SaveStore | null;
-  /** Reload the page after a load or an undo. */
-  reload?: () => void;
+  /** Reload the page after a load, an undo or a redo. */
+  reload?: (what: SaveSwitch) => void;
   /** navigator.clipboard (absent or refusing: the select-all fallback). */
   clipboard?: { writeText(text: string): Promise<void> } | null;
   now?: () => number;
@@ -74,7 +80,7 @@ function clipboardOf(): { writeText(text: string): Promise<void> } | null {
   }
 }
 
-function reloadPage(what: "load" | "undo"): void {
+function reloadPage(what: SaveSwitch): void {
   try {
     sessionStorage.setItem(SAVE_LOADED_KEY, what);
   } catch {
@@ -86,7 +92,7 @@ function reloadPage(what: "load" | "undo"): void {
 
 interface Resolved {
   store: SaveStore | null;
-  reload: (what: "load" | "undo") => void;
+  reload: (what: SaveSwitch) => void;
   clipboard: { writeText(text: string): Promise<void> } | null;
   now: () => number;
 }
@@ -94,7 +100,7 @@ interface Resolved {
 function resolve(deps: SaveSheetDeps): Resolved {
   return {
     store: deps.store === undefined ? localStore() : deps.store,
-    reload: deps.reload ? () => deps.reload!() : reloadPage,
+    reload: deps.reload ?? reloadPage,
     clipboard: deps.clipboard === undefined ? clipboardOf() : deps.clipboard,
     now: deps.now ?? Date.now,
   };
@@ -133,11 +139,6 @@ export function saveErrorText(reason: SaveError | "storage" | "no-backup" | "fil
         "This code is broken. Make a new one on the other tablet and try again.",
         "هذا الرمز تالف. اصنع رمزًا جديدًا في الجهاز الآخر وحاول مرة أخرى.",
       );
-    case "unsupported":
-      return tr(
-        "This browser is too old to open this code. Update it, then try again.",
-        "هذا المتصفح قديم ولا يفتح هذا الرمز. حدّثه ثم حاول مرة أخرى.",
-      );
     case "empty-save":
       return tr("This save has no progress in it yet.", "لا يوجد تقدّم في هذا الحفظ بعد.");
     case "storage":
@@ -154,12 +155,22 @@ export function saveErrorText(reason: SaveError | "storage" | "no-backup" | "fil
 
 // ---- Settings group -------------------------------------------------------------------
 
-function actionRow(ic: IconName, label: string, act: string, onClick: () => void): HTMLButtonElement {
+const INK = 'stroke="#1a1030" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"';
+/**
+ * 'Load a save': an arrow going down into a tray (the shared icon set has
+ * no download glyph; drawn in its style: ink outline, flat fills).
+ */
+const LOAD_ICON =
+  `<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">` +
+  `<path ${INK} fill="#4f8cff" d="M2.5 13.5h5.2l1.6 2.6h5.4l1.6-2.6h5.2v7.5h-19z"/>` +
+  `<path ${INK} fill="#3ee07a" d="M12 14.2 6.6 8.8h3.5V2.6h3.8v6.2h3.5z"/></svg>`;
+
+function actionRow(ic: IconName | "load", label: string, act: string, onClick: () => void): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
   b.className = "v2-set-action";
   b.dataset.act = act;
-  b.innerHTML = icon(ic);
+  b.innerHTML = ic === "load" ? LOAD_ICON : icon(ic);
   const t = document.createElement("span");
   t.textContent = label;
   b.appendChild(t);
@@ -192,10 +203,15 @@ export function backupGroup(closeSettings?: () => void, deps: SaveSheetDeps = {}
   g.append(
     actionRow("copy", tr("Copy my save code", "انسخ رمز الحفظ"), "save-copy", then(() => void openCodeSheet(deps))),
     actionRow("save", tr("Save to a file", "احفظ في ملف"), "save-file", () => void saveToFile(deps)),
-    actionRow("share", tr("Load a save", "حمّل حفظًا"), "save-load", then(() => openLoadSheet(deps))),
+    actionRow("load", tr("Load a save", "حمّل حفظًا"), "save-load", then(() => openLoadSheet(deps))),
   );
-  if (r.store && readBackup(r.store)) {
-    g.appendChild(actionRow("back", tr("Undo the last load", "تراجع عن آخر تحميل"), "save-undo", then(() => openUndo(deps))));
+  const slot = r.store ? readBackupSlot(r.store) : null;
+  if (slot) {
+    const label =
+      slot.kind === "load"
+        ? tr("Undo the last load", "تراجع عن آخر تحميل")
+        : tr("Redo the last load", "أعِد آخر تحميل");
+    g.appendChild(actionRow("back", label, "save-undo", then(() => openUndo(deps))));
   }
   return g;
 }
@@ -501,13 +517,16 @@ export function confirmSheet(c: ConfirmScreen): Promise<boolean> {
     const p = document.createElement("p");
     p.className = "v2-save-intro";
     p.textContent = c.body;
-    root.append(p, compareTable(c.load, c.here, c.loadHead, c.hereHead));
+    root.appendChild(p);
+    // The warning goes above the table, so a long table on a small phone
+    // (it scrolls under the pinned buttons) never hides it.
     if (c.warn) {
       const w = document.createElement("p");
       w.className = "v2-save-warn";
       w.textContent = c.warn;
       root.appendChild(w);
     }
+    root.appendChild(compareTable(c.load, c.here, c.loadHead, c.hereHead));
     const keep = button({ variant: SAVE_LOOK.cancel, size: "lg", label: tr("Keep my progress", "أبقِ تقدّمي"), onClick: () => answer(false) });
     keep.classList.add("v2-save-keep");
     const ok = button({ variant: SAVE_LOOK.ok, size: "lg", label: c.okLabel, onClick: () => answer(true) });
@@ -527,10 +546,15 @@ export function confirmSheet(c: ConfirmScreen): Promise<boolean> {
         }
       },
     });
-    // The safe answer takes the first focus (after openSheet's own panel focus).
+    // The safe answer takes the first focus (after openSheet's own panel focus),
+    // and takes it back if the Settings sheet closing underneath (Undo opens
+    // straight from Settings) hands the focus back to its gear button.
     window.setTimeout(() => {
       if (!answered && s.el.isConnected) keep.focus({ preventScroll: true });
     }, 80);
+    window.setTimeout(() => {
+      if (!answered && s.el.isConnected && !s.el.contains(document.activeElement)) keep.focus({ preventScroll: true });
+    }, 520);
   });
 }
 
@@ -576,35 +600,59 @@ export async function openLoadConfirm(data: SaveData, deps: SaveSheetDeps = {}):
   return true;
 }
 
-/** Ask, then put back the progress from before the last load, and reload. */
+/** The words for switching to the backup slot: an undo of a load, or a redo after an undo. */
+function undoWords(kind: BackupKind): Pick<ConfirmScreen, "title" | "body" | "loadHead" | "okLabel"> {
+  const keep = tr(
+    "What this tablet has now is kept as a backup, so you can switch back.",
+    "سنحتفظ بما في هذا الجهاز الآن كنسخة احتياطية، فيمكنك الرجوع إليه.",
+  );
+  return kind === "load"
+    ? {
+        title: tr("Undo the last load?", "التراجع عن آخر تحميل؟"),
+        body: `${tr("This puts back the progress this tablet had before the last load.", "سيعيد هذا التقدّم الذي كان في هذا الجهاز قبل آخر تحميل.")} ${keep}`,
+        loadHead: tr("Before the load", "قبل التحميل"),
+        okLabel: tr("Undo the load", "تراجع عن التحميل"),
+      }
+    : {
+        title: tr("Redo the last load?", "إعادة آخر تحميل؟"),
+        body: `${tr("This puts back the progress this tablet had before you pressed Undo.", "سيعيد هذا التقدّم الذي كان في هذا الجهاز قبل أن تضغط تراجع.")} ${keep}`,
+        loadHead: tr("Before the undo", "قبل التراجع"),
+        okLabel: tr("Redo the load", "أعِد التحميل"),
+      };
+}
+
+/**
+ * Ask, then switch this tablet to the progress in the backup slot (keeping
+ * what is here now in the slot), and reload.
+ */
 export async function openUndo(deps: SaveSheetDeps = {}): Promise<boolean> {
   const r = resolve(deps);
-  const backup = r.store ? readBackup(r.store) : null;
-  if (!r.store || !backup) {
+  const slot = r.store ? readBackupSlot(r.store) : null;
+  if (!r.store || !slot) {
     toast(saveErrorText("no-backup"), "neutral");
     return false;
   }
+  const back = summarize(slot.data);
+  const here = hereNow(r.store);
   const yes = await confirmSheet({
-    title: tr("Undo the last load?", "التراجع عن آخر تحميل؟"),
-    body: tr(
-      "This puts back the progress this tablet had before the last load.",
-      "سيعيد هذا التقدّم الذي كان في هذا الجهاز قبل آخر تحميل.",
-    ),
-    load: summarize(backup),
-    here: hereNow(r.store),
-    loadHead: tr("Before the load", "قبل التحميل"),
+    ...undoWords(slot.kind),
+    load: back,
+    here,
     hereHead: tr("This tablet now", "هذا الجهاز الآن"),
-    okLabel: tr("Undo the load", "تراجع عن التحميل"),
+    warn:
+      back.trophies < here.trophies
+        ? tr("You will have fewer trophies than now.", "سيصبح عندك كؤوس أقل من الآن.")
+        : undefined,
   });
   if (!yes) {
     toast(tr("Nothing changed.", "لم يتغيّر شيء."), "neutral");
     return false;
   }
-  const res = undoLastLoad(r.store);
+  const res = undoLastLoad(r.store, r.now());
   if (!res.ok) {
     toast(saveErrorText(res.reason), "danger");
     return false;
   }
-  r.reload("undo");
+  r.reload(slot.kind === "load" ? "undo" : "redo");
   return true;
 }

@@ -1,9 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryKV } from "../../meta/kv";
-import { SAVE_BACKUP_KEY, applySave, gatherSave, type SaveData, type SaveError, type SaveStore } from "../../meta/saveCode";
+import {
+  SAVE_BACKUP_KEY,
+  applySave,
+  gatherSave,
+  readBackupSlot,
+  type SaveData,
+  type SaveError,
+  type SaveStore,
+} from "../../meta/saveCode";
 import { ARABIC } from "../../render3d/theme";
 import { installFakeDom, pressKey, type FakeDocument, type FakeElement } from "../fakeDom.testkit";
 import { fmtNum, tr } from "../i18n";
+import { icon } from "../icons";
 import { SAVE_LOOK, backupGroup, openLoadConfirm, openUndo, saveErrorText } from "./saveSheet";
 
 function store(seed: Record<string, string> = {}): SaveStore & { data: Record<string, string> } {
@@ -42,7 +51,6 @@ describe("Backup & move words", () => {
       "newer",
       "wrong-game",
       "damaged",
-      "unsupported",
       "empty-save",
       "storage",
       "no-backup",
@@ -82,6 +90,12 @@ describe("Backup & move on the page", () => {
     applySave(s, SAVE);
     const g2 = backupGroup(undefined, { store: s }) as unknown as FakeElement;
     expect(acts(g2)).toEqual(["save-copy", "save-file", "save-load", "save-undo"]);
+    const undoRow = g2.querySelector('[data-act="save-undo"]')!;
+    expect(undoRow.textContent).toContain(tr("Undo the last load", "تراجع عن آخر تحميل"));
+    // 'Load a save' has its own down-into-a-tray glyph, not the share icon.
+    const loadGlyph = g2.querySelector('[data-act="save-load"]')!.innerHTML;
+    expect(loadGlyph).toContain("ui-icon");
+    expect(loadGlyph).not.toContain(icon("share"));
   });
 
   it("shows the save next to this tablet, with Keep my progress first and focused", async () => {
@@ -128,7 +142,7 @@ describe("Backup & move on the page", () => {
     await settle();
     sheet()!.querySelector(".v2-save-ok")!.click();
     expect(await answer).toBe(true);
-    expect(reload).toHaveBeenCalledTimes(1);
+    expect(reload).toHaveBeenCalledWith("load");
     expect(s.data["cr-clone-trophies"]).toBe("1450");
     expect(s.data["cr-clone-relay"]).toBe(HERE["cr-clone-relay"]);
     expect(JSON.parse(s.data["cr-clone-settings"])).toMatchObject({ master: 0.4, quality: "low", playerName: "Zaid", crest: 5 });
@@ -140,21 +154,84 @@ describe("Backup & move on the page", () => {
     void openLoadConfirm(SAVE, { store: s, reload: vi.fn() });
     await settle();
     expect(sheet()!.querySelector(".v2-save-warn")).not.toBeNull();
+    // Above the table, so it is seen before the table scrolls under the buttons.
+    const order = sheet()!.children.map((e) => e.className.split(" ")[0]);
+    expect(order.indexOf("v2-save-warn")).toBeLessThan(order.indexOf("v2-save-compare"));
   });
 
-  it("Undo asks the same way, then puts this tablet back", async () => {
+  it("Undo asks the same way, warns about fewer trophies, then puts this tablet back", async () => {
     const s = store(HERE);
     const original = gatherSave(s).keys;
     applySave(s, SAVE);
+    const loaded = gatherSave(s).keys;
     const reload = vi.fn();
     const answer = openUndo({ store: s, reload });
     await settle();
     const c = sheet()!;
     expect(c.querySelectorAll('tr[data-row="trophies"] td').map((td) => td.textContent)).toEqual([fmtNum(120), fmtNum(1450)]);
+    expect(c.querySelector(".v2-save-warn")!.textContent).toBe(
+      tr("You will have fewer trophies than now.", "سيصبح عندك كؤوس أقل من الآن."),
+    );
+    expect(c.querySelector(".v2-save-intro")!.textContent).toContain(
+      tr("kept as a backup, so you can switch back", "كنسخة احتياطية، فيمكنك الرجوع إليه"),
+    );
+    expect(c.querySelectorAll(".v2-save-actions button")[0].classList.contains("v2-save-keep")).toBe(true);
     c.querySelector(".v2-save-ok")!.click();
     expect(await answer).toBe(true);
     expect(gatherSave(s).keys).toEqual(original);
-    expect(s.data[SAVE_BACKUP_KEY]).toBeUndefined();
-    expect(reload).toHaveBeenCalledTimes(1);
+    // The loaded progress waits in the slot: the undo can be undone.
+    expect(readBackupSlot(s)).toMatchObject({ kind: "undo", data: { keys: loaded } });
+    expect(reload).toHaveBeenCalledWith("undo");
+  });
+
+  it("after an undo, the row offers Redo, which brings the loaded progress back", async () => {
+    const s = store(HERE);
+    applySave(s, SAVE);
+    const loaded = gatherSave(s).keys;
+    const undo = openUndo({ store: s, reload: vi.fn() });
+    await settle();
+    sheet()!.querySelector(".v2-save-ok")!.click();
+    expect(await undo).toBe(true);
+    await settle();
+
+    const g = backupGroup(undefined, { store: s }) as unknown as FakeElement;
+    expect(g.querySelector('[data-act="save-undo"]')!.textContent).toContain(tr("Redo the last load", "أعِد آخر تحميل"));
+    const reload = vi.fn();
+    const redo = openUndo({ store: s, reload });
+    await settle();
+    const c = sheet()!;
+    expect(c.querySelector(".v2-save-warn")).toBeNull(); // more trophies: no warning
+    expect(c.querySelector("thead .v2-save-load-col")!.textContent).toBe(tr("Before the undo", "قبل التراجع"));
+    c.querySelector(".v2-save-ok")!.click();
+    expect(await redo).toBe(true);
+    expect(gatherSave(s).keys).toEqual(loaded);
+    expect(readBackupSlot(s)?.kind).toBe("load");
+    expect(reload).toHaveBeenCalledWith("redo");
+  });
+
+  it("the undo screen keeps Keep my progress focused while Settings closes underneath", async () => {
+    const s = store(HERE);
+    applySave(s, SAVE);
+    const gear = doc.createElement("button");
+    doc.body.appendChild(gear);
+    void openUndo({ store: s, reload: vi.fn() });
+    await vi.advanceTimersByTimeAsync(450);
+    gear.focus(); // the closing Settings sheet hands the focus back to its opener
+    await vi.advanceTimersByTimeAsync(200);
+    expect(doc.activeElement).toBe(sheet()!.querySelector(".v2-save-keep"));
+  });
+
+  it("Keep my progress on the undo screen changes nothing", async () => {
+    const s = store(HERE);
+    applySave(s, SAVE);
+    const before = { ...s.data };
+    const reload = vi.fn();
+    const answer = openUndo({ store: s, reload });
+    await settle();
+    sheet()!.querySelector(".v2-save-keep")!.click();
+    expect(await answer).toBe(false);
+    expect(s.data).toEqual(before);
+    expect(s.data[SAVE_BACKUP_KEY]).toBe(before[SAVE_BACKUP_KEY]);
+    expect(reload).not.toHaveBeenCalled();
   });
 });

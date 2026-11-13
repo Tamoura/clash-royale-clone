@@ -47,8 +47,20 @@
 
 .v2-save-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .v2-save-actions .ui-btn { flex: 1 1 180px; }
-/* The confirm screen: two big buttons, the safe one first. */
-.v2-save-actions--confirm { flex-direction: column; }
+/*
+ * The confirm screen: two big buttons, the safe one first. They stay pinned
+ * to the bottom of the sheet while the table scrolls under them (a small
+ * phone with big text), so "Keep my progress" is always in view.
+ */
+.v2-save-actions--confirm {
+  position: sticky;
+  bottom: calc(-1 * var(--sp-5));
+  z-index: 1;
+  flex-direction: column;
+  margin: 0 calc(-1 * var(--sp-4)) calc(-1 * var(--sp-5));
+  padding: var(--sp-3) var(--sp-4) var(--sp-5);
+  background: linear-gradient(to bottom, transparent, var(--surface-1) var(--sp-3));
+}
 .v2-save-actions--confirm .ui-btn { flex: none; width: 100%; }
 
 /* What the save holds next to what this tablet has now. */
@@ -60,7 +72,7 @@
   table-layout: fixed;
 }
 .v2-save-compare th,
-.v2-save-compare td { padding: var(--sp-2); text-align: start; vertical-align: middle; overflow-wrap: anywhere; }
+.v2-save-compare td { padding: var(--sp-2); text-align: start; vertical-align: middle; overflow-wrap: break-word; }
 .v2-save-compare thead th {
   padding-block: 0;
   color: var(--on-surface-dim);
@@ -75,3 +87,24 @@
 .v2-save-compare tbody tr > :last-child { border-start-end-radius: var(--r-md); border-end-end-radius: var(--r-md); }
 .v2-save-compare tbody .v2-save-load-col { background: rgba(246, 193, 78, 0.14); font-weight: 700; }
 .v2-save-compare tbody .v2-save-here-col { color: var(--on-surface-dim); }
+
+/*
+ * Narrow phones (320 px wide): three columns leave no room for a word like
+ * "Legendary", so each row's label goes on its own line above its two
+ * values, under the two column heads.
+ */
+@media (max-width: 359px) {
+  .v2-save-compare,
+  .v2-save-compare thead,
+  .v2-save-compare tbody { display: block; }
+  .v2-save-compare tr { display: grid; grid-template-columns: 1fr 1fr; margin-block: 4px; }
+  .v2-save-compare thead .v2-save-k { display: none; }
+  .v2-save-compare tbody tr > th.v2-save-k {
+    grid-column: 1 / -1;
+    width: auto;
+    padding-bottom: 0;
+    border-radius: var(--r-md) var(--r-md) 0 0;
+  }
+  .v2-save-compare tbody tr > .v2-save-load-col { border-radius: 0; border-end-start-radius: var(--r-md); }
+  .v2-save-compare tbody tr > .v2-save-here-col { border-radius: 0; border-end-end-radius: var(--r-md); }
+}

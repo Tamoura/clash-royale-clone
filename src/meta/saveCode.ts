@@ -9,7 +9,9 @@
  *
  * The code: "CR" (the game), a format version digit, a packing letter
  * ("Z" = deflate-raw through CompressionStream, "P" = plain where the
- * browser cannot compress), the packed JSON in base64url, and one Luhn
+ * browser cannot compress; a browser that cannot unpack deflate-raw itself
+ * uses the small decoder below, so an old tablet still opens a "Z" code),
+ * the packed JSON in base64url, and one Luhn
  * mod 64 check character, so a wrong or missing character is caught
  * before anything is read. Inside, the JSON names the game and the format
  * again: {"g":"crown-rush","v":1,"t":<ms>,"k":{key: value},"w":{"n","c"}}.
@@ -19,7 +21,8 @@
  * numbers are numbers); the app's own loaders, sanitisers and migrations
  * then run on the reload that follows. Before anything is replaced, this
  * device's progress is written to 'cr-clone-save-backup', so the last load
- * can be undone.
+ * can be undone; an undo swaps the backup with what is here now, so the
+ * undo can be undone too and no progress is ever thrown away by it.
  *
  * Pure apart from the injected store and the platform's compression and
  * text codecs; nothing here ever leaves the device.
@@ -72,7 +75,6 @@ export type SaveError =
   | "newer"
   | "wrong-game"
   | "damaged"
-  | "unsupported"
   | "empty-save";
 
 export type DecodeResult = { ok: true; data: SaveData; dropped: string[] } | { ok: false; reason: SaveError };
@@ -159,14 +161,18 @@ async function deflateRaw(bytes: Uint8Array): Promise<Uint8Array | null> {
   }
 }
 
-/** Unpack, stopping at `cap` bytes. */
-async function inflateRaw(bytes: Uint8Array, cap: number): Promise<Uint8Array | "unsupported" | "too-big" | "damaged"> {
-  if (typeof DecompressionStream === "undefined") return "unsupported";
+/**
+ * Unpack, stopping at `cap` bytes: the browser's own DecompressionStream
+ * where it knows deflate-raw, else inflateRawJs (Safari before 16.4, for
+ * example tablets that cannot update past iOS 15).
+ */
+async function inflateRaw(bytes: Uint8Array, cap: number): Promise<Uint8Array | "too-big" | "damaged"> {
+  if (typeof DecompressionStream === "undefined") return inflateRawJs(bytes, cap);
   let ds: DecompressionStream;
   try {
     ds = new DecompressionStream("deflate-raw" as CompressionFormat);
   } catch {
-    return "unsupported";
+    return inflateRawJs(bytes, cap); // gzip/deflate only
   }
   const reader = new Blob([bytes as BlobPart]).stream().pipeThrough(ds).getReader();
   const parts: Uint8Array[] = [];
@@ -194,11 +200,202 @@ async function inflateRaw(bytes: Uint8Array, cap: number): Promise<Uint8Array | 
   return out;
 }
 
-/** The save as the JSON that goes inside a code (and into the backup). */
-export function saveJson(data: SaveData): string {
+// ---- A small raw-DEFLATE decoder (RFC 1951), after zlib's "puff" ------------------------
+
+/** A canonical Huffman code: how many codes of each length, and the symbols in code order. */
+interface Huffman {
+  count: Uint16Array;
+  symbol: Uint16Array;
+}
+
+/** Length codes 257..285: base length and extra bits. */
+const LEN_BASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
+const LEN_EXTRA = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
+/** Distance codes 0..29: base distance and extra bits. */
+const DIST_BASE = [
+  1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193,
+  12289, 16385, 24577,
+];
+const DIST_EXTRA = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+/** The order code-length code lengths are sent in (dynamic blocks). */
+const CLEN_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+
+/** Thrown inside the decoder for a stream that is cut short or malformed. */
+class Bad extends Error {}
+/** Thrown inside the decoder when the output passes the cap. */
+class TooBig extends Error {}
+
+/** Build a Huffman code from code lengths; null when the lengths ask for more codes than fit. */
+function huffman(lengths: ArrayLike<number>, from: number, n: number): Huffman | null {
+  const count = new Uint16Array(16);
+  for (let s = 0; s < n; s++) count[lengths[from + s]]++;
+  let left = 1;
+  for (let len = 1; len <= 15; len++) {
+    left = left * 2 - count[len];
+    if (left < 0) return null; // over-subscribed
+  }
+  const offs = new Uint16Array(16);
+  for (let len = 1; len < 15; len++) offs[len + 1] = offs[len] + count[len];
+  const symbol = new Uint16Array(n);
+  for (let s = 0; s < n; s++) if (lengths[from + s] !== 0) symbol[offs[lengths[from + s]]++] = s;
+  return { count, symbol };
+}
+
+let fixedCodes: { lit: Huffman; dist: Huffman } | null = null;
+function fixed(): { lit: Huffman; dist: Huffman } {
+  if (!fixedCodes) {
+    const l = new Uint8Array(288);
+    l.fill(8, 0, 144);
+    l.fill(9, 144, 256);
+    l.fill(7, 256, 280);
+    l.fill(8, 280, 288);
+    fixedCodes = { lit: huffman(l, 0, 288)!, dist: huffman(new Uint8Array(30).fill(5), 0, 30)! };
+  }
+  return fixedCodes;
+}
+
+/**
+ * Unpack raw DEFLATE bytes (no zlib or gzip wrapper), stopping at `cap`
+ * bytes of output. For browsers without DecompressionStream("deflate-raw");
+ * tested against the platform's own CompressionStream output.
+ */
+export function inflateRawJs(src: Uint8Array, cap: number): Uint8Array | "too-big" | "damaged" {
+  let pos = 0;
+  let bitBuf = 0;
+  let bitCnt = 0;
+  let out = new Uint8Array(Math.min(cap, Math.max(1024, src.length * 4)));
+  let outLen = 0;
+
+  const bits = (need: number): number => {
+    while (bitCnt < need) {
+      if (pos >= src.length) throw new Bad();
+      bitBuf |= src[pos++] << bitCnt;
+      bitCnt += 8;
+    }
+    const v = bitBuf & ((1 << need) - 1);
+    bitBuf >>>= need;
+    bitCnt -= need;
+    return v;
+  };
+  const room = (n: number): void => {
+    if (outLen + n <= out.length) return;
+    if (outLen + n > cap) throw new TooBig();
+    const next = new Uint8Array(Math.min(cap, Math.max(out.length * 2, outLen + n)));
+    next.set(out.subarray(0, outLen));
+    out = next;
+  };
+  const decode = (h: Huffman): number => {
+    let code = 0;
+    let first = 0;
+    let index = 0;
+    for (let len = 1; len <= 15; len++) {
+      code |= bits(1);
+      const count = h.count[len];
+      if (code - count < first) return h.symbol[index + (code - first)];
+      index += count;
+      first = (first + count) << 1;
+      code <<= 1;
+    }
+    throw new Bad(); // not a code in this table
+  };
+  const stored = (): void => {
+    bitBuf = 0; // a stored block starts on a byte boundary
+    bitCnt = 0;
+    if (pos + 4 > src.length) throw new Bad();
+    const len = src[pos] | (src[pos + 1] << 8);
+    const nlen = src[pos + 2] | (src[pos + 3] << 8);
+    pos += 4;
+    if ((len ^ 0xffff) !== nlen || pos + len > src.length) throw new Bad();
+    room(len);
+    out.set(src.subarray(pos, pos + len), outLen);
+    outLen += len;
+    pos += len;
+  };
+  const codes = (lit: Huffman, dist: Huffman): void => {
+    for (;;) {
+      let sym = decode(lit);
+      if (sym < 256) {
+        room(1);
+        out[outLen++] = sym;
+      } else if (sym === 256) {
+        return;
+      } else {
+        sym -= 257;
+        if (sym >= 29) throw new Bad();
+        const len = LEN_BASE[sym] + bits(LEN_EXTRA[sym]);
+        const d = decode(dist);
+        if (d >= 30) throw new Bad();
+        const back = DIST_BASE[d] + bits(DIST_EXTRA[d]);
+        if (back > outLen) throw new Bad();
+        room(len);
+        for (let i = 0; i < len; i++, outLen++) out[outLen] = out[outLen - back];
+      }
+    }
+  };
+  const dynamic = (): void => {
+    const nlen = bits(5) + 257;
+    const ndist = bits(5) + 1;
+    const ncode = bits(4) + 4;
+    if (nlen > 286 || ndist > 30) throw new Bad();
+    const lengths = new Uint8Array(nlen + ndist);
+    const clen = new Uint8Array(19);
+    for (let i = 0; i < ncode; i++) clen[CLEN_ORDER[i]] = bits(3);
+    const lencode = huffman(clen, 0, 19);
+    if (!lencode) throw new Bad();
+    let i = 0;
+    while (i < nlen + ndist) {
+      const sym = decode(lencode);
+      if (sym < 16) {
+        lengths[i++] = sym;
+        continue;
+      }
+      let rep: number;
+      let val = 0;
+      if (sym === 16) {
+        if (i === 0) throw new Bad();
+        val = lengths[i - 1];
+        rep = 3 + bits(2);
+      } else if (sym === 17) {
+        rep = 3 + bits(3);
+      } else {
+        rep = 11 + bits(7);
+      }
+      if (i + rep > nlen + ndist) throw new Bad();
+      lengths.fill(val, i, i + rep);
+      i += rep;
+    }
+    if (lengths[256] === 0) throw new Bad(); // no end-of-block code
+    const lit = huffman(lengths, 0, nlen);
+    const dist = huffman(lengths, nlen, ndist);
+    if (!lit || !dist) throw new Bad();
+    codes(lit, dist);
+  };
+
+  try {
+    let last = 0;
+    do {
+      last = bits(1);
+      const type = bits(2);
+      if (type === 0) stored();
+      else if (type === 1) codes(fixed().lit, fixed().dist);
+      else if (type === 2) dynamic();
+      else throw new Bad();
+    } while (!last);
+  } catch (e) {
+    return e instanceof TooBig ? "too-big" : "damaged"; // never throws
+  }
+  return out.slice(0, outLen);
+}
+
+function saveWire(data: SaveData): Record<string, unknown> {
   const wire: Record<string, unknown> = { g: SAVE_GAME, v: SAVE_FORMAT, t: data.at, k: data.keys };
   if (data.who) wire.w = { n: data.who.name, c: data.who.crest };
-  return JSON.stringify(wire);
+  return wire;
+}
+
+/** The save as the JSON that goes inside a code. */
+export function saveJson(data: SaveData): string {
+  return JSON.stringify(saveWire(data));
 }
 
 /** Make a save code. `compress: false` forces the plain packing (tests; it is also the fallback). */
@@ -253,9 +450,11 @@ export async function decodeSave(text: string): Promise<DecodeResult> {
 /**
  * Check a parsed save (from a code or the backup): the right game, a
  * format this build knows, and only registered progress keys whose values
- * fit. Anything else is dropped and named in `dropped`.
+ * fit. Anything else is dropped and named in `dropped`. A code with no
+ * progress in it is refused; a backup may be empty (a tablet that had not
+ * played yet), with `allowEmpty`.
  */
-export function readSaveJson(json: unknown): DecodeResult {
+export function readSaveJson(json: unknown, opts: { allowEmpty?: boolean } = {}): DecodeResult {
   if (!json || typeof json !== "object" || Array.isArray(json)) return { ok: false, reason: "damaged" };
   const w = json as Record<string, unknown>;
   if (w.g !== SAVE_GAME) return { ok: false, reason: "wrong-game" };
@@ -272,7 +471,7 @@ export function readSaveJson(json: unknown): DecodeResult {
       dropped.push(key);
     }
   }
-  if (Object.keys(keys).length === 0) return { ok: false, reason: "empty-save" };
+  if (Object.keys(keys).length === 0 && !opts.allowEmpty) return { ok: false, reason: "empty-save" };
   const data: SaveData = { at: typeof w.t === "number" && Number.isFinite(w.t) ? w.t : 0, keys };
   const who = w.w;
   if (who && typeof who === "object") {
@@ -361,6 +560,22 @@ function writeProgress(store: SaveStore, data: SaveData): void {
 export type ApplyResult = { ok: true } | { ok: false; reason: "storage" | "no-backup" };
 
 /**
+ * When the backup was made: just before a load ("Undo the last load" puts
+ * it back), or just before an undo ("Redo the last load" puts that back).
+ */
+export type BackupKind = "load" | "undo";
+
+/** The one backup slot: the progress this tablet had before the last load or undo. */
+export interface SaveBackup {
+  data: SaveData;
+  kind: BackupKind;
+}
+
+function backupJson(data: SaveData, kind: BackupKind): string {
+  return JSON.stringify({ ...saveWire(data), b: kind });
+}
+
+/**
  * Load a save onto this device: back up this device's progress first,
  * then replace the progress keys (removing ones the save does not have).
  * Device keys are never touched, except the name and crest inside the
@@ -370,7 +585,7 @@ export type ApplyResult = { ok: true } | { ok: false; reason: "storage" | "no-ba
 export function applySave(store: SaveStore, data: SaveData, now = Date.now()): ApplyResult {
   const backup = gatherSave(store, now);
   try {
-    store.setItem(SAVE_BACKUP_KEY, saveJson(backup));
+    store.setItem(SAVE_BACKUP_KEY, backupJson(backup, "load"));
   } catch {
     return { ok: false, reason: "storage" }; // nothing changed yet
   }
@@ -387,8 +602,8 @@ export function applySave(store: SaveStore, data: SaveData, now = Date.now()): A
   return { ok: true };
 }
 
-/** The progress saved before the last load, or null. */
-export function readBackup(store: SaveStore): SaveData | null {
+/** The backup slot (what it holds and why it was made), or null when there is none. */
+export function readBackupSlot(store: SaveStore): SaveBackup | null {
   let raw: string | null = null;
   try {
     raw = store.getItem(SAVE_BACKUP_KEY);
@@ -397,26 +612,56 @@ export function readBackup(store: SaveStore): SaveData | null {
   }
   if (!raw) return null;
   try {
-    const r = readSaveJson(JSON.parse(raw));
-    return r.ok ? r.data : null;
+    const json: unknown = JSON.parse(raw);
+    const r = readSaveJson(json, { allowEmpty: true });
+    if (!r.ok) return null;
+    return { data: r.data, kind: (json as Record<string, unknown>).b === "undo" ? "undo" : "load" };
   } catch {
     return null;
   }
 }
 
-/** Put back the progress from before the last load, then forget the backup. */
-export function undoLastLoad(store: SaveStore): ApplyResult {
-  const backup = readBackup(store);
-  if (!backup) return { ok: false, reason: "no-backup" };
+/** The progress kept in the backup slot, or null. */
+export function readBackup(store: SaveStore): SaveData | null {
+  return readBackupSlot(store)?.data ?? null;
+}
+
+/**
+ * Put back the progress kept in the backup slot, and keep what is here now
+ * in the slot instead, so the undo can itself be undone ("Redo the last
+ * load"): nothing earned since the load is ever thrown away by an undo.
+ * If storage fills up half way, this tablet and the slot are put back.
+ */
+export function undoLastLoad(store: SaveStore, now = Date.now()): ApplyResult {
+  let raw: string | null = null;
   try {
-    writeProgress(store, backup);
+    raw = store.getItem(SAVE_BACKUP_KEY);
   } catch {
-    return { ok: false, reason: "storage" };
+    raw = null;
+  }
+  const slot = readBackupSlot(store);
+  if (!slot || raw === null) return { ok: false, reason: "no-backup" };
+  const current = gatherSave(store, now);
+  try {
+    store.setItem(SAVE_BACKUP_KEY, backupJson(current, slot.kind === "load" ? "undo" : "load"));
+  } catch {
+    return { ok: false, reason: "storage" }; // nothing changed yet
   }
   try {
-    store.removeItem(SAVE_BACKUP_KEY);
+    writeProgress(store, slot.data);
   } catch {
-    // stays offered; harmless
+    try {
+      writeProgress(store, current);
+    } catch {
+      // the slot holds this tablet's progress from just before: keep it there
+      return { ok: false, reason: "storage" };
+    }
+    try {
+      store.setItem(SAVE_BACKUP_KEY, raw); // this tablet is back as it was: so is the slot
+    } catch {
+      // still full: the slot keeps a copy of this tablet's progress instead
+    }
+    return { ok: false, reason: "storage" };
   }
   return { ok: true };
 }

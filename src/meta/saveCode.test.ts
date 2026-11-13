@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { sanitizePrefs } from "../ui/prefs";
 import { memoryKV } from "./kv";
 import { loadProfile, saveProfile } from "./progress";
@@ -13,7 +13,9 @@ import {
   encodeSave,
   fromBase64Url,
   gatherSave,
+  inflateRawJs,
   readBackup,
+  readBackupSlot,
   readSaveJson,
   saveFileName,
   saveJson,
@@ -182,6 +184,77 @@ describe("save codes", () => {
   });
 });
 
+/** True when two byte arrays hold the same bytes. */
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/** The platform's own deflate-raw (what a modern browser puts in a "Z" code). */
+async function deflate(bytes: Uint8Array): Promise<Uint8Array> {
+  const s = new Blob([bytes as BlobPart]).stream().pipeThrough(new CompressionStream("deflate-raw" as CompressionFormat));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+
+describe("unpacking on a tablet without DecompressionStream", () => {
+  it("reads stored, fixed and dynamic blocks exactly as the platform wrote them", async () => {
+    const text = (s: string) => new TextEncoder().encode(s);
+    let seed = 7;
+    const noise = Uint8Array.from({ length: 3000 }, () => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) >>> 24);
+    const samples = [
+      text("hello hello hello"),
+      Uint8Array.from({ length: 60 }, (_, i) => 255 - (i % 3)), // high literals (9-bit fixed codes)
+      text(saveJson(gatherSave(playedDevice()))),
+      noise,
+      text(""),
+      text("ab".repeat(40_000) + "the end"),
+    ];
+    const types = new Set<number>();
+    for (const raw of samples) {
+      const packed = await deflate(raw);
+      types.add((packed[0] >> 1) & 3); // the first block's type
+      const back = inflateRawJs(packed, 1_000_000);
+      expect(back).toBeInstanceOf(Uint8Array);
+      expect(sameBytes(back as Uint8Array, raw)).toBe(true);
+    }
+    expect([...types].sort()).toEqual([0, 1, 2]); // stored, fixed and dynamic all covered
+  });
+
+  it("opens a packed code, and still stops a bomb, with no DecompressionStream at all", async () => {
+    const data = gatherSave(playedDevice());
+    const code = await encodeSave(data);
+    const bomb = await encodeSave({ at: 0, keys: { "cr-clone-quests": JSON.stringify({ pad: "a".repeat(1_100_000) }) } });
+    expect(code.startsWith("CR1Z")).toBe(true);
+    vi.stubGlobal("DecompressionStream", undefined);
+    try {
+      const back = await decodeSave(code);
+      expect(back.ok).toBe(true);
+      if (back.ok) expect(back.data).toEqual(data);
+      expect(await decodeSave(bomb)).toEqual({ ok: false, reason: "too-big" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("stops at the cap, calls a broken stream damaged, and never throws", async () => {
+    const zeros = await deflate(new Uint8Array(500_000));
+    expect(inflateRawJs(zeros, 100_000)).toBe("too-big");
+    expect(inflateRawJs(zeros.subarray(0, zeros.length - 3), 1_000_000)).toBe("damaged");
+    expect(inflateRawJs(new Uint8Array(0), 1000)).toBe("damaged");
+    expect(inflateRawJs(Uint8Array.of(0xff, 0xff), 1000)).toBe("damaged"); // block type 3 does not exist
+    // A stored block: "abc", then the same block with a length check that does not match.
+    expect(sameBytes(inflateRawJs(Uint8Array.of(0x01, 3, 0, 0xfc, 0xff, 0x61, 0x62, 0x63), 1000) as Uint8Array, Uint8Array.of(0x61, 0x62, 0x63))).toBe(true);
+    expect(inflateRawJs(Uint8Array.of(0x01, 3, 0, 0, 0, 0x61, 0x62, 0x63), 1000)).toBe("damaged");
+    let seed = 99;
+    for (let n = 0; n < 300; n++) {
+      const junk = Uint8Array.from({ length: 1 + (n % 60) }, () => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) >>> 24);
+      const r = inflateRawJs(junk, 10_000);
+      expect(r === "damaged" || r === "too-big" || r instanceof Uint8Array).toBe(true);
+    }
+  });
+});
+
 describe("reading a save safely", () => {
   it("keeps only registered progress keys with values that fit", () => {
     const r = readSaveJson({
@@ -265,15 +338,75 @@ describe("loading onto a device, with a backup and undo", () => {
     expect(backup?.keys["cr-clone-trophies"]).toBe("120");
     expect(backup?.who).toEqual({ name: "Mira", crest: 2 });
 
-    // Undo puts B back exactly and forgets the backup.
+    // Undo puts B back exactly, and keeps the loaded progress in the slot.
     // (The settings blob comes back with the same values, written out in full.)
-    expect(undoLastLoad(b)).toEqual({ ok: true });
-    const { "cr-clone-settings": settingsNow, ...restNow } = b.data;
+    const loaded = gatherSave(b, 43);
+    expect(undoLastLoad(b, 50)).toEqual({ ok: true });
+    const { "cr-clone-settings": settingsNow, [SAVE_BACKUP_KEY]: slotNow, ...restNow } = b.data;
     const { "cr-clone-settings": settingsBefore, ...restBefore } = before;
     expect(restNow).toEqual(restBefore);
     expect(sanitizePrefs(JSON.parse(settingsNow))).toEqual(sanitizePrefs(JSON.parse(settingsBefore)));
-    expect(readBackup(b)).toBeNull();
+    expect(slotNow).toBeDefined();
+    expect(readBackupSlot(b)).toEqual({ kind: "undo", data: { ...loaded, at: 50 } });
+  });
+
+  it("an undo can be undone: nothing won since the load is ever lost", () => {
+    const b = store({ "cr-clone-meta-v1": "1", "cr-clone-trophies": "260", "cr-clone-gold": "40" });
+    expect(applySave(b, { at: 1, keys: { "cr-clone-meta-v1": "1", "cr-clone-trophies": "900", "cr-clone-gold": "500" } }, 1)).toEqual({
+      ok: true,
+    });
+    expect(readBackupSlot(b)?.kind).toBe("load");
+    // Two weeks of play on the loaded save.
+    saveProfile(b, { ...loadProfile(b), trophies: 1160, gold: 3471 });
+    const played = gatherSave(b).keys;
+
+    // Undo: back to before the load; the two weeks wait in the slot.
+    expect(undoLastLoad(b, 2)).toEqual({ ok: true });
+    expect(loadProfile(b).trophies).toBe(260);
+    expect(readBackupSlot(b)?.kind).toBe("undo");
+    expect(readBackup(b)?.keys).toEqual(played);
+
+    // Redo: the two weeks come back, and the slot holds before-the-load again.
+    expect(undoLastLoad(b, 3)).toEqual({ ok: true });
+    expect(gatherSave(b).keys).toEqual(played);
+    expect(loadProfile(b).trophies).toBe(1160);
+    expect(readBackupSlot(b)?.kind).toBe("load");
+    expect(readBackup(b)?.keys["cr-clone-trophies"]).toBe("260");
+  });
+
+  it("a tablet that had not played yet can still undo a load", () => {
+    const b = store({ "cr-clone-settings": JSON.stringify({ v: 1, master: 0.5 }) });
+    expect(applySave(b, { at: 1, keys: { "cr-clone-trophies": "900" } })).toEqual({ ok: true });
+    expect(readBackup(b)?.keys).toEqual({});
+    expect(undoLastLoad(b)).toEqual({ ok: true });
+    expect(storedProgressKeys(b)).toEqual([]);
+    expect(readBackup(b)?.keys).toEqual({ "cr-clone-trophies": "900" });
+  });
+
+  it("an undo with no backup, or a broken one, changes nothing", () => {
+    const b = store({ "cr-clone-trophies": "5" });
     expect(undoLastLoad(b)).toEqual({ ok: false, reason: "no-backup" });
+    b.data[SAVE_BACKUP_KEY] = "{broken";
+    expect(undoLastLoad(b)).toEqual({ ok: false, reason: "no-backup" });
+    expect(b.data["cr-clone-trophies"]).toBe("5");
+  });
+
+  it("an undo that runs out of room half way puts the tablet and the slot back", () => {
+    const b = store({ "cr-clone-trophies": "5", "cr-clone-gold": "10" });
+    applySave(b, { at: 1, keys: { "cr-clone-trophies": "50", "cr-clone-gold": "999" } });
+    const before = { ...b.data };
+    let writes = 0;
+    const flaky: SaveStore = {
+      getItem: b.getItem,
+      removeItem: b.removeItem,
+      setItem: (k, v) => {
+        writes++;
+        if (writes === 3) throw new Error("QuotaExceededError"); // slot, trophies, then gold fails
+        b.setItem(k, v);
+      },
+    };
+    expect(undoLastLoad(flaky)).toEqual({ ok: false, reason: "storage" });
+    expect(b.data).toEqual(before);
   });
 
   it("leaves the edition alone when the save has none", () => {
