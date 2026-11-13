@@ -97,7 +97,11 @@ never writes it.
 `scene.setZoneVisible(visible, card)` now takes the effective card. A
 `deployAnywhere` troop (the Digger) shows both enemy lanes as deployable:
 no dark enemy half, no red edge, no King keep-clear disc (`deploysAnywhere`,
-`zoneParts`).
+`zoneParts`). **Superseded by [placement-zone.md](placement-zone.md):** the
+Digger now gets its own dig map (striped collars round every tower and
+building, the water off the bridges dimmed), and `zoneParts` reports
+`{shown, mode, pocketOnly, open, reveals, callout, key}`; `deploysAnywhere`
+lives in `render3d/deployZone.ts` (re-exported by scene3d.ts).
 
 ### 8. Blurbs (`render/cardBlurbs.ts`)
 Lines in both editions for the Stone Golem, Pebble Golem, Digger ("Drop it
