@@ -105,7 +105,10 @@ export function autoGraphicsLabel(q: { index: number; mode: string } = liveQuali
 /**
  * Lay "Auto (now: Low)" out as "Auto" over a smaller "(now: Low)" in a
  * slightly wider segment, so a phone shows two tidy lines instead of three
- * broken ones. The words (and so the button's name) stay the same.
+ * broken ones. The words (and so the button's name) stay the same. The
+ * small line is 0.88em (about 12 px: young readers, Arabic script) and may
+ * wrap only when the row has no room for it (a 320 px phone with large
+ * text), so the four choices always stay inside the row.
  */
 function stackAutoLabel(row: HTMLElement): void {
   const opt = row.querySelector<HTMLElement>(".ui-seg__opt");
@@ -116,10 +119,14 @@ function stackAutoLabel(row: HTMLElement): void {
   span.textContent = `${text.slice(0, cut)} `;
   const now = document.createElement("small");
   now.textContent = text.slice(cut + 1);
-  now.style.cssText = "display:block;font-size:0.78em;line-height:1.15;white-space:nowrap;opacity:0.9";
+  now.style.cssText = "display:block;font-size:0.88em;line-height:1.15;text-align:center;opacity:0.9";
   span.appendChild(now);
   span.style.cssText = "display:flex;flex-direction:column;align-items:center;line-height:1.15";
   opt.style.flexGrow = "1.5";
+  // Last resort on the narrowest phones with the largest text: a choice that
+  // still has no room moves to a second line rather than out of the row.
+  const group = opt.parentElement;
+  if (group) group.style.flexWrap = "wrap";
 }
 
 /** A labelled segmented control bound to a pref. */
