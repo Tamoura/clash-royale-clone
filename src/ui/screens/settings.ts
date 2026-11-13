@@ -1,6 +1,6 @@
 /**
  * Settings sheet: sound, haptics, motion, graphics, team colours, text
- * size, edition, tutorial and credits. Every control writes through
+ * size, edition, backup and move, tutorial and credits. Every control writes through
  * setPrefs (key 'cr-clone-settings'), so the change is saved at once and
  * subscribers (audio, renderer, CSS --text-scale) apply it live.
  * Every control is at least 44px tall.
@@ -15,6 +15,7 @@ import { levelName, liveQuality } from "../../render3d/quality";
 import { EDITION_COPY, editionArt, switchEdition } from "./editionGate";
 import { problemReportRow } from "./problemReport";
 import { ask, openSheet } from "./frame";
+import { backupGroup } from "./saveSheet";
 
 export interface SettingsOpts {
   onClose?: () => void;
@@ -300,6 +301,9 @@ export function buildSettings(opts: SettingsOpts = {}, close?: () => void): HTML
   root.appendChild(display);
 
   root.appendChild(editionGroup());
+
+  // ---- Backup & move (saveSheet.ts)
+  root.appendChild(backupGroup(close));
 
   // ---- Help
   const help = group(tr("Help", "المساعدة"));

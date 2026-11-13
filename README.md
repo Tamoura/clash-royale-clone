@@ -119,6 +119,17 @@ permanent Fly.io deploy, wiring GitHub Pages with the `RELAY_URL` variable,
 and troubleshooting. `node tools/relay-smoke.mjs wss://<relay>/ws` checks a
 running relay end to end.
 
+## Keeping progress safe (save codes)
+
+Progress lives in the browser, per web address: the Render address and the
+GitHub Pages address (`https://tamoura.github.io/clash-royale-clone/`) each
+keep their own. **Settings → Backup & move** copies a save code (or saves a
+`crown-rush-save-<date>.txt` file) and loads one on the other address or a
+new tablet, with a summary to check first and an undo. On an iPhone or iPad
+the Home Screen icon keeps its own save too, so copy the code in Safari
+first. Nothing is sent to any server. See [docs/deploy-multiplayer.md](docs/deploy-multiplayer.md#easiest-one-click-on-render)
+("Two addresses, two saves") and `notes/features/save-backup.md`.
+
 ## Assets and licences
 
 - **Characters**: every humanoid card and the tower crews are built from the

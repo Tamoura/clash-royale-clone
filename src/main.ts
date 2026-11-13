@@ -176,6 +176,7 @@ import { QUALITY_LEVELS, currentQuality } from "./render3d/quality";
 
 // ---- Feature registration: side-effect modules that subscribe to src/app/hooks.
 import "./audio/wire";
+import "./ui/keepSafeWire";
 
 // Apply edition-aware CSS variables before any DOM is rendered.
 applyEditionTokens(STORED_EDITION);
