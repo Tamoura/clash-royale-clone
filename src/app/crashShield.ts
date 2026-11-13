@@ -7,6 +7,12 @@
  * goes on. Every caught error is recorded in the local problem log and
  * printed (identical messages are throttled: counted, not repeated).
  *
+ * Some parts of a frame must run even when an earlier part threw (a battle
+ * event's sounds and effects must never stop the match from settling):
+ * main.ts runs them through {@link CrashShield.guard}, which handles a
+ * throw the same way (recorded, printed, counted toward a storm) and lets
+ * the rest of the frame go on.
+ *
  * One stray error: the game carries on. A storm (STORM_ERRORS errors within
  * STORM_WINDOW_MS, or STORM_FRAMES failed frames in a row, which catches an
  * error on every frame of a slow device too) asks the app to hold the solo
@@ -18,7 +24,9 @@
  * frame error is recorded, the overlay still opens on a storm, the next
  * frame is still scheduled, and then the error is thrown on, so it shows as
  * an uncaught error with its own stack (and fails a Playwright pageerror
- * check). A production build swallows it after console.error.
+ * check). An error a guard caught is thrown on the same way, at the end of
+ * its frame, once the rest of the frame has run. A production build
+ * swallows them after console.error.
  */
 import { describeError } from "./problemLog";
 
@@ -52,6 +60,10 @@ export interface ShieldDeps {
 export class CrashShield {
   private recent: number[] = [];
   private failedInARow = 0;
+  /** This frame already counted as failed (a throw, or a guard caught one). */
+  private frameFailed = false;
+  /** The first error a guard caught in this frame, to throw on at its end (rethrow only). */
+  private late: { err: unknown } | null = null;
   private open = false;
   private resumedAt = Number.NEGATIVE_INFINITY;
   private readonly printed = new Map<string, { at: number; muted: number }>();
@@ -69,18 +81,47 @@ export class CrashShield {
    * in it (the body itself never schedules).
    */
   runFrame(body: () => void, scheduleNext: () => void): void {
-    let ok = false;
+    this.frameFailed = false;
+    this.late = null;
+    let stopped: { err: unknown } | null = null;
     try {
       body();
-      ok = true;
     } catch (err) {
-      this.failedInARow++;
-      const loud = this.caught("frame", err);
-      if (loud && this.deps.rethrow) throw err;
+      this.markFailed();
+      if (this.caught("frame", err) && this.deps.rethrow) stopped = { err };
     } finally {
-      if (ok) this.failedInARow = 0;
+      if (!this.frameFailed) this.failedInARow = 0;
       scheduleNext();
     }
+    // Loud (dev server, vitest): the error that stopped the frame, or else
+    // the first one a guard caught, is thrown on now the next frame is due.
+    const loud = stopped ?? this.late;
+    this.late = null;
+    if (loud) throw loud.err;
+  }
+
+  /**
+   * Run one part of a frame that must not stop the rest of it (main.ts: a
+   * battle event's sounds, effects and hooks, and the settle that follows
+   * them). A throw is handled like a frame error (recorded, printed,
+   * counted toward a storm; the frame counts as failed) and the frame goes
+   * on. Errors stay loud in development: runFrame throws the first one on
+   * at the end of the frame. Use it inside a runFrame body. Never throws.
+   */
+  guard(where: string, work: () => void): void {
+    try {
+      work();
+    } catch (err) {
+      this.markFailed();
+      if (this.caught(where, err) && this.deps.rethrow) this.late ??= { err };
+    }
+  }
+
+  /** This frame failed: it counts once toward STORM_FRAMES, however many errors it had. */
+  private markFailed(): void {
+    if (this.frameFailed) return;
+    this.frameFailed = true;
+    this.failedInARow++;
   }
 
   /**

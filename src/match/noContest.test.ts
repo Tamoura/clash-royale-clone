@@ -3,6 +3,7 @@ import { on } from "../app/hooks";
 import { memoryKV } from "../meta/kv";
 import { applyMatchResult, loadProfile, type PlayerProfile } from "../meta/progress";
 import { markMatchStart, readMarker, takeLeftMatch } from "./leftMatch";
+import { MatchSettler, playBattleEvents, type EventBattle } from "./battleEvents";
 import { leaveAfterGlitch, stopOnlineAfterGlitch } from "./noContest";
 import { currentStreak } from "./rewards";
 
@@ -36,12 +37,13 @@ describe("Back to menu after a glitch is no contest", () => {
     const steps: string[] = [];
     leaveAfterGlitch({
       kv,
+      abandonBattle: () => void steps.push("abandon"),
       releaseLiveMatch: () => void steps.push("release"),
       dismissHud: () => void steps.push("dismiss"),
       openHome: () => void steps.push("home"),
     });
     off();
-    expect(steps).toEqual(["release", "dismiss", "home"]);
+    expect(steps).toEqual(["abandon", "release", "dismiss", "home"]);
     expect(readMarker(kv)).toBeNull(); // nothing left for the next boot to charge
     expect(JSON.stringify(nextBoot(kv, profile))).toBe(before);
     expect(currentStreak()).toEqual(streakBefore);
@@ -53,6 +55,9 @@ describe("Back to menu after a glitch is no contest", () => {
     let home = false;
     leaveAfterGlitch({
       kv: null,
+      abandonBattle: () => {
+        throw new Error("battle gone");
+      },
       releaseLiveMatch: () => {
         throw new Error("lock gone");
       },
@@ -65,7 +70,24 @@ describe("Back to menu after a glitch is no contest", () => {
       report: (what) => void reported.push(what),
     });
     expect(home).toBe(true);
-    expect(reported).toEqual(["release the live match", "close the battle screens"]);
+    expect(reported).toEqual(["leave the battle as no contest", "release the live match", "close the battle screens"]);
+  });
+
+  it("a battle left as no contest is never settled later (a queued finish, the safety net)", () => {
+    const settled: string[] = [];
+    const settler = new MatchSettler((w) => void settled.push(w));
+    const battle: EventBattle = { events: [{ type: "finish", winner: "enemy" }], result: { winner: "enemy" } };
+    leaveAfterGlitch({
+      kv: memoryKV(),
+      abandonBattle: () => settler.noContest(battle),
+      releaseLiveMatch: () => {},
+      dismissHud: () => {},
+      openHome: () => {},
+    });
+    // The picker closes before the next battle exists (the cast gate): frames
+    // play the old battle's leftover events once more.
+    playBattleEvents(battle, [], settler, (_w, work) => work());
+    expect(settled).toEqual([]);
   });
 });
 

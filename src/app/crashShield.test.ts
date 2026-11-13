@@ -205,6 +205,82 @@ describe("storms", () => {
   });
 });
 
+describe("guard: a part of the frame that must not stop the rest of it", () => {
+  it("records the error, lets the frame go on, and never throws (production)", () => {
+    const r = rig();
+    const ran: string[] = [];
+    r.shield.runFrame(() => {
+      r.shield.guard("battle event 'death'", () => {
+        throw new Error("collapse effect");
+      });
+      ran.push("settle");
+    }, r.schedule);
+    expect(ran).toEqual(["settle"]);
+    expect(r.recorded).toHaveLength(1);
+    expect(r.printed[0]).toContain("battle event 'death' failed");
+    expect(r.scheduled).toBe(1);
+  });
+
+  it(`a frame whose guard caught an error counts as failed (${STORM_FRAMES} in a row on a slow device is a storm)`, () => {
+    const r = rig();
+    for (let i = 0; i < STORM_FRAMES; i++) {
+      r.shield.runFrame(() => {
+        r.shield.guard("e", () => {
+          throw new Error("every frame");
+        });
+      }, r.schedule);
+      r.advance(1500);
+    }
+    expect(r.storms).toEqual([false]);
+  });
+
+  it("several errors in one frame count that frame once; a clean frame starts the count afresh", () => {
+    const r = rig();
+    const bad = (): void => {
+      r.shield.guard("a", () => {
+        throw new Error("one");
+      });
+      throw new Error("two");
+    };
+    r.shield.runFrame(bad, r.schedule);
+    r.advance(STORM_WINDOW_MS + 500);
+    r.frame(); // clean
+    r.advance(STORM_WINDOW_MS + 500);
+    r.shield.runFrame(bad, r.schedule);
+    r.advance(STORM_WINDOW_MS + 500);
+    r.shield.runFrame(bad, r.schedule);
+    expect(r.storms).toEqual([]); // 2 failed frames in a row, and never 3 errors within the window
+    expect(r.recorded).toHaveLength(6);
+  });
+
+  it("loud in development: the frame's own throw wins, else the first guarded one, after scheduling", () => {
+    const r = rig({ rethrow: true });
+    const first = new Error("guarded first");
+    expect(() =>
+      r.shield.runFrame(() => {
+        r.shield.guard("a", () => {
+          throw first;
+        });
+        r.shield.guard("b", () => {
+          throw new Error("guarded second");
+        });
+      }, r.schedule),
+    ).toThrow(first);
+    const stop = new Error("stopped the frame");
+    expect(() =>
+      r.shield.runFrame(() => {
+        r.shield.guard("a", () => {
+          throw new Error("guarded");
+        });
+        throw stop;
+      }, r.schedule),
+    ).toThrow(stop);
+    expect(r.scheduled).toBe(2);
+    // A clean frame afterwards throws nothing left over.
+    expect(() => r.frame()).not.toThrow();
+  });
+});
+
 describe("printing identical messages is throttled (never silent: each one is recorded)", () => {
   it("prints the first, counts the rest, and says how many when it prints again", () => {
     const r = rig();

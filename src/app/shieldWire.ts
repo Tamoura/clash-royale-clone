@@ -66,6 +66,7 @@ export function installCrashShield(d: ShieldWireDeps): ShieldWire {
   };
   const exitDeps: GlitchExitDeps = {
     kv: d.kv,
+    abandonBattle: d.abandonBattle,
     releaseLiveMatch: d.releaseLiveMatch,
     dismissHud: d.dismissHud,
     openHome: d.openHome,
@@ -78,8 +79,10 @@ export function installCrashShield(d: ShieldWireDeps): ShieldWire {
   };
   shield = new CrashShield({
     now: () => performance.now(),
-    record: (where, err) => {
-      problemLog.record(where === "frame" ? "frame" : "error", err);
+    // Everything the shield catches is in the game loop (a frame, or a
+    // guarded part of one such as a battle event's effects).
+    record: (_where, err) => {
+      problemLog.record("frame", err);
     },
     print: (text, err) => console.error(text, err),
     rethrow: LOUD_ERRORS,

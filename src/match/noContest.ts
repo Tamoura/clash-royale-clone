@@ -6,7 +6,9 @@
  * as a loss through finishMatch/settleMatch (trophies, the loss streak, the
  * auto-difficulty loss count), and a reload or a closed tab leaves the
  * left-match marker (match/leftMatch.ts), which the next boot settles as a
- * loss. This path does neither: it removes the marker, lets go of the
+ * loss. This path does neither: it marks the battle as no contest (so a
+ * "finish" still queued, or the frame's settle safety net, never settles it
+ * later: match/battleEvents.ts), removes the marker, lets go of the
  * live-match lock, emits no matchEnd and settles nothing, so trophies, the
  * streak, quests, achievements, the auto-difficulty record and the chest
  * slots stay exactly as they were. Each step is guarded (we are here because
@@ -18,6 +20,8 @@ import { clearMatchMarker } from "./leftMatch";
 export interface GlitchExitDeps {
   /** Where the left-match marker lives (meta/kv.ts defaultKV()). */
   kv: KV | null;
+  /** Mark the battle on screen as never to be settled (battleEvents.ts MatchSettler.noContest). */
+  abandonBattle(): void;
   /** Let go of the live-match lock (match/leftMatch.ts LiveMatchGuard.release). */
   releaseLiveMatch(): void;
   /** Close the battle menu and the result screen (hud.dismiss). */
@@ -42,6 +46,7 @@ function attempt(what: string, fn: () => void, report?: (what: string, err: unkn
 
 /** Back to menu after a glitch: Home, with nothing settled and nothing left to settle. */
 export function leaveAfterGlitch(d: GlitchExitDeps): void {
+  attempt("leave the battle as no contest", () => d.abandonBattle(), d.report);
   attempt("clear the match marker", () => clearMatchMarker(d.kv), d.report);
   attempt("release the live match", () => d.releaseLiveMatch(), d.report);
   attempt("close the battle screens", () => d.dismissHud(), d.report);

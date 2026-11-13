@@ -165,6 +165,7 @@ import { localizeStaticMarkup } from "./app/brand";
 import { battleMenuOpen } from "./ui/battleMenu";
 import { signed } from "./render3d/result";
 import { installCrashShield } from "./app/shieldWire";
+import { MatchSettler, playBattleEvents, type EventStep } from "./match/battleEvents";
 import { problemLog } from "./app/problemLog";
 import { QUALITY_LEVELS, currentQuality } from "./render3d/quality";
 
@@ -1179,9 +1180,10 @@ function refreshPreview(): void {
 
 /**
  * The preview and the lane label run every frame (and on presses and card
- * picks): whatever goes wrong in them must never end the game loop, whose
- * next frame is only scheduled at the end of frame(). A throw clears the
- * preview and is reported once.
+ * picks). The crash shield schedules the next frame whatever throws, but a
+ * broken preview must still never stop the rest of the frame or a card from
+ * being placed: a throw clears the preview, goes in the problem log, and is
+ * printed once.
  */
 function safely(work: () => void): void {
   try {
@@ -1453,7 +1455,12 @@ function finishMatch(winner: Side | "draw"): void {
   });
   if (settled.recorded) battleCardsPlayed = 0;
   // Manners: a thumbs-up when you win, a friendly wave otherwise; never gloating.
-  if (settled.ladder) botEmote({ type: "end", kidWon: winner === "player" ? true : winner === "enemy" ? false : null }, true);
+  if (settled.ladder) {
+    // An emote that fails must not keep the matchEnd hook (the result screen, rewards) from running.
+    guardStep("the end emote", () =>
+      botEmote({ type: "end", kidWon: winner === "player" ? true : winner === "enemy" ? false : null }, true),
+    );
+  }
   const mine = mySide === "player" ? battle.player : battle.enemy;
   const theirs = mySide === "player" ? battle.enemy : battle.player;
   emit("matchEnd", {
@@ -1471,6 +1478,60 @@ function finishMatch(winner: Side | "draw"): void {
   });
 }
 
+/**
+ * What each battle event does on this device, step by step. The frame runs
+ * every step on its own (match/battleEvents.ts), so one that throws never
+ * stops the others, the next event, or the settle (finishMatch, once).
+ */
+const battleEventSteps: readonly EventStep[] = [
+  (ev) => audio.onEvent(ev),
+  (ev) => scene.onEvent(ev),
+  (ev) => emit("battleEvent", { ev, mySide: localSide() }),
+  (ev) => {
+    if ((ev.type === "deploy" || ev.type === "spell") && ev.side === localSide()) {
+      battleCardsPlayed++;
+    }
+  },
+  (ev) => {
+    if (ev.type === "finish" && recording && mode() === "solo" && battleKind === "ladder" && !isSandbox()) {
+      try {
+        localStorage.setItem(REPLAY_KEY, JSON.stringify(recording));
+      } catch {
+        // tape too big / storage unavailable — skip silently
+      }
+      recording = null;
+    }
+  },
+  (ev) => {
+    if (ev.type === "death" && (ev.kind === "princess-tower" || ev.kind === "king-tower")) {
+      flashImpact();
+      flyCrown(ev.x, ev.y, ev.side);
+      // Report timeline: who lost which tower, and when.
+      const mm = Math.floor(battle.time / 60);
+      const ss = String(Math.floor(battle.time % 60)).padStart(2, "0");
+      const mine = ev.side === localSide();
+      const tower =
+        ev.kind === "king-tower" ? tr("King", "الملك") : tr("Princess", "الأميرة");
+      towerTimeline.push(
+        `${mm}:${ss} — ${mine ? "🛡️" : "⚔️"} ${
+          mine ? tr(`your ${tower} tower fell`, `سقط برج ${tower} لديك`)
+               : tr(`enemy ${tower} tower fell`, `سقط برج ${tower} للخصم`)
+        }`,
+      );
+    }
+  },
+  (ev) => {
+    // The bot says wow when you take its tower, and never laughs when it takes yours.
+    // The tower that ends the match gets only the end emote (finishMatch).
+    if (ev.type === "crown" && mode() === "solo") {
+      botEmote({ type: "crown", byKid: ev.winner === "player", matchOver: battle.result !== null });
+    }
+  },
+];
+
+/** Every battle settles exactly once (its "finish", or the frame's safety net). */
+const settler = new MatchSettler(finishMatch);
+
 // ---- Crash shield (src/app/shieldWire.ts): never a frozen battle ----------
 // Every frame runs through the shield, which schedules the next one whatever
 // throws; a glitch storm holds the battle behind a friendly "Oops!" overlay.
@@ -1483,6 +1544,7 @@ const crash = installCrashShield({
   releaseLiveMatch: () => liveMatch.release(),
   dismissHud: () => hud.dismiss(),
   openHome,
+  abandonBattle: () => settler.noContest(battle),
   context: () => ({
     screen: screenNow === "battle" ? `battle/${getPhase()}` : screenNow || "boot",
     quality: `${getPrefs().quality} L${QUALITY_LEVELS.indexOf(currentQuality())}`,
@@ -1493,6 +1555,11 @@ const crash = installCrashShield({
 
 function frame(now: number): void {
   crash.shield.runFrame(() => frameBody(now), () => requestAnimationFrame(frame));
+}
+
+/** Run one part of the frame that must not stop the rest of it (the shield's guard). */
+function guardStep(where: string, work: () => void): void {
+  crash.shield.guard(where, work);
 }
 
 /** One frame of the game (frame() schedules the next one, whatever happens here). */
@@ -1575,44 +1642,9 @@ function frameBody(now: number): void {
     hud.setTimeline(towerTimeline);
     viewWarned = false;
   }
-  for (const ev of battle.events.splice(0)) {
-    audio.onEvent(ev);
-    scene.onEvent(ev);
-    emit("battleEvent", { ev, mySide: localSide() });
-    if ((ev.type === "deploy" || ev.type === "spell") && ev.side === localSide()) {
-      battleCardsPlayed++;
-    }
-    if (ev.type === "finish" && recording && mode() === "solo" && battleKind === "ladder" && !isSandbox()) {
-      try {
-        localStorage.setItem(REPLAY_KEY, JSON.stringify(recording));
-      } catch {
-        // tape too big / storage unavailable — skip silently
-      }
-      recording = null;
-    }
-    if (ev.type === "death" && (ev.kind === "princess-tower" || ev.kind === "king-tower")) {
-      flashImpact();
-      flyCrown(ev.x, ev.y, ev.side);
-      // Report timeline: who lost which tower, and when.
-      const mm = Math.floor(battle.time / 60);
-      const ss = String(Math.floor(battle.time % 60)).padStart(2, "0");
-      const mine = ev.side === localSide();
-      const tower =
-        ev.kind === "king-tower" ? tr("King", "الملك") : tr("Princess", "الأميرة");
-      towerTimeline.push(
-        `${mm}:${ss} — ${mine ? "🛡️" : "⚔️"} ${
-          mine ? tr(`your ${tower} tower fell`, `سقط برج ${tower} لديك`)
-               : tr(`enemy ${tower} tower fell`, `سقط برج ${tower} للخصم`)
-        }`,
-      );
-    }
-    // The bot says wow when you take its tower, and never laughs when it takes yours.
-    // The tower that ends the match gets only the end emote (finishMatch).
-    if (ev.type === "crown" && mode() === "solo") {
-      botEmote({ type: "crown", byKid: ev.winner === "player", matchOver: battle.result !== null });
-    }
-    if (ev.type === "finish") finishMatch(ev.winner);
-  }
+  // Each step of each event runs on its own, and the match always settles
+  // (match/battleEvents.ts): one glitch in an effect never costs a result.
+  playBattleEvents(battle, battleEventSteps, settler, guardStep);
   checkBanners(battle, audio);
   // Music tension follows the match: double elixir, then overtime.
   if (!battle.result) {
