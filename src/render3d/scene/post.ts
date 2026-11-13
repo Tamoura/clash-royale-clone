@@ -387,6 +387,53 @@ function countShadowRenders(b: Battle3D): void {
 /** Renderers drawing the home diorama: lighter settings (see setDioramaQuality). */
 const dioramaMode = new WeakSet<Battle3D>();
 
+/** Auto levels from which a battle start prepares the other light state (L3 and L4). */
+export const PREPARE_FROM = 3;
+/** Scenes whose next battle frame should prepare the other light state first. */
+const preparePending = new WeakSet<Battle3D>();
+
+/** The rim lights: the directional lights that are neither the sun nor the fill. */
+function rimLights(b: Battle3D): THREE.Light[] {
+  return b.lightGroup.children.filter(
+    (l): l is THREE.DirectionalLight => (l as THREE.DirectionalLight).isDirectionalLight === true && l !== b.sun && l !== b.fillLight,
+  );
+}
+
+/**
+ * C44: compile, without drawing, the shader variants for the other side of
+ * the light-state line between L3 and L4 (the shadow map and the rim light
+ * on or off), so a later step across it mid-fight (L3 down to L4, or the
+ * once-per-session try from L4 up to L3) finds every lit program ready
+ * instead of compiling them all in one long frame. three keeps each
+ * material's programs per light state, so both sets stay live until the
+ * material is disposed. Compiled as the composer's scene pass draws (into
+ * its render target: linear, no tone mapping), so the keys match. Returns
+ * the milliseconds it took.
+ */
+export function prepareLightVariants(b: Battle3D): number {
+  const sun = b.sun;
+  const r = b.renderer;
+  if (!sun || !b.composer) return 0;
+  const t0 = performance.now();
+  const shadows = b.quality.level.shadowSize > 0;
+  const rim = b.quality.level.rimLight;
+  const rims = rimLights(b);
+  const saved = { map: r.shadowMap.enabled, cast: sun.castShadow, rims: rims.map((l) => l.visible), target: r.getRenderTarget() };
+  try {
+    r.shadowMap.enabled = !shadows;
+    sun.castShadow = !shadows;
+    for (const l of rims) l.visible = !rim;
+    r.setRenderTarget(b.composer.readBuffer);
+    r.compile(b.scene, b.camera);
+  } finally {
+    r.shadowMap.enabled = saved.map;
+    sun.castShadow = saved.cast;
+    rims.forEach((l, i) => (l.visible = saved.rims[i]));
+    r.setRenderTarget(saved.target);
+  }
+  return performance.now() - t0;
+}
+
 /**
  * The home screen's live arena is a small framed window behind the menus:
  * it renders without bloom at up to the battle's own resolution (lifecycle.ts
@@ -397,7 +444,13 @@ const dioramaMode = new WeakSet<Battle3D>();
  * judged as its speed.
  */
 export function setDioramaQuality(b: Battle3D, on: boolean): void {
-  if (!on) b.quality.rearm();
+  if (!on) {
+    b.quality.rearm();
+    // A battle (or the deck picker over one) is starting on a device Auto
+    // runs at L3 or L4: get the other side of the light-state line ready
+    // during its countdown (see prepareLightVariants).
+    if (b.quality.mode === "auto" && b.quality.index >= PREPARE_FROM) preparePending.add(b);
+  }
   if (on === dioramaMode.has(b)) return;
   if (on) dioramaMode.add(b);
   else dioramaMode.delete(b);
@@ -579,6 +632,19 @@ export function sampleQuality(b: Battle3D): void {
   if (sinking) sinkingLastFrame.add(b);
   else sinkingLastFrame.delete(b);
 
+  if (preparePending.has(b)) {
+    // The battle's first frame has drawn (its own programs are built): now
+    // the other light state, inside the start-up grace, before any step.
+    preparePending.delete(b);
+    try {
+      const ms = prepareLightVariants(b);
+      console.info(`[graphics] prepared the other light state in ${Math.round(ms)} ms`);
+    } catch {
+      // never worth a broken frame: a later step just compiles as before
+    }
+    b.lastFrameAt = 0; // the compile is not a frame time
+    return;
+  }
   const now = performance.now();
   if (dioramaMode.has(b)) {
     // The diorama renders every other frame on purpose: not a speed signal.
