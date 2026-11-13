@@ -10,12 +10,14 @@ import {
   REVEAL_LIFE,
   REVEAL_RADIUS,
   VIEW_SHIFT,
+  floorSwatch,
   laneMixAt,
   revealEnvelope,
   revealRadius,
 } from "./deployOverlay";
 import { CAM_HOME } from "./common";
 import { ruinSpot } from "../deployZone";
+import { ISLAMIC_LOOKS, LOOKS } from "../arenaLooks";
 
 const DT = 1 / 60;
 
@@ -341,6 +343,15 @@ describe("the plane", () => {
     expect(o.lightStripes).toBe(false);
     o.setLook({ floor: { a: "#2a2630" } } as never);
     expect(o.lightStripes).toBe(true);
+    // The real looks: only the Classic forge is dark enough (its grade renders it near black by night).
+    const light = Object.values(LOOKS).filter((l) => (o.setLook(l), o.lightStripes)).map((l) => l.id);
+    expect(light).toEqual(["forge"]);
+    // Golden Age courts are judged by their plaster, and every one keeps ink stripes.
+    for (const l of Object.values(ISLAMIC_LOOKS)) {
+      expect(floorSwatch(l)).toBe(l.islamic!.plaster);
+      o.setLook(l);
+      expect(o.lightStripes, l.id).toBe(false);
+    }
   });
 
   it("samples what it draws: the open pocket is allowed, the King's keep-clear is not", () => {

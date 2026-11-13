@@ -93,8 +93,18 @@ export const NIGHT_FILL_CUT = 0.6;
 export const NIGHT_GLOW_CUT = 0.45;
 export const NIGHT_LIT_CUT = 0.2;
 const FLASH_ALPHA = 0.22;
-/** Floors darker than this (sRGB luma) get light stripes: ink would vanish. */
-export const DARK_FLOOR_LUMA = 0.3;
+/**
+ * Floors darker than this (sRGB luma) get light stripes: ink would vanish.
+ * The spec's 0.30 missed the forge (#5c5660, 0.345), whose grade and lights
+ * render its floor far darker than its swatch: by night its ink stripes were
+ * all but gone in the look sheet. The next darkest floor is 0.45 (mystic).
+ */
+export const DARK_FLOOR_LUMA = 0.36;
+
+/** The colour a look's field floor is painted: Golden Age courts are plaster (their `floor` is the shared base's). */
+export function floorSwatch(look: Pick<ArenaLook, "floor" | "islamic">): string {
+  return look.islamic?.plaster ?? look.floor.a;
+}
 
 export type RefuseReason = "side" | "lane" | "river" | "king" | "tower" | "dig";
 const FLASH_KIND: Record<RefuseReason, number> = { side: 1, lane: 2, king: 3, river: 4, tower: 5, dig: 5 };
@@ -392,8 +402,8 @@ export class DeployOverlay {
   }
 
   /** The arena look: on a dark floor, ink stripes would vanish, so they turn light. */
-  setLook(look: Pick<ArenaLook, "floor">): void {
-    const dark = srgbLuma(look.floor.a) < DARK_FLOOR_LUMA;
+  setLook(look: Pick<ArenaLook, "floor" | "islamic">): void {
+    const dark = srgbLuma(floorSwatch(look)) < DARK_FLOOR_LUMA;
     (this.mat.uniforms.uStripe.value as THREE.Color).set(dark ? 0xffffff : INK);
     this.mat.uniforms.uStripeA.value = dark ? 0.18 : 0.67;
   }
