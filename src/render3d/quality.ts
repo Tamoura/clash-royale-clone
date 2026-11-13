@@ -44,7 +44,9 @@
  * watches every visible frame: when most frames of a ~2 s window
  * (SLOW_WINDOW, at least SLOW_MIN_FRAMES of them) are over HITCH, that is
  * a slideshow, not a hitch, and the governor goes straight to the bottom
- * level. A hidden tab and gaps over PAUSE never count.
+ * level. Under 1 fps that would take over 5 s, so three back-to-back
+ * frames over half a second, at least 3 s of them, close the window early
+ * (CRAWL_*). A hidden tab and gaps over PAUSE never count.
  *
  * Each device remembers its level (GFX_MEMORY_KEY, keyed by the WebGL
  * renderer string and a screen-size bucket; see deviceKey and the memory
@@ -174,6 +176,16 @@ export const SLOW_WINDOW = 2;
  * (a burst of shader compiles) never make a slow window.
  */
 export const SLOW_MIN_FRAMES = 5;
+/**
+ * Under 1 fps, five frames take over 5 s. So a window also closes as slow
+ * once it holds at least CRAWL_FRAMES frames, every one of them over
+ * CRAWL_FRAME (under 2 fps), adding up to at least CRAWL_WINDOW seconds: as
+ * many seconds of slideshow as the five-frame rule needs or more, and a
+ * burst of four 0.6 s shader compiles (2.4 s) still never makes one.
+ */
+export const CRAWL_FRAME = 0.5;
+export const CRAWL_FRAMES = 3;
+export const CRAWL_WINDOW = 3;
 
 /** 'auto' runs the governor; the others pin a level. */
 export type QualityPin = "auto" | "high" | "medium" | "low";
@@ -271,10 +283,11 @@ export class QualityGovernor {
   private locked = false;
   /** The walk that locked measured the bottom level (so jumping there is no use). */
   private bottomTried = false;
-  /** The sustained-slow window: visible time, frames, and frames over HITCH. */
+  /** The sustained-slow window: visible time, frames, frames over HITCH and over CRAWL_FRAME. */
   private slowAcc = 0;
   private slowFrames = 0;
   private slowCount = 0;
+  private crawlCount = 0;
   /** Where 'auto' starts (memory or guess), kept up to date as it settles. */
   private autoStart: AutoStart = { ...DEFAULT_START };
   /** The governor has stepped this session (walk or jump): no more re-probe. */
@@ -381,6 +394,7 @@ export class QualityGovernor {
     this.slowAcc = 0;
     this.slowFrames = 0;
     this.slowCount = 0;
+    this.crawlCount = 0;
   }
 
   /**
@@ -418,8 +432,11 @@ export class QualityGovernor {
     this.slowAcc += frameSeconds;
     this.slowFrames++;
     if (frameSeconds > HITCH) this.slowCount++;
-    if (this.slowAcc < SLOW_WINDOW || this.slowFrames < SLOW_MIN_FRAMES) return false;
-    const slow = this.slowCount >= SLOW_MIN_FRAMES && this.slowCount * 2 > this.slowFrames;
+    if (frameSeconds > CRAWL_FRAME) this.crawlCount++;
+    // Under 1 fps: a few frames, all of them crawling, close the window early.
+    const crawl = this.crawlCount >= CRAWL_FRAMES && this.crawlCount === this.slowFrames && this.slowAcc >= CRAWL_WINDOW;
+    if (!crawl && (this.slowAcc < SLOW_WINDOW || this.slowFrames < SLOW_MIN_FRAMES)) return false;
+    const slow = crawl || (this.slowCount >= SLOW_MIN_FRAMES && this.slowCount * 2 > this.slowFrames);
     this.clearSlow();
     return slow;
   }

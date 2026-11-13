@@ -195,7 +195,15 @@
           };
           document.addEventListener("readystatechange", parsed);
         };
+        // One tap, one reload: on a failed splash the button and the splash
+        // both listen, and a tap on the button reaches both. A second call
+        // within 2 s would only abort the first reload; a later tap (if that
+        // reload stalled) tries again.
+        var retriedAt = -Infinity;
         var retry = function () {
+          var now = Date.now();
+          if (now - retriedAt < 2000) return;
+          retriedAt = now;
           try {
             var url = new URL(window.location.href);
             url.searchParams.set("cr-fresh", Date.now().toString(36));

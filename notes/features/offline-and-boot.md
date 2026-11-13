@@ -118,7 +118,11 @@ script only ever talk to the game's own origin.
     preload that failed to load, a dynamic import that failed) before
     `booted`, or after **45 s**, a big "Tap to try again" / "اضغط لتحاول
     مجددًا" button that reloads with `?cr-fresh` (on an error the whole
-    splash is tappable and the bar stops);
+    splash is tappable and the bar stops). One tap is one reload: a tap on
+    the button also reaches the splash's own listener, so `retry()` ignores
+    a second call within 2 s (before, the first reload was aborted by the
+    second, `net::ERR_ABORTED` in the network log); a tap after that, if
+    the reload stalled, tries again;
   - the words follow the saved edition (`cr-clone-arena-theme` =
     `arabic`): Arabic, `dir="rtl"` on the splash text only; the title reads
     هجمة التاج there;

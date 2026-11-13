@@ -35,7 +35,13 @@ A good code opens the confirm sheet **"Load this save?" / "تحميل هذا
 keep a copy, so you can undo it." and a table, **This save** (highlighted)
 next to **This tablet now**: name (when either has one), trophies, arena,
 cards, gold, gems, and the edition when it would change. Numbers go through
-`fmtNum` (Arabic-Indic digits in Golden Age). If the save has fewer trophies:
+`fmtNum` (Arabic-Indic digits in Golden Age). Each edition names its arenas
+its own way (Barbarian Bowl is سوق التوابل in the Golden Age), so each
+column names its arena the way its own edition does (`arenaNameIn`): a
+Golden Age save on a Classic tablet shows سوق التوابل, the name the kid will
+see after the load, in its own right-to-left island (`<bdi lang="ar"
+dir="rtl">`), and the reverse shows Barbarian Bowl left to right. A side
+with no edition (an old save) uses this tablet's. If the save has fewer trophies:
 "This save has fewer trophies than this tablet." If the backup slot holds a
 copy with more trophies than this tablet now, the load would replace it, so
 one more line says so: "Your Redo copy (1,400 trophies) will be replaced." /

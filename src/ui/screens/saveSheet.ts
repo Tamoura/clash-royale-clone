@@ -38,6 +38,7 @@ import {
   type SaveStore,
   type SaveSummary,
 } from "../../meta/saveCode";
+import { ARABIC } from "../../render3d/theme";
 import { button, confirmLook, toast } from "../components";
 import { fmtNum, tr } from "../i18n";
 import { icon, type IconName } from "../icons";
@@ -434,9 +435,27 @@ export function openLoadSheet(deps: SaveSheetDeps = {}): { close: () => void } {
 
 // ---- Confirm screens ------------------------------------------------------------------------
 
-function arenaName(i: number): string {
-  const a = ARENAS[Math.max(0, Math.min(ARENAS.length - 1, i))];
-  return tr(a.name, a.ar);
+/**
+ * The arena's name as the kid sees it in that edition: each edition names
+ * its arenas its own way (Barbarian Bowl is سوق التوابل in the Golden Age),
+ * so a save's arena is named in the save's edition, not this tablet's. No
+ * edition (an old save, or none picked yet): this tablet's.
+ */
+export function arenaNameIn(i: number, edition: SaveSummary["edition"]): { text: string; arabic: boolean } {
+  const a = ARENAS[Math.max(0, Math.min(ARENAS.length - 1, Math.floor(i) || 0))];
+  const arabic = edition ? edition === "arabic" : ARABIC;
+  return { text: arabic ? a.ar : a.name, arabic };
+}
+
+/** The arena cell: a name in the other edition's script sits in its own bidi island. */
+function arenaCell(i: number, edition: SaveSummary["edition"]): string | HTMLElement {
+  const { text, arabic } = arenaNameIn(i, edition);
+  if (arabic === ARABIC) return text;
+  const b = document.createElement("bdi");
+  b.setAttribute("lang", arabic ? "ar" : "en");
+  b.setAttribute("dir", arabic ? "rtl" : "ltr");
+  b.textContent = text;
+  return b;
 }
 
 function editionName(e: SaveSummary["edition"]): string {
@@ -464,7 +483,7 @@ export function compareTable(load: SaveSummary, here: SaveSummary, loadHead: str
   const thead = document.createElement("thead");
   thead.appendChild(head);
   const body = document.createElement("tbody");
-  const row = (ic: IconName | null, label: string, a: string, b: string, key: string): void => {
+  const row = (ic: IconName | null, label: string, a: string | HTMLElement, b: string | HTMLElement, key: string): void => {
     const tr_ = document.createElement("tr");
     tr_.dataset.row = key;
     const th = document.createElement("th");
@@ -476,16 +495,18 @@ export function compareTable(load: SaveSummary, here: SaveSummary, loadHead: str
     th.appendChild(l);
     const ca = document.createElement("td");
     ca.className = "v2-save-load-col";
-    ca.textContent = a;
+    if (typeof a === "string") ca.textContent = a;
+    else ca.appendChild(a);
     const cb = document.createElement("td");
     cb.className = "v2-save-here-col";
-    cb.textContent = b;
+    if (typeof b === "string") cb.textContent = b;
+    else cb.appendChild(b);
     tr_.append(th, ca, cb);
     body.appendChild(tr_);
   };
   if (load.name || here.name) row("profile", tr("Name", "الاسم"), load.name || "—", here.name || "—", "name");
   row("trophy", tr("Trophies", "الكؤوس"), fmtNum(load.trophies), fmtNum(here.trophies), "trophies");
-  row("flag", tr("Arena", "الساحة"), arenaName(load.arena), arenaName(here.arena), "arena");
+  row("flag", tr("Arena", "الساحة"), arenaCell(load.arena, load.edition), arenaCell(here.arena, here.edition), "arena");
   row("cards", tr("Cards", "البطاقات"), fmtNum(load.cards), fmtNum(here.cards), "cards");
   row("coin", tr("Gold", "الذهب"), fmtNum(load.gold), fmtNum(here.gold), "gold");
   row("gem", tr("Gems", "الجواهر"), fmtNum(load.gems), fmtNum(here.gems), "gems");

@@ -14,7 +14,7 @@ import { ARABIC } from "../../render3d/theme";
 import { installFakeDom, pressKey, type FakeDocument, type FakeElement } from "../fakeDom.testkit";
 import { fmtNum, tr } from "../i18n";
 import { icon } from "../icons";
-import { SAVE_LOOK, backupGroup, codeSheetIntro, openLoadConfirm, openUndo, saveErrorText } from "./saveSheet";
+import { SAVE_LOOK, arenaNameIn, backupGroup, codeSheetIntro, openLoadConfirm, openUndo, saveErrorText } from "./saveSheet";
 
 function store(seed: Record<string, string> = {}): SaveStore & { data: Record<string, string> } {
   const kv = memoryKV(seed);
@@ -117,6 +117,36 @@ describe("Backup & move on the page", () => {
     expect(doc.activeElement).toBe(buttons[0]);
     expect((c.closest(".ui-sheet") as FakeElement).dir).toBe(ARABIC ? "rtl" : "");
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("names each side's arena the way that side's edition does", async () => {
+    // A Golden Age save at 640 trophies (Barbarian Bowl, سوق التوابل there) on
+    // a tablet in the other edition, and the reverse.
+    const here = ARABIC ? "arabic" : "normal";
+    const other = ARABIC ? "normal" : "arabic";
+    const s = store({ ...HERE, "cr-clone-arena-theme": here });
+    void openLoadConfirm({ ...SAVE, keys: { ...SAVE.keys, "cr-clone-trophies": "640", "cr-clone-arena-theme": other } }, { store: s, reload: vi.fn() });
+    await settle();
+    const c = sheet()!;
+    const [loadCell, hereCell] = c.querySelectorAll('tr[data-row="arena"] td');
+    expect(loadCell.textContent).toBe(other === "arabic" ? "سوق التوابل" : "Barbarian Bowl");
+    expect(hereCell.textContent).toBe(tr("Goblin Stadium", "واحة النخيل")); // 120 trophies
+    // The other edition's name sits in its own bidi island, in its own language.
+    const island = loadCell.querySelector("bdi")!;
+    expect(island.getAttribute("lang")).toBe(other === "arabic" ? "ar" : "en");
+    expect(island.getAttribute("dir")).toBe(other === "arabic" ? "rtl" : "ltr");
+    expect(hereCell.querySelector("bdi")).toBeNull();
+    expect(c.querySelectorAll('tr[data-row="edition"] td')).toHaveLength(2);
+  });
+
+  it("arenaNameIn: the save's edition names it; no edition falls back to this tablet's", () => {
+    expect(arenaNameIn(3, "arabic")).toEqual({ text: "سوق التوابل", arabic: true });
+    expect(arenaNameIn(3, "normal")).toEqual({ text: "Barbarian Bowl", arabic: false });
+    expect(arenaNameIn(3, null)).toEqual({ text: tr("Barbarian Bowl", "سوق التوابل"), arabic: ARABIC });
+    // Out of range or junk clamps to a real arena.
+    expect(arenaNameIn(-4, "normal").text).toBe("Training Camp");
+    expect(arenaNameIn(Number.NaN, "normal").text).toBe("Training Camp");
+    expect(arenaNameIn(999, "arabic").arabic).toBe(true);
   });
 
   it("Keep my progress (or Esc) changes nothing", async () => {

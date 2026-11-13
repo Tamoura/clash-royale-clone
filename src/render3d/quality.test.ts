@@ -10,7 +10,10 @@ import {
   QUALITY_LEVELS,
   QualityGovernor,
   REPROBE_RETRY_MS,
+  CRAWL_FRAMES,
+  CRAWL_WINDOW,
   SETTLE,
+  SLOW_MIN_FRAMES,
   SLOW_WINDOW,
   WARMUP,
   WINDOW,
@@ -312,6 +315,48 @@ describe("very slow devices: a sustained slow window goes straight to the bottom
     const steps = trace(gov, (i) => (i < bottom ? 1 / 1.5 : 1 / 5.7), 120);
     expect(steps.map((s) => s.to)).toEqual([bottom]);
     expect(steps[0].at).toBeLessThan(WARMUP + 4);
+  });
+
+  it("under 1 fps, three crawling frames are enough (not five): 0.6 fps and 0.4 fps", () => {
+    for (const fps of [0.6, 0.4]) {
+      const dt = 1 / fps;
+      const gov = new QualityGovernor();
+      const steps = trace(gov, () => dt, 60);
+      expect([fps, steps.map((s) => s.to)]).toEqual([fps, [bottom]]);
+      // The grace ends on the frame that crosses WARMUP; the window then needs
+      // CRAWL_FRAMES frames (at least CRAWL_WINDOW s), where five used to be needed.
+      const graceEnds = Math.ceil(WARMUP / dt) * dt;
+      const decided = steps[0].at + dt;
+      expect(decided - graceEnds).toBeCloseTo(Math.max(CRAWL_FRAMES, Math.ceil(CRAWL_WINDOW / dt)) * dt, 6);
+      expect(decided - graceEnds).toBeLessThan(SLOW_MIN_FRAMES * dt);
+    }
+    // 0.6 fps: L4 about 5 s after the grace (was over 8 s).
+    const gov = new QualityGovernor();
+    expect(trace(gov, () => 1 / 0.6, 60)[0].at + 1 / 0.6).toBeLessThan(WARMUP + 5.5);
+  });
+
+  it("but a burst of four 0.6 s compiles at the very start of a window still is not a slideshow", () => {
+    const gov = new QualityGovernor();
+    run(gov, () => 1 / 60, WARMUP + 1);
+    gov.sample(0.6, false); // a hidden frame starts the window afresh
+    const steps: number[] = [];
+    for (let k = 0; k < 4; k++) if (gov.sample(0.6)) steps.push(gov.index);
+    for (let t = 0; t < 20; t += 1 / 60) if (gov.sample(1 / 60)) steps.push(gov.index);
+    expect(steps).toEqual([]);
+    expect(gov.index).toBe(0);
+    // Nor two long frames (3.2 s) followed by smooth ones: crawling needs three.
+    const two = new QualityGovernor();
+    run(two, () => 1 / 60, WARMUP + 1);
+    two.sample(1.6, false);
+    two.sample(1.6);
+    two.sample(1.6);
+    run(two, () => 1 / 60, 20);
+    expect(two.index).toBe(0);
+    // A crawl mixed with a quicker frame falls back to the five-frame rule (still the bottom).
+    const mixed = new QualityGovernor();
+    let n = 0;
+    const steps2 = trace(mixed, () => (n++ % 3 === 2 ? 0.3 : 1 / 0.6), 60);
+    expect(steps2.map((s) => s.to)).toEqual([bottom]);
   });
 
   it("isolated spikes never do (a 0.6 s hitch every half second on a 60 fps game)", () => {

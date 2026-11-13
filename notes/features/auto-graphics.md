@@ -47,7 +47,10 @@ and a return from another tab re-arms the governor.
 1. **Sustained slow = slow.** Next to the trimmed-mean windows, a plainer
    check counts every visible frame. A window closes after at least
    `SLOW_WINDOW` (2 s) and `SLOW_MIN_FRAMES` (5) frames; it is slow when at
-   least 5 of its frames, and most of them, are over `HITCH` (0.25 s). A
+   least 5 of its frames, and most of them, are over `HITCH` (0.25 s).
+   Under 1 fps five frames take over 5 s, so a window also closes as slow
+   once it holds `CRAWL_FRAMES` (3) frames, every one over `CRAWL_FRAME`
+   (0.5 s), adding up to at least `CRAWL_WINDOW` (3 s). A
    slow window sends Auto straight to L4. The single-hitch rule stays for
    the trimmed-mean windows (a lone spike never costs picture), and bursts
    of up to four back-to-back hitches never make a slow window. Frames while
@@ -139,9 +142,28 @@ builds, back to back** (fps per ~1.2 s sample, from the hand appearing):
 Two more runs of the same: the step came 3.1 s in (L0 about 1.6 fps, then
 3.3-4.0 fps) and 7.7 s in on a busier machine (L0 0.7-0.95 fps, then
 1.4-2.3 fps). The time to the step is the 3 s start-up grace plus a window
-of at least five slow frames: about 5 s at the planning's 2.4 fps, longer
-when frames take a second each. The dev server without throttling: L0 at
-1.2 fps, L4 about 4-5 s in, then about 3 fps.
+of at least five slow frames: about 5 s at the planning's 2.4 fps. Under
+1 fps three crawling frames are enough (below). The dev server without
+throttling: L0 at 1.2 fps, L4 about 4-5 s in, then about 3 fps.
+
+**Under 1 fps (the final-verification fix).** The final verification saw
+0.6 fps on L0 (6x throttle on a busy machine) and L4 only 9.2 s after the
+cards appeared. SwiftShader does not reliably go under 1 fps here (6x and
+14x throttles gave 1.25-1.75 fps on L0, where the step came 5.6-6.2 s in,
+the same under both rules), so the production build was given a sub-1 fps
+tablet on purpose: every animation frame held for at least 1.2 s from Home
+on (about 0.5 fps, 2 s per frame), phone, `?gfxguess=off`. Time from the
+cards on screen to `[graphics] auto: L4`:
+
+| Build | Rule | L4 after the cards appeared |
+|---|---|---|
+| e3e1b45 (before the fix) | five slow frames | 11.3 s |
+| this fix | three frames over 0.5 s, at least 3 s of them | 7.9 s, 7.8 s (two runs) |
+
+That is two frames (4 s) sooner, as the unit tests predict; the rest is
+the 3 s grace (two 2 s frames) counted from the battle's start, which is
+about 2 s before the cards appear. The fps after the step is not a
+measure here (the hold keeps every frame at 2 s).
 
 **Reload (the next session).** Same profile, same throttle: `auto starts at
 L4 (memory)`, no step-down sequence, 3.3-4.25 fps from the first second.
@@ -231,8 +253,11 @@ and `dev-settings-{normal,arabic,medium,high-ar}.png`.
 ## Tests
 
 `src/render3d/quality.test.ts`: steady 0.4 s frames reach L4 within the
-grace plus one slow window; 1.5 fps too, and it stays at L4; isolated 0.6 s
-spikes and bursts of four hitches do not; windows where hitches are at
+grace plus one slow window; 1.5 fps too, and it stays at L4; at 0.6 and
+0.4 fps three crawling frames decide (fewer than five), while four 0.6 s
+compiles at the very start of a window, or two long frames then smooth
+ones, do not, and a crawl mixed with quicker frames falls back to the
+five-frame rule; isolated 0.6 s spikes and bursts of four hitches do not; windows where hitches are at
 least five but a minority do not ("most frames"); gaps over PAUSE, alone or
 between slow frames, do not; a hidden tab does not; pins and a
 lock that measured L4 do not move; a frame-cap lock still jumps; rearm grace;
@@ -265,6 +290,12 @@ check or the toast's re-check each fails at least one test.
   purpose), so a new device's first slow window is in its first battle.
 - The countdown cost of preparing on a real GPU (item 6) was not measured:
   only SwiftShader was available.
-- Under 1 fps the step takes longer than 5 s (five slow frames after the
-  grace); devices slower than one frame per 3 s count as pauses and do not
-  step at all.
+- Under 1 fps the step used to take about 9 s (the final verification:
+  0.6 fps at 6x throttle, L4 9.2 s after the cards appeared), because the
+  window waited for five slow frames. Now three frames over 0.5 s (at least
+  3 s of them) are enough: at 0.6 fps the step comes three frames (5 s)
+  after the grace instead of five (8.3 s); see "Under 1 fps" in the
+  measurements. A burst
+  of four 0.6 s shader compiles (2.4 s) still never makes a slow window.
+  Devices slower than one frame per 3 s count as pauses and do not step at
+  all.

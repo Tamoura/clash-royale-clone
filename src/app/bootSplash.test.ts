@@ -4,7 +4,7 @@
  * or after 45 s, in the saved edition's language. The watcher script is run
  * here as it is in the page, against a small fake document.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import indexHtml from "../../index.html?raw";
 import { FakeDocument, FakeElement, FakeEvent } from "../ui/fakeDom.testkit";
 import { GAME_NAME, GAME_NAME_AR } from "./brand";
@@ -174,13 +174,48 @@ describe("the boot splash in index.html", () => {
     t.failLoad("script");
     expect(t.failed()).toBe(true);
     expect(t.retryShown()).toBe(true);
-    t.part("boot-retry").dispatchEvent(new FakeEvent("click"));
-    const url = new URL(t.went[0]);
-    expect(url.searchParams.has("cr-fresh")).toBe(true);
-    expect(url.searchParams.get("quality")).toBe("low");
-    // A tap anywhere on a failed splash does the same.
-    t.boot.dispatchEvent(new FakeEvent("click"));
-    expect(t.went.length).toBeGreaterThanOrEqual(2);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      // The tap on the button bubbles up to the failed splash's own listener:
+      // still exactly one reload (a second one would abort the first).
+      t.part("boot-retry").dispatchEvent(new FakeEvent("click"));
+      expect(t.went).toHaveLength(1);
+      const url = new URL(t.went[0]);
+      expect(url.searchParams.has("cr-fresh")).toBe(true);
+      expect(url.searchParams.get("quality")).toBe("low");
+      // A quick second tap does not restart it either.
+      clock.mockReturnValue(1_001_500);
+      t.boot.dispatchEvent(new FakeEvent("click"));
+      expect(t.went).toHaveLength(1);
+      // If that reload stalled, a later tap anywhere on the failed splash tries again.
+      clock.mockReturnValue(1_003_000);
+      t.boot.dispatchEvent(new FakeEvent("click"));
+      expect(t.went).toHaveLength(2);
+      expect(new URL(t.went[1]).searchParams.has("cr-fresh")).toBe(true);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("the 45 s button alone reloads once per tap", () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(5_000_000);
+    try {
+      const t = run();
+      t.advance(45_000);
+      expect(t.retryShown()).toBe(true);
+      expect(t.failed()).toBe(false);
+      t.part("boot-retry").dispatchEvent(new FakeEvent("click"));
+      expect(t.went).toHaveLength(1);
+      // A boot error after the button showed: the splash listens too, and a
+      // tap on the button still reloads once.
+      t.failLoad("script");
+      expect(t.failed()).toBe(true);
+      clock.mockReturnValue(5_010_000);
+      t.part("boot-retry").dispatchEvent(new FakeEvent("click"));
+      expect(t.went).toHaveLength(2);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("fails on boot errors only: scripts, styles, module chunks and uncaught errors", () => {
