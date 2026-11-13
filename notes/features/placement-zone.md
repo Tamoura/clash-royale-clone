@@ -30,7 +30,11 @@ Shots (DPR 2, SwiftShader, staged with `/tmp/claude-0/place/stage.cjs`):
    (only while the other lane is closed), and the King's keep-clear as a
    striped bite with an outlined arc. From 1.0 s to 4.0 s a label pill
    with an open padlock sits in the pocket: **"Drop troops here now!"**
-   (`S5-fall-2.2.png`). The pocket fades out at 4.0-4.6 s and the board is
+   (`S5-fall-2.2.png`). It is one line where the pocket is wide enough
+   (desktop), else two even lines that the pill shrink-wraps; if the kid
+   is holding a card whose preview (ghost, disc, aim ring) sits under it,
+   it steps to the top or the bottom of the pocket instead of hiding it
+   (review round 2). The pocket fades out at 4.0-4.6 s and the board is
    normal again (`S5-fall-4.8.png`). Replays play the same reveal (no
    label); the tutorial plays it with no label (its coach owns the words).
 2. **Holding a troop or building** (`S1`, `S3`, `S4`, `S6`, `S7`, `S8`).
@@ -139,18 +143,41 @@ King distance.
   first made `d` jump across x = 9 inside one pixel quad, and the blown-up
   `fwidth` smeared a hairline down the whole middle seam before the wave
   got there (review round 1).
-- Per frame the overlay allocates nothing: the envelopes go into one
-  reused object, records are only re-filtered when one ends, and a held
-  Digger's body list (a string) is rebuilt at most 4 times a second.
-  Battle3D reads `reducedMotion()` once per sync and reuses it in render.
+- Per frame the overlay's `sync()` and `render()` allocate nothing: the
+  envelopes go into one reused object, records are only re-filtered when
+  one ends, the two ruins and the label band are kept per view (set in
+  `setView`; until review round 2 the wave looked its ruin up through
+  `towerSpots` every frame), and a held Digger's body list (a string) is
+  rebuilt at most 4 times a second. `callout()` returns one small object a
+  frame while a label shows (3 s per fallen tower), and main.ts's label
+  placement a few more. Battle3D reads `reducedMotion()` once per sync and
+  reuses it in render.
+- The shader's cosmetics (calmer water, which half is "theirs", the lane
+  split, the bridges in the Digger's map, the flash regions) are built
+  from the sim's exported `RIVER_Y`, `RIVER_HALF_WIDTH`, `BRIDGE_XS`,
+  `BRIDGE_HALF_WIDTH`, `ARENA_WIDTH` and `KING_KEEP_CLEAR` (`glslFloat`),
+  like the vertex shader's `ARENA_*`; until review round 2 they were typed
+  in. The allowed shape still comes only from the texture.
 - Reveal clocks run on presentation time (`scaledDt`), so a 4x replay still
   shows the reveal at reading speed.
 - DOM: one reused `.place-pip` element (`hud.placePip`) and one
   `.lane-pill` per reveal (`hud.lanePill`), both `pointer-events: none`;
   their placement is pure (`pipPlacement`, `lanePillBox` in hudModel.ts).
-  The pill is never wider than the pocket on screen minus 8 px; in a
-  narrow pocket (landscape phones) the padlock sits on top so the words
-  wrap to two lines inside the pocket. The pill is `width: max-content`
+  The pill is never wider than the pocket on screen minus 8 px. `hud.ts
+  fitLanePill` reads its size once per label (and again only if the
+  pocket's width changes): one line when the words fit; else the words
+  break at their most even gap (`balancedLines`, a `<br>` shown by the
+  `.two` class) and the pill shrink-wraps the longer line (the phone pill
+  went from 181 to 136 px wide). In a narrow pocket (landscape phones) the
+  padlock sits on top and the words are 13 px: 82 x 55 px (Golden Age
+  75 x 55) in the 118 x 149 px pocket, down from 110 x 61. While a card is
+  held, main.ts measures its preview on screen (`previewBox`: the disc or
+  aim ring, plus a troop's ghost standing above it) and the label steps to
+  the top or the bottom of the pocket band (`laneLabelBand`: from just
+  below the King's keep-clear, 7.2 tiles deep, to just above the river,
+  14.7) when that hides less of the preview (`lanePillY`; only three
+  places, so it steps once instead of following the finger, with a 0.18 s
+  glide that reduced motion turns off). The pill is `width: max-content`
   (capped by that max-width): a `position: fixed` box otherwise shrinks to
   the room left before the viewport's right edge, and a right-hand pocket
   on a portrait phone squashed it into a four-line blob (review round 1).
@@ -163,7 +190,14 @@ King distance.
 - main.ts: `lastPointer` is kept on every pointer move; `refreshPreview()`
   runs once per frame after `scene.sync` (one `pick` + one `checkDeploy`)
   and on a canvas `pointerdown`; it is cleared when a finger or pen lifts,
-  on window blur and after a refused drop. Every call of it and of
+  on window blur, when the pointer leaves the page (a document
+  `pointerout` with no `relatedTarget`; before review round 2 a mouse
+  that left kept the ghost, disc, pip and called-back outline parked at
+  the field's edge) and after a refused drop. In `frame()` the preview and
+  the label share ONE read of the canvas rect (`canvasRect()`, passed to
+  `scene.pick` / `arenaToClient`): before, the label's five reads came
+  after the pip's style writes and forced a layout every frame of its 3 s.
+  Every call of it and of
   `updateLanePill()` goes through `safely()`: a throw there is logged once
   and clears the preview, and can never end the game loop (whose next
   frame is only scheduled at the end of `frame()`). Review round 1 found
@@ -184,15 +218,17 @@ King distance.
 | Outline core | max(0.16 tiles, 3 CSS px), alpha 0.96, inside the edge; x1.35 on call-back / refusal | deployOverlay.ts FRAG |
 | Outline colour | #FFFFFF x 0.88 linear (Golden Age #FFF3D6 x 0.88), under the 0.92 bloom threshold | `LINE_*`, `LINE_GAIN` |
 | Ink rim | #1F1A2E, max(0.06 tiles, 1.5 CSS px), alpha 0.85, outside the edge | FRAG |
-| Lit pocket colour | team "main" mixed 45% to white (Golden Age #2BB7B0 mixed 25% to white) | `refreshLit` |
-| Pocket fill | 0.20 x (1 - 0.6 x dayPhase) | `NIGHT_FILL_CUT` |
+| Lit pocket colour | team "main" mixed 45% to white (Golden Age #2BB7B0 mixed 40% to white) | `refreshLit`, `LIT_WHITE_*` |
+| Pocket fill | 0.20 x (1 - 0.6 x dayPhase); Golden Age 0.30 x (1 - 0.75 x dayPhase) | `FILL_*`, `NIGHT_FILL_CUT*` |
 | Inner glow | 0.8 tiles; pocket 0.22, own half 0.16, both x (1 - 0.45 x dayPhase) | `NIGHT_GLOW_CUT` |
 | Lit colour gain | 1 - 0.2 x dayPhase | `NIGHT_LIT_CUT` |
 | NO base | ink #1F1A2E, alpha 0.58 → 0.44 at night | `render()` |
 | NO stripes | ink alpha 0.67 over the base; 45 degrees in arena space; period max(0.75 tiles, 12 CSS px); 35% duty | FRAG |
 | Dark-floor stripes | floor swatch sRGB luma < 0.36 (Golden Age: its plaster): white stripes at alpha 0.18; today only the Classic forge | `DARK_FLOOR_LUMA`, `floorSwatch`, `setLook` |
+| Night hairlines | floor luma 0.36-0.53 (swamp, jungle, mystic; souk, copper, medina): a white hairline (max(0.06 tiles, 2 CSS px)) on each ink stripe's trailing edge, alpha 0.2 x dayPhase | `NIGHT_EDGE_LUMA`, `NIGHT_EDGE_ALPHA` |
 | River | half the NO base, no stripes | FRAG |
 | Plane | y 0.15, ray shift +-0.13, renderOrder -0.5 | `LIFT`, `VIEW_SHIFT` |
+| Digger's map | outline core and ink rim x1.6 | `DIG_THICK` |
 | Reveal | 0.6 s still, then a 1.0 s smoothstep grow to 10.5 tiles; lit to 4.0 s; fade to 4.6 s | `REVEAL_*` |
 | Reveal (reduced motion) | whole pocket fades in over 0.3 s from 0.6 s | `STILL_FADE_IN` |
 | Lane opens under a held card | 0.25 s cross-fade | `HELD_OPEN_FADE` |
@@ -204,7 +240,9 @@ King distance.
 | Ghost on a "no" spot | x0.4 opacity | `GHOST_DIM`, scene3d.ts |
 | Pip | yes 26 px, no 34 px, wait 30 px; 62 px above a finger, 40 px above a mouse | `PIP_SIZE`, `PIP_LIFT_*` |
 | Label box | pocket width on screen - 8 px; centre >= 24 px inside the field | `lanePillBox`, `LANE_PILL_INSET` |
-| Narrow label | under 150 px wide: padlock on top | `LANE_PILL_NARROW`, hud.ts |
+| Label lines | one if it fits, else two at the most even word gap, shrink-wrapped | `balancedLines`, `fitLanePill`, `.two` |
+| Narrow label | under 150 px wide: padlock (1.15em) on top, words 13 px | `LANE_PILL_NARROW`, hud.ts, hud.css |
+| Label steps aside | band 7.2-14.7 tiles deep (King keep-clear + 0.2, river bank - 0.3); off the preview by 4 px; troop ghost 1.5 tiles above the disc | `laneLabelBand`, `lanePillY`, `previewBox` |
 | Dig repaint | at most every 0.25 s | `DIG_REPAINT_MIN` |
 | Refused ring / words | 1.2 s (unchanged) | `BAD_SPOT_SECONDS`, `DROP_HINT_MS` |
 
@@ -224,6 +262,15 @@ Deviations from the build spec, all from looking at the shots:
   glow cut 0.45 instead of 0.3, plus a 0.2 cut of the lit colour), so the
   unlit pocket stays "lit ground" instead of turning milky at sky 1
   (section 8).
+- Golden Age's lit pocket (review round 2): the spec's mint mixed 25% to
+  white has about the sand's own luminance, so it only shifted the hue
+  (+12 L, the pocket read faintly). It is now mixed 40% to white (a test
+  pins it lighter than every Golden Age plaster) at fill 0.30 by day; the
+  night cut is 0.75 so its night fill (0.075) stays at the Classic one.
+- Mid-dark floors get a light hairline on their ink stripes by night
+  (review round 2); the forge keeps its light stripes.
+- The Digger's line and rim are 1.6x as bold (review round 2): its collars
+  are body radius + 0.6, mostly under the tower bodies.
 
 ## 5. Strings (all through `tr(en, ar)`)
 
@@ -272,7 +319,9 @@ here", "knock down a tower").
   `npx vitest run src/render3d/deployZone.grid.test.ts`, revert.
 - `src/render3d/deployZone.test.ts`: `deploysAnywhere`, `zoneModeFor`, the
   8 troop keys, the dig key after a building dies, a paint under 30 ms, the
-  ruin and label spots.
+  ruin and label spots, and the label's band (both views; every point of
+  it at least 0.15 tiles inside the allowed map with both lanes open, so
+  the label never steps onto the King's bite).
 - `src/render3d/scene/deployOverlay.test.ts` (no GPU): the reveal timeline
   and the wave's sweep; no reveal on the first sync, a new state, a reset
   (the context-restore path), a finished match or the viewer's own fallen
@@ -290,13 +339,27 @@ here", "knock down a tower").
   side cache fails it); a lane opening under a held Digger is not striped
   and does not count as the troop map's welcome; `leave()` drops the
   reveal, the label and a held map even with dt-0 syncs.
+  Since round 2 also: `setView` flips `uSideSign` and moves `uKing`
+  (9, 2.5 / 29.5), also through a guest-side `sync` (an unflipped sign
+  would light the guest's OWN half while the texture stays right, which
+  no texture test sees); each view's wave grows from that view's ruin;
+  the fragment shader's geometry is built from the sim's exported
+  constants; the night hairline is on exactly swamp, jungle, mystic,
+  souk, copper and medina and grows with the night from 0 by day; the
+  Golden Age lit colour is lighter than every plaster, its fill brighter
+  by day and no milkier by night than Classic's; the Digger's line is
+  1.6x (and 1.35x more on a refusal).
 - `src/render3d/scene/ghostPreview.test.ts`: only troops have a ghost;
   every troop's ghost builds; `Battle3D.setGhost` with every building, a
   spell and the Mirror neither throws nor builds anything, and hides a
   troop's ghost.
 - `src/render3d/hudModel.test.ts` "refused drops": every reason in both
   views (and the Digger's), all six texts, `placeVerdict`, `pipPlacement`
-  and `lanePillBox`.
+  and `lanePillBox`; since round 2 `balancedLines` (both editions),
+  `previewBox` (a troop's ghost, a Fireball's ring) and `lanePillY` (stays
+  put with nothing held, in the other lane or clear; to the top for a
+  ghost low in the band, to the bottom for one high; the end that hides
+  less of a ring too big to clear; never outside the band).
 - `src/ui/icons.test.ts` (the four new glyphs), `src/ui/motionAttr.test.ts`,
   `src/render3d/dispose.test.ts` (the fake Battle3D gains `zone`).
 - Unchanged and passing: `i18nLint`, `noEmoji`, `layoutCss`,
@@ -314,6 +377,8 @@ here", "knock down a tower").
   setting before);
 - a lane opening under a held card keeps its 0.25 s cross-fade (a fade,
   not motion);
+- the label's step off a held card's preview is a jump, not a 0.18 s
+  glide;
 - CSS: `ui/motionAttr.ts` puts `data-reduce-motion` on `<html>` at boot and
   on every prefs or OS change; hud.css repeats both
   `prefers-reduced-motion` blocks under `:root[data-reduce-motion]` and adds
@@ -347,7 +412,7 @@ moment with no card (`stage.cjs --card none`), DPR 2, field rect
 | Classic, King keep-clear, open side | 174 / 177 | **106** / 176 | <= pocket - 25 |
 | Classic, closed lane | 79 / 175 | **92** / 175 (0.53x) | 0.45x-0.70x control |
 | Classic, own half | 163 / 163 | 162 / 162 | +-6 |
-| Golden Age, open pocket | 175 / 173 | **184** / 172 (+12) | |
+| Golden Age, open pocket | 175 / 173 | **184** / 172 (+12); round 2, DPR 1: **194** / 173 (+21) | |
 | Golden Age, King keep-clear, open side | 168 / 171 | **97** / 168 | <= pocket - 20 |
 | Golden Age, closed lane | 77 / 173 | **89** / 172 (0.52x) | <= 0.70x |
 | Guest view (S8), open pocket | (same as S1) | **185** / 171 | |
@@ -355,7 +420,7 @@ moment with no card (`stage.cjs --card none`), DPR 2, field rect
 | Classic night (sky 1), open pocket | 95 / 82 | **103** / 80 (+23) | <= control + 30 |
 | Classic night, King keep-clear, open side | 107 / 82 | **58** / 80 | <= pocket - 20 |
 | Classic night, closed lane | 26 / 84 | **45** / 83 (0.54x) | >= 30 and <= 0.75x |
-| Golden Age night, open pocket | | **96** / 74 (+22) | <= control + 30 |
+| Golden Age night, open pocket | | **96** / 74 (+22); round 2, DPR 1: **100** / 76 (+24) | <= control + 30 |
 | Golden Age night, King keep-clear, open side | | **45** / 66 | <= pocket - 20 |
 | Golden Age night, closed lane | | **39** / 72 (0.54x) | >= 30 and <= 0.75x |
 
@@ -505,6 +570,50 @@ Dev server on port 3335, DPR 1, under `/tmp/claude-0/place/fix-r1/`:
   259,444, 115 / 277,648 calls / triangles; fight 178-207 calls, 628k-680k
   triangles; the same as before round 1 within wobble.
 
+### Review round 2 fixes, re-checked in the browser
+
+Dev server on port 3335 (`vite.wt.config.mjs`, game fonts), DPR 1, under
+`/tmp/claude-0/place/fix-r2/`:
+
+- **The label steps off a held preview** (`pillstep-sheet.png`,
+  `r2check.cjs --check pillstep`, the reveal's age pinned at 2 s so the
+  label stays up under SwiftShader): a Knight held with the mouse at
+  (4, 13.5) puts the label at the band's top (y 292-342); at (4, 10) and
+  (4, 8.5) at its bottom (360-410); at (3, 12) the top; with the mouse in
+  your own half it stays at the lane centre (327-377). The ghost and disc
+  show every time. `S1-held-pill.png` (`S1 --after 2`), the guest's
+  `S8-held-pill.png` (the same step on the guest's screen) and
+  `S1-fireball-pill.png` (the Fireball's orange ring now clear of the
+  label).
+- **Smaller labels** (`land-pill-sheet.png`): landscape 82 x 55 (Golden
+  Age 75 x 55) in the 118 x 149 pocket, was 110 x 61; phone 136 x 51, was
+  181 x 51; desktop one line, 184 x 30 (`S4-pill.png`).
+- **Golden Age pocket** (`golden-pocket-sheet.png`, `measure.cjs` against
+  `--card none`, field 5,181,379,510): day pocket L 194 vs 173 (+21, was
+  +12), visibly mint (blue +55); night 100 vs 76 (+24, rule <= +30; a
+  first try at the Classic night cut gave +35, milky, hence the 0.75 cut);
+  night King open side 54 and closed lane 41 (0.55x).
+- **Night hairlines** (`night-looks-sheet.png` at alpha 0.3, then
+  `night2-sheet.png` at the chosen 0.2): the stripes read on swamp,
+  mystic, jungle, souk, copper and medina at sky 1, and nothing changes by
+  day.
+- **The Digger** (`dig-sheet.png`, `dig-zoom.png`): the collars' line and
+  rim are bolder round every tower; `--probe` still 9,111 points, 0
+  mismatches; the Digger on the standing right princess (14.5, 6.5):
+  "Can't dig here!", no hand shake, nothing deployed.
+- **A mouse leaving the page** (`r2check.cjs --check leave`): resting on
+  the King's keep-clear (pip "no", disc, outline x1.35), then moved out
+  over the top edge: pip hidden, disc hidden, outline x1; back in at
+  (4, 10): pip "yes" and disc again.
+- **One canvas rect read per frame** while a card is held during the
+  label window (`pillstep`, counting the canvas's `getBoundingClientRect`
+  calls between renders: 1 in each of the last 6 frames; it was 8).
+- **Still agreeing**: `S1 --probe` 9,242 points, 0 mismatches; Golden Age
+  `S2 --tap` "قريب جدًا من الملك!", no hand shake.
+- **Render cost** (`perf-budget --matrix`, "4 run(s) within every gate"):
+  empty 100 / 251,206, 106 / 276,298, 109 / 259,468, 115 / 277,648 calls /
+  triangles; fight 180-207 calls, 628k-680k triangles: unchanged.
+
 ## 9. Known gaps
 
 - **Dev server and the fonts.** The worktree's `node_modules` is a symlink
@@ -521,9 +630,11 @@ Dev server on port 3335, DPR 1, under `/tmp/claude-0/place/fix-r1/`:
 - **The outline call-back is subtle**: x1.35 is 8 to 10 device px on a
   phone. It is the spec's number; the pip, the ghost fade and the words
   carry the "no" more loudly.
-- **The landscape label is big for its pocket.** At 844x390 the pocket is
-  about 118 px wide and the pill (padlock on top, two lines) covers most of
-  it for 3 s; it never takes a tap and never leaves the pocket.
+- **The landscape label is still a good part of its pocket.** At 844x390
+  the pocket is 118 x 149 px and the label 82 x 55 (padlock on top, two
+  13 px lines) for 3 s; it never takes a tap and never leaves the pocket.
+  Its band there (73 px) leaves little room to step aside, so a held
+  preview can still be partly under it.
 - **The plane is 0.15 tiles up**, so it tints the bottom 0.15 tiles of a
   troop's feet in the striped areas (not noticeable in the shots).
 - **The touch pip lift** (62 px above a finger) is covered by unit tests
@@ -535,7 +646,17 @@ Dev server on port 3335, DPR 1, under `/tmp/claude-0/place/fix-r1/`:
   a hand-played match (see above).
 - **The princess keep-clear (3 tiles)** is drawn by the same code but never
   shows with today's tower layout (its radius is pinned by a staged test).
-- **The label covers the ghost at the lane centre** for its 3 s when a kid
-  points right there (as the spec designed); the pip stays on top of it.
+- **The label steps aside, the pip does not.** When the label steps to
+  the band's top, the verdict pip (40 px above a mouse, 62 above a finger)
+  can land on its words for a moment; the pip is drawn over it on
+  purpose (the verdict matters more). A Fireball ring is too big to clear
+  on a phone: the label takes the end that hides less of it.
+- **The Digger's collars** are still mostly under the tower bodies (their
+  radius is the body + 0.6); round 2 made the line and rim bolder, but the
+  stripes inside barely show. The map is exact (probe 0 mismatches).
+- **Acceptance item 21's Digger point** (3.5, 6.5) is the fallen left
+  princess's ruin in S1, which `canDigTo` allows (the Digger deploys
+  there): the game is right and the wording was wrong. The refusal was
+  checked on the standing right princess (14.5, 6.5) instead.
 - **A building has no ghost**, only its disc, as before this change (the
   old build threw inside the pointer handler instead).
