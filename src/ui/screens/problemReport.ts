@@ -24,7 +24,7 @@ import "../styles/problems.css";
 /** The test switch the small print tells grown-ups about (src/app/crashShield.ts). */
 export const OOPS_PARAM = "?oops=1";
 
-/** The report's words in the edition's language. */
+/** The report's title and header words in the edition's language (each problem's lines stay Latin). */
 export function reportWords(): ReportWords {
   return {
     title: tr(`${GAME_NAME} problem report`, `تقرير مشكلات ${GAME_NAME_AR}`),
@@ -40,9 +40,6 @@ export function reportWords(): ReportWords {
         `${n} ${n === 1 ? "problem" : "problems"}, newest first. Kept on this device only.`,
         `عدد المشكلات: ${fmtNum(n)}، الأحدث أولًا. محفوظة على هذا الجهاز فقط.`,
       ),
-    seen: (n, last) => tr(`seen ${n} times, last ${last}`, `عدد المرات: ${fmtNum(n)}، آخرها ${last}`),
-    where: tr("Where", "المكان"),
-    online: tr("online", "عبر الإنترنت"),
   };
 }
 

@@ -256,7 +256,11 @@ export interface ReportHeader {
   now: number;
 }
 
-/** The words of the report (the sheet passes them through tr(); tests use English). */
+/**
+ * The words of the report's title and header (the sheet passes them through
+ * tr(); tests use English). Each problem's own lines are technical and stay
+ * in one plain Latin form in both editions (see problemReport).
+ */
 export interface ReportWords {
   title: string;
   build: string;
@@ -268,10 +272,6 @@ export interface ReportWords {
   none: string;
   /** "3 problems, newest first. Kept on this device only." */
   count(n: number): string;
-  /** "seen 57 times, last 10:20:14 UTC" (n > 1 only). */
-  seen(n: number, last: string): string;
-  where: string;
-  online: string;
 }
 
 export const ENGLISH_WORDS: ReportWords = {
@@ -284,10 +284,12 @@ export const ENGLISH_WORDS: ReportWords = {
   made: "Made",
   none: "No problems so far!",
   count: (n) => `${n} ${n === 1 ? "problem" : "problems"}, newest first. Kept on this device only.`,
-  seen: (n, last) => `seen ${n} times, last ${last}`,
-  where: "Where",
-  online: "online",
 };
+
+/** "seen 57 times, last 2026-11-13 10:20:14 UTC" (n > 1 only). */
+function seenLine(n: number, last: string): string {
+  return `seen ${n} times, last ${last}`;
+}
 
 /** "2026-11-13 10:20:11 UTC" (technical lines stay in one plain form). */
 export function utcStamp(ms: number): string {
@@ -296,7 +298,15 @@ export function utcStamp(ms: number): string {
   return Number.isNaN(d.getTime()) ? "?" : `${d.toISOString().slice(0, 19).replace("T", " ")} UTC`;
 }
 
-/** The plain-text report: a header about the device, then each problem (newest first). */
+/**
+ * The plain-text report: a header about the device, then each problem
+ * (newest first). Only the title and the header's labels follow the
+ * edition. Every problem's lines (its "#n" line, message, stack and
+ * "Where:") are in one plain Latin form with Latin digits in both editions:
+ * a line that mixed Arabic words with Latin times and ids could come out
+ * reordered when pasted into a chat app (bidirectional text), and these are
+ * the lines a grown-up forwards.
+ */
 export function problemReport(list: readonly Problem[], h: ReportHeader, w: ReportWords = ENGLISH_WORDS): string {
   const lines = [
     w.title,
@@ -315,12 +325,12 @@ export function problemReport(list: readonly Problem[], h: ReportHeader, w: Repo
   lines.push(w.count(list.length));
   list.forEach((p, i) => {
     lines.push("");
-    const seen = p.n > 1 ? ` · ${w.seen(p.n, utcStamp(p.last))}` : "";
+    const seen = p.n > 1 ? ` · ${seenLine(p.n, utcStamp(p.last))}` : "";
     lines.push(`#${i + 1} ${utcStamp(p.at)}${seen} · ${p.kind}`);
     lines.push(p.msg);
     for (const s of p.stack) lines.push(`  ${s}`);
-    const where = [p.screen, p.quality, p.edition, p.online ? w.online : "", p.build].filter((x) => x !== "");
-    lines.push(`${w.where}: ${where.join(" · ")}`);
+    const where = [p.screen, p.quality, p.edition, p.online ? "online" : "", p.build].filter((x) => x !== "");
+    lines.push(`Where: ${where.join(" · ")}`);
   });
   return lines.join("\n");
 }

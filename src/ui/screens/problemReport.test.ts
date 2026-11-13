@@ -127,6 +127,23 @@ describe("the Problem report sheet", () => {
     expect(reportText(log, 0).split("\n").at(-1)).toBe("لا مشكلات حتى الآن!");
   });
 
+  it("in the Golden Age, only the title and header are Arabic: every problem line stays plain Latin", () => {
+    const log = memLog();
+    log.record("frame", new Error("boom"));
+    log.record("frame", new Error("boom"));
+    log.record("promise", new Error("later"));
+    const lines = reportText(log, Date.UTC(2026, 10, 13, 11, 0, 0)).split("\n");
+    const ARABIC_SCRIPT = /[\u0600-\u06FF]/;
+    expect(lines[0]).toMatch(ARABIC_SCRIPT); // the title
+    expect(lines[1]).toBe("الإصدار: abc1234-xyz"); // a header label, then its value
+    const first = lines.findIndex((l) => l.startsWith("#1 "));
+    expect(first).toBeGreaterThan(0);
+    const entries = lines.slice(first);
+    for (const line of entries) expect(line).not.toMatch(ARABIC_SCRIPT);
+    expect(entries.some((l) => /· seen 2 times, last 2026-11-13 \d\d:\d\d:\d\d UTC · frame$/.test(l))).toBe(true);
+    expect(entries.filter((l) => l.startsWith("Where: battle/playing · auto L2 · golden-age"))).toHaveLength(2);
+  });
+
   it("the Settings row closes Settings first", () => {
     let closed = 0;
     const row = problemReportRow(() => closed++) as unknown as FakeElement;

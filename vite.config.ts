@@ -50,9 +50,6 @@ export default defineConfig({
   // to "/clash-royale-clone/" so asset URLs resolve under the project subpath.
   base: process.env.VITE_BASE || "/",
   plugins: [swBuildId()],
-  // The build id in the app (problem log, Problem report): the same id the
-  // service worker is stamped with. Dev and vitest read "dev" (buildInfo.ts).
-  define: { __APP_BUILD__: JSON.stringify(buildId()) },
   build: {
     rollupOptions: {
       // three.js is most of the bundle and changes far less often than the
@@ -60,6 +57,11 @@ export default defineConfig({
       output: { manualChunks: { three: ["three"] } },
     },
   },
+  // The build id in the app (problem log, Problem report): the same id the
+  // service worker is stamped with (buildId() is worked out once per config
+  // load). Dev and vitest read "dev" (src/app/buildInfo.ts). Kept apart from
+  // the plugin lines on purpose: the boot package rewrites those.
+  define: { __APP_BUILD__: JSON.stringify(buildId()) },
   // Listen on every interface (IPv4 + IPv6) so localhost always works
   // regardless of how the browser resolves it, and other devices on
   // the LAN (tablets/phones) can join via this machine's IP.
