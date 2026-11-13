@@ -102,6 +102,26 @@ export function autoGraphicsLabel(q: { index: number; mode: string } = liveQuali
   return tr("Auto (now: High)", "تلقائي (الآن: عالٍ)");
 }
 
+/**
+ * Lay "Auto (now: Low)" out as "Auto" over a smaller "(now: Low)" in a
+ * slightly wider segment, so a phone shows two tidy lines instead of three
+ * broken ones. The words (and so the button's name) stay the same.
+ */
+function stackAutoLabel(row: HTMLElement): void {
+  const opt = row.querySelector<HTMLElement>(".ui-seg__opt");
+  const span = opt?.querySelector<HTMLElement>("span:last-child");
+  const text = span?.textContent ?? "";
+  const cut = text.indexOf(" (");
+  if (!opt || !span || cut < 0) return;
+  span.textContent = `${text.slice(0, cut)} `;
+  const now = document.createElement("small");
+  now.textContent = text.slice(cut + 1);
+  now.style.cssText = "display:block;font-size:0.78em;line-height:1.15;white-space:nowrap;opacity:0.9";
+  span.appendChild(now);
+  span.style.cssText = "display:flex;flex-direction:column;align-items:center;line-height:1.15";
+  opt.style.flexGrow = "1.5";
+}
+
 /** A labelled segmented control bound to a pref. */
 function segRow<T>(ic: IconName, label: string, options: { value: T; label: string; blurb?: string }[], value: T, set: (v: T) => void): HTMLElement {
   const row = document.createElement("div");
@@ -227,7 +247,7 @@ export function buildSettings(opts: SettingsOpts = {}, close?: () => void): HTML
 
   // ---- Display
   const display = group(tr("Display", "العرض"));
-  display.appendChild(
+  const graphicsRow = display.appendChild(
     segRow<QualityPref>(
       "sparkle",
       tr("Graphics", "الرسوميات"),
@@ -241,6 +261,7 @@ export function buildSettings(opts: SettingsOpts = {}, close?: () => void): HTML
       (v) => setPrefs({ quality: v }),
     ),
   );
+  stackAutoLabel(graphicsRow);
   const teamRow = segRow<TeamPalette>(
     "palette",
     tr("Team colours", "ألوان الفريقين"),

@@ -293,8 +293,14 @@ export function buildComposer(b: Battle3D): PostStack {
 
   // Auto starts where this device left off (or at a first guess); then
   // Settings → Quality applies live (a ?quality= URL pin still wins).
-  configureAutoQuality(b);
+  const device = configureAutoQuality(b);
   b.quality.setPref(getPrefs().quality);
+  const q = b.quality;
+  console.info(
+    q.mode === "auto"
+      ? `[graphics] auto starts at L${q.index} (${q.start.source}) on ${device}`
+      : `[graphics] pinned ${q.mode} (L${q.index}); auto would start at L${q.start.level} (${q.start.source}) on ${device}`,
+  );
   noteIfLow(b);
   onPrefs((p) => {
     // (A disposed scene has left the page; it no longer follows Settings.)
@@ -349,7 +355,7 @@ function gfxStorage(): StorageLike | null {
  * path on a software renderer). Never breaks boot: on any error Auto just
  * starts at the top, as before.
  */
-function configureAutoQuality(b: Battle3D): void {
+function configureAutoQuality(b: Battle3D): string {
   try {
     registerGfxNote();
     const store = gfxStorage();
@@ -363,9 +369,10 @@ function configureAutoQuality(b: Battle3D): void {
     b.quality.configure(start, (settled) => {
       writeGfxMemory(store, recordGfx(readGfxMemory(store), key, settled, build, Date.now()));
     });
-    console.info(`[graphics] auto starts at L${start.level} (${start.source}) on ${key}`);
+    return key;
   } catch {
     // no memory, no guess: Auto starts at the top as before
+    return "an unknown device";
   }
 }
 
