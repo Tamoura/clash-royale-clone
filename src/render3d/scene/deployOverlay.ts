@@ -48,7 +48,13 @@ import { CAM_HOME } from "./common";
 export const REVEAL_DELAY = 0.6;
 /** The lit pocket grows from the ruin over this long (smoothstep). */
 export const REVEAL_GROW = 1.0;
-export const REVEAL_RADIUS = 15;
+/**
+ * The wave's final radius (tiles). The farthest pocket point from its ruin is
+ * the pocket's river corner at the middle seam, 10.12 tiles away (the
+ * spec's first 15 left the pocket at 62% of the grow, so the sweep stopped
+ * dead after 0.6 s); 10.5 just clears it, so the front sweeps the whole second.
+ */
+export const REVEAL_RADIUS = 10.5;
 /** The pocket stays lit until this age, then fades out. */
 export const REVEAL_END = 4.0;
 export const REVEAL_FADE = 0.6;

@@ -234,12 +234,11 @@ if (MATRIX) {
     "",
     ...(ZONE
       ? [
-          "",
           "Placement map held (report only): " +
             results.map((r) => `${r.view} ${r.edition === "arabic" ? "Golden Age" : "Classic"} ${r.emptyZone.delta.calls >= 0 ? "+" : ""}${r.emptyZone.delta.calls} calls, ${r.emptyZone.delta.triangles >= 0 ? "+" : ""}${fmt(r.emptyZone.delta.triangles)} tris`).join("; "),
+          "",
         ]
       : []),
-    "",
     `Gates: empty ${GATES.emptyCalls ?? "off"} calls / ${GATES.emptyTriangles === null ? "off" : fmt(GATES.emptyTriangles)} tris; fight ${GATES.fightCalls ?? "off"} calls / ${GATES.fightTriangles === null ? "off" : fmt(GATES.fightTriangles)} tris / ${GATES.fightTextures ?? "off"} textures. Targets: empty ${TARGETS.emptyCalls} / ${fmt(TARGETS.emptyTriangles)}, fight ${TARGETS.fightCalls} / ${fmt(TARGETS.fightTriangles)}.`,
   ];
   console.log(lines.join("\n"));

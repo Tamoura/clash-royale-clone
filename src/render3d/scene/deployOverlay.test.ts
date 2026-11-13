@@ -8,12 +8,14 @@ import {
   DeployOverlay,
   REVEAL_DONE,
   REVEAL_LIFE,
+  REVEAL_RADIUS,
   VIEW_SHIFT,
   laneMixAt,
   revealEnvelope,
   revealRadius,
 } from "./deployOverlay";
 import { CAM_HOME } from "./common";
+import { ruinSpot } from "../deployZone";
 
 const DT = 1 / 60;
 
@@ -38,12 +40,28 @@ function uniforms(o: DeployOverlay): Record<string, THREE.IUniform> {
 describe("reveal timeline", () => {
   it("grows the pocket from the ruin after a beat, then fades it out", () => {
     expect(revealRadius(0.3, false)).toBe(0);
-    expect(revealRadius(0.7, false)).toBeCloseTo(0.42, 2);
+    expect(revealRadius(0.7, false)).toBeCloseTo(REVEAL_RADIUS * 0.028, 6); // smoothstep(0.1)
     expect(revealRadius(1.6, false)).toBe(REVEAL_DONE);
     expect(revealEnvelope(0.3, true, false)).toBe(0);
     expect(revealEnvelope(2, true, false)).toBe(1);
     expect(revealEnvelope(4.3, true, false)).toBeCloseTo(0.5, 6);
     expect(revealEnvelope(4.6, true, false)).toBe(0);
+  });
+
+  it("sweeps the front across the whole pocket for the whole grow, ending just past its farthest corner", () => {
+    for (const side of ["player", "enemy"] as Side[]) {
+      for (const lane of ["left", "right"] as const) {
+        const ruin = ruinSpot(side, lane);
+        // The pocket: the lane's dry enemy half (x 0..9 or 9..18, y 0..15 or 17..32).
+        const xs = lane === "left" ? [0, 9] : [9, 18];
+        const ys = side === "player" ? [0, 15] : [17, 32];
+        let far = 0;
+        for (const x of xs) for (const y of ys) far = Math.max(far, Math.hypot(x - ruin.x, y - ruin.y));
+        expect(far).toBeCloseTo(10.12, 2);
+        expect(REVEAL_RADIUS).toBeGreaterThan(far + 0.2); // the rim clears the corner at the end
+        expect(revealRadius(1.4, false)).toBeLessThan(far); // still sweeping at 80% of the grow
+      }
+    }
   });
 
   it("starts a record when a lane opens on the same battle and drops it after 4.6 s", () => {
