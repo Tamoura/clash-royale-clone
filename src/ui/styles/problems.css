@@ -1,0 +1,93 @@
+/* Settings > Help > Problem report (src/ui/screens/problemReport.ts). */
+.v2-problems { display: flex; flex-direction: column; gap: var(--sp-3); }
+.v2-problem-intro,
+.v2-problem-fine p {
+  margin: 0;
+  color: var(--on-surface-dim);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+.v2-problem-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.v2-problem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.05);
+}
+.v2-problem-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  color: var(--on-surface-dim);
+  font-size: var(--fs-sm);
+}
+.v2-problem-count {
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  color: var(--on-surface);
+}
+.v2-problem-msg,
+.v2-problem-where {
+  margin: 0;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: left;
+  word-break: break-word;
+}
+.v2-problem-msg {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+.v2-problem-where { color: var(--on-surface-dim); font-size: var(--fs-xs); white-space: nowrap; text-overflow: ellipsis; }
+.v2-problem-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: 72px;
+  margin: 0;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: var(--fs-md);
+}
+.v2-problem-empty .ui-icon { width: 28px; height: 28px; }
+.v2-problem-actions { display: flex; gap: var(--sp-3); }
+.v2-problem-actions .ui-btn { flex: 1 1 0; }
+.v2-problem-text {
+  width: 100%;
+  min-height: 140px;
+  padding: var(--sp-2);
+  border: 2px solid var(--surface-3);
+  border-radius: var(--r-md);
+  background: var(--surface-0);
+  color: var(--on-surface);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--fs-xs);
+  resize: vertical;
+}
+.v2-problem-text[hidden],
+.v2-problem-list[hidden],
+.v2-problem-empty[hidden] { display: none; }
+.v2-problem-fine { display: flex; flex-direction: column; gap: var(--sp-1); }
+.v2-problem-fine code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  color: var(--on-surface);
+  font-size: var(--fs-xs);
+  unicode-bidi: isolate;
+}

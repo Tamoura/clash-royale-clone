@@ -1,31 +1,57 @@
 /**
- * Offline service worker: the app shell and every fetched asset are cached,
- * so an installed game launches (and plays solo) with no connection.
+ * Offline service worker: an installed game opens at once, with or without a
+ * connection, and never to a blank page.
  *
- * Strategy: navigations (index.html) are network-first so a new deploy wins,
- * with the cached shell as the offline fallback. Vite's hashed /assets/ files
- * are immutable, so they are cache-first and never refetched in the
- * background. Anything else same-origin (icons, the manifest) is cache-first
- * with a background refresh.
+ * Install keeps the whole build: the game's page (the "shell"), every file
+ * Vite emitted under assets/ (PRECACHE: the scripts, the styles, the fonts,
+ * stamped in at build time by vite.config.ts), the modelled cast and the
+ * home-screen icons. Files are fetched one by one and a failing file never
+ * fails the install, but the shell is only kept once every PRECACHE file is
+ * cached beside it, so a kept shell always finds its own files.
  *
- * The cache name carries a build id stamped in at build time (see
- * vite.config.ts), so every deploy starts a fresh cache and activate deletes
- * the old ones: no stale assets pile up across releases.
+ * The game's page (the scope's root) races the network against a short
+ * timer once a shell is cached: a sleeping server (Render's free tier wakes
+ * in about a minute), a page that starts and then stalls, or a slow or
+ * missing connection gets the cached game in under three seconds, and the
+ * network's copy is kept for next time when it arrives. A response that is not the game's page (a host's wake-up or error
+ * page) is never shown in its place, nor kept. The very first visit has
+ * nothing cached, so it waits for the network. A URL carrying ?cr-fresh asks
+ * for the network's newest page (the "update needed" reload, see
+ * src/app/offline.ts); it still falls back to the cached game.
  *
- * The modelled cast (public/models/troops, about 0.8 MB of CC0 KayKit
- * characters and clips) is precached on install, per build, so an installed
- * game fields the cast offline and a fresh launch never waits on it. Model
- * files only change with a build, so they are cache-first with no background
- * refetch (a phone does not pull 0.8 MB again on every launch).
+ * Every build has its own cache (cr-clone-<build id>). After a deploy the old
+ * cache stays until nothing can need it: the new build's cache is complete,
+ * every open page was served this build's page by this worker, and no
+ * navigation is still bringing a page in (a page from an older build keeps
+ * loading its lazy files from its own cache). Files are looked up in
+ * this build's cache first, then in any older one. At most OLD_KEPT older
+ * builds wait on disk.
+ *
+ * Vite's hashed assets/ files are immutable and the models only change with
+ * a build, so both are cache-first and never refetched. Anything else
+ * same-origin (icons, the manifest) is cache-first with a background
+ * refresh. The worker script itself is never cached or served from here.
+ * src/app/sw.test.ts runs this file in a fake worker scope.
  */
 const BUILD_ID = "__BUILD_ID__";
 const CACHE = `cr-clone-${BUILD_ID}`;
-const ASSETS = new URL("assets/", self.registration.scope).pathname;
-const MODELS = new URL("models/", self.registration.scope).pathname;
+/** Every cache this game ever names (other projects on a shared origin keep theirs). */
+const OURS = "cr-clone-";
+/** This build's assets/ files, scope-relative (stamped by vite.config.ts; empty in the source). */
+const PRECACHE = /* __PRECACHE__ */ [];
+const SCOPE = new URL(self.registration.scope);
+/** An absolute URL for a scope-relative path (works under "/" and "/clash-royale-clone/"). */
+const at = (path) => new URL(path, SCOPE).href;
+const SHELL = at("./");
+const ASSETS = new URL("assets/", SCOPE).pathname;
+const MODELS = new URL("models/", SCOPE).pathname;
+const WORKER = new URL("sw.js", SCOPE).pathname;
 /** The cast pack, as src/render3d/cast/loader.ts loads it (src/app/sw.test.ts keeps the two in step). */
 const CAST = ["anims", "barbarian", "knight", "mage", "rogue", "rogue_hooded", "skeleton_minion"].map(
   (f) => `models/troops/${f}.glb`,
 );
+/** What an installed icon needs to look right offline (index.html and the manifest link these). */
+const APP_FILES = ["manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 /**
  * Only the game's own index.html holds this marker (a <meta name="cr-app-shell">
  * line; src/app/sw.test.ts checks it). It is a dedicated marker, not the
@@ -33,79 +59,315 @@ const CAST = ["anims", "barbarian", "knight", "mage", "rogue", "rogue_hooded", "
  * offline shell from being kept.
  */
 const SHELL_MARK = 'name="cr-app-shell"';
+/** How long the game's page waits for the network before the cached game is shown. */
+const NAV_TIMEOUT_MS = 2500;
+/** How long a ?cr-fresh page waits for the network before the cached game is shown. */
+const FRESH_TIMEOUT_MS = 12000;
+const FRESH_PARAM = "cr-fresh";
+/** Older builds' caches kept at most, however long an old page stays open. */
+const OLD_KEPT = 2;
+/** What the page hears once this build is fully cached (src/app/offline.ts). */
+const READY = "cr-offline-ready";
+const ASK_READY = "cr-offline?";
+
+const noop = () => undefined;
+const wait = (ms) => new Promise((resolve) => setTimeout(() => resolve(null), ms));
+
+/** Windows (pages) this worker served this build's page to: they never need an older build's cache. Memory only. */
+const served = new Set();
+/**
+ * Navigations whose page is not (or not yet known to be) this build's, with
+ * when it was handed over (Infinity while still deciding). The browser only
+ * lists a page once it has started, so until then an older build's page
+ * (from the HTTP or a CDN cache, or an older cached shell) is invisible to
+ * sweep: these hold every older cache. An entry goes once its page is listed
+ * (from then on the served check covers it) or ARRIVE_MS after handover (a
+ * navigation that never became a page). Memory only.
+ */
+const arriving = new Map();
+const ARRIVE_MS = 30000;
+
+/** The page's HTML when `res` is the game's own page, else null (healthz, a wake-up or error page). */
+async function gamePage(res) {
+  if (!res || !res.ok || res.type === "opaqueredirect") return null;
+  if (!(res.headers.get("content-type") || "").includes("text/html")) return null;
+  try {
+    const html = await res.clone().text();
+    return html.includes(SHELL_MARK) ? html : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The assets/ files a page links to (its entry script, preloads and styles), scope-relative. */
+function linkedAssets(html) {
+  const out = [];
+  for (const m of html.matchAll(/\b(?:src|href)="([^"]+)"/g)) {
+    const path = new URL(m[1], SCOPE).pathname;
+    if (path.startsWith(ASSETS)) out.push(path.slice(SCOPE.pathname.length));
+  }
+  return out;
+}
+
+/** True when the page belongs to this build (another deploy's page links other files). */
+const ownBuild = (html) => linkedAssets(html).every((path) => PRECACHE.includes(path));
+
+/** Our caches other than this build's, oldest first. */
+async function olderCaches() {
+  return (await caches.keys()).filter((name) => name.startsWith(OURS) && name !== CACHE);
+}
+
+/** True once this build is fully cached (the shell is only ever kept then). */
+async function isReady() {
+  return Boolean(await (await caches.open(CACHE)).match(SHELL));
+}
 
 /**
- * Keep a navigation response as the offline shell only when it is the game's
- * page. The server that hands out the game also answers /healthz (JSON), and
- * a sleeping host may answer with its own wake-up page or an error page:
- * caching any of those would show it instead of the game when offline.
+ * Keep `html` as this build's offline shell, but only when it is this
+ * build's page and every PRECACHE file is already in the cache beside it.
  */
-function keepShell(res) {
-  const type = res.headers.get("content-type") || "";
-  if (!res.ok || !type.includes("text/html")) return Promise.resolve();
-  const probe = res.clone();
-  const copy = res.clone();
-  return probe
-    .text()
-    .then((html) => (html.includes(SHELL_MARK) ? caches.open(CACHE).then((cache) => cache.put("./", copy)) : undefined))
-    .catch(() => undefined);
+async function keepShell(html) {
+  if (!html || !ownBuild(html)) return false;
+  const cache = await caches.open(CACHE);
+  const hits = await Promise.all(PRECACHE.map((path) => cache.match(at(path))));
+  if (!hits.every(Boolean)) return false;
+  // A fresh, unredirected response (a redirected one cannot answer a navigation).
+  await cache.put(SHELL, new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } }));
+  return true;
+}
+
+/** The game's page from the network, past the HTTP cache (install and top-up), or null. */
+async function fetchShell() {
+  return gamePage(await fetch(SHELL, { cache: "reload" }));
+}
+
+/**
+ * The cached game to show: this build's page first, else the newest older
+ * build's. A page is only shown from a cache that also holds the files it
+ * links (its entry script, preloads and styles), so it can always start: a
+ * cache from before precaching (or a damaged one) is passed over.
+ */
+async function cachedShell() {
+  for (const name of [CACHE, ...(await olderCaches()).reverse()]) {
+    const cache = await caches.open(name);
+    const hit = await cache.match(SHELL);
+    if (!hit) continue;
+    const links = linkedAssets(await hit.clone().text());
+    const found = await Promise.all(links.map((path) => cache.match(at(path))));
+    if (found.every(Boolean)) return { res: hit, own: name === CACHE };
+  }
+  return null;
+}
+
+/** A file from this build's cache, else from an older build's (an old page's lazy files). */
+async function lookup(req) {
+  return (await (await caches.open(CACHE)).match(req)) || (await caches.match(req));
+}
+
+/** Tell open pages this build can now open offline. */
+async function announce() {
+  if (!(await isReady())) return;
+  const pages = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  for (const page of pages) page.postMessage({ type: READY });
+}
+
+let topping = null;
+/**
+ * Finish an install that missed a file (a dropped connection, a host
+ * mid-deploy): fetch what is missing and keep the shell once all is in.
+ * Runs at most once at a time; the caller's event keeps the worker alive.
+ */
+function topUp() {
+  topping ??= (async () => {
+    if (await isReady()) return;
+    const cache = await caches.open(CACHE);
+    await Promise.all(
+      PRECACHE.map(async (path) => (await cache.match(at(path))) || cache.add(at(path)).catch(noop)),
+    );
+    if (await keepShell(await fetchShell().catch(noop))) await announce();
+  })()
+    .catch(noop)
+    .finally(() => (topping = null));
+  return topping;
+}
+
+/** Record how a navigation ended: this build's page (`own`), or anything else. */
+function handedOver(id, own) {
+  if (!id) return;
+  if (own) {
+    arriving.delete(id);
+    served.add(id);
+  } else if (!served.has(id)) {
+    arriving.set(id, Date.now());
+  }
+}
+
+/** True while a navigation's page may still need an older cache before the browser lists it. */
+function stillArriving(pages) {
+  const listed = new Set(pages.map((page) => page.id));
+  const now = Date.now();
+  for (const [id, at] of arriving) {
+    if (listed.has(id) || now - at > ARRIVE_MS) arriving.delete(id);
+  }
+  return arriving.size > 0;
+}
+
+/**
+ * Delete older builds' caches once nothing can need them: this build is fully
+ * cached, every open page was served this build's page by this worker, and no
+ * navigation is still bringing another page in. However long an old page
+ * stays open, only the newest OLD_KEPT older caches are kept.
+ */
+async function sweep() {
+  const older = await olderCaches();
+  if (!older.length) return;
+  let drop = [];
+  if (await isReady()) {
+    const pages = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    if (!stillArriving(pages) && pages.every((page) => served.has(page.id))) drop = older;
+  }
+  if (!drop.length && older.length > OLD_KEPT) drop = older.slice(0, older.length - OLD_KEPT);
+  await Promise.all(drop.map((name) => caches.delete(name)));
+}
+
+let tidiedAt = -Infinity;
+/**
+ * Top up and sweep now and then: every fetch may ask, and it runs at most
+ * every 10 s, unless `after` is given (a navigation: it runs once that
+ * navigation has settled which page it hands over).
+ */
+function tidy(event, after) {
+  const t = Date.now();
+  if (!after && t - tidiedAt < 10000) return;
+  tidiedAt = t;
+  event.waitUntil(
+    Promise.resolve(after)
+      .catch(noop)
+      .then(topUp)
+      .then(sweep)
+      .catch(noop),
+  );
 }
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) =>
-        cache.addAll(["./"]).then(() =>
-          // Best effort, one file at a time: a model that fails to download
-          // must not fail the install (the game falls back to its procedural
-          // roster, and the file is cached on its next successful fetch).
-          Promise.all(CAST.map((path) => cache.add(path).catch(() => undefined))),
-        ),
-      )
-      .then(() => self.skipWaiting()),
+    (async () => {
+      // The page first. No game page for this build (offline, a host's wake-up
+      // or error page, a host mid-deploy) means no install: the worker in
+      // charge keeps serving, and the browser tries again on a later launch.
+      const html = await fetchShell();
+      if (!html || !ownBuild(html)) throw new Error("no game page for this build");
+      const cache = await caches.open(CACHE);
+      // One file at a time, best effort: a file that fails to download must not
+      // fail the install (the top-up fetches it later; until then the shell is
+      // not kept, so an older build's complete cache still opens offline).
+      await Promise.all([...PRECACHE, ...CAST, ...APP_FILES].map((path) => cache.add(at(path)).catch(noop)));
+      await keepShell(html);
+    })().then(() => self.skipWaiting()),
   );
 });
 
 self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim().then(sweep).then(announce).catch(noop));
+});
+
+self.addEventListener("message", (event) => {
+  if (!event.data || event.data.type !== ASK_READY) return;
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim()),
+    isReady().then((ready) => {
+      if (ready && event.source) event.source.postMessage({ type: READY });
+    }),
   );
 });
+
+/**
+ * A navigation. The game's page races the network against a timer once a
+ * shell is cached; any other page (/healthz, an old bookmark) is the
+ * network's, with the cached game as the offline fallback.
+ */
+async function navigate(event, url) {
+  const network = fetch(event.request);
+  network.catch(noop); // settled below or in the background, never unhandled
+  const id = event.resultingClientId;
+  const appPage = url.pathname === SCOPE.pathname || url.pathname === `${SCOPE.pathname}index.html`;
+  const cached = await cachedShell().catch(noop);
+  if (!cached) {
+    // The very first visit (nothing cached that can start): wait for the network, as ever.
+    const res = await network;
+    handedOver(id, false); // until the page turns out to be this build's (below)
+    event.waitUntil(
+      gamePage(res)
+        .then((html) => {
+          if (html && ownBuild(html)) handedOver(id, true);
+          return keepShell(html);
+        })
+        .catch(noop),
+    );
+    return res;
+  }
+  if (!appPage) {
+    handedOver(id, false);
+    try {
+      return await network;
+    } catch {
+      return cached.res;
+    }
+  }
+  // One deadline for the whole page, its first bytes and its last: a page
+  // that starts arriving and then stalls (a weak signal in the car) must not
+  // hold the cached game back any longer than a server that never answers.
+  const fresh = url.searchParams.has(FRESH_PARAM);
+  const page = network.then(async (res) => ({ res, html: await gamePage(res) }));
+  const won = await Promise.race([page.catch(noop), wait(fresh ? FRESH_TIMEOUT_MS : NAV_TIMEOUT_MS)]);
+  if (won && won.html) {
+    // The network's game page, whole and in time: shown, and kept if it is
+    // this build's. Another build's page (the HTTP or a CDN cache, a host
+    // switching over) may still need its own build's cache: not "served".
+    event.waitUntil(keepShell(won.html).catch(noop));
+    handedOver(id, ownBuild(won.html));
+    return won.res;
+  }
+  // Slow, stalled, offline, or not the game (a wake-up or error page): the
+  // cached game now, and the network's page kept for next time if it turns
+  // out to be ours.
+  event.waitUntil(page.then((late) => keepShell(late.html)).catch(noop));
+  handedOver(id, cached.own);
+  return cached.res;
+}
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  // The worker script itself: always the network's (an update must never come from a cache).
+  if (url.pathname === WORKER) return;
 
   if (req.mode === "navigate") {
-    // Network-first: a new deploy replaces the shell; offline falls back.
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          keepShell(res);
-          return res;
-        })
-        .catch(() => caches.match("./")),
+    const id = event.resultingClientId;
+    if (id) arriving.set(id, Infinity); // deciding: sweep holds every older cache meanwhile
+    const answer = navigate(event, url);
+    event.respondWith(answer);
+    // Tidy once this navigation has settled which page it hands over.
+    tidy(
+      event,
+      answer.then(noop, () => handedOver(id, false)),
     );
     return;
   }
+  tidy(event);
 
   if (url.pathname.startsWith(ASSETS) || url.pathname.startsWith(MODELS)) {
-    // Hashed and immutable (assets), or fixed for this build (models, and the
-    // cache is per build): the cached copy is always right, never refetched.
+    // Hashed and immutable (assets), or fixed for a build (models): a cached
+    // copy is always right and never refetched; a miss is fetched and kept.
     event.respondWith(
-      caches.match(req).then(
+      lookup(req).then(
         (hit) =>
           hit ??
           fetch(req).then((res) => {
             if (res.ok) {
               const copy = res.clone();
-              caches.open(CACHE).then((cache) => cache.put(req, copy));
+              caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(noop);
             }
             return res;
           }),
@@ -115,12 +377,12 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(
-    caches.match(req).then((hit) => {
+    lookup(req).then((hit) => {
       const refresh = fetch(req)
         .then((res) => {
           if (res.ok) {
             const copy = res.clone();
-            caches.open(CACHE).then((cache) => cache.put(req, copy));
+            caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(noop);
           }
           return res;
         })

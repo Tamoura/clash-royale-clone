@@ -64,6 +64,45 @@ describe("hook bus", () => {
     err.mockRestore();
   });
 
+  it("hands a throwing listener's error to the reporter instead of the console (the crash shield's problem log)", () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const seen: [string, unknown][] = [];
+    const off = hooks.setHookErrorReporter((hook, e) => void seen.push([hook, e]));
+    const boom = new Error("boom");
+    const after = vi.fn();
+    hooks.on("frame", () => {
+      throw boom;
+    });
+    hooks.on("frame", after);
+    hooks.emit("frame", { dt: 0, presentDt: 0, alpha: 1, phase: "playing", battle: null });
+    expect(seen).toEqual([["frame", boom]]);
+    expect(after).toHaveBeenCalledTimes(1);
+    expect(err).not.toHaveBeenCalled();
+    // A reporter that throws falls back to the console; so does no reporter.
+    off();
+    hooks.setHookErrorReporter(() => {
+      throw new Error("reporter broke");
+    });
+    hooks.emit("frame", { dt: 0, presentDt: 0, alpha: 1, phase: "playing", battle: null });
+    expect(err).toHaveBeenCalledTimes(1);
+    expect(after).toHaveBeenCalledTimes(2);
+    err.mockRestore();
+  });
+
+  it("an old reporter's uninstall leaves a newer reporter in place", () => {
+    const a: unknown[] = [];
+    const b: unknown[] = [];
+    const offA = hooks.setHookErrorReporter((_k, e) => void a.push(e));
+    hooks.setHookErrorReporter((_k, e) => void b.push(e));
+    offA();
+    hooks.on("input", () => {
+      throw new Error("x");
+    });
+    hooks.emit("input", input("x"));
+    expect(a).toHaveLength(0);
+    expect(b).toHaveLength(1);
+  });
+
   it("emitting with no listeners is a no-op", () => {
     expect(() => hooks.emit("screen", { id: "home", sceneMode: "none" })).not.toThrow();
   });

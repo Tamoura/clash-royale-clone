@@ -1,15 +1,38 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_START,
+  GFX_MEMORY_KEY,
+  GFX_MEMORY_MAX,
+  GFX_NOTE_KEY,
+  LOW_END_GPUS,
   MIN_RENDER_SCALE,
+  PIN_LEVEL,
   QUALITY_LEVELS,
   QualityGovernor,
+  REPROBE_RETRY_MS,
+  CRAWL_FRAMES,
+  CRAWL_WINDOW,
   SETTLE,
+  SLOW_MIN_FRAMES,
+  SLOW_WINDOW,
   WARMUP,
   WINDOW,
+  autoStartFor,
   currentQuality,
+  deviceKey,
+  firstGuessLevel,
+  levelName,
+  liveQuality,
   outlinesEnabled,
   particleScale,
   qualityPinFromUrl,
+  readGfxMemory,
+  recordGfx,
+  sanitizeGfxMemory,
+  writeGfxMemory,
+  type AutoStart,
+  type Settled,
+  type StorageLike,
 } from "./quality";
 
 /** Run `seconds` of frames whose duration depends on the current level. */
@@ -201,7 +224,13 @@ describe("adaptive quality governor", () => {
   it("ignores start-up hitches and long pauses such as a tab switch", () => {
     const gov = new QualityGovernor();
     for (let i = 0; i < 25; i++) gov.sample(0.1); // 2.5 s of loading jank
-    for (let i = 0; i < 20; i++) gov.sample(1.5);
+    // Long pauses between stretches of normal play (dialogs, GC, a tab switch).
+    for (let i = 0; i < 20; i++) {
+      gov.sample(1.5);
+      run(gov, () => 1 / 60, 1);
+    }
+    gov.sample(40); // back from another tab
+    for (let i = 0; i < 20; i++) gov.sample(0.5, false); // frames while hidden
     run(gov, () => 1 / 60, 20);
     expect(gov.index).toBe(0);
   });
@@ -266,5 +295,440 @@ describe("quality pins", () => {
     expect(outlinesEnabled()).toBe(true);
     gov.setPref("high");
     expect(particleScale()).toBe(1);
+  });
+});
+
+describe("very slow devices: a sustained slow window goes straight to the bottom", () => {
+  const bottom = QUALITY_LEVELS.length - 1;
+
+  it("steady 0.4 s frames (about 2.4 fps) reach the bottom within a few seconds", () => {
+    const gov = new QualityGovernor();
+    const steps = trace(gov, () => 0.4, 60);
+    expect(steps.map((s) => s.to)).toEqual([bottom]);
+    expect(steps[0].at).toBeLessThanOrEqual(WARMUP + SLOW_WINDOW + 0.5);
+    expect(gov.index).toBe(bottom);
+  });
+
+  it("the tutorial's 1.5 fps too, and it stays at the bottom once it is faster there", () => {
+    const gov = new QualityGovernor();
+    // 2.3 fps on L0 to L3, 5.7 fps on L4 (the planning measurements).
+    const steps = trace(gov, (i) => (i < bottom ? 1 / 1.5 : 1 / 5.7), 120);
+    expect(steps.map((s) => s.to)).toEqual([bottom]);
+    expect(steps[0].at).toBeLessThan(WARMUP + 4);
+  });
+
+  it("under 1 fps, three crawling frames are enough (not five): 0.6 fps and 0.4 fps", () => {
+    for (const fps of [0.6, 0.4]) {
+      const dt = 1 / fps;
+      const gov = new QualityGovernor();
+      const steps = trace(gov, () => dt, 60);
+      expect([fps, steps.map((s) => s.to)]).toEqual([fps, [bottom]]);
+      // The grace ends on the frame that crosses WARMUP; the window then needs
+      // CRAWL_FRAMES frames (at least CRAWL_WINDOW s), where five used to be needed.
+      const graceEnds = Math.ceil(WARMUP / dt) * dt;
+      const decided = steps[0].at + dt;
+      expect(decided - graceEnds).toBeCloseTo(Math.max(CRAWL_FRAMES, Math.ceil(CRAWL_WINDOW / dt)) * dt, 6);
+      expect(decided - graceEnds).toBeLessThan(SLOW_MIN_FRAMES * dt);
+    }
+    // 0.6 fps: L4 about 5 s after the grace (was over 8 s).
+    const gov = new QualityGovernor();
+    expect(trace(gov, () => 1 / 0.6, 60)[0].at + 1 / 0.6).toBeLessThan(WARMUP + 5.5);
+  });
+
+  it("but a burst of four 0.6 s compiles at the very start of a window still is not a slideshow", () => {
+    const gov = new QualityGovernor();
+    run(gov, () => 1 / 60, WARMUP + 1);
+    gov.sample(0.6, false); // a hidden frame starts the window afresh
+    const steps: number[] = [];
+    for (let k = 0; k < 4; k++) if (gov.sample(0.6)) steps.push(gov.index);
+    for (let t = 0; t < 20; t += 1 / 60) if (gov.sample(1 / 60)) steps.push(gov.index);
+    expect(steps).toEqual([]);
+    expect(gov.index).toBe(0);
+    // Nor two long frames (3.2 s) followed by smooth ones: crawling needs three.
+    const two = new QualityGovernor();
+    run(two, () => 1 / 60, WARMUP + 1);
+    two.sample(1.6, false);
+    two.sample(1.6);
+    two.sample(1.6);
+    run(two, () => 1 / 60, 20);
+    expect(two.index).toBe(0);
+    // A crawl mixed with a quicker frame falls back to the five-frame rule (still the bottom).
+    const mixed = new QualityGovernor();
+    let n = 0;
+    const steps2 = trace(mixed, () => (n++ % 3 === 2 ? 0.3 : 1 / 0.6), 60);
+    expect(steps2.map((s) => s.to)).toEqual([bottom]);
+  });
+
+  it("isolated spikes never do (a 0.6 s hitch every half second on a 60 fps game)", () => {
+    const gov = new QualityGovernor();
+    let n = 0;
+    run(gov, () => (++n % 30 === 0 ? 0.6 : 1 / 60), 120);
+    expect(gov.index).toBe(0);
+  });
+
+  it("nor do bursts of four back-to-back hitches (a run of shader compiles)", () => {
+    const gov = new QualityGovernor();
+    for (let i = 0; i < 12; i++) {
+      run(gov, () => 1 / 60, 3);
+      for (let k = 0; k < 4; k++) gov.sample(0.6);
+    }
+    run(gov, () => 1 / 60, 10);
+    expect(gov.index).toBe(0);
+  });
+
+  it("nor does a window where hitches are many but not most of the frames", () => {
+    // Six or so 0.3 s hitches in every 2 s window (at least SLOW_MIN_FRAMES),
+    // but each followed by six smooth frames: a minority, so no slideshow.
+    const gov = new QualityGovernor();
+    let n = 0;
+    const steps = trace(gov, () => (n++ % 7 === 0 ? 0.3 : 1 / 60), 60);
+    expect(steps).toEqual([]);
+    // The same pattern with the hitches in the majority is a slideshow.
+    const slow = new QualityGovernor();
+    let m = 0;
+    expect(trace(slow, () => (m++ % 3 === 2 ? 1 / 60 : 0.3), 30).map((s) => s.to)).toEqual([bottom]);
+  });
+
+  it("nor does one hitch in four on a 20 fps game: the walk may move, but never jumps to the bottom", () => {
+    const mixed = new QualityGovernor();
+    let k = 0;
+    const seen = new Set<number>();
+    for (let t = 0; t < 60; ) {
+      const dt = k++ % 4 === 0 ? 0.3 : 0.05;
+      mixed.sample(dt);
+      seen.add(mixed.index);
+      t += dt;
+    }
+    expect(seen.has(bottom)).toBe(false);
+  });
+
+  it("gaps over PAUSE never count, alone or mixed with slow frames", () => {
+    const gaps = new QualityGovernor();
+    for (let i = 0; i < 30; i++) gaps.sample(3.5);
+    expect(gaps.index).toBe(0);
+    // A slow frame or two between long pauses (a tab flicked back and forth)
+    // never fills a window: each pause starts it afresh.
+    const mixed = new QualityGovernor();
+    for (let i = 0; i < 40; i++) {
+      mixed.sample(3.5);
+      mixed.sample(0.4);
+      mixed.sample(0.4);
+    }
+    expect(mixed.index).toBe(0);
+  });
+
+  it("a hidden tab never counts, however slow its frames", () => {
+    const gov = new QualityGovernor();
+    for (let i = 0; i < 300; i++) gov.sample(0.4, false);
+    run(gov, () => 1 / 60, 30);
+    expect(gov.index).toBe(0);
+  });
+
+  it("a pinned level never moves, and a lock that measured the bottom as no faster stays", () => {
+    const high = new QualityGovernor("auto", "high");
+    run(high, () => 0.4, 60);
+    expect(high.index).toBe(0);
+    // L2 to L4 measure the same: the walk locks at L2 having tried L4.
+    const ms = [60, 40, 39, 38, 40];
+    const gov = new QualityGovernor();
+    run(gov, (i) => ms[i] / 1000, 60);
+    expect(gov.index).toBe(2);
+    expect(trace(gov, () => 0.4, 30)).toEqual([]);
+  });
+
+  it("a lock that never tried the bottom (a frame cap) still jumps when it becomes a slideshow", () => {
+    const gov = new QualityGovernor();
+    run(gov, () => 1 / 30, 30); // flat L0..L3: locked back at L0
+    expect(gov.index).toBe(0);
+    expect(trace(gov, () => 0.4, 30).map((s) => s.to)).toEqual([bottom]);
+  });
+
+  it("rearm() gives a new battle's start-up a grace before a slow window", () => {
+    const gov = new QualityGovernor();
+    run(gov, () => 1 / 60, 10);
+    gov.rearm();
+    run(gov, () => 0.4, SETTLE + SLOW_WINDOW - 0.5);
+    expect(gov.index).toBe(0);
+    run(gov, () => 0.4, 2);
+    expect(gov.index).toBe(bottom);
+  });
+});
+
+/** A start as the device memory would hand it to configure(). */
+const memoryStart = (level: number, reprobe = true): AutoStart => ({ level, helped: true, reprobe, source: "memory" });
+
+describe("remembered level and the once-per-session try one level up", () => {
+  it("starts at the remembered level, with no step-down sequence", () => {
+    const gov = new QualityGovernor();
+    gov.configure(memoryStart(4, false));
+    expect(gov.index).toBe(4);
+    expect(trace(gov, (i) => (i < 4 ? 0.4 : 1 / 5.7), 60)).toEqual([]);
+  });
+
+  it("reports where it settled: once per level per session", () => {
+    const seen: Settled[] = [];
+    const gov = new QualityGovernor();
+    gov.configure({ ...DEFAULT_START }, (s) => seen.push(s));
+    run(gov, () => 1 / 60, 60);
+    expect(seen).toEqual([{ level: 0, helped: false, probeFailed: false }]);
+    const slow: Settled[] = [];
+    const g2 = new QualityGovernor();
+    g2.configure({ ...DEFAULT_START }, (s) => slow.push(s));
+    run(g2, () => 0.4, 60);
+    expect(slow).toEqual([{ level: 4, helped: true, probeFailed: false }]);
+  });
+
+  it("tries one level up once, and keeps it when fast enough", () => {
+    const seen: Settled[] = [];
+    const cost = [1 / 30, 1 / 50, 1 / 60, 1 / 60, 1 / 60];
+    const gov = new QualityGovernor();
+    gov.configure(memoryStart(2), (s) => seen.push(s));
+    const steps = trace(gov, (i) => cost[i], 60);
+    expect(steps.map((s) => s.to)).toEqual([1]); // one level up only, never L0 this session
+    expect(gov.index).toBe(1);
+    expect(seen.map((s) => s.level)).toEqual([2, 1]);
+    expect(seen.every((s) => !s.probeFailed)).toBe(true);
+  });
+
+  it("steps back when the level up is slow, and says the try failed", () => {
+    const seen: Settled[] = [];
+    const cost = [1 / 30, 1 / 30, 1 / 60, 1 / 60, 1 / 60];
+    const gov = new QualityGovernor();
+    gov.configure(memoryStart(2), (s) => seen.push(s));
+    const steps = trace(gov, (i) => cost[i], 120);
+    expect(steps.map((s) => s.to)).toEqual([1, 2]);
+    expect(gov.index).toBe(2);
+    expect(seen[seen.length - 1]).toEqual({ level: 2, helped: true, probeFailed: true });
+  });
+
+  it("steps back from a level up that is a slideshow (the L4 to L3 try on a weak GPU)", () => {
+    const gov = new QualityGovernor();
+    gov.configure(memoryStart(4));
+    const steps = trace(gov, (i) => (i < 4 ? 0.4 : 1 / 60), 60);
+    expect(steps.map((s) => s.to)).toEqual([3, 4]);
+    expect(gov.index).toBe(4);
+  });
+
+  it("never tries up from L0, without leave, or after Settings round trips", () => {
+    const top = new QualityGovernor();
+    top.configure(memoryStart(0));
+    expect(trace(top, () => 1 / 60, 30)).toEqual([]);
+    const noLeave = new QualityGovernor();
+    noLeave.configure(memoryStart(3, false));
+    expect(trace(noLeave, () => 1 / 60, 30)).toEqual([]);
+    const gov = new QualityGovernor();
+    gov.configure(memoryStart(3));
+    expect(trace(gov, () => 1 / 60, 30).map((s) => s.to)).toEqual([2]);
+    gov.setPref("low");
+    gov.setPref("auto"); // back to auto: starts where it settled (L2), no second try
+    expect(gov.index).toBe(2);
+    expect(trace(gov, () => 1 / 60, 30)).toEqual([]);
+  });
+
+  it("a remembered level below the top may still walk on into L4 in a busier fight", () => {
+    const gov = new QualityGovernor();
+    gov.configure(memoryStart(3, false));
+    expect(trace(gov, (i) => (i < 4 ? 1 / 30 : 1 / 60), 30).map((s) => s.to)).toEqual([4]);
+  });
+});
+
+/** An in-memory Storage. */
+function fakeStore(init: Record<string, string> = {}): StorageLike & { data: Record<string, string> } {
+  const data = { ...init };
+  return {
+    data,
+    getItem: (k) => (k in data ? data[k] : null),
+    setItem: (k, v) => {
+      data[k] = String(v);
+    },
+  };
+}
+
+describe("device memory (cr-clone-gfx-memory)", () => {
+  const SWIFT = "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)";
+
+  it("round-trips through storage under its key", () => {
+    const store = fakeStore();
+    const key = deviceKey(SWIFT, 390, 844, 3);
+    writeGfxMemory(store, recordGfx([], key, { level: 4, helped: true, probeFailed: false }, "index-abc", 1000));
+    expect(Object.keys(store.data)).toEqual([GFX_MEMORY_KEY]);
+    expect(GFX_MEMORY_KEY).toBe("cr-clone-gfx-memory");
+    expect(GFX_NOTE_KEY).toBe("cr-clone-gfx-note-seen");
+    const back = readGfxMemory(store);
+    expect(back).toEqual([{ key, level: 4, helped: true, build: "index-abc", at: 1000, failBuild: "", failAt: 0 }]);
+    expect(autoStartFor(back[0], 0, "index-abc", 2000)).toEqual({ level: 4, helped: true, reprobe: true, source: "memory" });
+  });
+
+  it("keeps the memory across builds (updates go live often) and only lets a failed try wait", () => {
+    const key = "gpu|800x400@3";
+    let m = recordGfx([], key, { level: 2, helped: true, probeFailed: true }, "build-a", 1000);
+    expect(m[0]).toMatchObject({ level: 2, failBuild: "build-a", failAt: 1000 });
+    expect(autoStartFor(m[0], 0, "build-a", 2000).reprobe).toBe(false); // same build: wait
+    expect(autoStartFor(m[0], 0, "build-b", 2000)).toEqual({ level: 2, helped: true, reprobe: true, source: "memory" });
+    expect(autoStartFor(m[0], 0, "build-a", 1000 + REPROBE_RETRY_MS + 1).reprobe).toBe(true); // a week on
+    // A later settle under a new build keeps the failed try on record until it is retried.
+    m = recordGfx(m, key, { level: 2, helped: true, probeFailed: false }, "build-b", 3000);
+    expect(m[0]).toMatchObject({ build: "build-b", failBuild: "build-a" });
+    expect(autoStartFor({ ...m[0], level: 0 }, 4, "build-b", 4000)).toMatchObject({ level: 0, reprobe: false });
+  });
+
+  it("sanitises: junk, other shapes, bad levels, odd characters, duplicates and too many devices", () => {
+    expect(readGfxMemory(fakeStore({ [GFX_MEMORY_KEY]: "{not json" }))).toEqual([]);
+    expect(readGfxMemory(fakeStore({ [GFX_MEMORY_KEY]: JSON.stringify({ v: 2, devices: [] }) }))).toEqual([]);
+    expect(readGfxMemory(fakeStore({ [GFX_MEMORY_KEY]: JSON.stringify([1, 2]) }))).toEqual([]);
+    expect(readGfxMemory(fakeStore({ [GFX_MEMORY_KEY]: "x".repeat(5000) }))).toEqual([]);
+    expect(readGfxMemory(fakeStore())).toEqual([]);
+    expect(readGfxMemory(null)).toEqual([]);
+    const devices = [
+      { key: "a", level: 5, at: 1 },
+      { key: "b", level: -1, at: 1 },
+      { key: "c", level: 1.5, at: 1 },
+      { key: "d", level: "2", at: 1 },
+      { key: "", level: 2, at: 1 },
+      { key: "e\u0000‮<script>", level: 3, at: 10, helped: "yes", build: 7, failAt: -4 },
+      { key: "f", level: 1, at: 20 },
+      { key: "f", level: 4, at: 5 }, // older duplicate
+      { key: "g", level: 0, at: 30 },
+      { key: "h", level: 0, at: 40 },
+      { key: "i", level: 2, at: 50 },
+      { key: "k".repeat(500), level: 2, at: Number.NaN },
+    ];
+    const out = sanitizeGfxMemory({ v: 1, devices });
+    expect(out.map((e) => e.key)).toEqual(["i", "h", "g", "f"]); // newest first, at most 4
+    expect(out.length).toBe(GFX_MEMORY_MAX);
+    expect(out.find((e) => e.key === "f")?.level).toBe(1);
+    const odd = sanitizeGfxMemory({ v: 1, devices: [devices[5], devices[11]] });
+    expect(odd[0]).toEqual({ key: "e<script>", level: 3, helped: false, build: "", at: 10, failBuild: "", failAt: 0 });
+    expect(odd[1].key.length).toBeLessThanOrEqual(160);
+    expect(odd[1].at).toBe(0);
+  });
+
+  it("never throws when storage does (private mode, quota)", () => {
+    const broken: StorageLike = {
+      getItem: () => {
+        throw new Error("denied");
+      },
+      setItem: () => {
+        throw new Error("quota");
+      },
+    };
+    expect(readGfxMemory(broken)).toEqual([]);
+    expect(() => writeGfxMemory(broken, recordGfx([], "k", { level: 1, helped: false, probeFailed: false }, "b", 1))).not.toThrow();
+  });
+
+  it("keys by renderer string and a screen-size bucket (rotation-proof)", () => {
+    const phone = deviceKey(SWIFT, 390, 844, 3);
+    expect(phone).toBe(`${SWIFT}|800x400@3`);
+    expect(deviceKey(SWIFT, 844, 390, 3)).toBe(phone); // landscape is the same screen
+    expect(deviceKey(SWIFT, 402, 822, 2.9)).toBe(phone); // a near size lands in the same bucket
+    expect(deviceKey(SWIFT, 1440, 900, 1)).toBe(`${SWIFT}|1400x900@1`);
+    expect(deviceKey("Mali-G52 MC2", 1440, 900, 1)).not.toBe(deviceKey(SWIFT, 1440, 900, 1));
+    expect(deviceKey("", 0, 0, Number.NaN)).toBe("unknown|0x0@1");
+    expect(deviceKey("gpu\n\tname\u0007", 800, 1280, 1.33)).toBe("gpu name|1300x800@1.5");
+  });
+});
+
+describe("first guess for a brand-new device", () => {
+  it("starts software renderers at the bottom", () => {
+    for (const r of [
+      "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "Google SwiftShader",
+      "llvmpipe (LLVM 15.0.7, 256 bits)",
+      "ANGLE (Mesa, llvmpipe (LLVM 12.0.0, 256 bits), OpenGL 4.5)",
+      "Microsoft Basic Render Driver",
+      "Software Rasterizer",
+    ]) {
+      expect(firstGuessLevel(r)).toBe(4);
+    }
+  });
+
+  it("starts the low-end GPU families in the table at L3", () => {
+    expect(LOW_END_GPUS.length).toBeLessThanOrEqual(8); // a short, documented table
+    for (const r of [
+      "Mali-G52 MC2",
+      "ANGLE (ARM, Mali-T720, OpenGL ES 3.1)",
+      "Mali-400 MP",
+      "Adreno (TM) 505",
+      "Adreno (TM) 610",
+      "ANGLE (Qualcomm, Adreno (TM) 308, OpenGL ES 3.0)",
+      "PowerVR Rogue GE8320",
+      "ANGLE (Intel, Mesa Intel(R) UHD Graphics 600 (GLK 2), OpenGL ES 3.2)",
+      "ANGLE (Intel, Intel(R) HD Graphics 4000 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "Mesa Intel(R) HD Graphics 400 (BSW)",
+      "V3D 4.2",
+    ]) {
+      expect(firstGuessLevel(r), r).toBe(3);
+    }
+  });
+
+  it("starts everything else at L0, as before", () => {
+    for (const r of [
+      "Adreno (TM) 650",
+      "Adreno (TM) 618",
+      "Mali-G78 MP14",
+      "Apple GPU",
+      "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "ANGLE (Intel, Intel(R) HD Graphics 4600 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "unknown",
+      "",
+    ]) {
+      expect(firstGuessLevel(r), r).toBe(0);
+    }
+  });
+
+  it("a guess starts auto there, may try up once, and steps into L4 without waiting", () => {
+    expect(autoStartFor(undefined, 0, "b", 1)).toEqual(DEFAULT_START);
+    const start = autoStartFor(undefined, 3, "b", 1);
+    expect(start).toEqual({ level: 3, helped: true, reprobe: true, source: "guess" });
+    const gov = new QualityGovernor();
+    gov.configure(start);
+    expect(gov.index).toBe(3);
+  });
+});
+
+describe("pins win over memory and guesses", () => {
+  it("a ?quality= pin ignores the memory, and reports nothing", () => {
+    const seen: Settled[] = [];
+    const gov = new QualityGovernor("high");
+    gov.configure(memoryStart(4), (s) => seen.push(s));
+    expect(gov.index).toBe(0);
+    run(gov, () => 0.4, 30);
+    expect(gov.index).toBe(0);
+    gov.setPref("auto"); // the URL pin still wins
+    expect(gov.index).toBe(0);
+    const low = new QualityGovernor("low");
+    low.configure(memoryStart(0));
+    expect(low.index).toBe(4);
+    expect(seen).toEqual([]);
+  });
+
+  it("a Settings pin ignores the memory; back to Auto starts at the remembered level", () => {
+    const gov = new QualityGovernor("auto", "medium");
+    gov.configure(autoStartFor(undefined, 4, "b", 1));
+    expect(gov.index).toBe(2);
+    gov.setPref("high");
+    expect(gov.index).toBe(0);
+    gov.setPref("auto");
+    expect(gov.index).toBe(4);
+    expect(gov.mode).toBe("auto");
+  });
+});
+
+describe("what Settings shows for Auto", () => {
+  it("names each level after the nearest pin", () => {
+    expect(QUALITY_LEVELS.map((_, i) => levelName(i))).toEqual(["high", "high", "medium", "medium", "low"]);
+    expect(levelName(PIN_LEVEL.low)).toBe("low");
+  });
+
+  it("reads the live level and pin", () => {
+    const gov = new QualityGovernor();
+    gov.configure(memoryStart(3, false));
+    expect(liveQuality()).toEqual({ index: 3, mode: "auto" });
+    run(gov, () => 0.4, 30);
+    expect(liveQuality()).toEqual({ index: 4, mode: "auto" });
+    gov.setPref("medium");
+    expect(liveQuality()).toEqual({ index: 2, mode: "medium" });
   });
 });

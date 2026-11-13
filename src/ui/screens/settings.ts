@@ -1,6 +1,6 @@
 /**
  * Settings sheet: sound, haptics, motion, graphics, team colours, text
- * size, edition, tutorial and credits. Every control writes through
+ * size, edition, backup and move, tutorial and credits. Every control writes through
  * setPrefs (key 'cr-clone-settings'), so the change is saved at once and
  * subscribers (audio, renderer, CSS --text-scale) apply it live.
  * Every control is at least 44px tall.
@@ -11,8 +11,11 @@ import { segmented, toast } from "../components";
 import { fmtNum, tr } from "../i18n";
 import { icon, type IconName } from "../icons";
 import { getPrefs, onPrefs, setPrefs, type Prefs, type QualityPref, type ReduceMotion, type TeamPalette, type TextScale } from "../prefs";
+import { levelName, liveQuality } from "../../render3d/quality";
 import { EDITION_COPY, editionArt, switchEdition } from "./editionGate";
+import { problemReportRow } from "./problemReport";
 import { ask, openSheet } from "./frame";
+import { backupGroup } from "./saveSheet";
 
 export interface SettingsOpts {
   onClose?: () => void;
@@ -86,6 +89,46 @@ function switchRow(ic: IconName, label: string, key: "muted" | "haptics"): HTMLE
   show();
   row.appendChild(sw);
   return row;
+}
+
+/**
+ * The Auto graphics choice, saying what it picked while Auto is in charge
+ * ("Auto (now: Low)"), read fresh each time Settings opens. Under a pin it
+ * is plain "Auto".
+ */
+export function autoGraphicsLabel(q: { index: number; mode: string } = liveQuality()): string {
+  if (q.mode !== "auto") return tr("Auto", "تلقائي");
+  const name = levelName(q.index);
+  if (name === "low") return tr("Auto (now: Low)", "تلقائي (الآن: منخفض)");
+  if (name === "medium") return tr("Auto (now: Medium)", "تلقائي (الآن: متوسط)");
+  return tr("Auto (now: High)", "تلقائي (الآن: عالٍ)");
+}
+
+/**
+ * Lay "Auto (now: Low)" out as "Auto" over a smaller "(now: Low)" in a
+ * slightly wider segment, so a phone shows two tidy lines instead of three
+ * broken ones. The words (and so the button's name) stay the same. The
+ * small line is 0.88em (about 12 px: young readers, Arabic script) and may
+ * wrap only when the row has no room for it (a 320 px phone with large
+ * text), so the four choices always stay inside the row.
+ */
+function stackAutoLabel(row: HTMLElement): void {
+  const opt = row.querySelector<HTMLElement>(".ui-seg__opt");
+  const span = opt?.querySelector<HTMLElement>("span:last-child");
+  const text = span?.textContent ?? "";
+  const cut = text.indexOf(" (");
+  if (!opt || !span || cut < 0) return;
+  span.textContent = `${text.slice(0, cut)} `;
+  const now = document.createElement("small");
+  now.textContent = text.slice(cut + 1);
+  now.style.cssText = "display:block;font-size:0.88em;line-height:1.15;text-align:center;opacity:0.9";
+  span.appendChild(now);
+  span.style.cssText = "display:flex;flex-direction:column;align-items:center;line-height:1.15";
+  opt.style.flexGrow = "1.5";
+  // Last resort on the narrowest phones with the largest text: a choice that
+  // still has no room moves to a second line rather than out of the row.
+  const group = opt.parentElement;
+  if (group) group.style.flexWrap = "wrap";
 }
 
 /** A labelled segmented control bound to a pref. */
@@ -213,12 +256,12 @@ export function buildSettings(opts: SettingsOpts = {}, close?: () => void): HTML
 
   // ---- Display
   const display = group(tr("Display", "العرض"));
-  display.appendChild(
+  const graphicsRow = display.appendChild(
     segRow<QualityPref>(
       "sparkle",
       tr("Graphics", "الرسوميات"),
       [
-        { value: "auto", label: tr("Auto", "تلقائي"), blurb: tr("Adapts to keep the game smooth", "يتكيّف لتبقى اللعبة سلسة") },
+        { value: "auto", label: autoGraphicsLabel(), blurb: tr("Adapts to keep the game smooth", "يتكيّف لتبقى اللعبة سلسة") },
         { value: "low", label: tr("Low", "منخفض"), blurb: tr("Saves battery on older phones", "يوفّر البطارية في الهواتف القديمة") },
         { value: "medium", label: tr("Medium", "متوسط"), blurb: tr("Balanced detail and speed", "توازن بين التفاصيل والسرعة") },
         { value: "high", label: tr("High", "عالٍ"), blurb: tr("Every shadow and glow", "كل الظلال والتوهج") },
@@ -227,6 +270,7 @@ export function buildSettings(opts: SettingsOpts = {}, close?: () => void): HTML
       (v) => setPrefs({ quality: v }),
     ),
   );
+  stackAutoLabel(graphicsRow);
   const teamRow = segRow<TeamPalette>(
     "palette",
     tr("Team colours", "ألوان الفريقين"),
@@ -258,9 +302,13 @@ export function buildSettings(opts: SettingsOpts = {}, close?: () => void): HTML
 
   root.appendChild(editionGroup());
 
+  // ---- Backup & move (saveSheet.ts)
+  root.appendChild(backupGroup(close));
+
   // ---- Help
   const help = group(tr("Help", "المساعدة"));
   help.appendChild(tutorialRow(opts, close));
+  help.appendChild(problemReportRow(close));
   root.appendChild(help);
 
   root.appendChild(creditsGroup());

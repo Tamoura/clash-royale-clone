@@ -15,7 +15,21 @@ import { getPrefs, onPrefs } from "../../ui/prefs";
 import { LOOK } from "./common";
 import { setOutlinesVisible } from "../outlineMaterial";
 import { SCREEN_FLASH_MAX } from "../look/material";
-import { currentQuality, outlinesEnabled, type QualityLevel } from "../quality";
+import {
+  QUALITY_LEVELS,
+  autoStartFor,
+  currentQuality,
+  deviceKey,
+  firstGuessLevel,
+  gfxBuildTag,
+  outlinesEnabled,
+  readGfxMemory,
+  recordGfx,
+  writeGfxMemory,
+  type QualityLevel,
+  type StorageLike,
+} from "../quality";
+import { noteLowGraphics, registerGfxNote } from "../gfxNote";
 import { applyArenaQuality } from "./arena/build";
 
 /**
@@ -277,13 +291,94 @@ export function buildComposer(b: Battle3D): PostStack {
   applyGrade(b);
   countShadowRenders(b);
 
+  // Auto starts where this device left off (or at a first guess); then
   // Settings → Quality applies live (a ?quality= URL pin still wins).
+  const device = configureAutoQuality(b);
   b.quality.setPref(getPrefs().quality);
+  const q = b.quality;
+  console.info(
+    q.mode === "auto"
+      ? `[graphics] auto starts at L${q.index} (${q.start.source}) on ${device}`
+      : `[graphics] pinned ${q.mode} (L${q.index}); auto would start at L${q.start.level} (${q.start.source}) on ${device}`,
+  );
+  noteIfLow(b);
   onPrefs((p) => {
     // (A disposed scene has left the page; it no longer follows Settings.)
-    if (b.quality.setPref(p.quality) && b.renderer.domElement.isConnected) b.resize();
+    if (b.quality.setPref(p.quality) && b.renderer.domElement.isConnected) {
+      b.resize();
+      noteIfLow(b);
+    }
   });
+  if (typeof document !== "undefined") {
+    // Back from another tab: the gap says nothing about speed.
+    document.addEventListener("visibilitychange", () => {
+      b.lastFrameAt = 0;
+      if (!document.hidden) b.quality.rearm();
+    });
+  }
   return { composer, bloom, finalPass };
+}
+
+/**
+ * The WebGL renderer string, unmasked where the browser allows it (Chrome
+ * masks gl.RENDERER as "WebKit WebGL" and answers through
+ * WEBGL_debug_renderer_info; Firefox answers gl.RENDERER directly and warns
+ * about the extension), or "" when it is hidden.
+ */
+export function rendererName(renderer: THREE.WebGLRenderer): string {
+  try {
+    const gl = renderer.getContext();
+    const plain: unknown = gl.getParameter(gl.RENDERER);
+    if (typeof plain === "string" && plain.trim() !== "" && !/^(webkit webgl|mozilla)$/i.test(plain.trim())) return plain;
+    const ext = gl.getExtension("WEBGL_debug_renderer_info");
+    const unmasked: unknown = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : null;
+    if (typeof unmasked === "string" && unmasked.trim() !== "") return unmasked;
+    return typeof plain === "string" ? plain : "";
+  } catch {
+    return "";
+  }
+}
+
+function gfxStorage(): StorageLike | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Where Auto starts on this device (C44): its remembered level
+ * ('cr-clone-gfx-memory'), else a first guess from the renderer string,
+ * else the top of the ladder; and where it settles is remembered for next
+ * time. ?gfxguess=off skips the first guess (for testing the slow-window
+ * path on a software renderer). Never breaks boot: on any error Auto just
+ * starts at the top, as before.
+ */
+function configureAutoQuality(b: Battle3D): string {
+  try {
+    registerGfxNote();
+    const store = gfxStorage();
+    const renderer = rendererName(b.renderer);
+    const scr = typeof screen === "undefined" ? null : screen;
+    const key = deviceKey(renderer, scr?.width ?? 0, scr?.height ?? 0, window.devicePixelRatio || 1);
+    const build = gfxBuildTag(import.meta.url, import.meta.env.DEV);
+    const guessOff = new URLSearchParams(location.search).get("gfxguess") === "off";
+    const entry = readGfxMemory(store).find((e) => e.key === key);
+    const start = autoStartFor(entry, guessOff ? 0 : firstGuessLevel(renderer), build, Date.now());
+    b.quality.configure(start, (settled) => {
+      writeGfxMemory(store, recordGfx(readGfxMemory(store), key, settled, build, Date.now()));
+    });
+    return key;
+  } catch {
+    // no memory, no guess: Auto starts at the top as before
+    return "an unknown device";
+  }
+}
+
+/** Auto graphics is on Low (the bottom level): queue the one-time note. */
+function noteIfLow(b: Battle3D): void {
+  if (b.quality.mode === "auto" && b.quality.index === QUALITY_LEVELS.length - 1) noteLowGraphics();
 }
 
 /** Count real shadow-map renders into b.shadowRenders (for budgets and tests). */
@@ -300,6 +395,63 @@ function countShadowRenders(b: Battle3D): void {
 const dioramaMode = new WeakSet<Battle3D>();
 
 /**
+ * Whether a battle start prepares the other light state (see
+ * prepareLightVariants): whenever Auto is in charge, at any level. From L0
+ * to L3 a step into L4 may come later in the fight (a slideshow jumps
+ * straight there from any level; a walk gets there through L3), and from
+ * L4 the once-per-session try goes up to L3. A pin never steps by itself.
+ */
+export function wantsLightPrepare(q: { mode: string }): boolean {
+  return q.mode === "auto";
+}
+/** Scenes whose next battle frame should prepare the other light state first. */
+const preparePending = new WeakSet<Battle3D>();
+
+/** The rim lights: the directional lights that are neither the sun nor the fill. */
+function rimLights(b: Battle3D): THREE.Light[] {
+  return b.lightGroup.children.filter(
+    (l): l is THREE.DirectionalLight => (l as THREE.DirectionalLight).isDirectionalLight === true && l !== b.sun && l !== b.fillLight,
+  );
+}
+
+/**
+ * C44: compile, without drawing, the shader variants for the other side of
+ * the light-state line between L3 and L4 (the shadow map and the rim light
+ * on or off), so a later step across it mid-fight (L0-L3 down to L4, or the
+ * once-per-session try from L4 up to L3) finds every lit program ready
+ * instead of compiling them all in one long frame. L0 to L3 share one
+ * light state (only the map's size changes), so this covers every level.
+ * three keeps each
+ * material's programs per light state, so both sets stay live until the
+ * material is disposed. Compiled as the composer's scene pass draws (into
+ * its render target: linear, no tone mapping), so the keys match. Returns
+ * the milliseconds it took.
+ */
+export function prepareLightVariants(b: Battle3D): number {
+  const sun = b.sun;
+  const r = b.renderer;
+  if (!sun || !b.composer) return 0;
+  const t0 = performance.now();
+  const shadows = b.quality.level.shadowSize > 0;
+  const rim = b.quality.level.rimLight;
+  const rims = rimLights(b);
+  const saved = { map: r.shadowMap.enabled, cast: sun.castShadow, rims: rims.map((l) => l.visible), target: r.getRenderTarget() };
+  try {
+    r.shadowMap.enabled = !shadows;
+    sun.castShadow = !shadows;
+    for (const l of rims) l.visible = !rim;
+    r.setRenderTarget(b.composer.readBuffer);
+    r.compile(b.scene, b.camera);
+  } finally {
+    r.shadowMap.enabled = saved.map;
+    sun.castShadow = saved.cast;
+    rims.forEach((l, i) => (l.visible = saved.rims[i]));
+    r.setRenderTarget(saved.target);
+  }
+  return performance.now() - t0;
+}
+
+/**
  * The home screen's live arena is a small framed window behind the menus:
  * it renders without bloom at up to the battle's own resolution (lifecycle.ts
  * also halves its frame rate). Off restores the quality level's own settings.
@@ -309,7 +461,13 @@ const dioramaMode = new WeakSet<Battle3D>();
  * judged as its speed.
  */
 export function setDioramaQuality(b: Battle3D, on: boolean): void {
-  if (!on) b.quality.rearm();
+  if (!on) {
+    b.quality.rearm();
+    // A battle (or the deck picker over one) is starting under Auto: get
+    // the other side of the light-state line ready during its countdown
+    // (see prepareLightVariants), so no later step compiles mid-fight.
+    if (wantsLightPrepare(b.quality)) preparePending.add(b);
+  }
   if (on === dioramaMode.has(b)) return;
   if (on) dioramaMode.add(b);
   else dioramaMode.delete(b);
@@ -491,12 +649,32 @@ export function sampleQuality(b: Battle3D): void {
   if (sinking) sinkingLastFrame.add(b);
   else sinkingLastFrame.delete(b);
 
+  if (preparePending.has(b)) {
+    // The battle's first frame has drawn (its own programs are built): now
+    // the other light state, inside the start-up grace, before any step.
+    preparePending.delete(b);
+    try {
+      const before = b.renderer.info?.programs?.length ?? 0;
+      const ms = prepareLightVariants(b);
+      const added = (b.renderer.info?.programs?.length ?? 0) - before;
+      console.info(`[graphics] prepared the other light state at L${b.quality.index} in ${Math.round(ms)} ms (${added} new programs)`);
+    } catch {
+      // never worth a broken frame: a later step just compiles as before
+    }
+    b.lastFrameAt = 0; // the compile is not a frame time
+    return;
+  }
   const now = performance.now();
   if (dioramaMode.has(b)) {
     // The diorama renders every other frame on purpose: not a speed signal.
     b.lastFrameAt = 0;
     return;
   }
-  if (b.lastFrameAt > 0 && b.quality.sample((now - b.lastFrameAt) / 1000)) b.resize();
+  const visible = typeof document === "undefined" || document.visibilityState !== "hidden";
+  if (b.lastFrameAt > 0 && b.quality.sample((now - b.lastFrameAt) / 1000, visible)) {
+    b.resize();
+    if (b.quality.mode === "auto") console.info(`[graphics] auto: L${b.quality.index}`);
+    noteIfLow(b);
+  }
   b.lastFrameAt = now;
 }

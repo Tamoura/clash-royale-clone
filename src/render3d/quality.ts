@@ -35,6 +35,26 @@
  * level, after about 9 s at L1-L3 and with no compile stall. A
  * device that only L4's cuts would help therefore stays put; Settings >
  * Quality > Low is its way out.
+ *
+ * Very slow devices (C44). A frame over HITCH (0.25 s, under 4 fps) never
+ * enters those windows: one such frame is a hitch (a GC pause, a shader
+ * compile, a tab switch). But a device that is that slow on every frame
+ * (an old tablet, a school Chromebook, a software renderer) used to get no
+ * samples at all and stayed on L0 for good. So a second, plainer check
+ * watches every visible frame: when most frames of a ~2 s window
+ * (SLOW_WINDOW, at least SLOW_MIN_FRAMES of them) are over HITCH, that is
+ * a slideshow, not a hitch, and the governor goes straight to the bottom
+ * level. Under 1 fps that would take over 5 s, so three back-to-back
+ * frames over half a second, at least 3 s of them, close the window early
+ * (CRAWL_*). A hidden tab and gaps over PAUSE never count.
+ *
+ * Each device remembers its level (GFX_MEMORY_KEY, keyed by the WebGL
+ * renderer string and a screen-size bucket; see deviceKey and the memory
+ * section below): the next session starts there instead of at L0, and
+ * tries one level up at most once per session (stepping back if that is
+ * slow). A brand-new device starts from firstGuessLevel (software
+ * renderers at L4, a short table of low-end GPU families at L3). The URL
+ * pin and the Settings pin always win over memory and guesses.
  */
 
 export interface QualityLevel {
@@ -144,6 +164,28 @@ export const WARMUP = 3;
 export const TRIM = 0.1;
 /** At the bottom of a walk, levels within this share of the fastest count as tied. */
 export const TIE = 0.08;
+/** A frame slower than this (under 4 fps) is a hitch to the trimmed-mean windows. */
+export const HITCH = 0.25;
+/** A gap longer than this is a pause (tab switch, dialog, load), never a frame rate. */
+export const PAUSE = 3;
+/** Seconds of visible frames per sustained-slow check... */
+export const SLOW_WINDOW = 2;
+/**
+ * ...with at least this many frames, and it is slow only when at least this
+ * many of them (and most of them) are over HITCH: a few back-to-back hitches
+ * (a burst of shader compiles) never make a slow window.
+ */
+export const SLOW_MIN_FRAMES = 5;
+/**
+ * Under 1 fps, five frames take over 5 s. So a window also closes as slow
+ * once it holds at least CRAWL_FRAMES frames, every one of them over
+ * CRAWL_FRAME (under 2 fps), adding up to at least CRAWL_WINDOW seconds: as
+ * many seconds of slideshow as the five-frame rule needs or more, and a
+ * burst of four 0.6 s shader compiles (2.4 s) still never makes one.
+ */
+export const CRAWL_FRAME = 0.5;
+export const CRAWL_FRAMES = 3;
+export const CRAWL_WINDOW = 3;
 
 /** 'auto' runs the governor; the others pin a level. */
 export type QualityPin = "auto" | "high" | "medium" | "low";
@@ -158,10 +200,27 @@ export function qualityPinFromUrl(search: string): QualityPin {
 
 /** The level the renderer draws at right now (the latest governor's). */
 let current: QualityLevel = L0;
+/** ...its index, and the pin in force there (for Settings' "Auto (now: Low)"). */
+let live: { index: number; mode: QualityPin } = { index: 0, mode: "auto" };
 
 /** The level in force (for effects that scale with it). */
 export function currentQuality(): QualityLevel {
   return current;
+}
+
+/** The live level's index and the pin in force (the latest governor's). */
+export function liveQuality(): { index: number; mode: QualityPin } {
+  return { ...live };
+}
+
+/**
+ * The Settings word for a ladder level, for "Auto (now: ...)": L0-L1 look
+ * like High (L1 only halves the bloom and the shadow map), L2-L3 like Medium
+ * (no bloom), and L4 is exactly the Low pin (no shadow map, rim or ink).
+ */
+export function levelName(index: number): Exclude<QualityPin, "auto"> {
+  if (index >= PIN_LEVEL.low) return "low";
+  return index >= PIN_LEVEL.medium ? "medium" : "high";
 }
 
 /** Multiplier for particle counts at the current quality level. */
@@ -183,6 +242,33 @@ function trimmedMean(frames: number[]): number {
   return sum / keep;
 }
 
+/**
+ * Where 'auto' starts this session: the device's remembered level, a first
+ * guess for a new device, or the top of the ladder (see autoStartFor).
+ */
+export interface AutoStart {
+  level: number;
+  /**
+   * Some step down has bought frame time on this device (gates the
+   * shader-recompiling step into L4, as stepsHelped does within a session).
+   */
+  helped: boolean;
+  /** May try one level up once this session (a level remembered below L0). */
+  reprobe: boolean;
+  source: "default" | "memory" | "guess";
+}
+
+/** A brand-new device with no guess: the top of the ladder, as before C44. */
+export const DEFAULT_START: Readonly<AutoStart> = { level: 0, helped: false, reprobe: false, source: "default" };
+
+/** What the governor settled on, for the device memory (see QualityGovernor.configure). */
+export interface Settled {
+  level: number;
+  helped: boolean;
+  /** The once-per-session try one level up was too slow (it stepped back). */
+  probeFailed: boolean;
+}
+
 export class QualityGovernor {
   private levelIdx = 0;
   private pin: QualityPin = "auto";
@@ -195,6 +281,24 @@ export class QualityGovernor {
   /** A step down has bought frame time this session (gates the step into L4). */
   private stepsHelped = false;
   private locked = false;
+  /** The walk that locked measured the bottom level (so jumping there is no use). */
+  private bottomTried = false;
+  /** The sustained-slow window: visible time, frames, frames over HITCH and over CRAWL_FRAME. */
+  private slowAcc = 0;
+  private slowFrames = 0;
+  private slowCount = 0;
+  private crawlCount = 0;
+  /** Where 'auto' starts (memory or guess), kept up to date as it settles. */
+  private autoStart: AutoStart = { ...DEFAULT_START };
+  /** The governor has stepped this session (walk or jump): no more re-probe. */
+  private stepped = false;
+  /** The one re-probe this session has been used (survives Settings changes). */
+  private probeUsed = false;
+  /** While trying one level up: the level to step back to. */
+  private probeFrom: number | null = null;
+  private onSettle: ((s: Settled) => void) | null = null;
+  /** The level last reported to onSettle this session (null: none yet). */
+  private reported: number | null = null;
 
   /**
    * `urlPin` (from ?quality=) overrides `pref` (the saved Settings choice)
@@ -220,6 +324,24 @@ export class QualityGovernor {
     return this.pin;
   }
 
+  /** Where 'auto' starts now (for logs and tests). */
+  get start(): Readonly<AutoStart> {
+    return this.autoStart;
+  }
+
+  /**
+   * Set where 'auto' starts (the device memory or a first guess) and who
+   * hears what it settles on. Under 'auto' the level moves there at once;
+   * a pin keeps its level (pins always win).
+   */
+  configure(start: AutoStart, onSettle: ((s: Settled) => void) | null = null): void {
+    const bottom = QUALITY_LEVELS.length - 1;
+    const level = Math.max(0, Math.min(bottom, Math.round(start.level) || 0));
+    this.autoStart = { ...start, level, reprobe: start.reprobe && level > 0 };
+    this.onSettle = onSettle;
+    if (this.pin === "auto") this.applyPin("auto");
+  }
+
   /** Apply a new Settings choice live; true when the level changed. */
   setPref(pref: QualityPin): boolean {
     const before = this.levelIdx;
@@ -237,45 +359,125 @@ export class QualityGovernor {
     this.settle = Math.max(this.settle, SETTLE);
     this.frames.length = 0;
     this.acc = 0;
+    this.clearSlow();
   }
 
   private applyPin(pin: QualityPin): void {
     this.pin = pin;
-    // A fresh start either way: back to the top of the ladder for 'auto'.
-    this.levelIdx = pin === "auto" ? 0 : PIN_LEVEL[pin];
+    // A fresh start either way: 'auto' starts where this device left off
+    // (or at the top of the ladder for a device it knows nothing about).
+    this.levelIdx = pin === "auto" ? this.autoStart.level : PIN_LEVEL[pin];
     this.frames.length = 0;
     this.acc = 0;
+    this.clearSlow();
     this.settle = WARMUP;
     this.walk = null;
-    this.stepsHelped = false;
+    this.stepsHelped = pin === "auto" && this.autoStart.helped;
     this.locked = false;
-    current = this.level;
+    this.bottomTried = false;
+    this.stepped = false;
+    this.probeFrom = null;
+    this.publish();
   }
 
   private step(to: number): void {
     this.levelIdx = to;
-    current = this.level;
+    this.publish();
   }
 
-  /** Feed one frame's wall time in seconds; true when the level changed. */
-  sample(frameSeconds: number): boolean {
-    if (this.pin !== "auto" || this.locked) return false;
-    // Tab switches and load hitches say nothing about steady-state speed.
-    if (!(frameSeconds > 0) || frameSeconds > 0.25) return false;
+  private publish(): void {
+    current = this.level;
+    live = { index: this.levelIdx, mode: this.pin };
+  }
+
+  private clearSlow(): void {
+    this.slowAcc = 0;
+    this.slowFrames = 0;
+    this.slowCount = 0;
+    this.crawlCount = 0;
+  }
+
+  /**
+   * Feed one frame's wall time in seconds (and whether the page was visible
+   * for it); true when the level changed.
+   */
+  sample(frameSeconds: number, visible = true): boolean {
+    if (this.pin !== "auto") return false;
+    // A hidden tab and long gaps (tab switches, dialogs) say nothing about speed.
+    if (!visible || !(frameSeconds > 0) || frameSeconds > PAUSE) {
+      this.clearSlow();
+      return false;
+    }
+    // Start-up grace (shader compiles, texture uploads): every visible frame
+    // counts down, the slow ones too, or a very slow device never got past it.
     if (this.settle > 0) {
       this.settle -= frameSeconds;
       return false;
     }
+    if (this.slowWindow(frameSeconds)) return this.sustainedSlow();
+    // A lone frame over HITCH is a hitch (GC pause, shader compile): it never
+    // costs picture in the trimmed-mean windows below.
+    if (this.locked || frameSeconds > HITCH) return false;
     this.frames.push(frameSeconds);
     this.acc += frameSeconds;
     if (this.acc < WINDOW) return false;
     const t = trimmedMean(this.frames);
     this.frames.length = 0;
     this.acc = 0;
+    return this.judge(t);
+  }
+
+  /** Add a frame to the sustained-slow window; true when a full window was mostly slow. */
+  private slowWindow(frameSeconds: number): boolean {
+    this.slowAcc += frameSeconds;
+    this.slowFrames++;
+    if (frameSeconds > HITCH) this.slowCount++;
+    if (frameSeconds > CRAWL_FRAME) this.crawlCount++;
+    // Under 1 fps: a few frames, all of them crawling, close the window early.
+    const crawl = this.crawlCount >= CRAWL_FRAMES && this.crawlCount === this.slowFrames && this.slowAcc >= CRAWL_WINDOW;
+    if (!crawl && (this.slowAcc < SLOW_WINDOW || this.slowFrames < SLOW_MIN_FRAMES)) return false;
+    const slow = crawl || (this.slowCount >= SLOW_MIN_FRAMES && this.slowCount * 2 > this.slowFrames);
+    this.clearSlow();
+    return slow;
+  }
+
+  /** Most frames of a visible window were over HITCH: a slideshow, so go to the bottom. */
+  private sustainedSlow(): boolean {
     const bottom = QUALITY_LEVELS.length - 1;
+    if (this.probeFrom !== null) return this.endProbe(false);
+    if (this.levelIdx >= bottom) {
+      this.report(bottom, false); // nothing cheaper: this is where it settles
+      return false;
+    }
+    // A walk that already measured the bottom as no faster: not our pixels.
+    if (this.locked && this.bottomTried) return false;
+    this.walk = null;
+    this.locked = false;
+    this.stepsHelped = true;
+    this.stepped = true;
+    this.step(bottom);
+    this.settle = SETTLE;
+    this.frames.length = 0;
+    this.acc = 0;
+    this.report(bottom, false);
+    return true;
+  }
+
+  /** Judge one trimmed-mean window `t` (s) at the current level. */
+  private judge(t: number): boolean {
+    const bottom = QUALITY_LEVELS.length - 1;
+    if (this.probeFrom !== null) return this.endProbe(t <= SLOW_FRAME);
 
     if (!this.walk) {
-      if (t <= SLOW_FRAME || this.levelIdx === bottom) return false;
+      if (t <= SLOW_FRAME) {
+        // Fast enough here: remember it, and maybe try one level up.
+        this.report(this.levelIdx, false);
+        return this.maybeProbe();
+      }
+      if (this.levelIdx === bottom) {
+        this.report(bottom, false);
+        return false;
+      }
       this.walk = new Map();
     }
     const walk = this.walk;
@@ -284,6 +486,7 @@ export class QualityGovernor {
     if (t <= SLOW_FRAME) {
       this.stepsHelped = true;
       this.walk = null; // fast enough: stay here, free to walk on later
+      this.report(this.levelIdx, false);
       return false;
     }
     if (t < first * (1 - TIE)) this.stepsHelped = true;
@@ -293,6 +496,7 @@ export class QualityGovernor {
     const to = Math.min(bottom, this.levelIdx + (t > 2 * SLOW_FRAME ? 2 : 1));
     if (this.levelIdx < bottom && (to < bottom || this.stepsHelped)) {
       this.step(to);
+      this.stepped = true;
       this.settle = SETTLE;
       return true;
     }
@@ -303,10 +507,226 @@ export class QualityGovernor {
     for (const v of walk.values()) best = Math.min(best, v);
     let pick = bottom;
     for (const [i, v] of walk) if (v <= best * (1 + TIE)) pick = Math.min(pick, i);
+    this.bottomTried = walk.has(bottom);
     this.walk = null;
     this.locked = true;
+    this.report(pick, false);
     if (pick === this.levelIdx) return false;
     this.step(pick);
     return true;
   }
+
+  /**
+   * The once-per-session try one level up: only from the level this session
+   * started at (remembered or guessed, never L0), before any step, after a
+   * window there measured fast enough.
+   */
+  private maybeProbe(): boolean {
+    const s = this.autoStart;
+    if (!s.reprobe || this.probeUsed || this.stepped || this.levelIdx === 0 || this.levelIdx !== s.level) return false;
+    this.probeUsed = true;
+    this.probeFrom = this.levelIdx;
+    this.step(this.levelIdx - 1);
+    this.settle = SETTLE;
+    return true;
+  }
+
+  /** The try one level up is judged: keep it when fast enough, else step back. */
+  private endProbe(ok: boolean): boolean {
+    const from = this.probeFrom as number;
+    this.probeFrom = null;
+    if (ok) {
+      this.report(this.levelIdx, false);
+      return false;
+    }
+    this.step(from);
+    this.settle = SETTLE;
+    this.frames.length = 0;
+    this.acc = 0;
+    this.clearSlow();
+    this.report(from, true);
+    return true;
+  }
+
+  /** Tell the device memory where 'auto' settled (once per level per session). */
+  private report(level: number, probeFailed: boolean): void {
+    this.autoStart = { ...this.autoStart, level, helped: this.stepsHelped || this.autoStart.helped };
+    if (!probeFailed && this.reported === level) return;
+    this.reported = level;
+    this.onSettle?.({ level, helped: this.autoStart.helped, probeFailed });
+  }
+}
+
+// ---- Device memory and first guesses (C44) ---------------------------------
+
+/** localStorage key: each device's settled level (see GfxEntry). */
+export const GFX_MEMORY_KEY = "cr-clone-gfx-memory";
+/** localStorage key: the one-time "Graphics set to Low" note was shown. */
+export const GFX_NOTE_KEY = "cr-clone-gfx-note-seen";
+/** Devices remembered at most (most recent first): a tablet and a laptop with a monitor or two. */
+export const GFX_MEMORY_MAX = 4;
+/** After a failed try one level up, the next try waits for a new build or this long. */
+export const REPROBE_RETRY_MS = 7 * 24 * 3600 * 1000;
+/** A stored value longer than this is not ours: start fresh. */
+const GFX_MEMORY_MAX_CHARS = 4096;
+const KEY_MAX = 160;
+const BUILD_MAX = 64;
+
+/** One device's memory. */
+export interface GfxEntry {
+  /** deviceKey(): renderer string and screen bucket. */
+  key: string;
+  level: number;
+  helped: boolean;
+  /** The build it was last written by (kept across deploys, never a reason to forget). */
+  build: string;
+  /** When it was last written (ms since 1970). */
+  at: number;
+  /** The build (and time) whose try one level up was too slow; "" when none. */
+  failBuild: string;
+  failAt: number;
+}
+
+/** The part of Storage the memory uses (a fake in tests). */
+export type StorageLike = Pick<Storage, "getItem" | "setItem">;
+
+function cleanText(s: unknown, max: number): string {
+  if (typeof s !== "string") return "";
+  // Printable ASCII only: renderer strings are plain, and nothing odd reaches a key.
+  return s.replace(/\s/g, " ").replace(/[^\x20-\x7e]/g, "").replace(/ +/g, " ").trim().slice(0, max);
+}
+
+function finiteAt(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0;
+}
+
+/** Keep the well-formed entries of a stored value (newest first, one per key, at most GFX_MEMORY_MAX). */
+export function sanitizeGfxMemory(raw: unknown): GfxEntry[] {
+  const devices = (raw as { v?: unknown; devices?: unknown } | null)?.devices;
+  if (!raw || typeof raw !== "object" || (raw as { v?: unknown }).v !== 1 || !Array.isArray(devices)) return [];
+  const out: GfxEntry[] = [];
+  for (const d of devices.slice(0, 32) as unknown[]) {
+    if (!d || typeof d !== "object") continue;
+    const e = d as Record<string, unknown>;
+    const key = cleanText(e.key, KEY_MAX);
+    const level = e.level;
+    if (!key || typeof level !== "number" || !Number.isInteger(level) || level < 0 || level >= QUALITY_LEVELS.length) continue;
+    out.push({
+      key,
+      level,
+      helped: e.helped === true,
+      build: cleanText(e.build, BUILD_MAX),
+      at: finiteAt(e.at),
+      failBuild: cleanText(e.failBuild, BUILD_MAX),
+      failAt: finiteAt(e.failAt),
+    });
+  }
+  out.sort((a, b) => b.at - a.at);
+  const seen = new Set<string>();
+  return out.filter((e) => !seen.has(e.key) && seen.add(e.key)).slice(0, GFX_MEMORY_MAX);
+}
+
+/** The stored memory, sanitised; [] when absent, unreadable or not ours. Never throws. */
+export function readGfxMemory(store: StorageLike | null): GfxEntry[] {
+  try {
+    const s = store?.getItem(GFX_MEMORY_KEY);
+    if (!s || s.length > GFX_MEMORY_MAX_CHARS) return [];
+    return sanitizeGfxMemory(JSON.parse(s));
+  } catch {
+    return [];
+  }
+}
+
+/** Store the memory (sanitised and bounded). Never throws: a full or blocked storage just forgets. */
+export function writeGfxMemory(store: StorageLike | null, entries: readonly GfxEntry[]): void {
+  try {
+    store?.setItem(GFX_MEMORY_KEY, JSON.stringify({ v: 1, devices: sanitizeGfxMemory({ v: 1, devices: entries }) }));
+  } catch {
+    // private mode, quota: the next session simply starts from its guess
+  }
+}
+
+/**
+ * The build tag stored with a device's memory: the hashed name of the
+ * script this code shipped in ("index-CgoAUPGQ" from .../assets/index-CgoAUPGQ.js),
+ * which changes whenever the game code does; "dev" on the dev server.
+ */
+export function gfxBuildTag(moduleUrl: string, dev: boolean): string {
+  if (dev) return "dev";
+  const m = /\/([\w.-]+)\.m?js(?:[?#].*)?$/.exec(moduleUrl);
+  return m ? cleanText(m[1], BUILD_MAX) : "";
+}
+
+/** The memory after device `key` settled (`s`) under `build` at `now` (pure). */
+export function recordGfx(entries: readonly GfxEntry[], key: string, s: Settled, build: string, now: number): GfxEntry[] {
+  const k = cleanText(key, KEY_MAX);
+  const old = entries.find((e) => e.key === k);
+  const next: GfxEntry = {
+    key: k,
+    level: Math.max(0, Math.min(QUALITY_LEVELS.length - 1, Math.round(s.level) || 0)),
+    helped: s.helped,
+    build: cleanText(build, BUILD_MAX),
+    at: now,
+    failBuild: s.probeFailed ? cleanText(build, BUILD_MAX) : (old?.failBuild ?? ""),
+    failAt: s.probeFailed ? now : (old?.failAt ?? 0),
+  };
+  return [next, ...entries.filter((e) => e.key !== k)].slice(0, GFX_MEMORY_MAX);
+}
+
+/**
+ * The memory key for a device: its WebGL renderer string (cleaned, "unknown"
+ * when the browser hides it) and a screen-size bucket (the long and short
+ * side to the nearest 100 CSS px, and the pixel ratio to the nearest half),
+ * so a laptop on a big monitor keeps a level of its own.
+ */
+export function deviceKey(renderer: string, screenW: number, screenH: number, dpr: number): string {
+  const r = cleanText(renderer, 120) || "unknown";
+  const w = Number.isFinite(screenW) && screenW > 0 ? screenW : 0;
+  const h = Number.isFinite(screenH) && screenH > 0 ? screenH : 0;
+  const long = Math.round(Math.max(w, h) / 100) * 100;
+  const short = Math.round(Math.min(w, h) / 100) * 100;
+  const ratio = Math.min(4, Math.max(0.5, Math.round((Number.isFinite(dpr) && dpr > 0 ? dpr : 1) * 2) / 2));
+  return `${r}|${long}x${short}@${ratio}`;
+}
+
+/** Renderers that draw on the CPU: every level is slow there, so start at the bottom. */
+export const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|microsoft basic render/i;
+
+/**
+ * Known low-end GPU families, started at L3 on a brand-new device (one step
+ * above Low: the picture keeps its shadows, rim and ink, and the governor
+ * still walks from there). Kept short on purpose: only families common in
+ * cheap tablets and school laptops. Everything else starts at L0.
+ */
+export const LOW_END_GPUS: readonly { family: string; match: RegExp }[] = [
+  { family: "ARM Mali-400/450/470 and Mali-T6xx/T7xx (older budget tablets)", match: /\bmali-(4\d\d|t[67]\d\d)\b/i },
+  { family: "ARM Mali-G31/G51/G52 (budget tablets and phones)", match: /\bmali-g(31|51|52)\b/i },
+  { family: "Qualcomm Adreno 3xx/4xx/50x and 610 (budget Snapdragon)", match: /\badreno\b[^0-9]*(3\d\d|4\d\d|50\d|610)\b/i },
+  { family: "PowerVR SGX and Rogue GE8xxx (budget tablets)", match: /\bpowervr\b.*\b(sgx|ge8\d{3})\b/i },
+  {
+    family: "Intel HD 2000-4000, HD 400/405/500/505 and UHD 600/605 (old laptops, school Chromebooks)",
+    match: /\bintel\b.*\bu?hd graphics (2000|2500|3000|4000|400|405|500|505|600|605)\b/i,
+  },
+  { family: "Vivante and Broadcom VideoCore/V3D (small boards, cheap tablets)", match: /\bvivante\b|\bvideocore\b|\bv3d\b/i },
+];
+
+/** The level a brand-new device starts at, from its renderer string. */
+export function firstGuessLevel(renderer: string): number {
+  if (SOFTWARE_RENDERER.test(renderer)) return QUALITY_LEVELS.length - 1;
+  if (LOW_END_GPUS.some((g) => g.match.test(renderer))) return 3;
+  return 0;
+}
+
+/**
+ * Where 'auto' starts: the remembered level when this device has one (with
+ * a try one level up, unless that failed under this same build within
+ * REPROBE_RETRY_MS), else the first guess (`guess`), else L0.
+ */
+export function autoStartFor(entry: GfxEntry | undefined, guess: number, build: string, now: number): AutoStart {
+  if (entry) {
+    const failedHere = entry.failBuild !== "" && entry.failBuild === cleanText(build, BUILD_MAX) && now - entry.failAt < REPROBE_RETRY_MS;
+    return { level: entry.level, helped: entry.helped, reprobe: entry.level > 0 && !failedHere, source: "memory" };
+  }
+  if (guess > 0) return { level: guess, helped: true, reprobe: true, source: "guess" };
+  return { ...DEFAULT_START };
 }
