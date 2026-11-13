@@ -38,7 +38,9 @@ and a return from another tab re-arms the governor.
   segment. On a 320 px phone with large text the small line wraps, and as a
   last resort the row does, so every choice stays inside it. Under a pin it
   is plain "Auto".
-- A fast device: nothing changes (it stays at L0 and remembers L0).
+- A fast device: the picture does not change (it stays at L0 and remembers
+  L0). Under Auto, each battle's countdown also compiles the L4 light state
+  once per page load (item 6), so a later step never compiles mid-fight.
 
 ## How it works (src/render3d/quality.ts)
 
