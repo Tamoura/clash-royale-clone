@@ -11,6 +11,9 @@ import { icon } from "./ui/icons";
 // numbers, level shields, damage pops) never bake in a fallback font.
 void document.fonts?.load("32px 'Lilita One'").catch(() => undefined);
 
+import { browserOfflineDeps, startOfflineSupport } from "./app/offline";
+import { showNoWebgl } from "./app/noWebgl";
+
 // Offline play (src/app/offline.ts): the service worker registers in
 // production builds only (in dev it would cache Vite's module graph and
 // fight hot reload). Once per device, a note says the game is ready offline.
@@ -20,7 +23,6 @@ startOfflineSupport({
   ),
   ...(import.meta.env.PROD ? {} : { container: null }),
 });
-import { browserOfflineDeps, startOfflineSupport } from "./app/offline";
 import { SoundEngine } from "./audio/sound";
 import {
   checkDeploy,
@@ -459,12 +461,10 @@ try {
     scene.forceDayPhase(Math.max(0, Math.min(1, Number(sky))));
   }
 } catch {
-  stage.innerHTML =
-    '<div style="color:#e5e7eb;text-align:center;padding-top:34vh;font-size:18px;line-height:1.7">' +
-    "<b>This game needs WebGL (3D graphics).</b><br/>" +
-    "In Chrome: open <code>chrome://settings/system</code>,<br/>" +
-    "turn on <b>“Use graphics acceleration when available”</b>, and relaunch.<br/>" +
-    "(Safari and Firefox usually work out of the box.)</div>";
+  // No 3D in this browser: a friendly card for the kid with a hint for a
+  // grown-up, in the edition's language (src/app/noWebgl.ts). It takes the
+  // boot splash down; the throw stops the boot here.
+  showNoWebgl(document);
   throw new Error("WebGL unavailable");
 }
 // Battles fill the screen (tall or wide, see ui/layout.ts); menus keep the column.
