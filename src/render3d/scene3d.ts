@@ -69,6 +69,7 @@ import {
   buildBuildingMesh,
   buildGhost,
   buildTroopMesh,
+  hasGhost,
   loadGlbModels,
   isSwarmSized,
   makeLevelBadge,
@@ -172,6 +173,8 @@ export class Battle3D {
   /** @internal The light rig (rebuilt with the look; graded by the living sky). */
   lightGroup = new THREE.Group();
   private hoverPulse = 0;
+  /** Reduced motion, read once per sync (under "auto" every read asks matchMedia) and reused by render. */
+  private still = reducedMotion();
   private ghost: {
     id: CardId;
     rig: TroopRig;
@@ -467,9 +470,11 @@ export class Battle3D {
    * Translucent preview of the selected troop under the cursor.
    * Pass null to clear; the rig is rebuilt only when the card changes.
    * `dim` (a "no" spot) fades it to GHOST_DIM of its usual see-through.
+   * Only troops have a ghost (hasGhost): a building or spell clears it, and
+   * never reaches buildTroop, which has no rig for them and would throw.
    */
   setGhost(cardId: CardId | null, pos: { x: number; y: number } | null, dim = false): void {
-    if (!cardId || !pos) {
+    if (!cardId || !pos || !hasGhost(cardId)) {
       if (this.ghost) this.ghost.rig.group.visible = false;
       return;
     }
@@ -536,6 +541,11 @@ export class Battle3D {
   /** Hide that label early (the kid just played a card). */
   dismissLaneCallout(): void {
     this.zone.dismissCallout();
+  }
+
+  /** Leaving the battle for a menu: the placement map and any reveal vanish now. */
+  leaveZone(): void {
+    this.zone.leave();
   }
 
   /** The drawn map's signed distance at an arena point, as the GPU reads it (+ = allowed). */
@@ -666,7 +676,8 @@ export class Battle3D {
     syncBurrows(this, state, dt, alpha);
     // The placement map follows opened lanes (a tower falling widens where
     // you can deploy, and lights that pocket up the moment it happens).
-    this.zone.sync(state, viewSide, dt, reducedMotion());
+    this.still = reducedMotion();
+    this.zone.sync(state, viewSide, dt, this.still);
     const seen = this.seen;
     seen.clear();
     for (const e of state.entities) {
@@ -755,7 +766,7 @@ export class Battle3D {
 
     // Spell / deploy telegraph ring pulse (dashed feel via opacity + scale);
     // held still under reduced motion.
-    const still = reducedMotion();
+    const still = this.still;
     if (this.hoverRing.visible) {
       const base = this.hoverDisc.scale.x;
       const ringMat = this.hoverRing.material as THREE.MeshBasicMaterial;

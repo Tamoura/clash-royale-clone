@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import type { Side } from "../../game/arena";
-import { createBattle, type BattleState } from "../../game/battle";
+import { checkDeploy, createBattle, deployCard, type BattleState } from "../../game/battle";
+import type { CardId } from "../../game/cards";
 import {
   CALLOUT_FROM,
   CALLOUT_TO,
@@ -168,6 +169,56 @@ describe("a lane opening under a held card", () => {
     o.hold("troop");
     run(o, b, 0.2);
     expect((uniforms(o).uWelcome.value as THREE.Vector2).x).toBe(0);
+  });
+});
+
+describe("a lane opening under a held Digger", () => {
+  it("does not stripe the lane: the dig map did not change, so there is nothing to cross-fade", () => {
+    const o = new DeployOverlay({ golden: false });
+    const b = createBattle();
+    run(o, b, 0.2);
+    o.hold("dig");
+    run(o, b, 0.2);
+    fell(b, "enemy", "left");
+    o.sync(b, "player", DT, false);
+    o.render(0, 1, false);
+    expect(uniforms(o).uDig.value).toBe(1);
+    expect((uniforms(o).uLaneMix.value as THREE.Vector2).x).toBe(1); // no closed look over Digger ground
+    expect(o.sample(4, 10)).toBeGreaterThan(0); // the Digger may go there, before and after
+    expect(o.parts.reveals).toEqual([{ lane: "left", age: 0, wave: false }]);
+    // The troop map never showed that lane opening: the first troop pick-up after it still says hello.
+    o.hold(null);
+    run(o, b, REVEAL_LIFE + 0.1);
+    o.hold("troop");
+    run(o, b, 0.3);
+    expect((uniforms(o).uWelcome.value as THREE.Vector2).x).toBeGreaterThan(0.1);
+  });
+});
+
+describe("leaving the battle for a menu", () => {
+  it("drops the reveal, the label and a held map at once, though the menus sync with dt 0", () => {
+    const o = new DeployOverlay({ golden: false });
+    const b = createBattle();
+    run(o, b, 0.2);
+    fell(b, "enemy", "left");
+    run(o, b, 2.5);
+    expect(o.parts).toMatchObject({ shown: true, pocketOnly: true, callout: true });
+    o.hold("troop");
+    run(o, b, 0.3);
+    o.leave();
+    // The home diorama: the same battle, synced and rendered with no time passing.
+    for (let i = 0; i < 30; i++) {
+      o.sync(b, "player", 0, false);
+      o.render(0, 1, false);
+    }
+    expect(o.parts).toMatchObject({ shown: false, pocketOnly: false, reveals: [], callout: false, mode: null });
+    expect(o.callout()).toBeNull();
+    expect(o.mesh.visible).toBe(false);
+    // Back in a battle, the map works as before (and nothing replays for the lane that was already open).
+    o.hold("troop");
+    run(o, b, 0.2);
+    expect(o.parts).toMatchObject({ shown: true, reveals: [], open: { left: true, right: false } });
+    expect(o.mesh.visible).toBe(true);
   });
 });
 
@@ -365,5 +416,70 @@ describe("the plane", () => {
     expect(o.sample(13, 10)).toBeLessThan(0);
     expect(o.sample(9, 24)).toBeGreaterThan(0);
     expect(o.parts).toMatchObject({ shown: true, mode: "troop", pocketOnly: false, open: { left: true, right: false } });
+  });
+});
+
+describe("what the GPU reads is checkDeploy's map (the overlay's own texture choice)", () => {
+  // The deployZone grid test pins the painted shapes; this pins which one the
+  // overlay hands the GPU: the troop cache picked by troopKey, the Digger's
+  // repaint, and a switch of viewpoint (one overlay, every state in turn).
+  const HAND: CardId[] = ["knight", "cannon", "digger", "fireball"];
+  function stage(view: Side, left: boolean, right: boolean): BattleState {
+    const b = createBattle();
+    const hands = (): void => {
+      for (const s of [b.player, b.enemy]) {
+        s.hand = { cards: [...HAND], queue: [] };
+        s.elixir = { amount: 10 };
+      }
+    };
+    hands();
+    expect(deployCard(b, "player", "cannon", 6, 22)).toBe(true);
+    expect(deployCard(b, "enemy", "cannon", 12, 10)).toBe(true);
+    hands();
+    const owner: Side = view === "player" ? "enemy" : "player";
+    if (left) fell(b, owner, "left");
+    if (right) fell(b, owner, "right");
+    return b;
+  }
+
+  it("agrees on a 0.25-tile grid for both views, every lane state, a troop, a building and the Digger", () => {
+    const o = new DeployOverlay({ golden: false });
+    const order: Side[] = ["player", "enemy", "enemy", "player"]; // switch views both ways, and stay
+    let checked = 0;
+    const bad: string[] = [];
+    for (const view of order) {
+      for (const [left, right] of [
+        [false, false],
+        [true, false],
+        [false, true],
+        [true, true],
+      ] as const) {
+        const b = stage(view, left, right);
+        for (const [card, mode] of [
+          ["knight", "troop"],
+          ["cannon", "troop"],
+          ["digger", "dig"],
+        ] as const) {
+          o.hold(mode);
+          o.sync(b, view, DT, false);
+          o.render(0, 1, false);
+          for (let j = 0; j <= 32 * 4; j++) {
+            for (let i = 0; i <= 18 * 4; i++) {
+              const x = i / 4;
+              const y = j / 4;
+              const drawn = o.sample(x, y);
+              if (Math.abs(drawn) < 0.1) continue; // on an edge: bilinear + 8-bit
+              checked++;
+              const rule = checkDeploy(b, view, card, x, y) !== "bad-spot";
+              if (drawn > 0 !== rule && bad.length < 5) bad.push(`${view} L${+left}R${+right} ${card} (${x},${y}) drawn=${drawn.toFixed(2)} rule=${rule}`);
+            }
+          }
+          o.hold(null);
+          run(o, b, 0.2, false, view); // the map fades out before the next card
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(300_000);
+    expect(bad).toEqual([]);
   });
 });

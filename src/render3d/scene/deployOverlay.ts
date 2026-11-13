@@ -155,18 +155,26 @@ const FRAG = /* glsl */ `
   }
 
   void main() {
-    float d = (texture2D(uField, vTile / vec2(${ARENA_WIDTH.toFixed(1)}, ${ARENA_HEIGHT.toFixed(1)})).r - 0.5) * 4.0;
+    float field = (texture2D(uField, vTile / vec2(${ARENA_WIDTH.toFixed(1)}, ${ARENA_HEIGHT.toFixed(1)})).r - 0.5) * 4.0;
     float theirs = uSideSign * (16.0 - vTile.y);     // > 0 on the viewer's enemy half
     bool isL = vTile.x < 9.0;
     bool bridge = abs(vTile.x - 3.5) <= 1.0 || abs(vTile.x - 14.5) <= 1.0;
     float water = (abs(vTile.y - 16.0) < 1.0 && !(uDig > 0.5 && bridge)) ? 1.0 : 0.0;
 
-    // A lane revealing with no card held: its pocket is a disc growing from the ruin.
-    vec3 wave = isL ? uWaveL : uWaveR;
-    float wDist = length(vTile - wave.xy);
-    if (theirs > 0.0) d = min(d, wave.z - wDist);
-
-    float aa = max(fwidth(d), 1e-4);
+    // A lane revealing with no card held: its pocket is a disc growing from the
+    // ruin. Both lanes' wave distances and every derivative are taken without
+    // branching on the lane: picking the wave first made d jump across x = 9
+    // (and the river) inside one pixel quad, so fwidth(d) blew up and smeared
+    // a hairline down the whole seam before the wave got there.
+    float wdL = uWaveL.z - length(vTile - uWaveL.xy);
+    float wdR = uWaveR.z - length(vTile - uWaveR.xy);
+    float aaField = fwidth(field);
+    float aaWL = fwidth(wdL);
+    float aaWR = fwidth(wdR);
+    float wd = isL ? wdL : wdR;
+    bool cut = theirs > 0.0 && wd < field;
+    float d = cut ? wd : field;
+    float aa = max(cut ? (isL ? aaWL : aaWR) : aaField, 1e-4);
     float px = length(fwidth(vTile)) * 0.70710678 * uDpr;   // tiles per CSS px
     float W = max(0.16, 3.0 * px) * uThick;                   // outline core, inside the edge
     float E = max(0.06, 1.5 * px);                            // ink rim, outside
@@ -192,9 +200,10 @@ const FRAG = /* glsl */ `
     col = over(vec4(uInk, 0.85 * rim), col);
     col = over(vec4(uLine, 0.96 * core), col);
 
-    // A lane that opened under a held card: still its closed look, fading out.
+    // A lane that opened under a held troop: still its closed look, fading
+    // out. Never on the Digger's map: nothing changed there for it.
     float laneMix = isL ? uLaneMix.x : uLaneMix.y;
-    if (theirs > -0.12 && laneMix < 1.0) col = mix(no, col, laneMix);
+    if (uDig < 0.5 && theirs > -0.12 && laneMix < 1.0) col = mix(no, col, laneMix);
 
     // A refused drop: the region the words mean flashes white over its NOT-allowed ground.
     if (uFlash > 0.0) {
@@ -209,8 +218,8 @@ const FRAG = /* glsl */ `
 
     // Pocket-only (no card held): each open lane's enemy half, the revealing
     // one cut to its wave; water only where the line's rim crosses it.
-    float mL = uOpen.x * step(vTile.x, 9.0 + 0.1 * (1.0 - uOpen.y)) * uEnv.x * step(length(vTile - uWaveL.xy), uWaveL.z + E + aa);
-    float mR = uOpen.y * step(9.0 - 0.1 * (1.0 - uOpen.x), vTile.x) * uEnv.y * step(length(vTile - uWaveR.xy), uWaveR.z + E + aa);
+    float mL = uOpen.x * step(vTile.x, 9.0 + 0.1 * (1.0 - uOpen.y)) * uEnv.x * step(-(E + max(aaWL, 1e-4)), wdL);
+    float mR = uOpen.y * step(9.0 - 0.1 * (1.0 - uOpen.x), vTile.x) * uEnv.y * step(-(E + max(aaWR, 1e-4)), wdR);
     float pm = step(-0.12, theirs) * max(mL, mR) * mix(1.0, rim, water);
     float a = col.a * max(uHold, pm);
     if (a < 0.004) discard;
@@ -269,6 +278,11 @@ export function revealEnvelope(age: number, wave: boolean, still: boolean): numb
   return still ? clamp01((age - REVEAL_DELAY) / STILL_FADE_IN) : 1;
 }
 
+/** The welcome pulse's extra fill at `age` (a sine bump over WELCOME seconds). */
+function welcomeBump(age: number): number {
+  return age < WELCOME ? WELCOME_GAIN * Math.sin((Math.PI * age) / WELCOME) : 0;
+}
+
 /** A held lane's closed -> open cross-fade at `age`. */
 export function laneMixAt(age: number): number {
   return clamp01(age / HELD_OPEN_FADE);
@@ -315,6 +329,7 @@ export class DeployOverlay {
   private open: OpenLanes = { left: false, right: false };
   private ended = false;
   private records: RevealRecord[] = [];
+  private readonly env: Record<Lane, number> = { left: 0, right: 0 };
   private nextId = 1;
   private readonly laneMixAge: Record<Lane, number> = { left: Infinity, right: Infinity };
   private readonly welcomed: Record<Lane, boolean> = { left: false, right: false };
@@ -455,6 +470,7 @@ export class DeployOverlay {
       this.welcomed.left = open.left;
       this.welcomed.right = open.right;
       this.refuseAge = this.flashAge = Infinity;
+      this.digAge = Infinity; // a held Digger's map is repainted for the new battle at once
       this.warm = true;
     } else if (!state.result) {
       for (const lane of LANES) if (open[lane] && !this.lastOpen[lane]) this.startReveal(lane);
@@ -473,15 +489,22 @@ export class DeployOverlay {
     const held = this.held !== null;
     this.records = this.records.filter((r) => r.lane !== lane);
     this.records.push({ id: this.nextId++, lane, age: 0, wave: !held, dismissed: false });
-    if (held) {
+    // The closed -> open cross-fade (and the welcome it stands in for) belong
+    // to the troop map. The Digger's map does not change when a lane opens.
+    if (this.held === "troop") {
       this.laneMixAge[lane] = 0;
       this.welcomed[lane] = true;
     }
   }
 
   private advance(dt: number): void {
-    for (const r of this.records) r.age += dt;
-    this.records = this.records.filter((r) => r.age < REVEAL_LIFE);
+    // Per frame: no array is rebuilt unless a record actually ends.
+    let ended = false;
+    for (const r of this.records) {
+      r.age += dt;
+      if (r.age >= REVEAL_LIFE) ended = true;
+    }
+    if (ended) this.records = this.records.filter((r) => r.age < REVEAL_LIFE);
     for (const lane of LANES) {
       this.laneMixAge[lane] += dt;
       this.welcomeAge[lane] += dt;
@@ -516,11 +539,12 @@ export class DeployOverlay {
       this.cacheSide = side;
     }
     if (this.shownMode === "dig") {
+      // The bodies are re-listed (a string) at most 4 times a second, not every frame.
       if (this.digAge < DIG_REPAINT_MIN && typeof this.key === "string") return;
+      this.digAge = 0;
       const key = digKey(state);
       if (key === this.key) return;
       paintZoneField(zoneShape(state, side, "dig"), this.digData);
-      this.digAge = 0;
       this.use(this.digData, key);
       return;
     }
@@ -535,14 +559,22 @@ export class DeployOverlay {
     this.tex.needsUpdate = true;
   }
 
-  /** Per-lane pocket-only envelope (0..1). */
+  /** The live reveal record of `lane`, if any. */
+  private recordFor(lane: Lane): RevealRecord | undefined {
+    for (const r of this.records) if (r.lane === lane) return r;
+    return undefined;
+  }
+
+  /** Per-lane pocket-only envelope (0..1), written into one reused object (per frame: no garbage). */
   private envelopes(): Record<Lane, number> {
+    const env = this.env;
+    env.left = env.right = 0;
+    if (this.ended || this.records.length === 0) return env;
     let max = 0;
     for (const r of this.records) max = Math.max(max, revealEnvelope(r.age, r.wave, this.still));
-    const env: Record<Lane, number> = { left: 0, right: 0 };
     for (const lane of LANES) {
       if (!this.open[lane]) continue;
-      const r = this.records.find((q) => q.lane === lane);
+      const r = this.recordFor(lane);
       const young = r && r.wave && r.age < REVEAL_DELAY + (this.still ? STILL_FADE_IN : 0);
       env[lane] = young ? revealEnvelope(r.age, r.wave, this.still) : max;
     }
@@ -554,7 +586,7 @@ export class DeployOverlay {
     this.still = still;
     const u = this.mat.uniforms;
     const hold = this.ended ? 0 : this.fade;
-    const env = this.ended ? { left: 0, right: 0 } : this.envelopes();
+    const env = this.envelopes();
     const shown = hold > 0 || env.left > 0 || env.right > 0;
     this.mesh.visible = shown || this.warm;
     this.warm = false;
@@ -564,7 +596,7 @@ export class DeployOverlay {
     (u.uOpen.value as THREE.Vector2).set(this.open.left ? 1 : 0, this.open.right ? 1 : 0);
     (u.uLaneMix.value as THREE.Vector2).set(laneMixAt(this.laneMixAge.left), laneMixAt(this.laneMixAge.right));
     for (const lane of LANES) {
-      const r = this.records.find((q) => q.lane === lane);
+      const r = this.recordFor(lane);
       const w = (lane === "left" ? u.uWaveL.value : u.uWaveR.value) as THREE.Vector3;
       if (r && r.wave && !still && this.held === null) {
         const spot = ruinSpot(this.side, lane);
@@ -581,8 +613,7 @@ export class DeployOverlay {
     u.uGlowP.value = 0.22 * (1 - NIGHT_GLOW_CUT * day);
     u.uGlowOwn.value = 0.16 * (1 - NIGHT_GLOW_CUT * day);
     u.uLitGain.value = 1 - NIGHT_LIT_CUT * day;
-    const welcome = (age: number): number => (age < WELCOME ? WELCOME_GAIN * Math.sin((Math.PI * age) / WELCOME) : 0);
-    (u.uWelcome.value as THREE.Vector2).set(welcome(this.welcomeAge.left), welcome(this.welcomeAge.right));
+    (u.uWelcome.value as THREE.Vector2).set(welcomeBump(this.welcomeAge.left), welcomeBump(this.welcomeAge.right));
     const refusing = this.refuseAge < REFUSE_OUTLINE ? 1 : 0;
     u.uThick.value = 1 + 0.35 * Math.max(this.callBackEase, refusing);
     if (this.flashAge < REFUSE_FLASH) {
@@ -626,7 +657,7 @@ export class DeployOverlay {
   }
 
   get parts(): ZoneParts {
-    const env = this.ended ? { left: 0, right: 0 } : this.envelopes();
+    const env = this.envelopes();
     const shown = !this.ended && (this.held !== null || env.left > 0 || env.right > 0);
     return {
       shown,
@@ -655,6 +686,20 @@ export class DeployOverlay {
     this.callBackOn = false;
     this.callBackEase = 0;
     this.ended = false;
+  }
+
+  /**
+   * The battle is left for a menu (Leave, the home screen): put the card
+   * down and draw nothing at once. The menus sync with dt 0, so a reveal or
+   * a fade left running would stay frozen over the home diorama. The next
+   * sync seeds quietly, as after reset().
+   */
+  leave(): void {
+    this.reset();
+    this.held = null;
+    this.fade = 0;
+    this.warm = false;
+    this.mesh.visible = false;
   }
 
   dispose(): void {

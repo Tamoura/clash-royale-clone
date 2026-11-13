@@ -486,6 +486,12 @@ function fieldRect(): ScreenRect {
  */
 let lastPointer: { x: number; y: number; type: string } | null = null;
 
+/** An empty rect for a hidden pip (no allocation per frame). */
+const NO_RECT: ScreenRect = { x: 0, y: 0, w: 0, h: 0 };
+
+/** A preview error was reported (once per session: see safely()). */
+let previewFailed = false;
+
 /** The board's viewpoint differs from the side you play (dev aids only): warned once per battle. */
 let viewWarned = false;
 
@@ -519,7 +525,7 @@ function selectCard(id: CardId | null): void {
   // Nothing selected, nothing previewed: a ghost never outlives its card. A
   // card picked with a key previews at a resting mouse at once.
   if (id === null) clearPreview();
-  else refreshPreview();
+  else safely(refreshPreview);
 }
 
 // ---- Battle-start cast gate (render3d/cast) ------------------------------
@@ -831,6 +837,12 @@ const pickerRoot = document.getElementById("deckpicker")!;
 /** Show the (already built) picker as screen `id`. */
 function showPicker(id: string): void {
   pickerRoot.classList.add("show");
+  // Leaving a battle (Menu > Leave mid-reveal): no card stays held, and no
+  // placement map, reveal, pip or "Drop troops here now!" label is left over
+  // the menus (they sync with dt 0, so nothing would ever age out).
+  selectCard(null);
+  scene.leaveZone();
+  hud.lanePill(null, "", false, -1, 0);
   topbar.style.display = "none";
   sandboxResetBtn.style.display = "none";
   // The home shell is a cut-out onto the live arena; every other screen is opaque.
@@ -1102,7 +1114,7 @@ function clearPreview(): void {
   scene.setHover(null, 0, false);
   scene.setGhost(null, null);
   scene.zoneCallBack(false);
-  hud.placePip(null, 0, 0, "mouse", { x: 0, y: 0, w: 0, h: 0 });
+  hud.placePip(null, 0, 0, "mouse", NO_RECT);
 }
 
 /**
@@ -1130,12 +1142,35 @@ function refreshPreview(): void {
         ? Math.max(0.7, card.unit.radius)
         : 0.55;
   scene.setHover(pos, radius, card.kind === "spell", pos !== null && !badSpot, card.id);
-  scene.setGhost(placing ? card.id : null, pos, placing && badSpot);
+  // Only troops have a see-through ghost; a building previews as its disc.
+  scene.setGhost(card.kind === "troop" ? card.id : null, pos, badSpot);
   scene.zoneCallBack(placing && badSpot);
   // Spells go anywhere: their pip only ever says "wait".
   const verdict = placeVerdict(check);
   const pip = verdict && (placing || verdict === "wait") ? verdict : null;
-  hud.placePip(pip, lastPointer.x, lastPointer.y, lastPointer.type, fieldRect());
+  hud.placePip(pip, lastPointer.x, lastPointer.y, lastPointer.type, pip ? fieldRect() : NO_RECT);
+}
+
+/**
+ * The preview and the lane label run every frame (and on presses and card
+ * picks): whatever goes wrong in them must never end the game loop, whose
+ * next frame is only scheduled at the end of frame(). A throw clears the
+ * preview and is reported once.
+ */
+function safely(work: () => void): void {
+  try {
+    work();
+  } catch (err) {
+    if (!previewFailed) {
+      previewFailed = true;
+      console.error("[placement] preview failed; the battle goes on without it", err);
+    }
+    try {
+      clearPreview();
+    } catch {
+      // nothing more to undo
+    }
+  }
 }
 
 /** The "Drop troops here now!" label over a pocket that just opened (never in replays or the tutorial). */
@@ -1283,7 +1318,7 @@ function tryDeployAt(clientX: number, clientY: number): void {
 // already shows the map, the ghost and the pip under the finger.
 scene.renderer.domElement.addEventListener("pointerdown", (ev) => {
   lastPointer = { x: ev.clientX, y: ev.clientY, type: ev.pointerType || "mouse" };
-  refreshPreview();
+  safely(refreshPreview);
 });
 scene.renderer.domElement.addEventListener("pointerup", (ev) => {
   tryDeployAt(ev.clientX, ev.clientY);
@@ -1527,8 +1562,8 @@ function frame(now: number): void {
   scene.sync(battle, scaledDt, alpha);
   // The spot under a resting pointer is re-judged every frame (a tower falls,
   // elixir arrives), and the "lane opened" label follows the board.
-  if (selectedCard) refreshPreview();
-  updateLanePill();
+  if (selectedCard) safely(refreshPreview);
+  safely(updateLanePill);
   if (import.meta.env.DEV && !viewWarned && scene.viewpoint !== localSide()) {
     viewWarned = true;
     console.warn(`[placement] the board is drawn for '${scene.viewpoint}' but you play '${localSide()}' (dev viewpoint aid or staged view)`);

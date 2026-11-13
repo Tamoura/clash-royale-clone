@@ -1,27 +1,34 @@
 /**
  * The drawn deploy map IS the sim's rule. Every state below is sampled on a
  * fine grid and the map's "allowed" (zoneSd > 0, and the painted texture the
- * GPU reads) is compared with checkDeploy(...) !== "bad-spot". The King's
- * keep-clear radius, the one rule number the render code copies from the
- * sim's private KING_DEPLOY_BUFFER, is also bisected straight off checkDeploy.
+ * GPU reads) is compared with checkDeploy(...) !== "bad-spot". The two rule
+ * numbers the render code copies from the sim's private buffers
+ * (KING_DEPLOY_BUFFER, PRINCESS_DEPLOY_BUFFER) are also bisected straight off
+ * checkDeploy; the princess one in a staged battle, since no real one lets a
+ * standing princess's circle decide anything.
  *
  * If this fails after a sim change, update KING_KEEP_CLEAR /
  * PRINCESS_KEEP_CLEAR (or the shape) in src/render3d/deployZone.ts.
  */
 import { describe, expect, it } from "vitest";
-import { ARENA_HEIGHT, ARENA_WIDTH, type Side } from "../game/arena";
+import { ARENA_HEIGHT, ARENA_WIDTH, opposite, type Side } from "../game/arena";
 import { checkDeploy, createBattle, deployCard, openLanes, type BattleState } from "../game/battle";
 import type { CardId } from "../game/cards";
 import {
   FIELD_H,
   FIELD_W,
   KING_KEEP_CLEAR,
+  PAST_WALL,
+  PRINCESS_KEEP_CLEAR,
   paintZoneField,
   sampleField,
   troopShapeFor,
   zoneSd,
   zoneShape,
+  type Hole,
+  type Rect,
   type ZoneMode,
+  type ZoneShape,
 } from "./deployZone";
 
 type Lanes = "none" | "left" | "right" | "both";
@@ -30,6 +37,7 @@ const FULL = { amount: 10 };
 /** The drawn edge may sit this far (tiles) off the rule's edge: bilinear + 8-bit quantisation. */
 const EDGE = 0.07;
 const KING_MSG = "sim King buffer changed: update KING_KEEP_CLEAR in src/render3d/deployZone.ts";
+const PRINCESS_MSG = "sim princess buffer changed: update PRINCESS_KEEP_CLEAR in src/render3d/deployZone.ts";
 
 function setHands(b: BattleState, cards: CardId[] = HAND): void {
   for (const s of [b.player, b.enemy]) s.hand = { cards: [...cards], queue: [] };
@@ -210,6 +218,49 @@ describe("the King's keep-clear radius is the sim's", () => {
   }
 });
 
+describe("the princess keep-clear radius is the sim's", () => {
+  // No real battle lets a standing princess's circle decide anything (its
+  // lane is closed, so the whole circle is refused anyway). So the pin is
+  // staged: the left lane is open and the still-standing RIGHT princess is
+  // moved to x = 9.5 (still the right lane for openLanes), so its circle
+  // reaches into the open left pocket, away from the King's keep-clear.
+  function edgeAlong(b: BattleState, view: Side, px: number, py: number, dx: number, dy: number): number {
+    let lo = 2.5;
+    let hi = 3.5;
+    const ok = (r: number): boolean => checkDeploy(b, view, "knight", px + dx * r, py + dy * r) !== "bad-spot";
+    expect(ok(lo), PRINCESS_MSG).toBe(false);
+    expect(ok(hi), PRINCESS_MSG).toBe(true);
+    while (hi - lo > 1e-7) {
+      const mid = (lo + hi) / 2;
+      if (ok(mid)) hi = mid;
+      else lo = mid;
+    }
+    return (lo + hi) / 2;
+  }
+
+  for (const view of VIEWS) {
+    it(`12 rays bisected in the ${view} view`, () => {
+      const b = createBattle();
+      setHands(b);
+      topUp(b);
+      const owner = opposite(view);
+      // Host: the enemy's left princess falls and its right one steps to (9.5, 9.5).
+      // Guest: the mirror, (x, y) -> (18 - x, 32 - y).
+      knockDown(b, owner, view === "player" ? "left" : "right");
+      const standing = b.entities.find((e) => e.side === owner && e.kind === "princess-tower")!;
+      const m = (x: number, y: number): [number, number] => (view === "player" ? [x, y] : [ARENA_WIDTH - x, ARENA_HEIGHT - y]);
+      [standing.x, standing.y] = m(9.5, 9.5);
+      expect(openLanes(b, view)).toEqual(view === "player" ? { left: true, right: false } : { left: false, right: true });
+      for (let k = 0; k < 12; k++) {
+        const th = ((120 + 8 * k) * Math.PI) / 180; // 120..208 degrees: into the open pocket, clear of the King
+        const s = view === "player" ? 1 : -1;
+        const r = edgeAlong(b, view, standing.x, standing.y, s * Math.cos(th), s * Math.sin(th));
+        expect(Math.abs(r - PRINCESS_KEEP_CLEAR), `${PRINCESS_MSG} (ray ${120 + 8 * k} deg: sim edge at ${r})`).toBeLessThan(1e-6);
+      }
+    });
+  }
+});
+
 describe("the map is mirrored exactly for the guest", () => {
   const combos: [boolean, boolean][] = [
     [false, false],
@@ -244,17 +295,44 @@ describe("the map is mirrored exactly for the guest", () => {
   }
 });
 
-describe("the four precomputed lane maps are the live ones", () => {
+/**
+ * The same map built the long way from the live battle, with none of
+ * troopShapeFor's shortcuts: holes at the standing enemy towers' ACTUAL
+ * positions (not towerSpots), princess holes only for towers that stand
+ * (not "lane closed"), and the pocket rectangles from openLanes.
+ */
+function liveTroopShape(b: BattleState, view: Side): ZoneShape {
+  const open = openLanes(b, view);
+  const [L, R, T, B] = [-PAST_WALL, ARENA_WIDTH + PAST_WALL, -PAST_WALL, ARENA_HEIGHT + PAST_WALL];
+  const host = view === "player";
+  const rects: Rect[] = [host ? { x0: L, y0: 17, x1: R, y1: B } : { x0: L, y0: T, x1: R, y1: 15 }];
+  const pocket = (x0: number, x1: number): Rect => (host ? { x0, y0: T, x1, y1: 15 } : { x0, y0: 17, x1, y1: B });
+  if (open.left && open.right) rects.push(pocket(L, R));
+  else if (open.left) rects.push(pocket(L, 9));
+  else if (open.right) rects.push(pocket(9, R));
+  const holes: Hole[] = [];
+  for (const e of b.entities) {
+    if (e.side === view || e.hp <= 0) continue;
+    if (e.kind === "king-tower") holes.push({ x: e.x, y: e.y, r: KING_KEEP_CLEAR });
+    if (e.kind === "princess-tower") holes.push({ x: e.x, y: e.y, r: PRINCESS_KEEP_CLEAR });
+  }
+  return { mode: "troop", side: view, rects, holes, digHoles: [] };
+}
+
+describe("the four precomputed lane maps are the live battle's", () => {
+  // DeployOverlay paints troopShapeFor(side, lanes) once per battle and picks
+  // one by lane state; here it must equal the map read off the live towers.
   for (const view of VIEWS) {
     for (const lanes of LANES) {
       it(`${view} view, ${lanes} open`, () => {
         const b = stage(view, lanes);
-        const live = paintZoneField(zoneShape(b, view, "troop"));
+        const live = paintZoneField(liveTroopShape(b, view));
         const pre = paintZoneField(troopShapeFor(view, openLanes(b, view)));
         let diff = 0;
         for (let k = 0; k < live.length; k++) if (live[k] !== pre[k]) diff++;
         expect(live.length).toBe(FIELD_W * FIELD_H);
         expect(diff).toBe(0);
+        expect(paintZoneField(zoneShape(b, view, "troop"))).toEqual(pre);
       });
     }
   }

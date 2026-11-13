@@ -1594,7 +1594,8 @@
 
 /* ── Placement: the verdict pip over the finger (render3d/hud.ts placePip) ──
    A tick (yes), a no-entry sign (no) or an hourglass (wait): different shapes
-   and sizes, so colour is never the only cue. Never takes a tap. */
+   and sizes, so colour is never the only cue. Never takes a tap. It paints
+   over the "lane opened" label (that one sits at z-hud). */
 .place-pip {
   position: fixed;
   z-index: calc(var(--z-hud) + 1);
@@ -1623,16 +1624,21 @@
 }
 
 /* ── Placement: "Drop troops here now!" over a pocket that just opened
-   (render3d/hud.ts lanePill; its box comes from hudModel lanePillBox) ── */
+   (render3d/hud.ts lanePill; its box comes from hudModel lanePillBox).
+   It sits UNDER the verdict pip and the refusal words (z-hud + 1): a finger
+   trying the new ground must see its tick or no-entry sign. Its width is
+   its words, capped by the JS max-width (the pocket): without width:
+   max-content a fixed box near the right edge would shrink to the room
+   left before the viewport edge and squash into a four-line blob. The
+   padlock is inline, right before the first word, so it never floats off
+   on its own when the balanced lines are shorter than the box. ── */
 .lane-pill {
   position: fixed;
-  z-index: calc(var(--z-hud) + 1);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
+  z-index: var(--z-hud);
+  display: block;
+  width: max-content;
   box-sizing: border-box;
-  padding: 5px 12px 6px;
+  padding: 5px 14px 6px;
   border-radius: var(--r-pill);
   background: var(--pill-bg, #2463d6);
   box-shadow: 0 0 0 2.5px #fff, 0 0 0 4px #1f1a2e, 0 4px 10px rgba(0, 0, 0, 0.3);
@@ -1642,18 +1648,18 @@
   line-height: 1.15;
   white-space: normal;
   text-align: center;
+  text-wrap: balance;
   text-shadow: var(--cr-outline);
   transform: translate(-50%, -50%);
   pointer-events: none;
   animation: lanePill 0.5s ease-out both;
 }
-.lane-pill span {
-  text-wrap: balance;
-}
 .lane-pill .ui-icon {
-  width: 1.15em;
-  height: 1.15em;
-  vertical-align: 0;
+  display: inline-block;
+  width: 1.35em;
+  height: 1.35em;
+  margin-inline-end: 5px;
+  vertical-align: -0.3em;
 }
 .lane-pill.still {
   animation: none;
@@ -1669,10 +1675,12 @@
 /* A narrow pocket (landscape phones, about 110 px): the padlock sits on top
    and the words get the whole width, so they wrap to two lines at most. */
 .lane-pill.narrow {
-  flex-direction: column;
-  gap: 1px;
   padding: 4px 8px 5px;
   border-radius: 16px;
+}
+.lane-pill.narrow .ui-icon {
+  display: block;
+  margin: 0 auto 1px;
 }
 @keyframes lanePill {
   0% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }

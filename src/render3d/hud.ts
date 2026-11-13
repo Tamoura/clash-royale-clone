@@ -676,9 +676,10 @@ export class Hud {
       pill.setAttribute("role", "status");
       pill.dir = "auto";
       pill.innerHTML = icon("unlock");
-      const span = document.createElement("span");
-      span.textContent = text;
-      pill.appendChild(span);
+      // A bare text node, not a span: under Golden Age every span is its own
+      // bidi isolate (unicode-bidi: plaintext), which would hide the Arabic
+      // from dir="auto" and leave the padlock at the END of the line.
+      pill.appendChild(document.createTextNode(text));
       pill.style.setProperty("--pill-bg", teamCss("player", "dark"));
       document.body.appendChild(pill);
       this.pillEl = pill;
