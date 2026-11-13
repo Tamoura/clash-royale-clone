@@ -29,6 +29,10 @@ export function noWebglWords() {
 }
 
 const STYLE = `
+.nogl,
+.nogl * {
+  box-sizing: border-box;
+}
 .nogl {
   position: fixed;
   inset: 0;

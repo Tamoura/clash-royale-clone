@@ -23,6 +23,8 @@ describe("the no-WebGL screen", () => {
     const text = screen.textContent;
     for (const line of [words.title, words.kid, words.ask, words.grownUps, words.hint, words.retry]) expect(text).toContain(line);
     expect(doc.body.classList.contains("booted")).toBe(true);
+    // The padded card fits a 390 px phone with its gutter (padding counts inside the width).
+    expect((screen.querySelector("style") as FakeElement).textContent).toMatch(/\.nogl \*\s*\{\s*box-sizing: border-box;/);
     // Try again reloads (after a grown-up switched graphics on).
     (screen.querySelector(".nogl__retry") as FakeElement).dispatchEvent(new FakeEvent("click"));
     expect(reload).toHaveBeenCalledTimes(1);
