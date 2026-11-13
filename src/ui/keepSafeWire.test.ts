@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { emit, type MatchEndPayload } from "../app/hooks";
 import type { BattleState } from "../game/battle";
+import { LEFT_MATCH_KEY, readMarker } from "../match/leftMatch";
 import { HOME_TIP_SEEN_KEY, PERSIST_ASKED_KEY } from "../meta/keepSafe";
 import { memoryKV } from "../meta/kv";
+import { SAVE_BACKUP_KEY } from "../meta/saveCode";
 import { toast } from "./components";
 import { installFakeDom } from "./fakeDom.testkit";
-import "./keepSafeWire";
+import { tr } from "./i18n";
+import { OTHER_TAB_RELOAD_MS, onOtherTabStorage, resetOtherTabForTests } from "./keepSafeWire";
 import { SAVE_LOADED_KEY } from "./screens/saveSheet";
 
 // Count toasts directly (the toast host outlives one test's fake document).
@@ -94,5 +97,58 @@ describe("keep-the-save-safe wiring", () => {
     emit("frame", FRAME);
     await vi.advanceTimersByTimeAsync(1000);
     expect(toasts().length).toBe(1);
+  });
+
+  it("after an undo or a redo, Home says which", async () => {
+    for (const [what, line] of [
+      ["undo", tr("Everything is back to how it was before the load.", "عاد كل شيء كما كان قبل التحميل.")],
+      ["redo", tr("Everything is back to how it was before the undo.", "عاد كل شيء كما كان قبل التراجع.")],
+    ] as const) {
+      vi.mocked(toast).mockClear();
+      session.setItem(SAVE_LOADED_KEY, what);
+      emit("screen", { id: "home", sceneMode: "diorama" });
+      emit("frame", FRAME);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(toasts()).toEqual([line]);
+    }
+  });
+});
+
+describe("another tab loads a save", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "performance"] });
+    installFakeDom();
+    resetOtherTabForTests();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    resetOtherTabForTests();
+  });
+  const marker = () => memoryKV({ [LEFT_MATCH_KEY]: JSON.stringify({ at: Date.now(), trophies: 300 }) });
+
+  it("reloads this tab once, a moment later, only for a change to the backup slot", async () => {
+    const kv = marker();
+    const reload = vi.fn();
+    const deps = { kv, reload, inMatch: false };
+    expect(onOtherTabStorage({ key: "cr-clone-settings", oldValue: "a", newValue: "b" }, deps)).toBe(false);
+    expect(onOtherTabStorage({ key: SAVE_BACKUP_KEY, oldValue: "x", newValue: "x" }, deps)).toBe(false);
+    expect(onOtherTabStorage({ key: null, oldValue: null, newValue: null }, deps)).toBe(false);
+    expect(onOtherTabStorage({ key: SAVE_BACKUP_KEY, oldValue: null, newValue: '{"b":"load"}' }, deps)).toBe(true);
+    expect(onOtherTabStorage({ key: SAVE_BACKUP_KEY, oldValue: '{"b":"load"}', newValue: '{"b":"undo"}' }, deps)).toBe(false);
+    await vi.advanceTimersByTimeAsync(OTHER_TAB_RELOAD_MS - 10);
+    expect(reload).not.toHaveBeenCalled(); // the rest of the other tab's writes land first
+    await vi.advanceTimersByTimeAsync(20);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(readMarker(kv)).not.toBeNull(); // no match here: the marker is not this tab's
+  });
+
+  it("a match being played here was the old profile's: the reload does not count it as a loss", async () => {
+    const kv = marker();
+    const reload = vi.fn();
+    expect(onOtherTabStorage({ key: SAVE_BACKUP_KEY, oldValue: "a", newValue: "b" }, { kv, reload, inMatch: true })).toBe(true);
+    expect(readMarker(kv)).toBeNull();
+    await vi.advanceTimersByTimeAsync(OTHER_TAB_RELOAD_MS);
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });
