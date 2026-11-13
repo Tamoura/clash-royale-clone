@@ -221,6 +221,35 @@ describe("unpacking on a tablet without DecompressionStream", () => {
     expect([...types].sort()).toEqual([0, 1, 2]); // stored, fixed and dynamic all covered
   });
 
+  it("follows back-references across the whole window, at every length (a long-played save)", async () => {
+    let seed = 31;
+    const rnd = (): number => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) >>> 24;
+    // (a) A random block, then the same block again: one run of long copies
+    // per distance band, from 4 KB to the 32 KB edge of the window.
+    const bands: number[] = [];
+    for (const d of [5_000, 7_000, 8_193, 9_000, 13_000, 20_000, 30_000]) {
+      const block = Array.from({ length: d }, rnd);
+      bands.push(...block, ...block);
+    }
+    // (b) Copies of every length (3..258) from all over the window, with a
+    // few random letters between them so each copy ends where it was cut.
+    const mixed: number[] = Array.from({ length: 2_000 }, rnd);
+    while (mixed.length < 120_000) {
+      const len = 3 + (rnd() % 256);
+      const back = 1 + ((rnd() << 8) | rnd()) % Math.min(mixed.length, 30_000);
+      const from = mixed.length - back;
+      for (let i = 0; i < len; i++) mixed.push(mixed[from + i]);
+      for (let i = 1 + (rnd() % 4); i > 0; i--) mixed.push(rnd());
+    }
+    for (const raw of [Uint8Array.from(bands), Uint8Array.from(mixed)]) {
+      const packed = await deflate(raw);
+      expect(packed.length).toBeLessThan(raw.length * 0.75); // the copies really were packed as copies
+      const back = inflateRawJs(packed, 1_000_000);
+      expect(back).toBeInstanceOf(Uint8Array);
+      expect(sameBytes(back as Uint8Array, raw)).toBe(true);
+    }
+  });
+
   it("opens a packed code, and still stops a bomb, with no DecompressionStream at all", async () => {
     const data = gatherSave(playedDevice());
     const code = await encodeSave(data);
@@ -381,6 +410,23 @@ describe("loading onto a device, with a backup and undo", () => {
     expect(undoLastLoad(b)).toEqual({ ok: true });
     expect(storedProgressKeys(b)).toEqual([]);
     expect(readBackup(b)?.keys).toEqual({ "cr-clone-trophies": "900" });
+  });
+
+  it("a tablet that never changed a setting gets its own name and crest back on undo", () => {
+    const b = store({ "cr-clone-trophies": "0" });
+    expect(gatherSave(b).who).toEqual({ name: "", crest: 0 }); // the defaults the game shows
+    const prefs = () => sanitizePrefs(JSON.parse(b.data["cr-clone-settings"]));
+    expect(applySave(b, { at: 1, keys: { "cr-clone-trophies": "1400" }, who: { name: "Yusuf", crest: 7 } })).toEqual({ ok: true });
+    expect(prefs()).toMatchObject({ playerName: "Yusuf", crest: 7 });
+    expect(readBackup(b)?.who).toEqual({ name: "", crest: 0 });
+    expect(undoLastLoad(b)).toEqual({ ok: true });
+    expect(prefs()).toMatchObject({ playerName: "", crest: 0 });
+    expect(b.data["cr-clone-trophies"]).toBe("0");
+    // And a redo brings the loaded name and crest back with the progress.
+    expect(undoLastLoad(b)).toEqual({ ok: true });
+    expect(prefs()).toMatchObject({ playerName: "Yusuf", crest: 7 });
+    // A settings blob that does not parse reads as the defaults too.
+    expect(gatherSave(store({ "cr-clone-settings": "{broken" })).who).toEqual({ name: "", crest: 0 });
   });
 
   it("an undo with no backup, or a broken one, changes nothing", () => {

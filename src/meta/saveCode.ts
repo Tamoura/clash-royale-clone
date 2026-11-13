@@ -4,8 +4,9 @@
  * GitHub Pages links are different sites with separate storage).
  *
  * What goes in: every registered "progress" key that is present
- * (saveKeys.ts), plus the kid's name and crest ("who"), which live in the
- * per-device settings blob. Nothing about the device goes in.
+ * (saveKeys.ts), plus the kid's name and crest ("who"; the defaults when
+ * none were set), which live in the per-device settings blob. Nothing
+ * about the device goes in.
  *
  * The code: "CR" (the game), a format version digit, a packing letter
  * ("Z" = deflate-raw through CompressionStream, "P" = plain where the
@@ -505,7 +506,14 @@ export function storedProgressKeys(store: SaveStore): string[] {
   return [...out];
 }
 
-/** The kid's name and crest from this device's settings, or undefined when none are stored. */
+/**
+ * The kid's name and crest as this device shows them: from the settings
+ * blob, or the defaults (no name, the first crest) when no blob is stored
+ * or it does not parse, which is what the game shows then. So every save
+ * and every backup carries a "who", and an undo or a redo puts the name
+ * and crest back too, even on a tablet that never changed a setting.
+ * Undefined only when storage cannot be read at all.
+ */
 export function readWho(store: SaveStore): SaveWho | undefined {
   let raw: string | null = null;
   try {
@@ -513,13 +521,14 @@ export function readWho(store: SaveStore): SaveWho | undefined {
   } catch {
     return undefined;
   }
-  if (!raw) return undefined;
+  let stored: unknown = {};
   try {
-    const p = sanitizePrefs(JSON.parse(raw));
-    return { name: p.playerName, crest: p.crest };
+    if (raw) stored = JSON.parse(raw);
   } catch {
-    return undefined;
+    stored = {};
   }
+  const p = sanitizePrefs(stored);
+  return { name: p.playerName, crest: p.crest };
 }
 
 /** This device's progress, ready to encode. */
