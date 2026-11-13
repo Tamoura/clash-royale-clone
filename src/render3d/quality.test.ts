@@ -331,6 +331,47 @@ describe("very slow devices: a sustained slow window goes straight to the bottom
     expect(gov.index).toBe(0);
   });
 
+  it("nor does a window where hitches are many but not most of the frames", () => {
+    // Six or so 0.3 s hitches in every 2 s window (at least SLOW_MIN_FRAMES),
+    // but each followed by six smooth frames: a minority, so no slideshow.
+    const gov = new QualityGovernor();
+    let n = 0;
+    const steps = trace(gov, () => (n++ % 7 === 0 ? 0.3 : 1 / 60), 60);
+    expect(steps).toEqual([]);
+    // The same pattern with the hitches in the majority is a slideshow.
+    const slow = new QualityGovernor();
+    let m = 0;
+    expect(trace(slow, () => (m++ % 3 === 2 ? 1 / 60 : 0.3), 30).map((s) => s.to)).toEqual([bottom]);
+  });
+
+  it("nor does one hitch in four on a 20 fps game: the walk may move, but never jumps to the bottom", () => {
+    const mixed = new QualityGovernor();
+    let k = 0;
+    const seen = new Set<number>();
+    for (let t = 0; t < 60; ) {
+      const dt = k++ % 4 === 0 ? 0.3 : 0.05;
+      mixed.sample(dt);
+      seen.add(mixed.index);
+      t += dt;
+    }
+    expect(seen.has(bottom)).toBe(false);
+  });
+
+  it("gaps over PAUSE never count, alone or mixed with slow frames", () => {
+    const gaps = new QualityGovernor();
+    for (let i = 0; i < 30; i++) gaps.sample(3.5);
+    expect(gaps.index).toBe(0);
+    // A slow frame or two between long pauses (a tab flicked back and forth)
+    // never fills a window: each pause starts it afresh.
+    const mixed = new QualityGovernor();
+    for (let i = 0; i < 40; i++) {
+      mixed.sample(3.5);
+      mixed.sample(0.4);
+      mixed.sample(0.4);
+    }
+    expect(mixed.index).toBe(0);
+  });
+
   it("a hidden tab never counts, however slow its frames", () => {
     const gov = new QualityGovernor();
     for (let i = 0; i < 300; i++) gov.sample(0.4, false);
