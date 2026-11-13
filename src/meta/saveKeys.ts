@@ -140,6 +140,13 @@ export const SAVE_KEYS: readonly SaveKeyDef[] = [
   { key: "cr-clone-save-backup", cls: D, shape: "json", note: "progress before the last save was loaded (saveCode.ts)" },
   { key: "cr-clone-persist-asked", cls: D, shape: "text", note: "storage persistence asked for once (keepSafe.ts)" },
   { key: "cr-clone-home-tip-seen", cls: D, shape: "text", note: "iPhone/iPad 'Add to Home Screen' tip shown (keepSafe.ts)" },
+  {
+    key: "cr-clone-save-loaded",
+    cls: D,
+    shape: "text",
+    session: true,
+    note: "a save was just loaded or undone: Home says so after the reload (saveSheet.ts)",
+  },
   // ---- Round 2, added by other changes (see PENDING_ROUND2_KEYS)
   { key: "cr-clone-problem-log", cls: D, shape: "json", note: "the local problem log (crash shield)" },
   { key: "cr-clone-gfx-memory", cls: D, shape: "json", note: "graphics level this device settled on (auto graphics)" },

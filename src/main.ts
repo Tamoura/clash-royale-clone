@@ -164,6 +164,7 @@ import { signed } from "./render3d/result";
 
 // ---- Feature registration: side-effect modules that subscribe to src/app/hooks.
 import "./audio/wire";
+import "./ui/keepSafeWire";
 
 // Apply edition-aware CSS variables before any DOM is rendered.
 applyEditionTokens(STORED_EDITION);
