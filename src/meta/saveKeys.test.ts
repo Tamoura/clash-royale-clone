@@ -82,6 +82,14 @@ describe("save key registry", () => {
     expect(stale, `nothing uses these any more; remove them from saveKeys.ts: ${stale.join(", ")}`).toEqual([]);
   });
 
+  it("keeps a round-2 key pending only until it lands", () => {
+    const landed = [...PENDING_ROUND2_KEYS].filter((k) => found.some((f) => f.text === k));
+    expect(
+      landed,
+      `now used in src; take them off PENDING_ROUND2_KEYS in saveKeys.ts so the stale check covers them: ${landed.join(", ")}`,
+    ).toEqual([]);
+  });
+
   it("lists each key once, all under cr-clone-", () => {
     const keys = SAVE_KEYS.map((d) => d.key);
     expect(new Set(keys).size).toBe(keys.length);

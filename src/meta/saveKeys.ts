@@ -55,7 +55,10 @@ export interface SaveKeyDef {
 /**
  * Round-2 keys that other changes add in parallel (crash shield, graphics
  * memory, offline boot). Registered ahead so the scan passes the moment
- * they land; the stale-entry check skips them until then.
+ * they land; the stale-entry check skips them until then. Once a key is
+ * used in src, saveKeys.test.ts fails until it is taken off this list, so
+ * the exemption ends when the key lands (the merge that brings it in
+ * removes it here).
  */
 export const PENDING_ROUND2_KEYS: ReadonlySet<string> = new Set([
   "cr-clone-problem-log",
