@@ -186,6 +186,17 @@ describe("loading what was stored", () => {
     expect(sanitizeProblem({ at: 1, msg: "" })).toBeNull();
   });
 
+  it("keeps where it was caught clean and short, and leaves it out when there is none", () => {
+    const p = sanitizeProblem({ at: 1, msg: "x", where: `battle event 'death'${String.fromCharCode(0x202e)}\n${"w".repeat(200)}` })!;
+    expect(p.where!.startsWith("battle event 'death' w")).toBe(true);
+    expect(p.where!.length).toBeLessThanOrEqual(48);
+    expect(p.where).not.toMatch(/[\u202e\n]/);
+    // Entries stored before the field existed, or with nothing in it.
+    expect(sanitizeProblem({ at: 1, msg: "x" })).not.toHaveProperty("where");
+    expect(sanitizeProblem({ at: 1, msg: "x", where: " \u0000 " })).not.toHaveProperty("where");
+    expect(sanitizeProblem({ at: 1, msg: "x", where: { evil: true } })!.where).toBe("[object Object]");
+  });
+
   it("sorts newest first and caps a long stored list", () => {
     const stored = Array.from({ length: 60 }, (_, i) => ({ at: i, last: i, msg: `m${i}` }));
     const list = loadProblems(memStore({ [PROBLEM_LOG_KEY]: JSON.stringify(stored) }));
@@ -221,6 +232,30 @@ describe("ProblemLog", () => {
     const p = log.record("frame", new Error("boom"))!;
     expect(p).toMatchObject({ msg: "Error: boom", build: "abc-1", screen: "battle/playing", quality: "auto L2", edition: "classic", online: false, n: 1, kind: "frame" });
     expect(JSON.parse(store.data[PROBLEM_LOG_KEY])).toHaveLength(1);
+  });
+
+  it("records which part of the game caught it, through storage and into the report", () => {
+    const { store, log } = setup();
+    expect(log.record("frame", new Error("tower"), "battle event 'death'")!.where).toBe("battle event 'death'");
+    // A whole frame says nothing more than its kind; no label says nothing either.
+    expect(log.record("frame", new Error("whole"), "frame")).not.toHaveProperty("where");
+    expect(log.record("error", new Error("page"))).not.toHaveProperty("where");
+    // The same message again keeps where it was first caught.
+    expect(log.record("frame", new Error("tower"), "settling the match")!.where).toBe("battle event 'death'");
+    log.flush();
+    const back = loadProblems(store);
+    expect(back.find((p) => p.msg === "Error: tower")!.where).toBe("battle event 'death'");
+    const lines = problemReport(back, {
+      build: "b",
+      browser: "x",
+      screen: "1x1",
+      quality: "q",
+      edition: "e",
+      now: 0,
+    }).split("\n");
+    expect(lines.filter((l) => / · frame \(battle event 'death'\)$/.test(l))).toHaveLength(1);
+    expect(lines.filter((l) => / · frame$/.test(l))).toHaveLength(1);
+    expect(lines.filter((l) => / · error$/.test(l))).toHaveLength(1);
   });
 
   it("writes at most once per SAVE_GAP_MS while an error repeats every frame, and loses no count", () => {
@@ -297,6 +332,7 @@ describe("the copied report", () => {
     let list = addProblem([], { ...entry("Error: first", Date.UTC(2026, 10, 13, 10, 0, 0)), stack: ["at a (/x.js:1:2)"] });
     list = addProblem(list, { ...entry("TypeError: second", Date.UTC(2026, 10, 13, 10, 5, 0)), online: true });
     list = addProblem(list, entry("TypeError: second", Date.UTC(2026, 10, 13, 10, 6, 0)));
+    list = addProblem(list, { ...entry("Error: third", Date.UTC(2026, 10, 13, 10, 7, 0)), kind: "hook", where: "battleEvent listener" });
     const text = problemReport(list, header);
     expect(text).toBe(
       [
@@ -308,13 +344,17 @@ describe("the copied report", () => {
         "Edition: Golden Age",
         "Made: 2026-11-13 10:30:00 UTC",
         "",
-        "2 problems, newest first. Kept on this device only.",
+        "3 problems, newest first. Kept on this device only.",
         "",
-        "#1 2026-11-13 10:05:00 UTC · seen 2 times, last 2026-11-13 10:06:00 UTC · frame",
+        "#1 2026-11-13 10:07:00 UTC · hook (battleEvent listener)",
+        "Error: third",
+        "Where: battle/playing · auto L2 · classic · abc-1",
+        "",
+        "#2 2026-11-13 10:05:00 UTC · seen 2 times, last 2026-11-13 10:06:00 UTC · frame",
         "TypeError: second",
         "Where: battle/playing · auto L2 · classic · online · abc-1",
         "",
-        "#2 2026-11-13 10:00:00 UTC · frame",
+        "#3 2026-11-13 10:00:00 UTC · frame",
         "Error: first",
         "  at a (/x.js:1:2)",
         "Where: battle/playing · auto L2 · classic · abc-1",

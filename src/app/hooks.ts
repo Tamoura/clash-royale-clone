@@ -63,6 +63,36 @@ export function on<K extends keyof Hooks>(k: K, fn: Listener<K>): () => void {
   };
 }
 
+/** Hears about a listener that threw (see setHookErrorReporter). */
+export type HookErrorReporter = (hook: keyof Hooks, err: unknown) => void;
+let hookErrorReporter: HookErrorReporter | null = null;
+
+/**
+ * Where a throwing listener is reported instead of a plain console.error:
+ * the crash shield (app/shieldWire.ts) puts it in the local problem log and
+ * prints it, throttled. A reporter that throws falls back to console.error.
+ * Returns the uninstall.
+ */
+export function setHookErrorReporter(fn: HookErrorReporter): () => void {
+  hookErrorReporter = fn;
+  return () => {
+    if (hookErrorReporter === fn) hookErrorReporter = null;
+  };
+}
+
+function listenerFailed(k: keyof Hooks, err: unknown): void {
+  const report = hookErrorReporter;
+  if (report) {
+    try {
+      report(k, err);
+      return;
+    } catch {
+      // fall back to the console
+    }
+  }
+  console.error(`[hooks] ${k} listener failed`, err);
+}
+
 /**
  * Call every listener in subscription order. A throwing listener is
  * reported and skipped — one broken feature must not stop the game loop.
@@ -74,7 +104,7 @@ export function emit<K extends keyof Hooks>(k: K, payload: Hooks[K]): void {
     try {
       fn(payload);
     } catch (err) {
-      console.error(`[hooks] ${k} listener failed`, err);
+      listenerFailed(k, err);
     }
   }
 }

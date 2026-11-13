@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryKV } from "../meta/kv";
 import { markMatchStart, readMarker } from "../match/leftMatch";
 import type { OopsActions, OopsKind } from "../ui/oops";
-import { STORM_ERRORS } from "./crashShield";
+import { PRINT_GAP_MS, STORM_ERRORS } from "./crashShield";
+import type { HookErrorReporter } from "./hooks";
+import { problemLog } from "./problemLog";
 
 const shown: { kind: OopsKind; actions: OopsActions }[] = [];
 vi.mock("../ui/oops", () => ({
@@ -15,15 +17,20 @@ vi.mock("../ui/oops", () => ({
 }));
 
 const holds: (() => boolean)[] = [];
+const reporters: HookErrorReporter[] = [];
 vi.mock("./hooks", () => ({
   registerSimHold: (fn: () => boolean) => {
     holds.push(fn);
     return () => undefined;
   },
+  setHookErrorReporter: (fn: HookErrorReporter) => {
+    reporters.push(fn);
+    return () => undefined;
+  },
 }));
 
 // Imported after the mocks are declared (vi.mock is hoisted anyway).
-const { installCrashShield } = await import("./shieldWire");
+const { installCrashShield, hookErrorReporter } = await import("./shieldWire");
 
 interface Fakes {
   calls: string[];
@@ -65,6 +72,7 @@ const replaced: string[] = [];
 beforeEach(() => {
   shown.length = 0;
   holds.length = 0;
+  reporters.length = 0;
   replaced.length = 0;
   search = "";
   vi.stubGlobal("location", {
@@ -145,6 +153,52 @@ describe("a storm on a menu screen", () => {
     const { hold, storm, w } = wire({ menu: true });
     storm();
     storm();
+    expect(shown).toEqual([]);
+    expect(hold()).toBe(false);
+    expect(w.shield.holding).toBe(false);
+  });
+});
+
+describe("where the problem log says it was caught", () => {
+  it("a guarded part of a frame keeps its label; a whole frame and a no-contest step are labelled too", () => {
+    problemLog.clear();
+    const { w } = wire();
+    w.shield.guard("battle event 'death'", () => {
+      throw new Error("tower fx");
+    });
+    w.shield.caught("frame", new Error("whole frame"));
+    const byMsg = (m: string) => problemLog.list().find((p) => p.msg === m);
+    expect(byMsg("Error: tower fx")).toMatchObject({ kind: "frame", where: "battle event 'death'" });
+    expect(byMsg("Error: whole frame")).not.toHaveProperty("where");
+  });
+});
+
+describe("a hook's listener that throws", () => {
+  it("is installed as the hooks' reporter", () => {
+    wire();
+    expect(reporters).toHaveLength(1);
+  });
+
+  it("goes in the problem log as 'hook', printed once then throttled, and never opens the overlay", () => {
+    problemLog.clear();
+    let t = 0;
+    const report = hookErrorReporter(() => t);
+    const { w, hold } = wire();
+    const printed = vi.mocked(console.error);
+    printed.mockClear();
+    // A 'frame' listener that throws on every frame for a second.
+    for (let i = 0; i < 60; i++) {
+      report("frame", new Error("tutorial arrow"));
+      t += 16;
+    }
+    const entry = problemLog.list().find((p) => p.msg === "Error: tutorial arrow");
+    expect(entry).toMatchObject({ kind: "hook", where: "frame listener", n: 60 });
+    expect(printed).toHaveBeenCalledTimes(1);
+    t += PRINT_GAP_MS;
+    report("frame", new Error("tutorial arrow"));
+    expect(printed).toHaveBeenCalledTimes(2);
+    expect(String(printed.mock.calls[1][0])).toContain("(and 59 more like it)");
+    // The battle is fine: no overlay, no hold.
     expect(shown).toEqual([]);
     expect(hold()).toBe(false);
     expect(w.shield.holding).toBe(false);

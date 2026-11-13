@@ -105,7 +105,8 @@ function problemItem(p: Problem): HTMLElement {
   const where = document.createElement("p");
   where.className = "v2-problem-where";
   where.dir = "ltr";
-  where.textContent = p.screen; // the copied report has the rest
+  // The screen, and which part of the game caught it (the copied report has the rest).
+  where.textContent = p.where ? `${p.screen} · ${p.where}` : p.screen;
   li.append(head, msg, where);
   return li;
 }
@@ -184,10 +185,9 @@ export function buildProblemReport(deps: ProblemReportDeps = {}): { el: HTMLElem
     }
     fallback.value = text;
     fallback.hidden = false;
+    selectAll(fallback);
     let copied = false;
     try {
-      fallback.focus();
-      fallback.select();
       copied = typeof document.execCommand === "function" && document.execCommand("copy");
     } catch {
       copied = false;
@@ -229,6 +229,30 @@ export function buildProblemReport(deps: ProblemReportDeps = {}): { el: HTMLElem
   render();
   const off = log.onChange(render);
   return { el: root, dispose: off };
+}
+
+/**
+ * Select the whole box for a copy by hand. Each step on its own: iOS Safari
+ * does not reliably select a text field on select(), and a selection range
+ * does (the fallback is reached on an http LAN address, which is not a
+ * secure context, so it has no navigator.clipboard).
+ */
+function selectAll(box: HTMLTextAreaElement): void {
+  try {
+    box.focus();
+  } catch {
+    // not focusable here
+  }
+  try {
+    box.select();
+  } catch {
+    // the range below still selects
+  }
+  try {
+    box.setSelectionRange(0, box.value.length);
+  } catch {
+    // nothing more to try: the toast says to copy it by hand
+  }
 }
 
 function clipboardOf(): { writeText(text: string): Promise<void> } | null {

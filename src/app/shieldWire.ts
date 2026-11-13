@@ -13,10 +13,16 @@
  *   match stopped because of a glitch. No trophies won or lost.";
  * - a menu screen (Home, Collection...) shows nothing: menus are plain page
  *   controls that keep working, so the shield only records and counts.
+ *
+ * A hook's listener that throws (app/hooks.ts skips it and the frame goes
+ * on) is recorded too, as kind "hook", and printed throttled. It never
+ * counts toward a storm: the battle itself is fine, only that one feature
+ * is not, and holding the battle for it would cost the kid more than it
+ * saves.
  */
-import { CrashShield, OopsSwitch, oopsRequested } from "./crashShield";
-import { registerSimHold } from "./hooks";
-import { problemLog, type ProblemContext } from "./problemLog";
+import { CrashShield, OopsSwitch, PrintThrottle, oopsRequested } from "./crashShield";
+import { registerSimHold, setHookErrorReporter, type HookErrorReporter } from "./hooks";
+import { describeError, problemLog, type ProblemContext } from "./problemLog";
 import { leaveAfterGlitch, stopOnlineAfterGlitch, type GlitchExitDeps, type GlitchSession } from "../match/noContest";
 import { showOops } from "../ui/oops";
 
@@ -58,11 +64,29 @@ function takeOopsParam(): boolean {
   return true;
 }
 
+/**
+ * What hooks.ts does with a listener that threw: the problem log ("hook",
+ * where "frame listener"), and the console at most once per PRINT_GAP_MS
+ * for each message (a listener that throws every frame is counted, not
+ * printed 60 times a second).
+ */
+export function hookErrorReporter(now: () => number = () => performance.now()): HookErrorReporter {
+  const prints = new PrintThrottle();
+  return (hook, err) => {
+    problemLog.record("hook", err, `${hook} listener`);
+    const muted = prints.check(describeError(err).msg, now());
+    if (muted === null) return;
+    const more = muted ? ` (and ${muted} more like it)` : "";
+    console.error(`[hooks] ${hook} listener failed; the game goes on${more}`, err);
+  };
+}
+
 export function installCrashShield(d: ShieldWireDeps): ShieldWire {
   problemLog.setContext(d.context);
+  setHookErrorReporter(hookErrorReporter());
   const report = (what: string, err: unknown): void => {
     console.error(`[shield] could not ${what}`, err);
-    problemLog.record("frame", err);
+    problemLog.record("frame", err, what);
   };
   const exitDeps: GlitchExitDeps = {
     kv: d.kv,
@@ -79,10 +103,11 @@ export function installCrashShield(d: ShieldWireDeps): ShieldWire {
   };
   shield = new CrashShield({
     now: () => performance.now(),
-    // Everything the shield catches is in the game loop (a frame, or a
-    // guarded part of one such as a battle event's effects).
-    record: (_where, err) => {
-      problemLog.record("frame", err);
+    // Everything the shield catches is in the game loop (a whole frame, or
+    // a guarded part of one such as a battle event's effects): the label
+    // says which part, for whoever reads a forwarded report.
+    record: (where, err) => {
+      problemLog.record("frame", err, where);
     },
     print: (text, err) => console.error(text, err),
     rethrow: LOUD_ERRORS,

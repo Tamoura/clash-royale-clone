@@ -66,7 +66,7 @@ export class CrashShield {
   private late: { err: unknown } | null = null;
   private open = false;
   private resumedAt = Number.NEGATIVE_INFINITY;
-  private readonly printed = new Map<string, { at: number; muted: number }>();
+  private readonly printed = new PrintThrottle();
 
   constructor(private readonly deps: ShieldDeps) {}
 
@@ -138,7 +138,7 @@ export class CrashShield {
       } catch {
         // the log never stops the shield
       }
-      const muted = this.throttle(describeError(err).msg, now);
+      const muted = this.printed.check(describeError(err).msg, now);
       loud = muted !== null;
       if (loud && !this.deps.rethrow) {
         const more = muted ? ` (and ${muted} more like it)` : "";
@@ -183,12 +183,18 @@ export class CrashShield {
     this.resumedAt = Number.NEGATIVE_INFINITY;
   }
 
+}
+
+/** Prints identical messages at most once per PRINT_GAP_MS, counting the rest. */
+export class PrintThrottle {
+  private readonly printed = new Map<string, { at: number; muted: number }>();
+
   /**
    * Print this message now? Returns null when an identical one was printed
    * less than PRINT_GAP_MS ago (and counts it), else how many were muted
    * since the last print.
    */
-  private throttle(msg: string, now: number): number | null {
+  check(msg: string, now: number): number | null {
     const seen = this.printed.get(msg);
     if (seen && now - seen.at < PRINT_GAP_MS) {
       seen.muted++;

@@ -5,7 +5,8 @@
  * crash reporting and no analytics, on purpose (privacy): the copy button
  * is the only way out, and a grown-up presses it.
  *
- * Each entry keeps the time, the message, the first few stack lines, the
+ * Each entry keeps the time, the message, the first few stack lines, where
+ * in the game it was caught (a battle event, the settle, a hook...), the
  * build id, the screen and battle phase, the graphics level, the edition,
  * whether an online match was on, and how many times the same message came
  * back. Everything is cleaned and size-capped on the way in and again on
@@ -24,7 +25,7 @@ export const MAX_MESSAGE_CHARS = 240;
 export const STACK_LINES = 4;
 /** Longest stack line kept. */
 export const MAX_STACK_LINE_CHARS = 160;
-/** Longest short field (build, screen, quality, edition). */
+/** Longest short field (build, screen, quality, edition, where). */
 export const MAX_FIELD_CHARS = 48;
 /** The stored JSON never grows past this (oldest entries go first). */
 export const MAX_STORED_CHARS = 24_000;
@@ -33,9 +34,13 @@ export const MAX_COUNT = 999_999;
 /** At most one storage write per this long while errors keep coming. */
 export const SAVE_GAP_MS = 1000;
 
-/** Where a problem was caught. */
-export type ProblemKind = "frame" | "error" | "promise" | "preview";
-const KINDS: readonly ProblemKind[] = ["frame", "error", "promise", "preview"];
+/**
+ * How a problem was caught: in the game loop ("frame"), by a hook's
+ * listener ("hook"), by the page-wide traps ("error", "promise"), or in the
+ * placement preview ("preview").
+ */
+export type ProblemKind = "frame" | "hook" | "error" | "promise" | "preview";
+const KINDS: readonly ProblemKind[] = ["frame", "hook", "error", "promise", "preview"];
 
 /** What the app was doing (main.ts provides it; see setContext). */
 export interface ProblemContext {
@@ -57,6 +62,12 @@ export interface Problem extends ProblemContext {
   /** Times seen (identical messages are counted, not repeated). */
   n: number;
   kind: ProblemKind;
+  /**
+   * Which part of it, when the kind alone does not say: the crash shield's
+   * label ("battle event 'death'", "settling the match") or the hook
+   * ("battleEvent listener"). Absent for a whole frame or a page-wide trap.
+   */
+  where?: string;
   /** "TypeError: x is undefined" (one line, capped). */
   msg: string;
   /** The first few stack lines, with the site's origin taken off. */
@@ -158,11 +169,13 @@ export function sanitizeProblem(raw: unknown): Problem | null {
   const msg = cleanText(r.msg, MAX_MESSAGE_CHARS);
   if (!msg) return null;
   const field = (v: unknown): string => cleanText(v, MAX_FIELD_CHARS) || "?";
+  const where = cleanText(r.where, MAX_FIELD_CHARS);
   return {
     at: r.at,
     last: finite(r.last) && r.last >= r.at ? r.last : r.at,
     n: finite(r.n) && r.n >= 1 ? Math.min(MAX_COUNT, Math.floor(r.n)) : 1,
     kind: KINDS.includes(r.kind as ProblemKind) ? (r.kind as ProblemKind) : "error",
+    ...(where ? { where } : {}),
     msg,
     stack: Array.isArray(r.stack)
       ? r.stack
@@ -286,6 +299,11 @@ export const ENGLISH_WORDS: ReportWords = {
   count: (n) => `${n} ${n === 1 ? "problem" : "problems"}, newest first. Kept on this device only.`,
 };
 
+/** "battle event 'death'" -> "frame (battle event 'death')"; just the kind when where adds nothing. */
+export function caughtIn(p: Pick<Problem, "kind" | "where">): string {
+  return p.where && p.where !== p.kind ? `${p.kind} (${p.where})` : p.kind;
+}
+
 /** "seen 57 times, last 2026-11-13 10:20:14 UTC" (n > 1 only). */
 function seenLine(n: number, last: string): string {
   return `seen ${n} times, last ${last}`;
@@ -326,7 +344,7 @@ export function problemReport(list: readonly Problem[], h: ReportHeader, w: Repo
   list.forEach((p, i) => {
     lines.push("");
     const seen = p.n > 1 ? ` · ${seenLine(p.n, utcStamp(p.last))}` : "";
-    lines.push(`#${i + 1} ${utcStamp(p.at)}${seen} · ${p.kind}`);
+    lines.push(`#${i + 1} ${utcStamp(p.at)}${seen} · ${caughtIn(p)}`);
     lines.push(p.msg);
     for (const s of p.stack) lines.push(`  ${s}`);
     const where = [p.screen, p.quality, p.edition, p.online ? "online" : "", p.build].filter((x) => x !== "");
@@ -418,15 +436,21 @@ export class ProblemLog {
     return [...this.load()];
   }
 
-  /** Record something that went wrong. Returns its entry, or null if it was ignored. Never throws. */
-  record(kind: ProblemKind, err: unknown): Problem | null {
+  /**
+   * Record something that went wrong; `where` says which part of the game
+   * caught it when the kind alone does not (see Problem.where). Returns its
+   * entry, or null if it was ignored. Never throws.
+   */
+  record(kind: ProblemKind, err: unknown, where?: string): Problem | null {
     try {
       if (err !== null && typeof err === "object") this.marked.add(err);
       const { msg, stack } = describeError(err);
       if (IGNORED.some((re) => re.test(msg))) return null;
+      const part = cleanText(where, MAX_FIELD_CHARS);
       this.items = addProblem(this.load(), {
         at: this.now(),
         kind,
+        ...(part && part !== kind ? { where: part } : {}),
         msg,
         stack,
         build: cleanText(this.build, MAX_FIELD_CHARS) || "?",

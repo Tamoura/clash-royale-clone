@@ -63,9 +63,13 @@ describe("the Problem report sheet", () => {
     expect(rows.map((r) => r.querySelector(".v2-problem-msg")!.textContent)).toEqual(["TypeError: second", "Error: first"]);
     expect(rows[0].querySelector(".v2-problem-count")!.textContent).toBe("×٢"); // Arabic-Indic digits
     expect(rows[0].querySelector(".v2-problem-msg")!.dir).toBe("ltr"); // recorded lines stay as recorded
+    expect(rows[0].querySelector(".v2-problem-where")!.textContent).toBe("battle/playing");
+    log.record("frame", new Error("tower fx"), "battle event 'death'");
+    const top = (el.querySelectorAll(".v2-problem") as unknown as FakeElement[])[0];
+    expect(top.querySelector(".v2-problem-where")!.textContent).toBe("battle/playing · battle event 'death'");
     dispose();
     log.record("frame", new Error("after close"));
-    expect(el.querySelectorAll(".v2-problem")).toHaveLength(2);
+    expect(el.querySelectorAll(".v2-problem")).toHaveLength(3);
   });
 
   it("Copy puts the whole plain-text report on the clipboard", async () => {
@@ -102,6 +106,31 @@ describe("the Problem report sheet", () => {
     expect(box.hidden).toBe(false);
     expect(box.value).toContain("Error: boom");
     expect(toasts().join(" ")).toContain("التقرير محدد في الأسفل");
+  });
+
+  it("the fallback selects the whole box with a selection range too (iOS Safari), even when select() fails", async () => {
+    const log = memLog();
+    log.record("frame", new Error("boom"));
+    const { el } = buildProblemReport({ log, clipboard: null });
+    const box = el.querySelector(".v2-problem-text") as unknown as FakeElement & {
+      value: string;
+      select(): void;
+      setSelectionRange(a: number, b: number): void;
+    };
+    const ranges: [number, number][] = [];
+    box.select = () => {
+      throw new Error("select is not supported here");
+    };
+    box.setSelectionRange = (a, b) => void ranges.push([a, b]);
+    const copied: string[] = [];
+    // installFakeDom() gives every test a fresh document.
+    (document as unknown as { execCommand(cmd: string): boolean }).execCommand = (cmd) => (copied.push(cmd), true);
+    (el.querySelector(".v2-problem-copy") as unknown as FakeElement).click();
+    await flush();
+    expect(ranges).toEqual([[0, box.value.length]]);
+    expect(box.value.length).toBeGreaterThan(0);
+    expect(copied).toEqual(["copy"]);
+    expect(toasts().join(" ")).toContain("تم النسخ!");
   });
 
   it("Clear empties the log and the list", () => {
