@@ -38,6 +38,7 @@ reads it right to left.
 | Page-wide `error` / `unhandledrejection` listeners | `src/app/errorTraps.ts` (main.ts's first import) |
 | Local problem log + plain-text report | `src/app/problemLog.ts` |
 | Build id in the app | `src/app/buildInfo.ts`, `vite.config.ts` define |
+| Battle events: every step guarded, each match settled exactly once | `src/match/battleEvents.ts` |
 | No-contest exits | `src/match/noContest.ts` |
 | Overlay | `src/ui/oops.ts`, `src/ui/styles/oops.css` |
 | Settings > Help > Problem report | `src/ui/screens/problemReport.ts`, `src/ui/styles/problems.css` |
@@ -52,6 +53,31 @@ a normal return, the early return and a throw from any line (sim, bot,
 online stepping, hooks, `scene.render`) all get exactly one next frame. A
 source test pins both facts. The placement preview's `safely()` helper also
 records into the log.
+
+### A glitch never costs a result (the battle events)
+
+The frame drains the battle's event list once a frame. Each event runs
+through a list of steps in main.ts (`battleEventSteps`: sound, scene effect,
+the `battleEvent` hook, the cards-played count, the replay tape, the tower
+fall, the bot's crown emote), and `playBattleEvents`
+(`src/match/battleEvents.ts`) runs **each step on its own** through
+`CrashShield.guard`: a throw is recorded, printed and counted toward a storm
+like a frame error (the frame counts as failed once), and the next step, the
+next event and the settle all still run. Then a `finish` event settles the
+match through `MatchSettler`, which settles each battle (by object) **exactly
+once**: it counts as settled before `finishMatch` runs, so a settle that
+throws halfway never pays out twice. The settler is also a safety net: a
+battle that is decided (`battle.result`) but never settled (its `finish`
+lost) settles on the next frame. `finishMatch` is reached only through the
+settler (a source test pins it), and the end emote inside it is guarded so it
+cannot stop the `matchEnd` hook.
+
+Why: before this, one stray throw in the fan-out (for example in the king
+tower's collapse effect) lost the rest of that frame's events, the `finish`
+among them. The shield carried on, as it should for one error, so the kid saw
+VICTORY, nothing was paid out, and the next launch charged the left-match
+loss ("You left your last battle"). Found by the blind review; checked fixed
+in the browser (see Verification).
 
 ### Storms
 
@@ -78,7 +104,10 @@ error is **thrown on**, so it shows as an uncaught error with its own stack
 object was already recorded and does not count it twice. Identical messages
 inside the 5 s print gap are counted, not rethrown, so a broken frame does
 not flood the dev console with 60 errors a second. A production build
-swallows the error after `console.error` and carries on.
+swallows the error after `console.error` and carries on. An error a guard
+caught (a battle event's step) is thrown on the same way, at the end of its
+frame, after the rest of the frame (and the settle) ran and the next frame
+was scheduled.
 
 Checked on the dev server (`?oops=1`): one `pageerror` ("Test glitch from
 ?oops=1..."), the overlay opened, the sim held while it was up, frames kept
@@ -90,8 +119,11 @@ How leaving settles today: Forfeit (battle menu) settles a loss through
 `finishMatch`/`settleMatch` (trophies, the loss streak, the auto-difficulty
 loss count); a reload or closed tab leaves the left-match marker
 (`match/leftMatch.ts`), which the next boot settles as a loss. The glitch
-exit (`leaveAfterGlitch`) does neither: it clears the marker, releases the
-live-match lock, dismisses the HUD sheets and opens Home. No `matchEnd` is
+exit (`leaveAfterGlitch`) does neither: it marks the battle as no contest
+(`MatchSettler.noContest`, so a `finish` still queued, or the settle safety
+net, never settles it later: frames play the old battle once more while the
+cast gate loads the next one), clears the marker, releases the live-match
+lock, dismisses the HUD sheets and opens Home. No `matchEnd` is
 emitted and nothing settles, so trophies, the streak, quests, achievements,
 the auto-difficulty record and chest slots stay as they were, now and on the
 next boot. Each step is guarded and the others still run if one throws.
@@ -152,8 +184,18 @@ memoised) and both the service-worker stamp and a new
 `define: { __APP_BUILD__ }` use it. `src/app/buildInfo.ts` exports
 `BUILD_ID`, which is `"dev"` on the dev server and in vitest. Checked on the
 production build: `dist/sw.js` `BUILD_ID` and the id in the app bundle are
-the same string (e.g. `259f54c-mwewtuoro9wf`), and the Problem report shows
+the same string (e.g. `371526f-mwf0xih59ofj`), and the Problem report shows
 it.
+
+For integration with r2/boot: the define sits after the `build` block, away
+from the plugin lines boot rewrites, so the two branches merge without a
+conflict (checked with `git merge-tree`; r2/save and r2/graphics merge
+cleanly too). In the merged file boot's module-level
+`const BUILD_ID = buildId()` reads the same memoised id as the define, so the
+ids still match. Optional tidy-up after the merge: set the define to
+`JSON.stringify(BUILD_ID)` and drop the memo (`onceBuildId`/`freshBuildId`);
+either way, rebuild and check that `dist/sw.js` and the index bundle carry
+the same id.
 
 ## Settings > Help > Problem report
 
@@ -167,6 +209,14 @@ tried, with a toast either way. Small print: "Problems are kept on this
 device only. Nothing is ever sent anywhere." and the `?oops=1` test switch.
 The chrome is in the edition's language (Arabic-Indic digits through
 fmtNum); recorded technical lines stay exactly as recorded, left to right.
+
+In the copied report only the title, the header labels and the count line
+follow the edition. Every problem's own lines (`#n ... · seen N times, last
+... · kind`, the message, the stack, `Where: ...`) are in one plain Latin
+form with Latin digits in both editions: a line mixing Arabic words with
+Latin times and ids could be reordered by the bidi algorithm when pasted into
+a chat app, and these are the lines a grown-up forwards. A test checks that
+no Golden Age entry line holds Arabic script.
 
 The copied text (Classic):
 
@@ -212,7 +262,18 @@ contest, like a real storm.
   throw at the start, middle or end of the body, for non-Error throws, when
   record/print/overlay all throw, and before a dev rethrow; storms open the
   overlay exactly once; slow-device storms; again; menus; print throttling;
-  the `?oops=1` switch; main.ts wiring), `src/app/errorTraps.test.ts`,
+  `guard` (the frame goes on, counts as failed once, loud at the frame's
+  end); the `?oops=1` switch; main.ts wiring),
+  `src/match/battleEvents.test.ts` (a step that throws on the king's fall
+  before `finish` still settles and clears the left-match marker; a throw on
+  the finish itself; the rest of the batch still plays; exactly once; the
+  safety net; a settle that throws is never repeated; with the real shield:
+  storm counting and dev loudness; main.ts reaches `finishMatch` only through
+  the settler), `src/app/shieldWire.test.ts` (storm routing with a mocked
+  overlay and sim-hold registry: solo 'glitch' and 'again', the hold while
+  open, Back to menu as no contest, the online stop, a decided battle, a
+  menu screen, `?oops=1` taken off the address bar),
+  `src/app/errorTraps.test.ts`,
   `src/app/problemLog.test.ts` (cap, merge, sanitise, broken storage, write
   throttle, report text), `src/match/noContest.test.ts` (trophies, streak and
   `matchEnd` untouched now and on the next boot), `src/ui/oops.test.ts`,
@@ -229,8 +290,29 @@ contest, like a real storm.
   message, trophies unchanged; the host gets "Your friend left — you win!"
   and reaches the lobby. Desktop 1440x900, both editions: overlay, report,
   Clear -> "No problems so far!". No page errors in any production run.
+- After the review fixes (fix round 1), re-run on a fresh production build
+  (`371526f-mwf0xih59ofj`): a one-off throw in a battle event's sound on the
+  frame a forfeit finishes the match (`createOscillator` patched to throw
+  once inside a frame) -> console "[shield] battle event 'finish' failed",
+  the DEFEAT screen with -20, the left-match marker cleared at once, 300
+  trophies after a reload and no "You left" note (one entry in the log, no
+  page errors). Golden Age `?oops=1` run again: the copied report has Arabic
+  title and labels and Latin entry lines. Classic "again" run and the
+  two-browser online run (Golden Age guest) again: unchanged results.
+  Dev server, the reviewer's own repro: a one-off throw in the king tower's
+  collapse effect as the kid wins -> VICTORY with +30, a chest and Crown
+  Pass, marker cleared, 350 trophies after a reload, no "You left" note (the
+  error still shows as a page error: loud in development); the same for a
+  forfeit hit by a one-off throw (Golden Age): -20 once, no left note.
 
 ## Known limits
+
+- History: commit b106594 is a "WIP checkpoint" saved after a container
+  restart; 259f54c replaces its CSS and explains the change. History is not
+  rewritten.
+- `emit()` (src/app/hooks.ts) already catches a throwing hook listener and
+  prints it with `console.error`; those are not in the problem log (hooks.ts
+  is outside this package).
 
 - Errors outside the frame (a tap handler, a timer) are recorded by the
   window listeners but never open the overlay: the UI around them keeps
