@@ -25,7 +25,7 @@ safe, or move them to another tablet." / "احفظ كؤوسك وبطاقاتك �
 
 | Row | What it does |
 | --- | --- |
-| Copy my save code / انسخ رمز الحفظ | Closes Settings, opens "Your save code": the code in a read-only box (left to right in both editions), **Copy** (clipboard; if refused, the box is selected for a copy by hand) and **Save to a file** (the same code). |
+| Copy my save code / انسخ رمز الحفظ | Closes Settings, opens "Your save code": "Copy this code. On the other tablet, open Settings, then Backup & move, then Load a save. New tablet? Pick an edition and tap Skip tutorial first." (Settings is not reachable on a brand-new tablet until the tutorial is skipped), the code in a read-only box (left to right in both editions), **Copy** (clipboard; if refused, the box is selected for a copy by hand) and **Save to a file** (the same code). |
 | Save to a file / احفظ في ملف | Downloads `crown-rush-save-<yyyy-mm-dd>.txt` holding the code (one line). Toast: "Saved as …". |
 | Load a save / حمّل حفظًا | Closes Settings, opens "Load a save": a box to paste into, **Load this code**, **Pick a file** (`.txt`). A bad code gets one friendly line under the box (below). Its icon is an arrow going down into a tray (drawn in `saveSheet.ts`; the shared icon set has no download glyph). |
 | Undo the last load / تراجع عن آخر تحميل | While the backup slot holds a pre-load backup. Asks first, the same way as a load. The undo keeps what the tablet has now in the slot, so the row then reads **Redo the last load / أعِد آخر تحميل**, which switches back the same way. Nothing is ever thrown away by an undo or a redo. |
@@ -36,7 +36,11 @@ keep a copy, so you can undo it." and a table, **This save** (highlighted)
 next to **This tablet now**: name (when either has one), trophies, arena,
 cards, gold, gems, and the edition when it would change. Numbers go through
 `fmtNum` (Arabic-Indic digits in Golden Age). If the save has fewer trophies:
-"This save has fewer trophies than this tablet." **Keep my progress / أبقِ
+"This save has fewer trophies than this tablet." If the backup slot holds a
+copy with more trophies than this tablet now, the load would replace it, so
+one more line says so: "Your Redo copy (1,400 trophies) will be replaced." /
+"ستُستبدل نسخة الإعادة (الكؤوس: ١٬٤٠٠)." (after an undo), or "Your Undo copy
+…" / "ستُستبدل نسخة التراجع …" (after an older load). **Keep my progress / أبقِ
 تقدّمي** is first, the big yellow button and takes the focus
 (`confirmLook({ emphasis: "cancel" })`); **Load the save / حمّل الحفظ** is
 second. Esc, a scrim tap or a swipe keep. Keep says "Nothing changed."
@@ -70,9 +74,34 @@ with nothing in it, no room to save.
 
 After the kid's first real win (not a replay, not Sandbox) the game asks
 `navigator.storage.persist()` once. On an iPhone or iPad in a browser tab
-(not opened from the Home Screen) the next Home shows, once: "Add Crown Rush
-to your Home Screen so your progress stays safe." / "أضف هجمة التاج إلى
-الشاشة الرئيسية ليبقى تقدّمك في أمان." (8 s toast).
+(not opened from the Home Screen) the next Home opens, once, a small sheet
+**"Keep your progress safe" / "حافظ على تقدّمك في أمان"**: "Add Crown Rush to
+your Home Screen so your progress stays safe." / "أضف هجمة التاج إلى الشاشة
+الرئيسية ليبقى تقدّمك في أمان.", "The Home Screen game starts empty. Copy your
+save code first, then load it there." / "اللعبة على الشاشة الرئيسية تبدأ
+فارغة. انسخ رمز الحفظ أولًا، ثم حمّله هناك.", and how ("In Safari, tap Share,
+then Add to Home Screen."). **Copy my save code** opens the code sheet, whose
+first line then reads "Copy this code. Then open Crown Rush from your Home
+Screen and tap Load my save."; **Not now** closes it.
+
+Why the sheet: on iOS a Home Screen web app keeps its own storage, apart from
+Safari's, so the icon opens an empty profile (edition gate, then the
+tutorial). Following the old toast's advice split a kid's progress in two.
+So the Home Screen game itself (iPhone or iPad, opened from the icon,
+`navigator.standalone` or `display-mode: standalone`), on the first Home with
+no trophies yet, opens once **"Played in Safari before?" / "هل لعبت في سفاري
+من قبل؟"**: "This Home Screen game keeps its own save, so it starts empty.
+Bring your trophies and cards with your save code." and "No code yet? In
+Safari, open Settings, then Backup & move, then Copy my save code.", with
+**Load my save / حمّل حفظي** (straight to the load sheet) and **I'm new here /
+أنا جديد هنا**. On a brand-new profile that Home is the edition gate, before
+any edition is picked, so the hint then reads in both languages, English over
+Arabic, title and buttons included, as the gate does. Android and desktop
+browsers share storage with their installed apps, so they never see it.
+
+Both sheets wait until no other sheet, dialog or chest reveal is up (checked
+every 700 ms), and a Home left before they open tries again on the next Home;
+each flag is set only when its sheet really opens.
 
 ## Where things live
 
@@ -81,8 +110,9 @@ to your Home Screen so your progress stays safe." / "أضف هجمة التاج 
 | Key registry: every `cr-clone-*` key, progress or device, value shape | `src/meta/saveKeys.ts` |
 | Registry scan test (unregistered or stale key fails, naming it) | `src/meta/saveKeys.test.ts` |
 | Save code: gather, encode/decode, check, load, backup, undo, summary | `src/meta/saveCode.ts` (+ test) |
-| Persist-once and Home Screen tip logic | `src/meta/keepSafe.ts` (+ test) |
-| Hook wiring: first win, tip on Home, "loaded" toast | `src/ui/keepSafeWire.ts` (+ test), one import in `src/main.ts` next to `./audio/wire` |
+| Persist-once, Home Screen tip and Home Screen hint logic | `src/meta/keepSafe.ts` (+ test) |
+| The tip and hint sheets | `src/ui/screens/keepSafeSheet.ts` (tested through `keepSafeWire.test.ts`) |
+| Hook wiring: first win, tip and hint on Home, "loaded" toast | `src/ui/keepSafeWire.ts` (+ test), one import in `src/main.ts` next to `./audio/wire` |
 | Settings group, code/load/confirm sheets | `src/ui/screens/saveSheet.ts` (+ fake-DOM test), `src/ui/styles/save.css`, two lines in `settings.ts` |
 | Docs | `docs/deploy-multiplayer.md` ("Two addresses, two saves" + a troubleshooting entry), `README.md` |
 
@@ -121,13 +151,17 @@ Decisions:
   colours, text size suit a tablet, not a kid), relay, replay tape,
   left-match marker, old lobby tab, coach rotation, splash hold and pulse
   chest (session), and this change's `cr-clone-save-backup`,
-  `cr-clone-persist-asked`, `cr-clone-home-tip-seen`, `cr-clone-save-loaded`
-  (session), plus the pre-registered round-2 keys `cr-clone-problem-log`,
+  `cr-clone-persist-asked`, `cr-clone-home-tip-seen`,
+  `cr-clone-standalone-hint-seen`, `cr-clone-save-loaded` (session), plus the pre-registered round-2 keys `cr-clone-problem-log`,
   `cr-clone-gfx-memory`, `cr-clone-gfx-note-seen`,
   `cr-clone-offline-ready-seen`.
 - **Name and crest** live inside the settings blob. The save carries them on
   their own (`"w": {"n","c"}`); loading patches only those two fields of the
-  settings blob (through `sanitizePrefs`), every other setting stays.
+  settings blob (through `sanitizePrefs`), every other setting stays. A
+  tablet with no settings blob (it never changed a setting) or one that does
+  not parse reads as the defaults the game shows (no name, the first crest),
+  so every save and every pre-load backup carries a name and crest, and an
+  undo or a redo puts them back too.
 
 ## The code
 
@@ -142,8 +176,12 @@ Decisions:
   the same 1,000,000-byte cap, so a tablet that cannot update past iOS 15
   (Safari before 16.4) opens a code made on a new one. It is tested against
   the platform's own `CompressionStream` output (stored, fixed and dynamic
-  blocks), with the stream removed entirely, on cut-short and junk input
-  (never throws), and by mutation (changing a table entry fails the tests).
+  blocks; random blocks repeated 5 KB to 30 KB apart and copies of every
+  length from all over the 32 KB window, so every distance code above 8 KB
+  is used), with the stream removed entirely, on cut-short and junk input
+  (never throws), and by mutation: changing any of 13 table entries
+  (distance bases 4097..24577, the last extra-bit counts, length bases
+  35..258) fails a test.
 - Check: Luhn mod 64 over the whole code; catches every single wrong
   character (tested exhaustively on a sample) and a dropped character.
 - Reading strips spaces, line breaks and zero-width characters, then: size cap
@@ -249,6 +287,34 @@ phone 390x844 with real touch unless noted; scripts and shots in
   load in the first reloads the second, which then shows the loaded save,
   with no left-match marker and no "You left your last battle" notice.
 
+Second review round (fixes on top of the first two), scripts and shots in
+`/tmp/claude-0/r2/save-fix2/`:
+- Unit: `saveCode.test.ts` 34 (+ name and crest back on undo and redo on a
+  tablet with no settings blob; the far-window inflate samples),
+  `saveSheet.test.ts` 13 (+ the Redo/Undo copy line, the new-tablet line),
+  `keepSafe.test.ts` 8, `keepSafeWire.test.ts` 12 (tip sheet, hint, waiting).
+  Full suite: 163 files, 2,133 tests.
+- Production build (3413), phone 390x844, both directions (Classic A to
+  Golden Age, Golden Age A to Classic): the Home Screen game (iPhone user
+  agent, `navigator.standalone` true), brand-new, showed the bilingual hint
+  over the edition gate (two-line title, Arabic right to left in its own
+  font, no horizontal scroll); Load my save, paste, confirm, Load: Home showed
+  A's trophies, gold, name and edition, and the hint never came back. With an
+  edition picked and no trophies the hint read in that edition's language
+  only, and once. A Safari tab that never changed a setting loaded A
+  ("Yusuf"), then Undo put back "Player"/"لاعب" and the first crest (the
+  stored blob reads `"playerName":"","crest":0`); loading A again then showed
+  "Your Redo copy (1,400 trophies) will be replaced." /
+  "ستُستبدل نسخة الإعادة (الكؤوس: ١٬٤٠٠)." above the table, Keep my progress
+  focused.
+- Dev server (3403), iPhone user agent in a Safari tab, both editions: a loss
+  asked nothing; the first win called `persist()` once; the next Home opened
+  the tip sheet (Arabic right to left in Golden Age); Copy my save code
+  opened the code with the Home Screen line; a second win showed nothing.
+- Not verified on a real iPhone or iPad: the separate Home Screen storage is
+  WebKit's documented behaviour; here it was emulated with a user agent and
+  a `navigator.standalone` getter.
+
 ## Known limits
 
 - **Other tabs.** Open tabs reload when another tab loads or undoes (above).
@@ -272,8 +338,22 @@ phone 390x844 with real touch unless noted; scripts and shots in
   through real play takes minutes on the software renderer); Chrome decides
   quietly, Firefox may ask once, Safari mostly declines outside the Home
   Screen (hence the tip).
+- **Two copies after a move.** Loading a save copies it; the Safari tab (or
+  the other address) keeps its own copy. A kid who then plays in both has
+  two diverging profiles; the code moves one onto the other again, with the
+  side-by-side table and the undo.
 - **The left-match marker** (`cr-clone-left-match`, device) is not touched by
   a load. It only exists between a reload mid-match and the next boot, which
   settles it, so it is not there when Settings is open.
 - `docs.test.ts` now allows the deploy guide 520 lines (was 500) for the new
-  section.
+  section (519 used).
+- **The hint over the edition gate is in both languages, but the load sheet
+  and confirm screen it opens are in English**: `tr()` follows the edition,
+  and none is picked yet. The numbers, the table and the big yellow "Keep my
+  progress" still read the usual way; after the load the game opens in the
+  save's edition. Picking an edition first and loading from Settings gives
+  the whole flow in that language.
+- **One backup slot.** A load replaces the copy kept for Undo or Redo; the
+  confirm screen says so when that copy has more trophies than the tablet
+  now. A copy with fewer trophies but more cards is replaced without that
+  line.
