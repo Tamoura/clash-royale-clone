@@ -11,15 +11,16 @@ import { icon } from "./ui/icons";
 // numbers, level shields, damage pops) never bake in a fallback font.
 void document.fonts?.load("32px 'Lilita One'").catch(() => undefined);
 
-// Offline PWA: register the service worker in production builds only —
-// in dev it would cache Vite's module graph and fight hot reload.
-if (import.meta.env.PROD && "serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
-      // offline install is a bonus, never a blocker
-    });
-  });
-}
+// Offline play (src/app/offline.ts): the service worker registers in
+// production builds only (in dev it would cache Vite's module graph and
+// fight hot reload). Once per device, a note says the game is ready offline.
+startOfflineSupport({
+  ...browserOfflineDeps(import.meta.env.BASE_URL, () =>
+    toast(tr("Ready to play offline!", "اللعبة جاهزة للعب بلا إنترنت!"), "success", 4000),
+  ),
+  ...(import.meta.env.PROD ? {} : { container: null }),
+});
+import { browserOfflineDeps, startOfflineSupport } from "./app/offline";
 import { SoundEngine } from "./audio/sound";
 import {
   checkDeploy,
