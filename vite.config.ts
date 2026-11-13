@@ -5,7 +5,10 @@ import { join, relative } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 import { composeBuildId, precacheList, stampBuildId, stampPrecache, unlisted } from "./src/app/swStamp";
 
-/** A new id for every build (see src/app/swStamp.ts): short git sha plus the build time. */
+/**
+ * A new id for every build (see src/app/swStamp.ts): short git sha plus the
+ * build time. Called once, for BUILD_ID below.
+ */
 function buildId(): string {
   let sha = "";
   try {
@@ -30,7 +33,11 @@ function filesUnder(dir: string): string[] {
   return out;
 }
 
-/** This build's id, worked out once so everything stamped with it agrees. */
+/**
+ * This build's id, worked out once so everything stamped with it agrees:
+ * the service worker's cache name (swStamp below) and the app's
+ * __APP_BUILD__ (src/app/buildInfo.ts, the problem log and Problem report).
+ */
 const BUILD_ID = buildId();
 
 /**
@@ -83,6 +90,10 @@ export default defineConfig({
       output: { manualChunks: { three: ["three"] } },
     },
   },
+  // The build id in the app (problem log, Problem report): the same BUILD_ID
+  // the service worker is stamped with. Dev and vitest read "dev"
+  // (src/app/buildInfo.ts).
+  define: { __APP_BUILD__: JSON.stringify(BUILD_ID) },
   // Listen on every interface (IPv4 + IPv6) so localhost always works
   // regardless of how the browser resolves it, and other devices on
   // the LAN (tablets/phones) can join via this machine's IP.
