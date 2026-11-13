@@ -52,8 +52,11 @@ script only ever talk to the game's own origin.
 ### Never wait on a sleeping server
 
 - The game's page (the scope root, or `index.html`) races the network
-  against a **2.5 s** timer once a usable cached shell exists. If the timer
-  wins, or the answer is not the game (not ok, not `text/html`, or no
+  against a **2.5 s** timer once a usable cached shell exists. The deadline
+  covers the whole page, its first bytes and its last: a page that starts
+  arriving and then stalls (a weak signal in the car) is treated like a
+  server that never answers. If the timer wins, or the answer is not the
+  game (not ok, not `text/html`, or no
   `cr-app-shell` marker: Render's wake-up page, an error page), the cached
   game is shown and the network's answer is kept in the background if it
   turns out to be this build's game page. A wake-up page is never shown in
@@ -66,9 +69,16 @@ script only ever talk to the game's own origin.
 
 - Every build keeps its own cache (`cr-clone-<build id>`), and the old one
   is **no longer deleted on activate**. Older caches go once nothing can need
-  them: this build is fully cached and every open page was served by this
-  worker. At most two older builds wait on disk, however long an old page
-  stays open. Caches that are not the game's (`cr-clone-` prefix) are never
+  them: this build is fully cached, every open page was served **this
+  build's** page by this worker, and no navigation is still bringing a page
+  in. A page from another build that the network hands over (GitHub Pages'
+  `max-age=600` HTTP cache or a CDN after a deploy, a host switching over)
+  does not count as served, and a navigation holds every older cache from
+  its start until the browser lists its page (or 30 s after handover, for
+  one that never became a page): the browser only lists a page once it has
+  started, so until then sweep cannot see it. The navigation's own tidy-up
+  runs once it has settled which page it hands over. At most two older
+  builds wait on disk, however long an old page stays open. Caches that are not the game's (`cr-clone-` prefix) are never
   touched.
 - Files are looked up in this build's cache first, then in any older one, so
   a page from the previous build (served while a new worker activates, or
@@ -88,9 +98,12 @@ script only ever talk to the game's own origin.
   The page takes the mark back off the address at boot. It never throws and
   never hangs: whatever happens, it reloads. The lobby's Reload button just
   calls it.
-- Once per device, after the worker reports the whole build cached and the
-  game is on screen, a toast says "Ready to play offline!" /
-  "اللعبة جاهزة للعب بلا إنترنت!" (`cr-clone-offline-ready-seen`).
+- Once per device, after the worker reports the whole build cached, a
+  toast says "Ready to play offline!" / "اللعبة جاهزة للعب بلا إنترنت!"
+  (`cr-clone-offline-ready-seen`) on the first menu screen (Home, a picker,
+  the lobby), never during a battle or the guided first battle, where it
+  would sit over the card tray. `calmGate` watches the `screen` hook from
+  the top of `main.ts`, before the boot shows its first screen.
 
 ### The splash that waits (`index.html`)
 
@@ -134,7 +147,7 @@ Measured on this branch's production build (`npm run build:all`):
 
 | What | Files | On disk | Over the wire |
 | --- | ---: | ---: | ---: |
-| `assets/` (PRECACHE: 7 JS chunks, 1 CSS, 6 fonts) | 13 | 2.06 MB | about 0.70 MB (JS and CSS compressed, fonts as they are) |
+| `assets/` (PRECACHE: 6 JS chunks, 1 CSS, 6 fonts) | 13 | 2.06 MB | about 0.70 MB (JS and CSS compressed, fonts as they are) |
 | Cast models (`models/troops/*.glb`) | 7 | 0.81 MB | 0.81 MB (already cached before this change) |
 | Shell, manifest, 3 icons | 5 | about 0.06 MB | small |
 | **Cache for one build** | **25** | **about 2.9 MB** | **about 1.6 MB** |
@@ -245,6 +258,38 @@ everything, and for GitHub Pages a static server under
   card in both editions on phone and desktop, splash gone, no horizontal
   scroll, 16 px gutters on the phone; boot stopped with "WebGL
   unavailable".
+
+### After the review (fixes for its four minors)
+
+Production build of `08ec53c`, same tools (front proxy, relay, a
+Pages-like static server with `max-age=600`, ETag and 404s for removed
+files). Results and scripts are in `/tmp/claude-0/r2/boot-fix/`.
+
+- **A page that starts and then stalls.** Installed Classic phone profile,
+  the front sends the headers and the first 300 bytes of the page, then
+  holds the rest 70 s: the cached page at 2.5 s (`responseStart` 2536 ms,
+  before the fix 70 031 ms), the game booted at 4.7 s; the next launch
+  still had the game's page as the shell (25 entries).
+- **First visit, no tutorial flag.** The precache finished during the
+  guided battle (7.4 s Classic phone, 11.5 s Golden Age desktop); no note
+  in the 12 s of lesson after it; Skip tutorial took the kid Home and the
+  note showed there at once, above the tab bar, once (flag set). A
+  returning kid (tutored) still saw it on Home on the first visit.
+- **Upgrade from the live build again**, 8 launches on one phone profile:
+  d5fda1d (live worker) twice; FIX deployed (opened from the network
+  through the old worker, the FIX worker took over at 20 s), next launch
+  FIX with the old cache gone, offline FIX; FIX2 deployed while the host
+  slept (everything held): the cached FIX game booted at 4.4 s, the FIX2
+  worker took over that page at 24 s and a battle with two deploys ran on
+  it; next launch FIX2 with FIX's cache gone; offline FIX2 battle with two
+  deploys. No launch was blank, no errors, no failed requests.
+- **An older page from the HTTP cache** (Pages-like host, `max-age=600`):
+  FIX installed, FIX2 deployed (FIX's files now 404) and its worker took
+  over; the next launch with the kid's usual address got FIX's page from
+  the browser's HTTP cache through the FIX2 worker: FIX's cache stayed
+  while that page was open, and a battle with two deploys ran on it with
+  no failed request; a launch at an address the HTTP cache never saw got
+  FIX2, and FIX's cache was gone.
 
 Not covered: a real iPhone or Android device, Safari and Firefox (their
 service workers follow the same standard, but update timing differs), and
