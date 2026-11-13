@@ -40,9 +40,11 @@
         width: min(100vw, max(52vh, 420px));
         margin: 0 auto;
       }
-      /* ── Boot splash: drawn before any script or font loads, hidden once
-         the page has loaded (body.booted). The delayed fade is a fallback
-         so a failed boot never leaves the splash up for good. ── */
+      /* ── Boot splash: drawn before any script or font loads, and up until
+         the game's first frame (main.ts adds body.booted). The boot script
+         below adds a calm "still loading" line after 12 s and a big "Tap to
+         try again" on a boot error or after 45 s, so a slow device never
+         stares at an empty page and a failed boot is never a dead end. ── */
       #boot {
         position: fixed;
         inset: 0;
@@ -54,9 +56,8 @@
         gap: 18px;
         background: radial-gradient(circle at 50% 38%, #1d2a47 0%, #0f1829 70%);
         color: #f3f5fa;
-        font: 400 26px/1.2 "Lilita One", "Trebuchet MS", system-ui, sans-serif;
+        font: 400 26px/1.2 "Lilita One", "Baloo Bhaijaan 2", "Trebuchet MS", system-ui, sans-serif;
         text-align: center;
-        animation: bootOut 0.3s 10s forwards;
       }
       body.booted #boot {
         display: none;
@@ -112,13 +113,164 @@
         from { transform: translateX(-100%); }
         to { transform: translateX(250%); }
       }
-      @keyframes bootOut {
-        to { opacity: 0; visibility: hidden; }
+      #boot .boot-note {
+        min-height: 1.3em;
+        margin: 0 24px;
+        color: #c9d4ea;
+        font: 400 19px/1.3 "Lilita One", "Baloo Bhaijaan 2", "Trebuchet MS", system-ui, sans-serif;
+        opacity: 0;
+        transition: opacity 0.6s ease;
+      }
+      #boot.is-slow .boot-note {
+        opacity: 1;
+      }
+      #boot .boot-retry {
+        min-width: 240px;
+        min-height: 64px;
+        margin: 6px 24px 0;
+        padding: 14px 30px;
+        border: 0;
+        border-radius: 999px;
+        background: linear-gradient(180deg, #ffd23f, #e8a72e);
+        color: #1a1030;
+        font: 400 26px/1.15 "Lilita One", "Baloo Bhaijaan 2", "Trebuchet MS", system-ui, sans-serif;
+        box-shadow: 0 5px 0 #a8661c, 0 10px 24px rgba(0, 0, 0, 0.35);
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #boot .boot-retry[hidden] {
+        display: none;
+      }
+      #boot .boot-retry:active {
+        transform: translateY(3px);
+        box-shadow: 0 2px 0 #a8661c, 0 6px 16px rgba(0, 0, 0, 0.35);
+      }
+      #boot.is-failed {
+        cursor: pointer;
+      }
+      #boot.is-failed .boot-bar,
+      #boot.is-failed .boot-note {
+        display: none;
       }
       @media (prefers-reduced-motion: reduce) {
         #boot .boot-bar::after { animation: none; width: 100%; opacity: 0.6; }
+        #boot .boot-note { transition: none; }
       }
     </style>
+    <script id="boot-script">
+      /* The boot splash's watcher (src/app/bootSplash.test.ts runs it). It
+         starts before the game's own scripts, so it is plain old JavaScript
+         and needs nothing from them. The splash stays until the game's first
+         frame (main.ts adds body.booted); after 12 s it adds a calm "still
+         loading" line; on a boot error (an uncaught error, or a script,
+         style or module chunk that failed to load) or after 45 s it offers a
+         big "Tap to try again", which reloads asking the worker for the
+         newest page (?cr-fresh, see public/sw.js). The words follow the
+         saved edition: Arabic, right to left on the splash text only, in
+         the Golden Age edition (cr-clone-arena-theme = "arabic"). */
+      (function () {
+        var arabic = false;
+        try {
+          arabic = window.localStorage.getItem("cr-clone-arena-theme") === "arabic";
+        } catch (e) {}
+        var words = arabic
+          ? { name: "هجمة التاج", slow: "ما زالت اللعبة تُحمَّل… اقتربنا!", retry: "اضغط لتحاول مجددًا" }
+          : { name: "Crown Rush", slow: "Still loading… nearly there!", retry: "Tap to try again" };
+        var failed = false;
+        var booted = function () {
+          return !!document.body && document.body.classList.contains("booted");
+        };
+        // The splash once the page is parsed: "interactive" comes before the
+        // game's (deferred) module scripts run, unlike DOMContentLoaded.
+        var withSplash = function (fn) {
+          var boot = document.getElementById("boot");
+          if (boot) return fn(boot);
+          var parsed = function () {
+            document.removeEventListener("readystatechange", parsed);
+            var later = document.getElementById("boot");
+            if (later) fn(later);
+          };
+          document.addEventListener("readystatechange", parsed);
+        };
+        var retry = function () {
+          try {
+            var url = new URL(window.location.href);
+            url.searchParams.set("cr-fresh", Date.now().toString(36));
+            window.location.replace(url.href);
+          } catch (e) {
+            window.location.reload();
+          }
+        };
+        var offerRetry = function (boot) {
+          var button = boot.querySelector(".boot-retry");
+          if (!button || !button.hidden) return;
+          button.hidden = false;
+          button.addEventListener("click", retry);
+        };
+        var slow = function () {
+          if (booted() || failed) return;
+          withSplash(function (boot) {
+            boot.classList.add("is-slow");
+          });
+        };
+        var late = function () {
+          if (booted() || failed) return;
+          withSplash(offerRetry);
+        };
+        var fail = function () {
+          if (booted() || failed) return;
+          failed = true;
+          withSplash(function (boot) {
+            boot.classList.add("is-failed");
+            offerRetry(boot);
+            boot.addEventListener("click", retry);
+          });
+        };
+        // The portrait studio (?gallery=, a dev tool) draws its own page.
+        if (/[?&]gallery=/.test(window.location.search)) {
+          return withSplash(function () {
+            document.body.classList.add("booted");
+          });
+        }
+        withSplash(function (boot) {
+          var set = function (sel, text) {
+            var node = boot.querySelector(sel);
+            if (!node) return;
+            node.textContent = text;
+            if (arabic) {
+              node.setAttribute("dir", "rtl");
+              node.setAttribute("lang", "ar");
+            }
+          };
+          set(".boot-title", words.name);
+          set(".boot-note", words.slow);
+          set(".boot-retry", words.retry);
+        });
+        window.setTimeout(slow, 12000);
+        window.setTimeout(late, 45000);
+        // Capture phase: a script or style that fails to load fires on its
+        // element and does not bubble. Images and fonts are not the boot.
+        window.addEventListener(
+          "error",
+          function (e) {
+            var el = e.target;
+            if (el && el !== window && el.tagName) {
+              var tag = el.tagName.toUpperCase();
+              var style = tag === "LINK" && /stylesheet|modulepreload/i.test(el.rel || "");
+              if (tag !== "SCRIPT" && !style) return;
+            }
+            fail();
+          },
+          true,
+        );
+        // A module chunk that failed to load (a dynamic import nobody caught).
+        window.addEventListener("unhandledrejection", function (e) {
+          var reason = e.reason;
+          var text = String((reason && reason.message) || reason || "");
+          if (/dynamically imported module|Importing a module script failed|Unable to preload CSS/i.test(text)) fail();
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="app">
@@ -132,14 +284,13 @@
     <div id="overlay"></div>
     <div id="impact-flash" aria-hidden="true"></div>
     <div id="deckpicker"></div>
-    <div id="boot" aria-hidden="true">
-      <div class="boot-crest"></div>
+    <div id="boot">
+      <div class="boot-crest" aria-hidden="true"></div>
       <div class="boot-title">Crown Rush</div>
-      <div class="boot-bar"></div>
+      <div class="boot-bar" aria-hidden="true"></div>
+      <p class="boot-note" role="status" aria-live="polite"></p>
+      <button class="boot-retry" type="button" hidden>Tap to try again</button>
     </div>
-    <script>
-      addEventListener("load", () => document.body.classList.add("booted"));
-    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

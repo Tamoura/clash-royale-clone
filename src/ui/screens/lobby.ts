@@ -9,6 +9,7 @@
 import "../styles/online.css";
 import type { AppCtx, LobbyOpts } from "../../app/ctx";
 import { on } from "../../app/hooks";
+import { reloadToNewest } from "../../app/offline";
 import { ABILITIES } from "../../game/abilities";
 import type { CardId } from "../../game/cards";
 import { TOWER_TROOPS } from "../../game/towers";
@@ -477,7 +478,7 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
       statusActions.dataset.key = key;
       const btns: HTMLButtonElement[] = [];
       if (failed === "update-required") {
-        btns.push(button({ variant: "cta", label: tr("Reload", "أعد التحميل"), onClick: () => location.reload() }));
+        btns.push(button({ variant: "cta", label: tr("Reload", "أعد التحميل"), onClick: () => void reloadToNewest() }));
       } else if (failed || problem) {
         btns.push(
           button({
