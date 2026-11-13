@@ -5,6 +5,7 @@ import {
   applySave,
   gatherSave,
   readBackupSlot,
+  undoLastLoad,
   type SaveData,
   type SaveError,
   type SaveStore,
@@ -13,7 +14,7 @@ import { ARABIC } from "../../render3d/theme";
 import { installFakeDom, pressKey, type FakeDocument, type FakeElement } from "../fakeDom.testkit";
 import { fmtNum, tr } from "../i18n";
 import { icon } from "../icons";
-import { SAVE_LOOK, backupGroup, openLoadConfirm, openUndo, saveErrorText } from "./saveSheet";
+import { SAVE_LOOK, backupGroup, codeSheetIntro, openLoadConfirm, openUndo, saveErrorText } from "./saveSheet";
 
 function store(seed: Record<string, string> = {}): SaveStore & { data: Record<string, string> } {
   const kv = memoryKV(seed);
@@ -157,6 +158,46 @@ describe("Backup & move on the page", () => {
     // Above the table, so it is seen before the table scrolls under the buttons.
     const order = sheet()!.children.map((e) => e.className.split(" ")[0]);
     expect(order.indexOf("v2-save-warn")).toBeLessThan(order.indexOf("v2-save-compare"));
+  });
+
+  it("says so when a load would replace a kept copy with more trophies (Redo or Undo)", async () => {
+    const warns = () => sheet()!.querySelectorAll(".v2-save-warn").map((w) => w.textContent);
+    const other: SaveData = { at: 2, keys: { "cr-clone-meta-v1": "1", "cr-clone-trophies": "300" } };
+
+    // Load, then undo: the 1,450-trophy progress waits in the slot for Redo.
+    const s = store(HERE);
+    applySave(s, SAVE);
+    undoLastLoad(s);
+    void openLoadConfirm(other, { store: s, reload: vi.fn() });
+    await settle();
+    expect(warns()).toEqual([
+      tr(`Your Redo copy (${fmtNum(1450)} trophies) will be replaced.`, `ستُستبدل نسخة الإعادة (الكؤوس: ${fmtNum(1450)}).`),
+    ]);
+    pressKey(doc, "Escape");
+    await settle();
+
+    // A bigger tablet loaded a smaller save: its own 2,000 trophies wait for Undo.
+    const t = store({ ...HERE, "cr-clone-trophies": "2000" });
+    applySave(t, SAVE);
+    void openLoadConfirm(other, { store: t, reload: vi.fn() });
+    await settle();
+    expect(warns()).toEqual([
+      tr("This save has fewer trophies than this tablet.", "في هذا الحفظ كؤوس أقل مما في هذا الجهاز."),
+      tr(`Your Undo copy (${fmtNum(2000)} trophies) will be replaced.`, `ستُستبدل نسخة التراجع (الكؤوس: ${fmtNum(2000)}).`),
+    ]);
+    pressKey(doc, "Escape");
+    await settle();
+
+    // A kept copy with fewer trophies than this tablet: nothing to say.
+    const u = store(HERE);
+    applySave(u, SAVE);
+    void openLoadConfirm({ ...SAVE, at: 3 }, { store: u, reload: vi.fn() });
+    await settle();
+    expect(warns()).toEqual([]);
+  });
+
+  it("the code sheet tells a new tablet to skip the tutorial first", () => {
+    expect(codeSheetIntro()).toContain(tr("Skip tutorial", "تخطَّ الشرح"));
   });
 
   it("Undo asks the same way, warns about fewer trophies, then puts this tablet back", async () => {

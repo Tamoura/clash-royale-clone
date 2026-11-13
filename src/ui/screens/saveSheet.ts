@@ -32,6 +32,7 @@ import {
   summarize,
   undoLastLoad,
   type BackupKind,
+  type SaveBackup,
   type SaveData,
   type SaveError,
   type SaveStore,
@@ -250,17 +251,22 @@ export async function saveToFile(deps: SaveSheetDeps = {}, shown?: string): Prom
   }
 }
 
-/** The 'Your save code' sheet. */
-export async function openCodeSheet(deps: SaveSheetDeps = {}): Promise<{ close: () => void }> {
+/** How to use the code on another tablet (the code sheet's first line). */
+export function codeSheetIntro(): string {
+  return tr(
+    "Copy this code. On the other tablet, open Settings, then Backup & move, then Load a save. New tablet? Pick an edition and tap Skip tutorial first.",
+    "انسخ هذا الرمز. في الجهاز الآخر افتح الإعدادات، ثم النسخ الاحتياطي والنقل، ثم حمّل حفظًا. جهاز جديد؟ اختر نسختك واضغط تخطَّ الشرح أولًا.",
+  );
+}
+
+/** The 'Your save code' sheet. `intro` replaces the first line (the Home Screen tip says where the code goes). */
+export async function openCodeSheet(deps: SaveSheetDeps = {}, opts: { intro?: string } = {}): Promise<{ close: () => void }> {
   const r = resolve(deps);
   const root = document.createElement("div");
   root.className = "v2-save";
   const intro = document.createElement("p");
   intro.className = "v2-save-intro";
-  intro.textContent = tr(
-    "Copy this code. On the other tablet, open Settings, then Backup & move, then Load a save.",
-    "انسخ هذا الرمز. في الجهاز الآخر افتح الإعدادات، ثم النسخ الاحتياطي والنقل، ثم حمّل حفظًا.",
-  );
+  intro.textContent = opts.intro ?? codeSheetIntro();
   const box = document.createElement("textarea");
   box.className = "v2-save-code";
   box.readOnly = true;
@@ -497,8 +503,8 @@ interface ConfirmScreen {
   here: SaveSummary;
   loadHead: string;
   hereHead: string;
-  /** An extra line when the kid would go backwards. */
-  warn?: string;
+  /** Extra lines when the kid would go backwards or lose a kept copy (above the table). */
+  warns?: string[];
   okLabel: string;
 }
 
@@ -520,10 +526,10 @@ export function confirmSheet(c: ConfirmScreen): Promise<boolean> {
     root.appendChild(p);
     // The warning goes above the table, so a long table on a small phone
     // (it scrolls under the pinned buttons) never hides it.
-    if (c.warn) {
+    for (const line of c.warns ?? []) {
       const w = document.createElement("p");
       w.className = "v2-save-warn";
-      w.textContent = c.warn;
+      w.textContent = line;
       root.appendChild(w);
     }
     root.appendChild(compareTable(c.load, c.here, c.loadHead, c.hereHead));
@@ -562,11 +568,33 @@ function hereNow(store: SaveStore | null): SaveSummary {
   return summarize(store ? gatherSave(store) : { keys: {} });
 }
 
+/**
+ * A load writes this tablet's progress into the one backup slot, so the
+ * copy kept there now (for Redo after an undo, or for Undo after an older
+ * load) is replaced. Say so when that copy has more trophies than this
+ * tablet: it is the one way a load could otherwise lose progress quietly.
+ */
+export function replacedCopyWarning(kept: SaveBackup, here: SaveSummary): string | null {
+  const n = summarize(kept.data).trophies;
+  if (n <= here.trophies) return null;
+  const en = n === 1 ? "trophy" : "trophies";
+  return kept.kind === "undo"
+    ? tr(`Your Redo copy (${fmtNum(n)} ${en}) will be replaced.`, `ستُستبدل نسخة الإعادة (الكؤوس: ${fmtNum(n)}).`)
+    : tr(`Your Undo copy (${fmtNum(n)} ${en}) will be replaced.`, `ستُستبدل نسخة التراجع (الكؤوس: ${fmtNum(n)}).`);
+}
+
 /** Ask, then load `data` onto this tablet and reload. */
 export async function openLoadConfirm(data: SaveData, deps: SaveSheetDeps = {}): Promise<boolean> {
   const r = resolve(deps);
   const load = summarize(data);
   const here = hereNow(r.store);
+  const warns: string[] = [];
+  if (load.trophies < here.trophies) {
+    warns.push(tr("This save has fewer trophies than this tablet.", "في هذا الحفظ كؤوس أقل مما في هذا الجهاز."));
+  }
+  const kept = r.store ? readBackupSlot(r.store) : null;
+  const lost = kept ? replacedCopyWarning(kept, here) : null;
+  if (lost) warns.push(lost);
   const yes = await confirmSheet({
     title: tr("Load this save?", "تحميل هذا الحفظ؟"),
     body: tr(
@@ -577,10 +605,7 @@ export async function openLoadConfirm(data: SaveData, deps: SaveSheetDeps = {}):
     here,
     loadHead: tr("This save", "هذا الحفظ"),
     hereHead: tr("This tablet now", "هذا الجهاز الآن"),
-    warn:
-      load.trophies < here.trophies
-        ? tr("This save has fewer trophies than this tablet.", "في هذا الحفظ كؤوس أقل مما في هذا الجهاز.")
-        : undefined,
+    warns,
     okLabel: tr("Load the save", "حمّل الحفظ"),
   });
   if (!yes) {
@@ -639,10 +664,8 @@ export async function openUndo(deps: SaveSheetDeps = {}): Promise<boolean> {
     load: back,
     here,
     hereHead: tr("This tablet now", "هذا الجهاز الآن"),
-    warn:
-      back.trophies < here.trophies
-        ? tr("You will have fewer trophies than now.", "سيصبح عندك كؤوس أقل من الآن.")
-        : undefined,
+    warns:
+      back.trophies < here.trophies ? [tr("You will have fewer trophies than now.", "سيصبح عندك كؤوس أقل من الآن.")] : [],
   });
   if (!yes) {
     toast(tr("Nothing changed.", "لم يتغيّر شيء."), "neutral");
