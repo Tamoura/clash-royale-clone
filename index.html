@@ -167,12 +167,15 @@
          big "Tap to try again", which reloads asking the worker for the
          newest page (?cr-fresh, see public/sw.js). The words follow the
          saved edition: Arabic, right to left on the splash text only, in
-         the Golden Age edition (cr-clone-arena-theme = "arabic"). */
+         the Golden Age edition (cr-clone-arena-theme = "arabic"). A boot
+         error or the 45 s retry also goes in the local problem log
+         (Settings > Help > Problem report); nothing leaves the device. */
       (function () {
-        var arabic = false;
+        var theme = null;
         try {
-          arabic = window.localStorage.getItem("cr-clone-arena-theme") === "arabic";
+          theme = window.localStorage.getItem("cr-clone-arena-theme");
         } catch (e) {}
+        var arabic = theme === "arabic";
         var words = arabic
           ? { name: "هجمة التاج", slow: "ما زالت اللعبة تُحمَّل… اقتربنا!", retry: "اضغط لتحاول مجددًا" }
           : { name: "Crown Rush", slow: "Still loading… nearly there!", retry: "Tap to try again" };
@@ -201,6 +204,58 @@
             window.location.reload();
           }
         };
+        // "https://host/a/b.js?v=1" -> "/a/b.js" (shorter, and no address).
+        var path = function (url) {
+          return String(url || "").replace(/^[a-z][a-z0-9+.-]*:\/\/[^\/]*/i, "").replace(/[?#].*$/, "") || "?";
+        };
+        // The problem log (src/app/problemLog.ts), so a grown-up can find a
+        // boot problem after the next good start. Once the game's error
+        // traps run (src/app/errorTraps.ts) they take it: they cancel the
+        // event, and skip a "seen" one (a page error they record anyway).
+        // Before that (the game's files did not load or run) it is written
+        // to storage in the log's own shape, which the log cleans again when
+        // it reads it. Never throws.
+        var logBoot = function (msg, seen) {
+          try {
+            msg = String(msg).replace(/\s+/g, " ").slice(0, 200);
+            try {
+              var ev = new CustomEvent("cr-boot-problem", { cancelable: true, detail: { msg: msg, seen: seen } });
+              if (!window.dispatchEvent(ev)) return;
+            } catch (e) {}
+            var key = "cr-clone-problem-log";
+            var store = window.localStorage;
+            var list = [];
+            try {
+              list = JSON.parse(store.getItem(key) || "[]");
+            } catch (e) {}
+            if (!Array.isArray(list)) list = [];
+            var now = Date.now();
+            var entry = null;
+            for (var i = 0; i < list.length; i++) {
+              if (list[i] && list[i].msg === msg) {
+                entry = list.splice(i, 1)[0];
+                break;
+              }
+            }
+            if (entry) {
+              entry.n = (typeof entry.n === "number" ? entry.n : 1) + 1;
+              entry.last = now;
+            } else {
+              var page = "";
+              try {
+                var main = document.querySelector('script[type="module"][src]');
+                if (main) page = "page " + path(main.getAttribute("src"));
+              } catch (e) {}
+              entry = {
+                at: now, last: now, n: 1, kind: "error", where: "boot splash", msg: msg,
+                stack: page ? [page] : [], build: "?", screen: "boot", quality: "?",
+                edition: arabic ? "golden-age" : theme === "normal" ? "classic" : "unset", online: false,
+              };
+            }
+            list.unshift(entry);
+            store.setItem(key, JSON.stringify(list.slice(0, 20)));
+          } catch (e) {}
+        };
         var offerRetry = function (boot) {
           var button = boot.querySelector(".boot-retry");
           if (!button || !button.hidden) return;
@@ -215,11 +270,13 @@
         };
         var late = function () {
           if (booted() || failed) return;
+          logBoot("The game was not ready after 45 s (Tap to try again shown)", false);
           withSplash(offerRetry);
         };
-        var fail = function () {
+        var fail = function (msg, seen) {
           if (booted() || failed) return;
           failed = true;
+          logBoot(msg, seen);
           withSplash(function (boot) {
             boot.classList.add("is-failed");
             offerRetry(boot);
@@ -258,8 +315,11 @@
               var tag = el.tagName.toUpperCase();
               var style = tag === "LINK" && /stylesheet|modulepreload/i.test(el.rel || "");
               if (tag !== "SCRIPT" && !style) return;
+              // Not seen by the traps: a load error does not bubble.
+              return fail("A game file did not load: " + path(el.src || el.href), false);
             }
-            fail();
+            var at = e.filename ? " at " + path(e.filename) + ":" + (e.lineno || 0) : "";
+            fail("Boot error: " + (e.message || "Script error") + at, true);
           },
           true,
         );
@@ -267,7 +327,7 @@
         window.addEventListener("unhandledrejection", function (e) {
           var reason = e.reason;
           var text = String((reason && reason.message) || reason || "");
-          if (/dynamically imported module|Importing a module script failed|Unable to preload CSS/i.test(text)) fail();
+          if (/dynamically imported module|Importing a module script failed|Unable to preload CSS/i.test(text)) fail("Boot error: " + text, true);
         });
       })();
     </script>

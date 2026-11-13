@@ -17,6 +17,10 @@ interface Opts {
   storageThrows?: boolean;
   /** False: the script runs while the page is still being parsed (no #boot yet). */
   parsed?: boolean;
+  /** The rest of localStorage (the problem log); written back here. */
+  stored?: Record<string, string>;
+  /** The game's error traps are running: they cancel the splash's boot-problem event. */
+  traps?: boolean;
 }
 
 /** The splash markup as index.html writes it. */
@@ -49,12 +53,22 @@ function run(opts: Opts = {}) {
   const listeners: Record<string, ((e: unknown) => void)[]> = {};
   const went: string[] = [];
   const search = opts.search ?? "";
+  const stored = opts.stored ?? {};
+  const dispatched: { type: string; detail: unknown }[] = [];
   const win = {
     localStorage: {
       getItem: (k: string) => {
         if (opts.storageThrows) throw new Error("blocked");
-        return k === "cr-clone-arena-theme" ? (opts.theme ?? null) : null;
+        return k === "cr-clone-arena-theme" ? (opts.theme ?? null) : (stored[k] ?? null);
       },
+      setItem: (k: string, v: string) => {
+        if (opts.storageThrows) throw new Error("blocked");
+        stored[k] = v;
+      },
+    },
+    dispatchEvent: (ev: { type: string; detail: unknown; cancelable: boolean }) => {
+      dispatched.push({ type: ev.type, detail: ev.detail });
+      return !(opts.traps && ev.cancelable); // the traps cancel it
     },
     location: {
       href: `https://game.example/${search}`,
@@ -98,6 +112,10 @@ function run(opts: Opts = {}) {
       t.fire("error", { target: el });
     },
     booted: (): void => doc.body.classList.add("booted"),
+    stored,
+    dispatched,
+    /** The problem log as the splash left it in storage. */
+    log: (): Record<string, unknown>[] => JSON.parse(stored["cr-clone-problem-log"] ?? "[]") as Record<string, unknown>[],
     slow: (): boolean => boot!.classList.contains("is-slow"),
     failed: (): boolean => boot!.classList.contains("is-failed"),
     retryShown: (): boolean => !t.part("boot-retry").hidden,
@@ -227,5 +245,71 @@ describe("the boot splash in index.html", () => {
     expect(t.doc.body.classList.contains("booted")).toBe(true);
     t.fire("error", { target: t.win, message: "gallery mode" });
     expect(t.failed()).toBe(false);
+  });
+});
+
+describe("the boot splash and the local problem log", () => {
+  it("before the game's scripts run, writes a boot problem to storage in the log's own shape", async () => {
+    const { loadProblems } = await import("./problemLog");
+    const t = run({ theme: "arabic" });
+    t.fire("error", { target: { tagName: "SCRIPT", src: "https://game.example/assets/index-Ab12.js?v=1" } });
+    expect(t.failed()).toBe(true);
+    const [entry] = t.log();
+    expect(entry).toMatchObject({
+      kind: "error",
+      where: "boot splash",
+      msg: "A game file did not load: /assets/index-Ab12.js",
+      screen: "boot",
+      edition: "golden-age",
+      n: 1,
+    });
+    // The game's log reads it back cleanly (Settings > Help > Problem report).
+    const read = loadProblems({ getItem: (k) => t.stored[k] ?? null, setItem: () => undefined });
+    expect(read[0]).toMatchObject({ msg: "A game file did not load: /assets/index-Ab12.js", where: "boot splash", edition: "golden-age" });
+  });
+
+  it("counts the same problem again instead of adding a row, and keeps what was there", () => {
+    const old = { at: 5, last: 5, n: 1, kind: "frame", msg: "Error: older", stack: [], build: "b", screen: "home", quality: "auto L0 high (fresh start)", edition: "classic", online: false };
+    const before = { at: 9, last: 9, n: 2, kind: "error", where: "boot splash", msg: "The game was not ready after 45 s (Tap to try again shown)", stack: [], build: "?", screen: "boot", quality: "?", edition: "classic", online: false };
+    const t = run({ theme: "normal", stored: { "cr-clone-problem-log": JSON.stringify([old, before]) } });
+    t.advance(45_000);
+    expect(t.retryShown()).toBe(true);
+    const log = t.log();
+    expect(log.map((p) => p.msg)).toEqual(["The game was not ready after 45 s (Tap to try again shown)", "Error: older"]);
+    expect(log[0]).toMatchObject({ n: 3, at: 9 });
+  });
+
+  it("an uncaught boot error before the traps run is logged once; a booted game logs nothing", () => {
+    const t = run();
+    t.fire("error", { target: t.win, message: "Uncaught SyntaxError: Unexpected token", filename: "https://game.example/assets/index-Ab12.js", lineno: 1 });
+    t.failLoad("script"); // a second problem: the splash has already failed, nothing more
+    expect(t.log().map((p) => p.msg)).toEqual(["Boot error: Uncaught SyntaxError: Unexpected token at /assets/index-Ab12.js:1"]);
+    const quiet = run();
+    quiet.booted();
+    quiet.failLoad("script");
+    quiet.advance(60_000);
+    expect(quiet.log()).toEqual([]);
+    expect(quiet.dispatched).toEqual([]);
+  });
+
+  it("once the game's error traps run, hands the problem to them and leaves storage alone", () => {
+    const t = run({ traps: true });
+    t.fire("error", { target: { tagName: "LINK", rel: "stylesheet", href: "https://game.example/clash-royale-clone/assets/index-Zz.css" } });
+    t.fire("error", { message: "boom" }); // already failed: not sent again
+    expect(t.dispatched).toEqual([
+      { type: "cr-boot-problem", detail: { msg: "A game file did not load: /clash-royale-clone/assets/index-Zz.css", seen: false } },
+    ]);
+    expect(t.log()).toEqual([]);
+    // A page error is marked "seen": the traps record it themselves.
+    const u = run({ traps: true });
+    u.fire("unhandledrejection", { reason: new TypeError("Importing a module script failed.") });
+    expect(u.dispatched).toEqual([{ type: "cr-boot-problem", detail: { msg: "Boot error: Importing a module script failed.", seen: true } }]);
+  });
+
+  it("never breaks the splash when storage is blocked", () => {
+    const t = run({ storageThrows: true });
+    t.failLoad("script");
+    expect(t.failed()).toBe(true);
+    expect(t.retryShown()).toBe(true);
   });
 });

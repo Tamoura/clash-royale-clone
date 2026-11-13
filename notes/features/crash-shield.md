@@ -166,7 +166,12 @@ whole frame and the page-wide traps; a merged repeat keeps the first one),
 message (one line, at most 240 chars), the
 first **4** stack lines (at most 160 chars each, with the site's origin and
 query strings taken off), build id, screen (`battle/playing`, `home`...),
-graphics (`<pref> L<n>`: L0 is the fullest level, L4 the lightest), edition
+graphics (the level drawn now, its Settings word and how it was chosen:
+`auto L4 low (remembered)`, `auto L3 medium (first guess)`, `auto L0 high
+(fresh start)` under Auto; `medium L2 medium` under a Settings pin; `low L4
+low (link; Settings auto)` when a `?quality=` link overrides Settings; L0 is
+the fullest level, L4 the lightest; `graphicsLine` in shieldWire.ts, added
+when round 2 was merged with auto graphics), edition
 (`classic` / `golden-age` / `unset`) and whether an online match was on.
 
 - Cleaned on the way in and again on the way out of storage: control,
@@ -181,6 +186,18 @@ graphics (`<pref> L<n>`: L0 is the fullest level, L4 the lightest), edition
   browser's benign `ResizeObserver loop` notice.
 - Errors before the screens exist are recorded with screen `boot` and the
   edition read straight from storage.
+- The boot splash's problems (index.html's boot script, package boot) land
+  here too, where `boot splash`: a game file (script, stylesheet, module
+  preload) that did not load, an uncaught boot error, a module chunk that
+  failed, or a boot still not ready after 45 s. The splash fires a
+  cancelable `cr-boot-problem` event first; the traps cancel it and record
+  it (a page error they record anyway arrives marked `seen` and is not
+  counted twice). If nothing cancels it, the game's scripts never ran, so
+  the splash writes the entry to `cr-clone-problem-log` itself in the log's
+  shape (build `?`, a `page /assets/index-….js` line naming the build's
+  entry script), and the log cleans it again when it reads it. Only the
+  first problem of a page load is logged; nothing is logged once the game is
+  on screen.
 - A hook's listener that throws (`emit()` in src/app/hooks.ts skips it and
   the frame goes on) is recorded as kind `hook`, where `frame listener`,
   `battleEvent listener`... hooks.ts has a small reporter seam,
@@ -196,9 +213,9 @@ graphics (`<pref> L<n>`: L0 is the fullest level, L4 the lightest), edition
 
 ## Build id
 
-`vite.config.ts` computes the build id once per config load (`buildId()` is
-memoised) and both the service-worker stamp and a new
-`define: { __APP_BUILD__ }` use it. `src/app/buildInfo.ts` exports
+`vite.config.ts` computes the build id once per config load (the
+module-level `const BUILD_ID = buildId()`, from package boot) and both the
+service-worker stamp and a new `define: { __APP_BUILD__ }` use it. `src/app/buildInfo.ts` exports
 `BUILD_ID`, which is `"dev"` on the dev server and in vitest. Checked on the
 production build: `dist/sw.js` `BUILD_ID` and the id in the app bundle are
 the same string (e.g. `371526f-mwf0xih59ofj`), and the Problem report shows
@@ -207,12 +224,9 @@ it.
 For integration with r2/boot: the define sits after the `build` block, away
 from the plugin lines boot rewrites, so the two branches merge without a
 conflict (checked with `git merge-tree`; r2/save and r2/graphics merge
-cleanly too). In the merged file boot's module-level
-`const BUILD_ID = buildId()` reads the same memoised id as the define, so the
-ids still match. Optional tidy-up after the merge: set the define to
-`JSON.stringify(BUILD_ID)` and drop the memo (`onceBuildId`/`freshBuildId`);
-either way, rebuild and check that `dist/sw.js` and the index bundle carry
-the same id.
+cleanly too). The round-2 merge did the tidy-up: the define is
+`JSON.stringify(BUILD_ID)` and the memo (`onceBuildId`/`freshBuildId`) is
+gone, so `buildId()` is called exactly once (sw.test.ts pins that).
 
 ## Settings > Help > Problem report
 

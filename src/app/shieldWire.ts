@@ -25,6 +25,7 @@ import { registerSimHold, setHookErrorReporter, type HookErrorReporter } from ".
 import { describeError, problemLog, type ProblemContext } from "./problemLog";
 import { leaveAfterGlitch, stopOnlineAfterGlitch, type GlitchExitDeps, type GlitchSession } from "../match/noContest";
 import { showOops } from "../ui/oops";
+import { levelName, type AutoStart } from "../render3d/quality";
 
 /** Dev server and vitest: a caught frame error is thrown on after it is handled. */
 export const LOUD_ERRORS = import.meta.env.DEV || import.meta.env.MODE === "test";
@@ -48,6 +49,36 @@ export interface ShieldWire {
   shield: CrashShield;
   /** The ?oops=1 switch (main.ts ticks it inside the frame). */
   oops: OopsSwitch;
+}
+
+/** What the problem log needs from the battle's graphics governor (render3d/quality.ts). */
+export interface GraphicsNow {
+  /** The ladder level drawn now (0 fullest, 4 lightest). */
+  index: number;
+  /** The pin in force: "auto", or a level a grown-up (or a ?quality= link) picked. */
+  mode: string;
+  /** Where Auto started on this device this session. */
+  start: Pick<AutoStart, "source">;
+}
+
+const STARTED: Record<AutoStart["source"], string> = {
+  memory: "remembered",
+  guess: "first guess",
+  default: "fresh start",
+};
+
+/**
+ * The problem log's graphics line: the level drawn now with its Settings
+ * word, and how it was chosen. Under Auto it says where Auto started on
+ * this device ("auto L4 low (remembered)", "auto L4 low (first guess)",
+ * "auto L0 high (fresh start)"); under a pin it names the pin, and a
+ * ?quality= link that overrides Settings says so ("low L4 (link; Settings
+ * auto)"). Plain Latin in both editions, like the rest of each entry.
+ */
+export function graphicsLine(pref: string, q: GraphicsNow): string {
+  const level = `L${q.index} ${levelName(q.index)}`;
+  if (q.mode === "auto") return `auto ${level} (${STARTED[q.start.source] ?? q.start.source})`;
+  return q.mode === pref ? `${q.mode} ${level}` : `${q.mode} ${level} (link; Settings ${pref})`;
 }
 
 /** Take ?oops=1 off the address bar, so a reload does not glitch again. */

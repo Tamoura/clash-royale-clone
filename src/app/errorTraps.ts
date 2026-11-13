@@ -7,6 +7,13 @@
  * too). They only record: the browser still prints the error as usual, and
  * nothing is prevented, so bugs stay loud. An error the crash shield has
  * already recorded and thrown on (dev server) is not counted twice.
+ *
+ * They also take the boot splash's problems (index.html's boot script):
+ * a game file that did not load, or a boot still not ready after 45 s. The
+ * splash asks first with a cancelable BOOT_PROBLEM_EVENT; cancelling it
+ * says the log is running, so the splash does not write storage itself (it
+ * does when the game's scripts never ran). A page error the traps record
+ * anyway arrives marked "seen" and is not counted twice.
  */
 import { problemLog, type ProblemLog } from "./problemLog";
 
@@ -34,6 +41,9 @@ export function errorFromEvent(ev: ErrorEventLike): unknown {
   return { name: "Error", message, stack: where };
 }
 
+/** The event index.html's boot script fires on a boot problem. */
+export const BOOT_PROBLEM_EVENT = "cr-boot-problem";
+
 /** Listen on `target`; returns the uninstall. */
 export function installErrorTraps(target: TrapTarget, log: ProblemLog = problemLog): () => void {
   const onError = (ev: Event): void => {
@@ -46,11 +56,20 @@ export function installErrorTraps(target: TrapTarget, log: ProblemLog = problemL
     if (log.wasRecorded(reason)) return;
     log.record("promise", reason ?? "Unhandled promise rejection (no reason given)");
   };
+  const onBootProblem = (ev: Event): void => {
+    // Cancelled: the splash leaves the writing to this log.
+    ev.preventDefault();
+    const detail = (ev as unknown as { detail?: { msg?: unknown; seen?: unknown } }).detail;
+    if (!detail || detail.seen === true) return;
+    log.record("error", typeof detail.msg === "string" && detail.msg !== "" ? detail.msg : "Boot problem", "boot splash");
+  };
   target.addEventListener("error", onError);
   target.addEventListener("unhandledrejection", onRejection);
+  target.addEventListener(BOOT_PROBLEM_EVENT, onBootProblem);
   return () => {
     target.removeEventListener("error", onError);
     target.removeEventListener("unhandledrejection", onRejection);
+    target.removeEventListener(BOOT_PROBLEM_EVENT, onBootProblem);
   };
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { errorFromEvent, installErrorTraps, type TrapTarget } from "./errorTraps";
+import { BOOT_PROBLEM_EVENT, errorFromEvent, installErrorTraps, type TrapTarget } from "./errorTraps";
 import { ProblemLog, type ProblemStore } from "./problemLog";
 
 function fakeWindow(): TrapTarget & { fire(type: string, ev: object): void; count(): number } {
@@ -64,5 +64,44 @@ describe("page-wide error traps", () => {
     win.fire("error", { error: err });
     expect(log.list()).toHaveLength(1);
     expect(log.list()[0].n).toBe(1);
+  });
+});
+
+describe("the boot splash's problems", () => {
+  /** What index.html's boot script dispatches (a cancelable event with a detail). */
+  const bootEvent = (detail: unknown) => {
+    const ev = { detail, cancelled: false, preventDefault: () => void (ev.cancelled = true) };
+    return ev;
+  };
+
+  it("are recorded as 'boot splash', and the event is cancelled so the splash leaves storage alone", () => {
+    const win = fakeWindow();
+    const log = memLog();
+    installErrorTraps(win, log);
+    const ev = bootEvent({ msg: "A game file did not load: /assets/three-x.js", seen: false });
+    win.fire(BOOT_PROBLEM_EVENT, ev);
+    expect(ev.cancelled).toBe(true);
+    expect(log.list()[0]).toMatchObject({ kind: "error", where: "boot splash", msg: "A game file did not load: /assets/three-x.js" });
+  });
+
+  it("a page error the traps record anyway ('seen') is cancelled but not counted twice", () => {
+    const win = fakeWindow();
+    const log = memLog();
+    installErrorTraps(win, log);
+    const ev = bootEvent({ msg: "Boot error: boom", seen: true });
+    win.fire(BOOT_PROBLEM_EVENT, ev);
+    win.fire("error", { error: new Error("boom") });
+    expect(ev.cancelled).toBe(true);
+    expect(log.list().map((p) => p.msg)).toEqual(["Error: boom"]);
+  });
+
+  it("stop listening when the traps are removed (the splash then writes storage itself)", () => {
+    const win = fakeWindow();
+    const off = installErrorTraps(win, memLog());
+    off();
+    const ev = bootEvent({ msg: "late", seen: false });
+    win.fire(BOOT_PROBLEM_EVENT, ev);
+    expect(ev.cancelled).toBe(false);
+    expect(win.count()).toBe(0);
   });
 });

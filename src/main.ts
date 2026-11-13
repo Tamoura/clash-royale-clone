@@ -169,10 +169,9 @@ import { registerHomeSlot } from "./app/slots";
 import { localizeStaticMarkup } from "./app/brand";
 import { battleMenuOpen } from "./ui/battleMenu";
 import { signed } from "./render3d/result";
-import { installCrashShield } from "./app/shieldWire";
+import { graphicsLine, installCrashShield } from "./app/shieldWire";
 import { MatchSettler, playBattleEvents, type EventStep } from "./match/battleEvents";
 import { problemLog } from "./app/problemLog";
-import { QUALITY_LEVELS, currentQuality } from "./render3d/quality";
 
 // ---- Feature registration: side-effect modules that subscribe to src/app/hooks.
 import "./audio/wire";
@@ -1551,7 +1550,8 @@ const crash = installCrashShield({
   abandonBattle: () => settler.noContest(battle),
   context: () => ({
     screen: screenNow === "battle" ? `battle/${getPhase()}` : screenNow || "boot",
-    quality: `${getPrefs().quality} L${QUALITY_LEVELS.indexOf(currentQuality())}`,
+    // The level drawn now and how Auto chose it ("auto L4 low (remembered)").
+    quality: graphicsLine(getPrefs().quality, scene.quality),
     edition: STORED_EDITION === "arabic" ? "golden-age" : STORED_EDITION === "normal" ? "classic" : "unset",
     online: onlineSession() !== null,
   }),

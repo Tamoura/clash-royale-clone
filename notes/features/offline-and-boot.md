@@ -123,7 +123,12 @@ script only ever talk to the game's own origin.
     `arabic`): Arabic, `dir="rtl"` on the splash text only; the title reads
     هجمة التاج there;
   - `prefers-reduced-motion` keeps the bar still and the line appears
-    without a fade.
+    without a fade;
+  - the first boot error (or the 45 s retry) also goes in the local
+    problem log, where `boot splash`, for Settings > Help > Problem report:
+    through the game's error traps when they are running, else written to
+    `cr-clone-problem-log` directly (added when round 2 was merged; see
+    notes/features/crash-shield.md). Nothing leaves the device.
 - Images and fonts failing is not a boot error. The portrait studio
   (`?gallery=`) still steps the splash aside.
 

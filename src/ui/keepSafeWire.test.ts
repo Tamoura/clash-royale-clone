@@ -127,7 +127,12 @@ describe("keep-the-save-safe wiring", () => {
     expect(tip()).toBeNull();
     const sheet = doc.querySelector(".v2-save-sheet") as FakeElement;
     expect(sheet.querySelector(".v2-save-intro")!.textContent).toBe(homeScreenCodeIntro());
-    expect((sheet.querySelector(".v2-save-code") as unknown as { value: string }).value).toMatch(/^CR1[ZP]/);
+    // The code is packed by CompressionStream, which runs on real time (not
+    // the fake clock): wait for it, however busy the machine is.
+    await vi.waitFor(
+      () => expect((sheet.querySelector(".v2-save-code") as unknown as { value: string }).value).toMatch(/^CR1[ZP]/),
+      { timeout: 10_000, interval: 20 },
+    );
   });
 
   it("the tip waits while another sheet or the chest reveal is up", async () => {

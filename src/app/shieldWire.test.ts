@@ -6,7 +6,7 @@ import { markMatchStart, readMarker } from "../match/leftMatch";
 import type { OopsActions, OopsKind } from "../ui/oops";
 import { PRINT_GAP_MS, STORM_ERRORS } from "./crashShield";
 import type { HookErrorReporter } from "./hooks";
-import { problemLog } from "./problemLog";
+import { MAX_FIELD_CHARS, problemLog } from "./problemLog";
 
 const shown: { kind: OopsKind; actions: OopsActions }[] = [];
 vi.mock("../ui/oops", () => ({
@@ -30,7 +30,7 @@ vi.mock("./hooks", () => ({
 }));
 
 // Imported after the mocks are declared (vi.mock is hoisted anyway).
-const { installCrashShield, hookErrorReporter } = await import("./shieldWire");
+const { installCrashShield, hookErrorReporter, graphicsLine } = await import("./shieldWire");
 
 interface Fakes {
   calls: string[];
@@ -218,5 +218,23 @@ describe("the ?oops=1 test switch", () => {
     const { w } = wire();
     expect(w.oops.armed).toBe(false);
     expect(replaced).toEqual([]);
+  });
+});
+
+describe("the graphics line in each problem", () => {
+  it("names the level drawn now, its Settings word, and how Auto chose it", () => {
+    expect(graphicsLine("auto", { index: 4, mode: "auto", start: { source: "memory" } })).toBe("auto L4 low (remembered)");
+    expect(graphicsLine("auto", { index: 3, mode: "auto", start: { source: "guess" } })).toBe("auto L3 medium (first guess)");
+    expect(graphicsLine("auto", { index: 0, mode: "auto", start: { source: "default" } })).toBe("auto L0 high (fresh start)");
+  });
+
+  it("names a pin, and a ?quality= link that overrides Settings", () => {
+    expect(graphicsLine("medium", { index: 2, mode: "medium", start: { source: "memory" } })).toBe("medium L2 medium");
+    expect(graphicsLine("auto", { index: 4, mode: "low", start: { source: "default" } })).toBe("low L4 low (link; Settings auto)");
+  });
+
+  it("fits the log's short field", () => {
+    const longest = graphicsLine("medium", { index: 4, mode: "low", start: { source: "default" } });
+    expect(longest.length).toBeLessThanOrEqual(MAX_FIELD_CHARS);
   });
 });
