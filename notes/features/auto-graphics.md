@@ -27,11 +27,17 @@ and a return from another tab re-arms the governor.
 - After the first battle on a device where Auto lands on Low, one toast on
   Home: "Graphics set to Low so the game runs smoother." /
   "ضبطنا الرسوميات على منخفض لتعمل اللعبة بسلاسة." (5 s, never mid-fight,
-  once per device).
+  once per device). It is shown only if Auto is still on Low at that
+  moment: if a grown-up picked a level in Settings meanwhile (or the try one
+  level up kept Medium), nothing shows and the one-time flag stays unset, so
+  a real drop to Low later still gets its note.
 - Settings > Display > Graphics: the Auto choice says what it picked,
   "Auto (now: Low)" / "تلقائي (الآن: منخفض)" (or Medium / High), read fresh
   each time Settings opens. On a phone it shows as "Auto" over a smaller
-  "(now: Low)" in a slightly wider segment. Under a pin it is plain "Auto".
+  "(now: Low)" (0.88em: 12.3 px at normal text size) in a slightly wider
+  segment. On a 320 px phone with large text the small line wraps, and as a
+  last resort the row does, so every choice stays inside it. Under a pin it
+  is plain "Auto".
 - A fast device: nothing changes (it stays at L0 and remembers L0).
 
 ## How it works (src/render3d/quality.ts)
@@ -87,21 +93,24 @@ and a return from another tab re-arms the governor.
    settled on.
 6. **No mid-fight shader stall (scene/post.ts `prepareLightVariants`).** The
    L3/L4 line changes the light state (shadow map and rim light on or off),
-   so every lit material needs a new program. When Auto runs at L3 or L4,
-   the first frame of each battle compiles the other side of the line
+   so every lit material needs a new program. L0 to L3 share one light state
+   (only the map's size changes). Whenever Auto is in charge, at any level
+   (`wantsLightPrepare`), the first frame of each battle (still in the VS
+   and countdown, before the sim runs) compiles the other side of the line
    without drawing (`renderer.compile` into the composer's render target, so
    the program keys match the scene pass), then restores the lights. three
-   keeps each material's programs per light state, so the later step down
-   (or the try up from L4) finds them ready. A fresh L0 device that jumps to
-   L4 in its first battle still compiles once there (it is not prepared:
-   doing it on every device would cost every boot for a rare case); the
-   jump is remembered, so later sessions start at L4 and prepare.
+   keeps each material's programs per light state, so a later step into L4
+   from any level (a slideshow jump from L0, or a walk through L3), or the
+   try up from L4, finds them ready. A pin never steps by itself, so it is
+   never prepared. (Before the review fix only L3 and L4 starts prepared, so
+   an L0-L2 start that later stepped into L4 compiled mid-fight.)
 
 Test switch: `?gfxguess=off` skips the first guess (to exercise the
 slow-window path on SwiftShader, which is itself a software renderer).
 Console lines: `[graphics] auto starts at L4 (memory) on <key>`,
 `[graphics] pinned high (L0); auto would start at ...`,
-`[graphics] auto: L4`, `[graphics] prepared the other light state in 21 ms`.
+`[graphics] auto: L4`,
+`[graphics] prepared the other light state at L0 in 22 ms (32 new programs)`.
 They stay on the device, like everything else here.
 
 ## Keys
@@ -149,6 +158,54 @@ composer.render time, which blocks on shader link):
 Preparing took 27-59 ms on the dev server and 7-150 ms in the production
 runs (7-23 ms once the programs exist, as in a second battle).
 
+**Preparing at every Auto start (review fix), L0 start** (dev server,
+`?gfxguess=off`, fresh profile, per-frame log of `renderer.info.programs`;
+scripts `/tmp/claude-0/r2/graphics-fix/jump.cjs`, raw JSON next to it):
+
+| Run | Battle start | The L0 to L4 jump frame |
+|---|---|---|
+| old rule (L3+ only), no throttle | 14 programs; next frames 550, 483 ms | 9 programs compiled; 934 and 950 ms frames (L0 neighbours 583-1050, L4 after 317-333) |
+| old rule, 4x throttle | 14 programs; next frames 1317, 900 ms | 9 programs; 1183 and 1483 ms (L0 883-1100, L4 after 449-634) |
+| new rule, no throttle | 14 + 32 prepared in 22 ms of main thread; next frames 917, 550 ms | 0 programs; 500 and 717 ms (L0 483-550, L4 after 216-217) |
+| new rule, 4x throttle (two runs) | 14 + 32 prepared in 78-81 ms; next frames 1083-2017 ms, then normal | 0 programs; 583-734 ms (L0 533-1000, L4 after 200-283) |
+
+So the step frame no longer compiles anything. The cost moves to the
+countdown: about 22 ms of main-thread time here (78-104 ms under a 4x
+throttle), and on SwiftShader, which compiles on the CPU, the frame after
+it was about 370 ms longer in the unthrottled run (the 4x runs are too
+noisy to say). The 3-2-1 countdown holds the sim (ui/banner.ts), so the
+field is still then. `compile` covers every material in the scene, hidden
+ones too (tufts, outlines, region-culled strips), which is why it adds 32
+programs where the step used 9. A second battle reuses them (5-23 ms in the
+production runs). Only SwiftShader was available: on Chrome the shader
+compile itself runs in the GPU process, not on the page's thread, but how
+long the extra programs hold up the countdown's frames on a real phone or
+laptop GPU was not measured.
+
+Production re-check after the fixes (Classic, `?gfxguess=off`, 4x
+throttle; `drive.cjs`): `auto starts at L0 (default)`, `prepared the other
+light state at L0 in 104 ms (32 new programs)`, L0 at 0.67-1.68 fps, then
+`auto: L4` 6.4 s after the cards (the machine was busier than in the first
+runs: at about 0.7 fps the five slow frames take longer), then 2.2-3.2 fps;
+the toast once on Home after battle 1; reload: `auto starts at L4
+(memory)`, no step logs, 2.1-3.2 fps; Settings "Auto (now: High)" at boot,
+"Auto (now: Low)" after the drop and after the reload.
+
+**The stale-toast case (review fix)**, production, both editions,
+`stale.cjs`: guess path (L4 at boot), High picked in Settings before any
+battle, battle 1 (no preparation under the pin), Home: no toast, flag
+unset. Back to Auto (L4 again), battle 2, Home: the toast once
+(`shots/stale-{normal,arabic}-home{1,2}.png`), flag `'1'`. Battle 3: no
+toast.
+
+**The "(now: Low)" line (review fix)**, measured in Chromium at DPR 2:
+12.3 px at text size 1 (was 10.9 px), 16 px at 1.3. At 390 px it stays one
+line in both editions (60-82 px of a 99 px segment). The old nowrap line
+already pushed the last choice out of the row at 320 px with larger text
+(16 px over in Classic at 1.3; 22-49 px in Golden Age at 1.15-1.3); now
+nothing leaves the row at 320 or 390 px at any text size
+(`shots/row-wrap2-*.png`).
+
 **Perf budget** (`node tools/perf-budget.mjs --matrix --url
 http://127.0.0.1:3404`, pinned `?quality=high`): 4 runs within every gate,
 the same as before (the 1440 empty-battle "over target" lines are report-only
@@ -173,7 +230,9 @@ and `dev-settings-{normal,arabic,medium,high-ar}.png`.
 
 `src/render3d/quality.test.ts`: steady 0.4 s frames reach L4 within the
 grace plus one slow window; 1.5 fps too, and it stays at L4; isolated 0.6 s
-spikes and bursts of four hitches do not; a hidden tab does not; pins and a
+spikes and bursts of four hitches do not; windows where hitches are at
+least five but a minority do not ("most frames"); gaps over PAUSE, alone or
+between slow frames, do not; a hidden tab does not; pins and a
 lock that measured L4 do not move; a frame-cap lock still jumps; rearm grace;
 remembered start with no step-down; settle reports once per level; the try
 up kept when fast, stepped back when slow or a slideshow, never from L0,
@@ -184,9 +243,13 @@ than four devices, oversize), storage that throws; keying (rotation-proof
 buckets); the first-guess table both ways; pins over memory and guesses;
 level names. `src/render3d/gfxNote.test.ts`: the toast's state machine
 (after a battle only, once per device, once per session with blocked
-storage), the Settings label, the build tag. `scene/post.test.ts`: renderer
-string reading and the light-variant preparation (state flipped for the
-compile, restored after).
+storage; no toast and no flag when a pin or a kept try up came between the
+queue and the calm screen, with a fake and with the live governor), the
+Settings label, the build tag. `scene/post.test.ts`: renderer string
+reading, the light-variant preparation (state flipped for the compile,
+restored after), and a battle start under Auto preparing once at L0 while a
+pin never does. Mutation check: dropping the "most frames" rule, the PAUSE
+check or the toast's re-check each fails at least one test.
 
 ## Not done or not verified
 
@@ -198,8 +261,8 @@ compile, restored after).
   follows what they measure).
 - The Home diorama still does not sample (it renders every other frame on
   purpose), so a new device's first slow window is in its first battle.
-- A fresh, unknown L0 device that jumps to L4 compiles L4's programs once in
-  that first battle (item 6).
+- The countdown cost of preparing on a real GPU (item 6) was not measured:
+  only SwiftShader was available.
 - Under 1 fps the step takes longer than 5 s (five slow frames after the
   grace); devices slower than one frame per 3 s count as pauses and do not
   step at all.
