@@ -38,3 +38,8 @@
   flex: 1 1 140px;
   min-height: 52px;
 }
+/* A phone: one big button per row (long labels, Arabic included, never squeeze). */
+@media (max-width: 479px) {
+  .oops-actions { flex-direction: column; }
+  .oops-actions .ui-btn { flex: none; width: 100%; }
+}
