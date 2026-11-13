@@ -79,10 +79,12 @@ describe("multiplayer docs", () => {
     expect(deployDoc).toContain(`\`${branch}\``);
   });
 
-  it("stay within the 350-500 line budget and keep the README link", () => {
+  // 520: round 2 added "Two addresses, two saves" (moving progress between
+  // the Render and Pages links with a save code) and its troubleshooting line.
+  it("stay within the 350-520 line budget and keep the README link", () => {
     const lines = deployDoc.split("\n").length;
     expect(lines).toBeGreaterThanOrEqual(350);
-    expect(lines).toBeLessThanOrEqual(500);
+    expect(lines).toBeLessThanOrEqual(520);
     expect(readme).toContain("docs/deploy-multiplayer.md");
   });
 });

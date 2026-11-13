@@ -77,26 +77,17 @@ variable `RELAY_URL` to `wss://<your-address>/ws` and re-run the Pages
 workflow ([section (e)](#e-wiring-github-pages-to-the-relay)). The first
 connection to a sleeping server can time out, so try again after a minute.
 
-**Two addresses, two saves.** The Render address and the GitHub Pages
-address (`https://tamoura.github.io/clash-royale-clone/`) are different
-websites to the browser, so each keeps its own trophies, cards and gold. A
-kid who opens the other address sees a brand-new profile; nothing is lost,
-it is just on the other address. To move progress across (or to a new
-tablet), use the save code, which never goes through any server:
-
-1. On the address (or tablet) that has the progress: **Settings** (the gear)
-   → **Backup & move** → **Copy my save code** → **Copy**, or **Save to a
-   file** (`crown-rush-save-<date>.txt`).
-2. On the other address (or tablet): **Settings** → **Backup & move** →
-   **Load a save**, paste the code (or **Pick a file**), check the summary
-   (trophies, arena, cards, gold, gems), and tap **Load the save**.
-
-The load keeps a backup of what was there, so **Undo the last load** puts it
-back. Settings such as volume, graphics and text size stay with each tablet;
-the edition, name and crest come with the save. Before moving the home-screen
-icon to the other address, or renaming the Render service (which changes its
-address), have each kid copy their save code first. The design is in
-`notes/features/save-backup.md`.
+**Two addresses, two saves.** The Render address and the Pages address
+(`https://tamoura.github.io/clash-royale-clone/`) are different websites to
+the browser, so each keeps its own trophies, cards and gold: the other
+address starts a new profile. To move progress across (or to a new tablet),
+open **Settings** (the gear) → **Backup & move** where the progress is, tap
+**Copy my save code** (or **Save to a file**), then on the other address tap
+**Load a save**, paste the code (or **Pick a file**), check the summary and
+tap **Load the save**. **Undo the last load** puts back what was there. The
+code never goes through a server. Volume, graphics and text size stay with
+each tablet; the edition, name and crest come along. Copy the save codes
+before moving the home-screen icon or renaming the Render service.
 
 **Any other Node host or your own computer.** Build once, then start:
 
@@ -495,11 +486,9 @@ wake (its loading page then opens the game by itself); a Fly machine takes
 1–3 s. The client waits 8 seconds for a socket, so try again. To avoid it on
 Fly, set `min_machines_running = 1` in `fly.toml` (about $2/month).
 
-**"All my trophies are gone" after opening the other link.** The Render
-and Pages addresses keep separate saves (see "Two addresses, two saves"
-above). Open the old address, copy the save code, and load it on the new one.
-The same goes for a new tablet, or after site data was cleared (if a code or
-file was kept).
+**"All my trophies are gone" on the other link or a new tablet.** Each
+address keeps its own save. Copy the save code where the progress is and
+load it here ("Two addresses, two saves" above).
 
 **"update-required".** The page and the relay speak different protocol
 versions. Deploy the relay, re-run the Pages workflow, hard-refresh the phones.
