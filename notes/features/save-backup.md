@@ -384,6 +384,22 @@ back." in the save's Classic edition. Desktop 1440x900 Classic: "[13/11/2026,
 16:54] Dad: <code> thanks!" showed the confirm table; a cut-off code in a
 chat line showed "Part of this code is wrong or missing...". No page errors.
 
+After the review fixes, the same on a new production build (port 3611):
+A's Copy gave a 635-character code; B's cut-off code gave the Arabic typo
+line, the Arabic WhatsApp line (3 RLMs, 2 isolate pairs, an ALM) the
+confirm table (١٬٤٦٠ against ٣٥), and Load the save Home at 1,460 with
+"Save loaded! Welcome back."; on the Classic desktop the WhatsApp line with
+"thanks!" showed the confirm table and a cut-off code the typo line. New
+shapes: the code typed in groups of 3, and "...have fun: CR" with the rest
+wrapped at 76 on the next lines, showed the confirm table; a UTF-16 save
+file (byte order mark, header line, CRLF) through Pick a file showed the
+confirm table; "I'm a CR7fan and so is my dad" showed "That isn't a Crown
+Rush save code..."; a deck code with a cut-off save code showed the typo
+line. A 400,000-character crafted paste (two enormous runs, each followed
+by 400 short words) answered 128 ms after the tap, drawing included;
+`decodeSave` alone in the same headless Chromium takes 8-16 ms (median of
+5) on that and four other 400,000-character inputs. No page errors.
+
 Browser, production build (`dist-server/relay.mjs`, port 3413), phone
 390x844 with real touch, plus desktop 1440x900, both directions:
 - A: seeded trophies (640) and name, then a real ladder battle (two cards
