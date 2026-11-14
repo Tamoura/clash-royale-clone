@@ -9,9 +9,12 @@ import {
   CODE_MAX_CHARS,
   FIND_LIMITS,
   checkChar,
+  checkOk,
   cleanPasted,
   decodeSave,
   encodeSave,
+  saveJson,
+  toBase64Url,
   type DecodeResult,
   type SaveData,
   type SaveError,
@@ -22,6 +25,8 @@ const DECK = ["knight", "archers", "giant", "fireball", "musketeer", "mini-pekka
 /** A profile shaped like a real one (the keys a browser save holds after a few battles). */
 function profile(at: number, trophies: number, gold: number, owned: string[]): SaveData {
   const slot = { name: "", cards: DECK };
+  // A named deck: "~" in the JSON makes a "-" in the plain packing too (plain JSON in base64 rarely has one).
+  const named = { name: "Rush ~~~", cards: DECK };
   return {
     at,
     keys: {
@@ -34,7 +39,7 @@ function profile(at: number, trophies: number, gold: number, owned: string[]): S
       "cr-clone-chests": JSON.stringify([null, null, null, null]),
       "cr-clone-deck": JSON.stringify(DECK),
       "cr-clone-meta-v1": "1",
-      "cr-clone-deck-slots": JSON.stringify({ v: 1, active: 0, slots: [slot, slot, slot] }),
+      "cr-clone-deck-slots": JSON.stringify({ v: 1, active: 0, slots: [named, slot, slot] }),
       "cr-clone-pass": JSON.stringify({ key: "2026-11", crowns: 7, claimed: [1, 2], archive: [] }),
       "cr-clone-season": JSON.stringify({ key: "2026-11", best: trophies, history: [] }),
       "cr-clone-chests-earned": "4",
@@ -97,6 +102,22 @@ function typo(code: string, at = Math.floor(code.length / 2)): string {
   return code.slice(0, at) + (code[at] === "A" ? "B" : "A") + code.slice(at + 1);
 }
 
+/** The code with a space every `n` characters. */
+const spaced = (code: string, n: number): string => code.match(new RegExp(`.{1,${n}}`, "g"))!.join(" ");
+
+/** A save file kept as UTF-16 (old Notepad's "Unicode"), with its byte order mark, read the way the file picker reads it (UTF-8). */
+function utf16File(text: string, littleEndian: boolean): string {
+  const bytes = new Uint8Array(2 + text.length * 2);
+  bytes[littleEndian ? 0 : 1] = 0xff;
+  bytes[littleEndian ? 1 : 0] = 0xfe;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    bytes[2 + 2 * i + (littleEndian ? 0 : 1)] = c & 255;
+    bytes[2 + 2 * i + (littleEndian ? 1 : 0)] = c >> 8;
+  }
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
 /** A code from a newer game: a higher format digit, with a right check character. */
 function newerCode(code: string): string {
   const body = "CR2" + code.slice(3, -1);
@@ -155,6 +176,11 @@ const LOADS: Case[] = [
   { name: "nested quote marks", text: (c) => `> > ${wrap(c.NEW, 70, "\n> > ")}\n> > see you`, want: "NEW" },
   { name: "wrapped after a header on the same line", text: (c) => `Code: ${c.NEW.slice(0, 60)}\n${wrap(c.NEW.slice(60), 76, "\n")}\nThanks`, want: "NEW" },
   { name: "a space in the middle", text: (c) => `${c.NEW.slice(0, 333)} ${c.NEW.slice(333)}`, want: "NEW" },
+  { name: "a line break right after CR", text: (c) => `Here is my save code for you, have fun: CR\n${wrap(c.NEW.slice(2), 76, "\n")}`, want: "NEW" },
+  { name: "a line break inside its start", text: (c) => `${c.NEW.slice(0, 3)}\r\n${c.NEW.slice(3)}`, want: "NEW" },
+  { name: "typed in groups of 3", text: (c) => spaced(c.NEW, 3), want: "NEW" },
+  { name: "typed in groups of 4", text: (c) => spaced(c.NEW, 4), want: "NEW" },
+  { name: "a space between every character", text: (c) => spaced(c.NEW, 1), want: "NEW" },
   // Around the code
   { name: "curly quotes", text: (c) => `“${c.NEW}”`, want: "NEW" },
   { name: "guillemets", text: (c) => `«${c.NEW}»`, want: "NEW" },
@@ -182,6 +208,8 @@ const LOADS: Case[] = [
   // The save file
   { name: "save file with BOM and CRLF", text: (c) => `\ufeff${c.NEW}\r\n`, want: "NEW" },
   { name: "save file with a trailing newline", text: (c) => `${c.NEW}\n`, want: "NEW" },
+  { name: "save file kept as UTF-16, little-endian", text: (c) => utf16File(`${c.NEW}\r\n`, true), want: "NEW" },
+  { name: "save file kept as UTF-16, big-endian", text: (c) => utf16File(`Crown Rush save\r\n${c.NEW}\r\n`, false), want: "NEW" },
   // Words glued on
   { name: "a word glued onto the end", text: (c) => `${c.NEW}thanks`, want: "NEW" },
   { name: "a word glued on, then more words", text: (c) => `${c.NEW}Thanks so much dad`, want: "NEW" },
@@ -202,6 +230,7 @@ const LOADS: Case[] = [
   { name: "two codes made at the same time: the last one", text: (c) => `${c.NEW}\n${c.TWIN}`, want: "TWIN" },
   { name: "two codes made at the same time, other order", text: (c) => `${c.TWIN}\n${c.NEW}`, want: "NEW" },
   { name: "a deck code and a save code", text: (c) => `deck K7Q2-M9XA-3FB1 and save ${c.NEW}`, want: "NEW" },
+  { name: "a phone number and a save code", text: (c) => `call me on 0501-2345-6789, the code is ${c.NEW}`, want: "NEW" },
 ];
 
 const REFUSES: Case[] = [
@@ -215,11 +244,16 @@ const REFUSES: Case[] = [
   { name: "a cut-off code", text: (c) => c.NEW.slice(0, Math.floor(c.NEW.length * 0.7)), want: "typo" },
   { name: "a cut-off code in a chat line", text: (c) => `[13/11/2026, 16:54] Dad: ${c.NEW.slice(0, -20)}`, want: "typo" },
   { name: "the last few characters missing", text: (c) => c.NEW.slice(0, -5), want: "typo" },
+  { name: "a deck code and a cut-off save code", text: (c) => `deck K7Q2-M9XA-3FB1 and save ${c.NEW.slice(0, -40)}`, want: "typo" },
+  { name: "a deck code and a save code with one changed character", text: (c) => `deck K7Q2-M9XA-3FB1 and save ${typo(c.NEW)}`, want: "typo" },
   { name: "a random sentence", text: () => "hello there, how are you? see you at 5", want: "not-a-code" },
+  { name: "a phone number", text: () => "call me on 0501-2345-6789 tonight", want: "not-a-code" },
   { name: "a footballer", text: () => "CR7 is the best player ever", want: "not-a-code" },
+  { name: "a fan", text: () => "I'm a CR7fan and so is my dad", want: "not-a-code" },
   { name: "an Arabic sentence", text: () => "\u200fمرحبا، كيف حالك؟ \u2068١٢٣\u2069", want: "not-a-code" },
   { name: "a code from a newer game", text: (c) => newerCode(c.NEW), want: "newer" },
   { name: "a code from a newer game, in a chat line", text: (c) => `[13/11/2026, 16:54] Dad: ${newerCode(c.NEW)}`, want: "newer" },
+  { name: "a code from a newer game, with a word glued on", text: (c) => `${newerCode(c.NEW)}thanks`, want: "newer" },
   { name: "nothing but invisible marks", text: () => "\u200f\u200e\u2068\u2069\n ", want: "empty" },
 ];
 
@@ -238,7 +272,7 @@ describe("save codes as people paste them", () => {
     for (const p of ["Z", "P"] as const) {
       for (const c of [codes[p].NEW]) {
         expect(c.startsWith(`CR1${p}`)).toBe(true);
-        if (p === "Z") expect(c).toMatch(/-/); // (plain JSON in base64 rarely makes a "-")
+        expect(c).toMatch(/-/);
         expect(c).toMatch(/[0-9].*[0-9]/);
         expect(c.length).toBeGreaterThan(400);
       }
@@ -288,7 +322,56 @@ describe("never loads anything but the save that was sent", () => {
   });
 });
 
+describe("a code loads only as itself", () => {
+  it("a plain code's JSON ends the code: nothing may come after its closing brace", async () => {
+    // JSON.parse would let a space or line break through; with a word glued
+    // on, a longer cut of a typo'd plain code could end in one.
+    const make = (json: string): string => {
+      const body = "CR1P" + toBase64Url(new TextEncoder().encode(json));
+      return body + checkChar(body);
+    };
+    expect(outcome(await decodeSave(make(saveJson(NEW))))).toBe("NEW");
+    for (const json of [saveJson(NEW) + " ", saveJson(NEW) + "\n", saveJson(NEW) + "\t", saveJson(NEW) + "\r\n", " " + saveJson(NEW)]) {
+      expect(await decodeSave(make(json)), JSON.stringify(json.slice(-3))).toEqual({ ok: false, reason: "damaged" });
+    }
+  });
+
+  it("a cut-off code whose check happens to fit is still told to be copied again", async () => {
+    for (const p of ["Z", "P"] as const) {
+      const code = codes[p].NEW;
+      let k = code.length - 2;
+      while (!checkOk(code.slice(0, k))) k--; // about 1 in 64 cuts
+      expect(k).toBeGreaterThan(100);
+      expect(await decodeSave(code.slice(0, k)), `${p} cut at ${k}`).toEqual({ ok: false, reason: "typo" });
+      expect(await decodeSave(`[13/11/2026, 16:54] Dad: ${code.slice(0, k)}`)).toEqual({ ok: false, reason: "typo" });
+    }
+  });
+
+  it("a long code is read a piece at a time and loads with words around it", async () => {
+    let seed = 5;
+    const digits = Array.from({ length: 80_000 }, () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) >>> 16) % 10).join("");
+    const big: SaveData = { ...NEW, keys: { ...NEW.keys, "cr-clone-quests": JSON.stringify({ pad: digits }) } };
+    for (const compress of [true, false]) {
+      const code = await encodeSave(big, { compress });
+      expect(code.length).toBeGreaterThan(30_000); // many times the first piece read (2,048)
+      const r = await decodeSave(`[13/11/2026, 16:54] Dad: here you go\u200f ${code}thanks!`);
+      expect(r.ok && JSON.stringify(r.data) === JSON.stringify(big), `compress ${compress}`).toBe(true);
+    }
+  });
+});
+
 describe("cleaning", () => {
+  it("drops NUL (a UTF-16 save file read as UTF-8)", () => {
+    expect(cleanPasted("C\u0000R\u00001\u0000Z\u0000")).toBe("CR1Z");
+  });
+
+  it("normalises long text a piece at a time with the same result as all at once", () => {
+    const bits = ["ｃ", "e\u0301", "\u1100\u1161\u11a8", "\u{1F600}", "\ufdfa", "Ａ\u0308", "\u0915\u093c", "ﾊﾟ", " "];
+    const text = Array.from({ length: 30_000 }, (_, i) => bits[(i * 7) % bits.length]).join("");
+    expect(text.length).toBeGreaterThan(40_000);
+    expect(cleanPasted(text)).toBe(text.normalize("NFKC"));
+  });
+
   it("reads look-alikes as the plain characters and drops invisible marks", () => {
     expect(cleanPasted("ＣＲ１Ｚ\uff0d＿")).toBe("CR1Z-_");
     expect(cleanPasted("a\u2010b\u2011c\u2012d\u2013e\u2212f\ufe63g\uff0dh")).toBe("a-b-c-d-e-f-g-h");
@@ -308,6 +391,105 @@ describe("work bounds: 400,000 characters of junk stay quick", () => {
     for (let i = 0; i < n; i++) s += A[((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) >>> 9) & 63];
     return s;
   };
+  const words = (n: number): string => Array.from({ length: n }, () => randomRun(2)).join(" ");
+  const twice = (block: () => string): string => (block() + "\n" + block()).slice(0, SIZE);
+  /** `runs` runs of "CR1Z" + the stream (cut to fit), each followed by `perRun` short words whose last letter makes the check fit. */
+  function crafted(stream: Uint8Array, runs: number, perRun: number, head = "CR1Z"): string {
+    const per = Math.floor(SIZE / runs) - perRun * 6 - 4;
+    let out = "";
+    for (let r = 0; r < runs; r++) {
+      let body = (head + toBase64Url(stream)).slice(0, per);
+      let text = body;
+      for (let j = 0; j < perRun; j++) {
+        const mid = randomRun(3);
+        body += mid;
+        const c = checkChar(body);
+        text += " " + mid + c;
+        body += c;
+      }
+      out += text + " .\n";
+    }
+    return out.slice(0, SIZE);
+  }
+  /** Raw DEFLATE written bit by bit. */
+  function bitWriter(): { put: (v: number, n: number) => void; code: (c: number, len: number) => void; bytes: number[] } {
+    const bytes: number[] = [];
+    let acc = 0;
+    let nb = 0;
+    const put = (v: number, n: number): void => {
+      for (let i = 0; i < n; i++) {
+        acc |= ((v >> i) & 1) << nb;
+        if (++nb === 8) {
+          bytes.push(acc);
+          acc = 0;
+          nb = 0;
+        }
+      }
+    };
+    const code = (c: number, len: number): void => {
+      for (let i = len - 1; i >= 0; i--) put((c >> i) & 1, 1);
+    };
+    return { put, code, bytes };
+  }
+  const CLEN_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+  /** Dynamic blocks that hold nothing: a header to read each time, and no output. */
+  function emptyBlocks(size: number): Uint8Array {
+    const w = bitWriter();
+    const cl: Record<number, number> = { 18: 1, 0: 2, 1: 2 }; // canonical: 18 "0", 0 "10", 1 "11"
+    while (w.bytes.length < size) {
+      w.put(0, 1);
+      w.put(2, 2);
+      w.put(0, 5);
+      w.put(0, 5);
+      w.put(14, 4);
+      for (const o of CLEN_ORDER.slice(0, 18)) w.put(cl[o] ?? 0, 3);
+      w.code(0, 1);
+      w.put(138 - 11, 7);
+      w.code(0, 1);
+      w.put(118 - 11, 7); // 256 zero lengths
+      w.code(3, 2); // end of block: length 1
+      w.code(2, 2); // the one distance code: unused
+      w.code(0, 1); // end of block
+    }
+    return Uint8Array.from(w.bytes);
+  }
+  /** One dynamic block where "a" has a 15-bit code (fifteen 0 bits), then "a" for ever: the slowest letters to unpack. */
+  function longCodes(size: number): Uint8Array {
+    const w = bitWriter();
+    w.put(1, 1);
+    w.put(2, 2);
+    w.put(0, 5);
+    w.put(0, 5);
+    w.put(15, 4);
+    const cl: Record<number, number> = { 0: 2, 15: 2, 18: 2 }; // canonical: 0 "00", 15 "01", 18 "10"
+    for (const o of CLEN_ORDER) w.put(cl[o] ?? 0, 3);
+    w.code(2, 2);
+    w.put(97 - 11, 7); // 97 zeros
+    w.code(1, 2); // "a": 15
+    w.code(2, 2);
+    w.put(138 - 11, 7);
+    w.code(2, 2);
+    w.put(20 - 11, 7); // 158 zeros
+    w.code(1, 2); // end of block: 15
+    w.code(0, 2); // distance: 0
+    w.put(0, 8);
+    const out = new Uint8Array(size);
+    out.set(w.bytes);
+    return out;
+  }
+  const streams: { long: Uint8Array; bomb: Uint8Array } = { long: new Uint8Array(0), bomb: new Uint8Array(0) };
+  beforeAll(async () => {
+    const pack = async (bytes: Uint8Array): Promise<Uint8Array> => {
+      const s = new Blob([bytes as BlobPart]).stream().pipeThrough(new CompressionStream("deflate-raw" as CompressionFormat));
+      return new Uint8Array(await new Response(s).arrayBuffer());
+    };
+    let r = 9;
+    const letters = Uint8Array.from({ length: 1_200_000 }, () => 97 + (((r = (Math.imul(r, 1103515245) + 12345) >>> 0) >>> 16) % 3));
+    streams.long = await pack(letters);
+    streams.bomb = await pack(new Uint8Array(5_000_000).fill(97));
+    expect(streams.long.length).toBeGreaterThan(200_000);
+    expect(streams.bomb.length).toBeLessThan(10_000);
+  });
   const junk: [string, () => string][] = [
     ["one run of code heads", () => fill("CR1Z")],
     ["thousands of short lines, each a code head", () => fill("CR1Zab\n")],
@@ -318,16 +500,33 @@ describe("work bounds: 400,000 characters of junk stay quick", () => {
     ["invisible marks between letters", () => fill("a\u200f")],
     ["Arabic text with marks", () => fill("مرحبا\u200f بك ")],
     ["deck-code shapes", () => fill("K7Q2-M9XA-3FB1 ")],
+    ["a space between every character", () => fill("C R 1 Z a b ")],
+    ["NUL between letters", () => fill("CR1Z\u0000")],
+    ["characters that spread out when cleaned (U+FDFA is 18)", () => fill("\ufdfa")],
+    ["fullwidth code heads", () => fill("ＣＲ１Ｚａｂ ")],
+    // One enormous run, then many short words joined to it by spaces: about
+    // 100 cuts of each start have a fitting check.
+    ["two enormous runs, each followed by 400 short words", () => twice(() => "CR1ZCR1ZCR1Z" + randomRun(199_000) + " " + words(400))],
+    ["the same with plain-packing starts", () => twice(() => "CR1PCR1PCR1P" + randomRun(199_000) + " " + words(400))],
+    // Real packed data that goes on and on, with short words after it whose
+    // last letter makes the check fit: every start is worth reading.
+    ["long packed streams with check-fitting words after", () => crafted(streams.long, 3, 16)],
+    ["one long packed stream, split in two", () => crafted(streams.long, 2, 16)],
+    ["packed streams that unpack past the cap", () => crafted(streams.bomb, 64, 1)],
+    ["the same, with 16 fitting words each", () => crafted(streams.bomb, 3, 16)],
+    ["empty packed blocks, one after another", () => crafted(emptyBlocks(160_000), 2, 16)],
+    ["packed letters with 15-bit codes", () => crafted(longCodes(200_000), 2, 16)],
+    ["a plain JSON string that never closes", () => crafted(new TextEncoder().encode('{"g":"' + "a".repeat(160_000)), 2, 16, "CR1P")],
   ];
   for (const [name, make] of junk) {
     it(name, async () => {
       const text = make();
-      expect(text.length).toBe(SIZE);
+      expect(text.length).toBeLessThanOrEqual(SIZE);
       const t0 = performance.now();
       const r = await decodeSave(text);
       const ms = performance.now() - t0;
       expect(r.ok).toBe(false);
-      expect(ms).toBeLessThan(1500); // about 10-40 ms here; generous for a busy machine
+      expect(ms).toBeLessThan(1500); // under about 40 ms here; generous for a busy machine
     });
   }
 
