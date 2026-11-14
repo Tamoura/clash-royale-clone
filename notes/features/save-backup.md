@@ -178,11 +178,15 @@ Decisions:
 - Inside: `{"g":"crown-rush","v":1,"t":<ms>,"k":{key: value},"w":{"n","c"}}`.
 - Packing `Z`: `CompressionStream("deflate-raw")`; `P`: plain bytes, used when
   the browser cannot make deflate-raw (older Chrome, Safari and Firefox
-  releases). Reading a `Z` code uses `DecompressionStream("deflate-raw")`
-  where the browser has it, else `inflateRawJs` in `saveCode.ts`: a small
-  raw-DEFLATE decoder (RFC 1951, after zlib's "puff"; about 170 lines) with
-  the same 1,000,000-byte cap, so a tablet that cannot update past iOS 15
-  (Safari before 16.4) opens a code made on a new one. It is tested against
+  releases). Reading a `Z` code uses `inflateRawJs` in `saveCode.ts` on
+  every browser: a small raw-DEFLATE decoder (RFC 1951, after zlib's
+  "puff"; about 170 lines) with a 1,000,000-byte cap, so a tablet that
+  cannot update past iOS 15 (Safari before 16.4) opens a code made on a new
+  one. It refuses bytes after the end of the packed data ("damaged"), so a
+  code loads only as itself (see "Reading a paste" below). Until the paste
+  round it was only the fallback behind `DecompressionStream("deflate-raw")`;
+  Chrome's refuses trailing bytes too, but Node's ignores them, so the game
+  now uses one decoder everywhere. It is tested against
   the platform's own `CompressionStream` output (stored, fixed and dynamic
   blocks; random blocks repeated 5 KB to 30 KB apart and copies of every
   length from all over the 32 KB window, so every distance code above 8 KB
@@ -192,15 +196,70 @@ Decisions:
   35..258) fails a test.
 - Check: Luhn mod 64 over the whole code; catches every single wrong
   character (tested exhaustively on a sample) and a dropped character.
-- Reading strips spaces, line breaks and zero-width characters, then: size cap
-  (200,000 characters; 2x that before stripping), deck-code shape, alphabet
-  and `CR`, check character, version (a newer digit or a letter = "newer"),
-  packing, base64url, unpack with a 1,000,000-byte cap, strict UTF-8, JSON,
-  game name, format version, then key by key: registered progress keys only,
-  string values of at most 100,000 characters in the key's shape. Anything
-  else is dropped (and listed in `dropped`). A save with nothing left is
-  refused.
+- Reading a paste (`decodeSave`): the code is found inside whatever was
+  pasted or read from the save file, so words, line breaks and invisible
+  marks around it are fine (see "Reading a paste" below). A candidate loads
+  only when its check character is right and it then reads in full: the
+  version digit (a newer digit = "newer"), packing, base64url, unpack with a
+  1,000,000-byte cap, strict UTF-8, JSON, game name, format version, then
+  key by key: registered progress keys only, string values of at most
+  100,000 characters in the key's shape. Anything else is dropped (and
+  listed in `dropped`). A save with nothing left is refused.
 - A real profile after one battle is about 880-900 characters.
+
+### Reading a paste
+
+What people paste: a chat app's copy ("[13/11/2026, 16:54] Dad: CR1Z...",
+WhatsApp, iMessage, Telegram), words before and after ("Here's my save code:
+... thanks!"), Arabic text with invisible direction marks (RLM, LRM, ALM,
+embeddings, isolates), quotes, backticks or brackets around it, a full stop
+or "؟" after it, an email reply with "> " quote marks and the code
+hard-wrapped at 76 columns, a word glued onto the end, a fullwidth copy, the
+save file with a BOM and CRLF. All of these load (`savePaste.test.ts`).
+
+1. Text longer than 400,000 characters is "too-big" before anything else.
+2. Cleaning (`cleanPasted`): NFKC (fullwidth letters and digits become plain
+   ones; NBSP, thin, ideographic and other Unicode spaces become spaces);
+   every format character (`\p{Cf}`: direction marks, embeddings, isolates,
+   soft hyphens, zero-width ones, U+2061-2064, U+180E) and other
+   default-ignorable one (variation selectors, fillers) is removed; the
+   dash look-alikes U+2010-2013, U+2212, U+FE63, U+FF0D read as "-";
+   Arabic-Indic and Eastern Arabic-Indic digits read as 0-9. Spaces and line
+   breaks stay: they are where a code may have been wrapped.
+3. Finding: the text becomes runs of code characters (base64url). A code
+   starts at "CR", a digit from 1 and a letter, anywhere in a run (so also
+   glued to a word before it). It may end at the end of its run, or of a
+   later run it continues into across spaces, line breaks and "> " quote
+   marks at line starts (up to 400 of them), or where another code starts,
+   and up to 16 characters of a word glued onto that end may be cut off.
+   The check character of every such candidate is two lookups (Luhn sums of
+   every prefix are worked out once). Untrimmed ends come first, shortest
+   first, then one more character cut, and so on; the first candidate that
+   passes the check and reads in full is that start's code.
+4. Several codes in one paste (a whole chat): the newest save (largest
+   `t`) loads; the same time, the last one in the text.
+5. Work bounds (`FIND_LIMITS`): the last 64 code starts (newest first),
+   300,000 check tests and 48 full reads in all, 16 for one start. 400,000
+   characters of junk (one run of "CR1Z", thousands of short lines each
+   starting "CR1Z", quoted lines, random code characters, invisible marks
+   between every letter, Arabic text) take 10-30 ms on the build machine,
+   cleaning included (`savePaste.test.ts` fails a case over 1.5 s).
+6. When nothing loads, the most helpful reason: "newer", "wrong-game",
+   "empty-save", "too-big" (unpacks past the cap, or one run of code
+   characters longer than 200,000), "damaged" (the check fits the whole
+   wrapped run but it does not unpack or is not JSON), then "typo" (a code
+   start whose check never fits: cut off or a character changed), then
+   "deck-code" (the paste is a deck code, maybe in quotes, or holds one
+   shown the game's way, "K7Q2-M9XA-3FB1", and nothing like a save code),
+   "too-big" again when over 200,000 characters that are not spaces, else
+   "not-a-code". Only spaces, line breaks and invisible marks: "empty".
+
+Why the decoder must refuse bytes after the end: about 1 in 8
+one-character typos in a `Z` code still unpacks into a readable save with
+different numbers. The exact code fails its check, but a longer cut ("the
+code thanks") fits its check 1 time in 64, and a decoder that ignores
+trailing bytes would then load the typo'd numbers. With the end checked, a
+longer cut never unpacks, and a shorter one never reaches the end.
 
 ## Loading
 
@@ -245,6 +304,35 @@ summary), `keepSafe.test.ts` (6), `keepSafeWire.test.ts` (6: also the
 undo/redo toasts and the other-tab reload), `saveSheet.test.ts` (11, fake
 DOM: also Redo, the undo warning, the warning above the table, the focus
 taken back from the closing Settings sheet).
+
+Paste round: `savePaste.test.ts` (161): 73 cases for each packing, built
+from a realistic profile with `encodeSave` (chat copies from WhatsApp
+Android and iOS, iMessage and Telegram; Arabic sentences with RLM, LRM, ALM
+and isolates; RLE/PDF and LRE/RLO; soft hyphens, zero-width and other
+invisibles inside the code; 76-column CRLF wrapping, a Gmail quoted reply,
+nested "> > "; quotes, guillemets, backticks, a code fence, brackets,
+trailing ".", "!", "؟", "،"; NBSP, thin and ideographic spaces; fullwidth,
+dash look-alikes, both Arabic-Indic digit sets; the save file with BOM and
+CRLF; glued words; two codes in either order and two made at the same time;
+and the refusals: deck code alone, quoted or in a chat line, a typo plain,
+among words or wrapped, cut-off codes, sentences, "CR7 is...", a newer
+format, invisible marks only). On abe0822's `decodeSave` 112 of these 146
+fail; all pass now. Also: typo'd codes at every 7th position, alone or with
+words or a glued word after, never load (both packings); 150 random glued
+words and following words never change what loads; nine 400,000-character
+junk inputs stay under the time bound; a real code after 400,000 characters
+of junk lines still loads; odd text never throws.
+
+Paste round, production build (`dist-server/relay.mjs`, port 3611),
+headless Chromium: A (Classic phone 390x844, touch, 1,460 trophies) made a
+code with Copy (the clipboard held the box's code). B (Golden Age phone, 35
+trophies): a cut-off code pasted with Ctrl+V gave the Arabic typo line; then
+an Arabic WhatsApp line with three RLMs, two isolate pairs and an ALM around
+the code, pasted the same way, showed the confirm table (١٬٤٦٠ against ٣٥);
+Load the save, and Home showed 1,460 trophies and "Save loaded! Welcome
+back." in the save's Classic edition. Desktop 1440x900 Classic: "[13/11/2026,
+16:54] Dad: <code> thanks!" showed the confirm table; a cut-off code in a
+chat line showed "Part of this code is wrong or missing...". No page errors.
 
 Browser, production build (`dist-server/relay.mjs`, port 3413), phone
 390x844 with real touch, plus desktop 1440x900, both directions:
@@ -361,6 +449,14 @@ Second review round (fixes on top of the first two), scripts and shots in
   progress" still read the usual way; after the load the game opens in the
   save's edition. Picking an edition first and loading from Settings gives
   the whole flow in that language.
+- **Reading a paste has work bounds.** The last 64 code starts are tried,
+  newest first, with 48 full reads in all. A paste made of tens of
+  thousands of lines that each start like a code ("CR1Zab") can use them up
+  before a real code that comes *before* that junk is reached (one after it
+  still loads). No real chat looks like that.
+- **A deck code among words** is only named as a deck code when it is
+  written the game's way, with the dashes ("K7Q2-M9XA-3FB1"); otherwise any
+  12-letter word would look like one.
 - **One backup slot.** A load replaces the copy kept for Undo or Redo; the
   confirm screen says so when that copy has more trophies than the tablet
   now. A copy with fewer trophies but more cards is replaced without that
