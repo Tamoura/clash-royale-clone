@@ -10,9 +10,10 @@
  *
  * The code: "CR" (the game), a format version digit, a packing letter
  * ("Z" = deflate-raw through CompressionStream, "P" = plain where the
- * browser cannot compress; a browser that cannot unpack deflate-raw itself
- * uses the small decoder below, so an old tablet still opens a "Z" code),
- * the packed JSON in base64url, and one Luhn
+ * browser cannot compress; a "Z" code is unpacked by the small decoder
+ * below on every browser, so an old tablet opens one too, and the packed
+ * data must end exactly where the code ends), the packed JSON in
+ * base64url, and one Luhn
  * mod 64 check character, so a wrong or missing character is caught
  * before anything is read. Inside, the JSON names the game and the format
  * again: {"g":"crown-rush","v":1,"t":<ms>,"k":{key: value},"w":{"n","c"}}.
@@ -162,45 +163,6 @@ async function deflateRaw(bytes: Uint8Array): Promise<Uint8Array | null> {
   }
 }
 
-/**
- * Unpack, stopping at `cap` bytes: the browser's own DecompressionStream
- * where it knows deflate-raw, else inflateRawJs (Safari before 16.4, for
- * example tablets that cannot update past iOS 15).
- */
-async function inflateRaw(bytes: Uint8Array, cap: number): Promise<Uint8Array | "too-big" | "damaged"> {
-  if (typeof DecompressionStream === "undefined") return inflateRawJs(bytes, cap);
-  let ds: DecompressionStream;
-  try {
-    ds = new DecompressionStream("deflate-raw" as CompressionFormat);
-  } catch {
-    return inflateRawJs(bytes, cap); // gzip/deflate only
-  }
-  const reader = new Blob([bytes as BlobPart]).stream().pipeThrough(ds).getReader();
-  const parts: Uint8Array[] = [];
-  let total = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.length;
-      if (total > cap) {
-        void reader.cancel().catch(() => undefined);
-        return "too-big";
-      }
-      parts.push(value);
-    }
-  } catch {
-    return "damaged";
-  }
-  const out = new Uint8Array(total);
-  let o = 0;
-  for (const p of parts) {
-    out.set(p, o);
-    o += p.length;
-  }
-  return out;
-}
-
 // ---- A small raw-DEFLATE decoder (RFC 1951), after zlib's "puff" ------------------------
 
 /** A canonical Huffman code: how many codes of each length, and the symbols in code order. */
@@ -257,8 +219,14 @@ function fixed(): { lit: Huffman; dist: Huffman } {
 
 /**
  * Unpack raw DEFLATE bytes (no zlib or gzip wrapper), stopping at `cap`
- * bytes of output. For browsers without DecompressionStream("deflate-raw");
- * tested against the platform's own CompressionStream output.
+ * bytes of output; tested against the platform's own CompressionStream
+ * output. Every "Z" code is read with it, not the browser's
+ * DecompressionStream: Chrome's refuses bytes after the end of the packed
+ * data but others (and Node's) ignore them, and a code must only load as
+ * itself. With a word glued on, a code whose packed data still unpacks
+ * after a one-character typo (about 1 in 8 typos does) could otherwise load
+ * wrong numbers whenever the longer text's check character happened to fit.
+ * So bytes after the end are "damaged" here, on every browser.
  */
 export function inflateRawJs(src: Uint8Array, cap: number): Uint8Array | "too-big" | "damaged" {
   let pos = 0;
@@ -385,6 +353,7 @@ export function inflateRawJs(src: Uint8Array, cap: number): Uint8Array | "too-bi
   } catch (e) {
     return e instanceof TooBig ? "too-big" : "damaged"; // never throws
   }
+  if (pos !== src.length) return "damaged"; // bytes after the last block: not one whole stream
   return out.slice(0, outLen);
 }
 
@@ -409,43 +378,323 @@ export async function encodeSave(data: SaveData, opts: { compress?: boolean } = 
 
 /** A deck code (deckCode.ts): 12 characters, often in groups of 4. */
 const DECK_CODE = /^[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}$/;
+/** A deck code the way the game shows it ("K7Q2-M9XA-3FB1"), anywhere in a paste. */
+const DECK_CODE_IN_TEXT = /(?:^|[^0-9A-Za-z_-])[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}(?![0-9A-Za-z_-])/;
 
-/** Read a save code (spaces and line breaks anywhere are fine). Never throws. */
-export async function decodeSave(text: string): Promise<DecodeResult> {
-  if (typeof text !== "string") return { ok: false, reason: "empty" };
-  if (text.length > CODE_MAX_CHARS * 2) return { ok: false, reason: "too-big" };
-  const code = text.replace(/[\s​-‍⁠﻿]+/g, "");
-  if (!code) return { ok: false, reason: "empty" };
-  if (code.length > CODE_MAX_CHARS) return { ok: false, reason: "too-big" };
-  if (DECK_CODE.test(code)) return { ok: false, reason: "deck-code" };
-  if (!/^[A-Za-z0-9_-]+$/.test(code) || !code.startsWith(HEAD) || code.length < 6) {
-    return { ok: false, reason: "not-a-code" };
+// ---- Reading a pasted code ---------------------------------------------------------------
+//
+// People paste a code with things around it: a chat app's header ("[13/11/2026,
+// 16:54] Dad: CR1Z...") and their message, quotes or brackets, a full stop,
+// an email's "> " quote marks and hard-wrapped lines, Arabic text with
+// invisible direction marks, a fullwidth or Arabic-Indic copy of a digit.
+// decodeSave cleans the text, then looks for the code inside it. The guard
+// against loading the wrong thing is the same as for a bare code: a
+// candidate loads only when its check character is right AND it unpacks and
+// reads in full (readSaveJson). A wrong cut fails one or the other.
+
+/** Format characters (direction marks, embeddings, isolates, soft hyphens, zero-width ones) and other invisibles (variation selectors, fillers). */
+const INVISIBLE = /[\p{Cf}\p{Default_Ignorable_Code_Point}]+/gu;
+/** Dash look-alikes that apps and keyboards put in place of "-". */
+const DASHES = /[\u2010-\u2013\u2212\ufe63\uff0d]/g;
+/** Arabic-Indic and Eastern Arabic-Indic digits. */
+const INDIC_DIGITS = /[\u0660-\u0669\u06f0-\u06f9]/g;
+
+/**
+ * Pasted text, cleaned for reading a code: NFKC (fullwidth letters and
+ * digits become plain ones; NBSP, thin and ideographic spaces become plain
+ * spaces), invisible marks removed, dash look-alikes read as "-",
+ * Arabic-Indic digits read as 0-9. Spaces and line breaks are kept: they
+ * are where a code may have been wrapped.
+ */
+export function cleanPasted(text: string): string {
+  let s = text;
+  try {
+    s = s.normalize("NFKC");
+  } catch {
+    // no normalize(): read the text as it is
   }
-  if (!checkOk(code)) return { ok: false, reason: "typo" };
-  const version = code[2];
-  if (!/[0-9]/.test(version) || Number(version) > SAVE_FORMAT) return { ok: false, reason: "newer" };
-  if (Number(version) < 1) return { ok: false, reason: "not-a-code" };
+  return s
+    .replace(INVISIBLE, "")
+    .replace(DASHES, "-")
+    .replace(INDIC_DIGITS, (d) => String(d.charCodeAt(0) & 15));
+}
+
+/**
+ * How hard the finder works, so that 400,000 characters of junk stay quick
+ * on an old tablet. A real paste uses a tiny part of each.
+ */
+export const FIND_LIMITS = {
+  /** Places a code could start ("CR", a digit, a letter) that are tried: the last ones in the text (a chat's newest code comes last). */
+  heads: 64,
+  /** Line breaks or spaces one code may continue across (a 900-character code wrapped at 76 is 12 lines). */
+  joins: 400,
+  /** Characters of a word glued onto the end that may be cut off. */
+  trim: 16,
+  /** Check-character tests in all (each is a lookup, see `scanPaste`). */
+  checks: 300_000,
+  /** Full reads (unpack and JSON) in all, and for one start. */
+  reads: 48,
+  readsPerHead: 16,
+};
+/** The shortest code: "CR1Z", one body character, the check. */
+const MIN_CODE = 6;
+
+const VALUE = new Int8Array(128).fill(-1);
+for (let i = 0; i < ALPHABET.length; i++) VALUE[ALPHABET.charCodeAt(i)] = i;
+/** A value's Luhn addend when it is doubled. */
+const DOUBLED = Uint8Array.from({ length: 64 }, (_, x) => Math.floor((2 * x) / 64) + ((2 * x) % 64));
+const V_C = INDEX.get("C")!;
+const V_R = INDEX.get("R")!;
+const V_0 = INDEX.get("0")!;
+const V_1 = INDEX.get("1")!;
+const V_9 = INDEX.get("9")!;
+
+function isLineBreak(c: number): boolean {
+  return c === 10 || c === 13 || c === 0x2028 || c === 0x2029;
+}
+
+function isSpace(c: number): boolean {
+  return (
+    c === 32 ||
+    c === 9 ||
+    c === 11 ||
+    c === 12 ||
+    c === 0xa0 ||
+    c === 0x1680 ||
+    (c >= 0x2000 && c <= 0x200a) ||
+    c === 0x202f ||
+    c === 0x205f ||
+    c === 0x3000
+  );
+}
+
+/**
+ * Cleaned text as runs of code characters (base64url). `chars` holds every
+ * run back to back; run k is chars[start[k], end[k]). `joins[k]` is 1 when
+ * only spaces, line breaks and "> " quote marks at the start of a line
+ * stand between run k and run k+1, so a code may continue across them.
+ */
+interface PasteScan {
+  chars: string;
+  values: Uint8Array;
+  start: Int32Array;
+  end: Int32Array;
+  joins: Uint8Array;
+  runs: number;
+  /** Characters that are not spaces or line breaks. */
+  solid: number;
+  /** Luhn sums of every prefix, with the even (q0) or odd (q1) positions doubled. */
+  q0: Int32Array;
+  q1: Int32Array;
+}
+
+function scanPaste(s: string): PasteScan {
+  const n = s.length;
+  const values = new Uint8Array(n);
+  const cap = (n >> 1) + 1;
+  const start = new Int32Array(cap);
+  const end = new Int32Array(cap);
+  const joins = new Uint8Array(cap);
+  const parts: string[] = [];
+  let m = 0;
+  let runs = 0;
+  let from = -1; // where the current run starts in s
+  let gapOk = true;
+  let gapLine = false;
+  let solid = 0;
+  for (let i = 0; i < n; i++) {
+    const c = s.charCodeAt(i);
+    const v = c < 128 ? VALUE[c] : -1;
+    if (v >= 0) {
+      if (from < 0) {
+        if (runs > 0) joins[runs - 1] = gapOk ? 1 : 0;
+        from = i;
+        start[runs] = m;
+      }
+      values[m++] = v;
+      solid++;
+      continue;
+    }
+    if (from >= 0) {
+      parts.push(s.slice(from, i));
+      end[runs++] = m;
+      from = -1;
+      gapOk = true;
+      gapLine = false;
+    }
+    if (isLineBreak(c)) gapLine = true;
+    else if (isSpace(c)) continue;
+    else {
+      solid++;
+      if (c !== 62 || !gapLine) gapOk = false; // ">" only as a quote mark after a line break
+    }
+  }
+  if (from >= 0) {
+    parts.push(s.slice(from));
+    end[runs++] = m;
+  }
+  const q0 = new Int32Array(m + 1);
+  const q1 = new Int32Array(m + 1);
+  for (let i = 0; i < m; i++) {
+    const x = values[i];
+    const d = DOUBLED[x];
+    q0[i + 1] = q0[i] + (i & 1 ? x : d);
+    q1[i + 1] = q1[i] + (i & 1 ? d : x);
+  }
+  return { chars: parts.join(""), values, start, end, joins, runs, solid, q0, q1 };
+}
+
+/** checkOk(chars.slice(a, b)) as two lookups. */
+function checkAt(p: PasteScan, a: number, b: number): boolean {
+  const q = b & 1 ? p.q1 : p.q0; // the positions doubled are those with b's parity
+  const sum = q[b - 1] - q[a];
+  return p.values[b - 1] === (64 - (sum % 64)) % 64;
+}
+
+/**
+ * Where codes could start: "CR", a digit from 1, a letter, inside one run.
+ * The last `limit` of them, last first: in a copied chat the newest code
+ * comes last, and junk before it cannot use up the work bounds.
+ */
+function findHeads(p: PasteScan, limit: number): { at: number; run: number }[] {
+  const out: { at: number; run: number }[] = [];
+  const v = p.values;
+  for (let k = p.runs - 1; k >= 0 && out.length < limit; k--) {
+    for (let h = p.end[k] - 4; h >= p.start[k] && out.length < limit; h--) {
+      if (v[h] === V_C && v[h + 1] === V_R && v[h + 2] >= V_1 && v[h + 2] <= V_9 && v[h + 3] < 52) out.push({ at: h, run: k });
+    }
+  }
+  return out;
+}
+
+/** A full read of a code whose check character is right. `unsure`: a wrong cut of a good code fails this way too. */
+type ReadResult = DecodeResult | { ok: false; reason: SaveError; unsure: true };
+
+function readCode(code: string): ReadResult {
   const packing = code[3];
   const bytes = fromBase64Url(code.slice(4, -1));
-  if (!bytes) return { ok: false, reason: "damaged" };
+  if (!bytes) return { ok: false, reason: "damaged", unsure: true };
   let raw: Uint8Array;
   if (packing === "P") {
     if (bytes.length > JSON_MAX_CHARS) return { ok: false, reason: "too-big" };
     raw = bytes;
   } else if (packing === "Z") {
-    const r = await inflateRaw(bytes, JSON_MAX_CHARS);
-    if (typeof r === "string") return { ok: false, reason: r };
+    const r = inflateRawJs(bytes, JSON_MAX_CHARS);
+    if (r === "damaged") return { ok: false, reason: "damaged", unsure: true };
+    if (r === "too-big") return { ok: false, reason: "too-big" };
     raw = r;
   } else {
-    return { ok: false, reason: "damaged" };
+    return { ok: false, reason: "damaged", unsure: true };
   }
   let json: unknown;
   try {
     json = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(raw));
   } catch {
-    return { ok: false, reason: "damaged" };
+    return { ok: false, reason: "damaged", unsure: true };
   }
   return readSaveJson(json);
+}
+
+/** When nothing loads, the most helpful reason wins. */
+const REASON_RANK: Record<SaveError, number> = {
+  empty: 0,
+  "not-a-code": 1,
+  "deck-code": 3,
+  typo: 4,
+  damaged: 5,
+  "too-big": 6,
+  "empty-save": 7,
+  "wrong-game": 8,
+  newer: 9,
+};
+
+/**
+ * Read a save code from whatever was pasted or read from a save file: the
+ * code may sit among other words and lines, wrapped across lines, with
+ * invisible marks or look-alike characters in it. Loads the newest save
+ * when the text holds several codes. Never throws.
+ */
+export async function decodeSave(text: string): Promise<DecodeResult> {
+  if (typeof text !== "string") return { ok: false, reason: "empty" };
+  if (text.length > CODE_MAX_CHARS * 2) return { ok: false, reason: "too-big" };
+  try {
+    return findSave(cleanPasted(text));
+  } catch {
+    return { ok: false, reason: "damaged" };
+  }
+}
+
+function findSave(s: string): DecodeResult {
+  const p = scanPaste(s);
+  if (p.solid === 0) return { ok: false, reason: "empty" };
+  const L = FIND_LIMITS;
+  let reason: SaveError = "not-a-code";
+  const note = (r: SaveError): void => {
+    if (REASON_RANK[r] > REASON_RANK[reason]) reason = r;
+  };
+  let checks = L.checks;
+  let reads = L.reads;
+  let best: { data: SaveData; dropped: string[]; at: number } | null = null;
+
+  const heads = findHeads(p, L.heads);
+  for (const { at: h, run: k } of heads) {
+    if (p.end[k] - L.trim - h > CODE_MAX_CHARS) {
+      note("too-big");
+      continue;
+    }
+    // Where the code could end: the end of this run or of a run it continues
+    // into (`low`: how far a word glued onto that end may be cut back), or
+    // right where another code starts (two codes pasted with nothing between).
+    const ends: { b: number; low: number }[] = [{ b: p.end[k], low: h + MIN_CODE }];
+    let whole = false; // the last end takes in the whole wrapped run (a garbled code says "damaged" only there)
+    for (let r = k; ; r++) {
+      if (r + 1 >= p.runs || !p.joins[r]) {
+        whole = true;
+        break;
+      }
+      if (ends.length > L.joins || p.end[r + 1] - h > CODE_MAX_CHARS + L.trim) break;
+      ends.push({ b: p.end[r + 1], low: p.start[r + 1] + 1 });
+    }
+    const last = ends[ends.length - 1].b;
+    for (const o of heads) if (o.at >= h + MIN_CODE && o.at < last) ends.push({ b: o.at, low: o.at });
+    ends.sort((x, y) => x.b - y.b);
+    let left = L.readsPerHead;
+    let loaded = false;
+    search: for (let t = 0; t <= L.trim; t++) {
+      for (let j = 0; j < ends.length; j++) {
+        const b = ends[j].b - t;
+        if (b < ends[j].low || b - h > CODE_MAX_CHARS) continue;
+        if (checks-- <= 0) break search;
+        if (!checkAt(p, h, b)) continue;
+        if (p.values[h + 2] - V_0 > SAVE_FORMAT) {
+          if (t === 0) note("newer"); // a whole word or line with a right check: a code from a newer game
+          continue;
+        }
+        if (reads <= 0 || left <= 0) break search;
+        reads--;
+        left--;
+        const res = readCode(p.chars.slice(h, b));
+        if (res.ok) {
+          // Several codes: the newest save; the same time, the last one in the text.
+          const at = res.data.at;
+          if (!best || at > best.data.at || (at === best.data.at && h > best.at)) best = { data: res.data, dropped: res.dropped, at: h };
+          loaded = true;
+          break search;
+        }
+        if (!("unsure" in res)) note(res.reason);
+        else if (t === 0 && whole && b === last) note("damaged");
+      }
+    }
+    if (!loaded) note("typo");
+  }
+  if (best) return { ok: true, data: best.data, dropped: best.dropped };
+  if (REASON_RANK[reason] < REASON_RANK["deck-code"]) {
+    // A deck code alone (maybe in quotes), or shown the game's way among other words.
+    const bare = p.solid <= 40 ? s.replace(/\s+/g, "").replace(/^[^0-9A-Za-z]+|[^0-9A-Za-z]+$/g, "") : "";
+    if (DECK_CODE.test(bare) || DECK_CODE_IN_TEXT.test(s)) return { ok: false, reason: "deck-code" };
+    if (p.solid > CODE_MAX_CHARS) return { ok: false, reason: "too-big" };
+  }
+  return { ok: false, reason };
 }
 
 /**
