@@ -8,14 +8,17 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   CODE_MAX_CHARS,
   FIND_LIMITS,
+  NFKC_PIECE,
   checkChar,
   checkOk,
   cleanPasted,
   decodeSave,
   encodeSave,
+  lastFindWork,
   saveJson,
   toBase64Url,
   type DecodeResult,
+  type FindWork,
   type SaveData,
   type SaveError,
 } from "./saveCode";
@@ -118,6 +121,26 @@ function utf16File(text: string, littleEndian: boolean): string {
   return new TextDecoder("utf-8").decode(bytes);
 }
 
+/**
+ * "CR2Zab" with its check character and three more letters glued on: the
+ * word's own check does not fit, but cut back by three it does. A word that
+ * short is not a code from a newer game.
+ */
+function newerWord(): string {
+  const body = "CR2Zab";
+  for (const tail of ["xyz", "xyw", "qrs", "klm"]) {
+    const word = body + checkChar(body) + tail;
+    if (!checkOk(word)) return word;
+  }
+  throw new Error("no tail");
+}
+
+/** "CR1v1 me tomorrow?": the last letter makes the check of the whole sentence (spaces out) fit. */
+function fittingSentence(): string {
+  const words = "CR1v1 me tomorrow";
+  return words + checkChar(words.replace(/ /g, ""));
+}
+
 /** A code from a newer game: a higher format digit, with a right check character. */
 function newerCode(code: string): string {
   const body = "CR2" + code.slice(3, -1);
@@ -165,6 +188,8 @@ const LOADS: Case[] = [
     want: "NEW",
   },
   { name: "LRM between every character", text: (c) => [...c.NEW].join("\u200e"), want: "NEW" },
+  { name: "Arabic words with harakat around it", text: (c) => `قَالَ أَبِي: \u2068${c.NEW}\u2069 شُكْرًا لَكَ`, want: "NEW" },
+  { name: "an accent that joined the code's last letter", text: (c) => `${c.NEW}\u0301 ok`, want: "NEW" },
   // Wrapping
   { name: "76-character lines with CRLF", text: (c) => wrap(c.NEW, 76, "\r\n"), want: "NEW" },
   {
@@ -181,6 +206,11 @@ const LOADS: Case[] = [
   { name: "typed in groups of 3", text: (c) => spaced(c.NEW, 3), want: "NEW" },
   { name: "typed in groups of 4", text: (c) => spaced(c.NEW, 4), want: "NEW" },
   { name: "a space between every character", text: (c) => spaced(c.NEW, 1), want: "NEW" },
+  // A long plain code (an old tablet's) in groups is hundreds of groups.
+  { name: "typed in groups of 3, among other words", text: (c) => `Here's the code: ${spaced(c.NEW, 3)} thanks`, want: "NEW" },
+  { name: "typed in groups of 4, among other words", text: (c) => `Here's the code: ${spaced(c.NEW, 4)} thanks`, want: "NEW" },
+  { name: "a space between every character, among other words", text: (c) => `code ${spaced(c.NEW, 1)} ok`, want: "NEW" },
+  { name: "76-character lines with NEL line breaks", text: (c) => wrap(c.NEW, 76, "\u0085"), want: "NEW" },
   // Around the code
   { name: "curly quotes", text: (c) => `“${c.NEW}”`, want: "NEW" },
   { name: "guillemets", text: (c) => `«${c.NEW}»`, want: "NEW" },
@@ -250,6 +280,14 @@ const REFUSES: Case[] = [
   { name: "a phone number", text: () => "call me on 0501-2345-6789 tonight", want: "not-a-code" },
   { name: "a footballer", text: () => "CR7 is the best player ever", want: "not-a-code" },
   { name: "a fan", text: () => "I'm a CR7fan and so is my dad", want: "not-a-code" },
+  { name: "a fan, at length", text: () => "I'm a CR7fan and so is my dad and my uncle and my whole family too", want: "not-a-code" },
+  { name: "a footballer, at length", text: () => "Look at CR7Ronaldo playing football in the park with all his friends today", want: "not-a-code" },
+  { name: "a sentence that starts like a code", text: () => "CR1Zebra is what the code started with but then I lost the rest of it sorry", want: "not-a-code" },
+  { name: "a footballer, words only", text: () => "CR7 is the best player ever and he plays for my favourite team in the world", want: "not-a-code" },
+  { name: "a short word from a newer game whose cut fits its check", text: () => `my score was ${newerWord()} today`, want: "not-a-code" },
+  { name: "a short sentence whose check happens to fit", text: () => fittingSentence(), want: "not-a-code" },
+  { name: "one changed character, in groups among other words", text: (c) => `Here's the code: ${spaced(typo(c.NEW), 3)} thanks`, want: "typo" },
+  { name: "a cut-off code, in groups among other words", text: (c) => `Here's the code: ${spaced(c.NEW.slice(0, -30), 4)} thanks`, want: "typo" },
   { name: "an Arabic sentence", text: () => "\u200fمرحبا، كيف حالك؟ \u2068١٢٣\u2069", want: "not-a-code" },
   { name: "a code from a newer game", text: (c) => newerCode(c.NEW), want: "newer" },
   { name: "a code from a newer game, in a chat line", text: (c) => `[13/11/2026, 16:54] Dad: ${newerCode(c.NEW)}`, want: "newer" },
@@ -360,16 +398,74 @@ describe("a code loads only as itself", () => {
   });
 });
 
+describe("a save whose deck names hold quotes, backslashes and brackets", () => {
+  // A deck name is JSON inside the save's JSON, so its quote or backslash is
+  // escaped twice in a plain code: where the code's JSON ends must be found
+  // with escapes in mind, or the code reads as cut off or damaged.
+  const names = ['Za"id\'s {best} [deck]', "a\\", '"', "\\\\\"}", "}]"];
+  const ODD: SaveData = {
+    ...NEW,
+    keys: { ...NEW.keys, "cr-clone-deck-slots": JSON.stringify({ v: 1, active: 0, slots: names.map((name) => ({ name, cards: DECK })) }) },
+  };
+  for (const compress of [true, false]) {
+    it(compress ? "packing Z" : "packing P", async () => {
+      const code = await encodeSave(ODD, { compress });
+      if (!compress) expect(saveJson(ODD)).toContain('\\\\\\"'); // an escaped backslash next to an escaped quote
+      for (const text of [code, `Here's my save code: ${code} thanks!`, `${code}thanks`, `> ${wrap(code, 70, "\n> ")}\n> bye`, `[13/11/2026, 16:54] Dad: ${code}`]) {
+        const r = await decodeSave(text);
+        expect(r.ok && JSON.stringify(r.data) === JSON.stringify(ODD), text.slice(0, 40)).toBe(true);
+      }
+    });
+  }
+});
+
 describe("cleaning", () => {
   it("drops NUL (a UTF-16 save file read as UTF-8)", () => {
     expect(cleanPasted("C\u0000R\u00001\u0000Z\u0000")).toBe("CR1Z");
   });
 
+  /** The same cleaning done on the whole text at once (no pieces). */
+  const cleanWhole = (text: string): string =>
+    text
+      .replace(/[\0\p{Cf}\p{Default_Ignorable_Code_Point}\p{M}]+/gu, "")
+      .normalize("NFKC")
+      .replace(/[\0\p{Cf}\p{Default_Ignorable_Code_Point}]+/gu, "");
+
   it("normalises long text a piece at a time with the same result as all at once", () => {
-    const bits = ["ｃ", "e\u0301", "\u1100\u1161\u11a8", "\u{1F600}", "\ufdfa", "Ａ\u0308", "\u0915\u093c", "ﾊﾟ", " "];
+    const bits = ["ｃ", "e\u0301", "\u1100\u1161\u11a8", "\u{1F600}", "\ufdfa", "Ａ\u0308", "\u0915\u093c", "ﾊﾟ", "ㄱㅏ", "\uffa1\uffc2", "\u00e9", " "];
     const text = Array.from({ length: 30_000 }, (_, i) => bits[(i * 7) % bits.length]).join("");
     expect(text.length).toBeGreaterThan(40_000);
-    expect(cleanPasted(text)).toBe(text.normalize("NFKC"));
+    expect(cleanPasted(text)).toBe(cleanWhole(text));
+  });
+
+  it("never cuts a piece before a character that joins the one before it", () => {
+    // Each pair sits right where the first piece would end.
+    const pairs: [string, string, string][] = [
+      ["ｶ", "ﾞ", "ガ"], // halfwidth kana and its voiced mark
+      ["ﾊ", "ﾟ", "パ"],
+      ["ㄱ", "ㅏ", "가"], // Hangul compatibility jamo
+      ["\uffa1", "\uffc2", "가"], // halfwidth Hangul
+      ["\u1100", "\u1161", "가"], // Hangul jamo
+      ["가", "\u11a8", "각"],
+      ["\ud83d", "\ude00", "\u{1F600}"], // the two halves of a pair
+    ];
+    for (const [a, b, joined] of pairs) {
+      const text = "x".repeat(NFKC_PIECE - a.length) + a + b + "y".repeat(100);
+      expect(text.indexOf(b, NFKC_PIECE - 1)).toBe(NFKC_PIECE);
+      const out = cleanPasted(text);
+      expect(out, a + b).toBe(cleanWhole(text));
+      expect(out).toContain(joined);
+    }
+  });
+
+  it("drops combining marks: an accent or harakat is never part of a code", () => {
+    expect(cleanPasted("e\u0301 \u00e9 \u0628\u064e\u0651 a\u0301\u0316\u0334\u0345")).toBe("e \u00e9 \u0628 a");
+    expect(cleanPasted("Z\u0301")).toBe("Z"); // NFKC would have made it one letter, "Ź"
+  });
+
+  it("reads NEL as a line break", async () => {
+    const code = await encodeSave(NEW);
+    expect(outcome(await decodeSave(`Code:\u0085${wrap(code, 60, "\u0085")}\u0085thanks`))).toBe("NEW");
   });
 
   it("reads look-alikes as the plain characters and drops invisible marks", () => {
@@ -477,6 +573,23 @@ describe("work bounds: 400,000 characters of junk stay quick", () => {
     out.set(w.bytes);
     return out;
   }
+  /** 64 code starts, then four-letter words: each start may continue into 4,096 of them, trimmed 3 ways each. */
+  const sea = (): string => ("CR1Zabcd ".repeat(64) + Array.from({ length: SIZE / 5 }, () => randomRun(4)).join(" ")).slice(0, SIZE);
+  /**
+   * Plain-packing starts, each a JSON string that never closes, joined by
+   * spaces one after another, each with a word after it that makes its
+   * check fit: every start is read to the end of the text.
+   */
+  function neverCloses(): string {
+    const run = "CR1P" + toBase64Url(new TextEncoder().encode('{"g":"' + "a".repeat(36_000)));
+    let text = "";
+    for (let r = 0; r < 8; r++) {
+      const mid = randomRun(3);
+      text += run + " " + mid + checkChar(run + mid) + " ";
+    }
+    expect(text.length).toBeLessThanOrEqual(SIZE);
+    return text;
+  }
   const streams: { long: Uint8Array; bomb: Uint8Array } = { long: new Uint8Array(0), bomb: new Uint8Array(0) };
   beforeAll(async () => {
     const pack = async (bytes: Uint8Array): Promise<Uint8Array> => {
@@ -517,7 +630,27 @@ describe("work bounds: 400,000 characters of junk stay quick", () => {
     ["empty packed blocks, one after another", () => crafted(emptyBlocks(160_000), 2, 16)],
     ["packed letters with 15-bit codes", () => crafted(longCodes(200_000), 2, 16)],
     ["a plain JSON string that never closes", () => crafted(new TextEncoder().encode('{"g":"' + "a".repeat(160_000)), 2, 16, "CR1P")],
+    // Many starts, each followed by thousands of short words it may continue into.
+    ["starts followed by 4,096 two-letter words each", () => fill("CR1Z" + randomRun(20) + " " + words(4096) + "\n")],
+    ["64 starts, then a sea of four-letter words", sea],
+    ["plain-packing starts whose JSON never closes, one after another", neverCloses],
+    ["empty packed blocks in 16 runs", () => crafted(emptyBlocks(20_000), 16, 16)],
+    ["plain-packing starts followed by 2,000 one-letter words each", () => fill("CR1P" + randomRun(20) + " " + Array.from({ length: 2000 }, () => randomRun(1)).join(" ") + "\n")],
+    // Combining marks: NFKC sorts a run of mixed marks one by one (2-3 s here before they were dropped first).
+    ["a letter and 400,000 alternating marks", () => ("a" + "\u0301\u0316".repeat(SIZE)).slice(0, SIZE)],
+    ["blocks of 8,200 marks of one kind, then of another", () => ("a" + ("\u0301".repeat(8200) + "\u0316".repeat(8200)).repeat(25)).slice(0, SIZE)],
+    ["Zalgo text, 100 marks a letter", () => fill("a" + Array.from({ length: 100 }, (_, i) => String.fromCharCode(0x300 + ((i * 7) % 0x70))).join(""))],
+    ["an Arabic letter and 400,000 alternating harakat", () => ("\u0628" + "\u064e\u0651".repeat(SIZE)).slice(0, SIZE)],
+    ["four kinds of mark in turn", () => ("a" + "\u0301\u0316\u0334\u0345".repeat(SIZE)).slice(0, SIZE)],
+    ["single marks between halfwidth voiced marks (NFKC makes those marks too)", () => ("a" + "\uff9e\u0301".repeat(SIZE)).slice(0, SIZE)],
+    ["Arabic text with harakat", () => fill("\u0645\u064e\u0631\u0652\u062d\u064e\u0628\u064b\u0627 ")],
   ];
+  /**
+   * The most work 400,000 characters may cost: FIND_LIMITS as measured
+   * (under about 50 ms of main-thread JS on the build machine for the worst
+   * of these). Raise a limit only after measuring again.
+   */
+  const CEILING: FindWork = { heads: 64, checks: 300_000, readChars: 1_000_000, readBytes: 1_100_000, readBlocks: 2048 };
   for (const [name, make] of junk) {
     it(name, async () => {
       const text = make();
@@ -526,16 +659,37 @@ describe("work bounds: 400,000 characters of junk stay quick", () => {
       const r = await decodeSave(text);
       const ms = performance.now() - t0;
       expect(r.ok).toBe(false);
-      expect(ms).toBeLessThan(1500); // under about 40 ms here; generous for a busy machine
+      const w = lastFindWork();
+      for (const key of Object.keys(CEILING) as (keyof FindWork)[]) {
+        expect(w[key], key).toBeLessThanOrEqual(Math.min(CEILING[key], FIND_LIMITS[key]));
+      }
+      expect(ms).toBeLessThan(1000); // under about 50 ms here; generous for a busy machine
     });
   }
+
+  it("the work counted is real work", async () => {
+    // The ceilings above mean something only if the counter counts: these
+    // inputs reach each limit (the finder stops there).
+    const hit = async (text: string, key: keyof FindWork): Promise<void> => {
+      await decodeSave(text);
+      expect(lastFindWork()[key], key).toBeGreaterThan(CEILING[key] * 0.6);
+    };
+    await hit(sea(), "checks");
+    await hit(crafted(streams.bomb, 64, 1), "readBytes");
+    await hit(crafted(emptyBlocks(160_000), 2, 16), "readBlocks");
+    await hit(crafted(emptyBlocks(20_000), 16, 16), "readBlocks");
+    await hit(crafted(streams.long, 3, 16), "readChars");
+    await hit(neverCloses(), "readChars");
+    await decodeSave(fill("CR1Zab\n"));
+    expect(lastFindWork().heads).toBe(CEILING.heads);
+  });
 
   it("still finds a real code after a lot of junk", async () => {
     const code = codes.Z.NEW;
     const text = fill("CR1Zab\n").slice(0, SIZE - code.length - 1) + "\n" + code;
     const t0 = performance.now();
     expect(outcome(await decodeSave(text))).toBe("NEW");
-    expect(performance.now() - t0).toBeLessThan(1500);
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 
   it("never throws on odd text", async () => {

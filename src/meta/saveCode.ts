@@ -460,6 +460,13 @@ const DECK_CODE_IN_TEXT = /(?:^|[^0-9A-Za-z_-])(?=[0-9-]{0,13}[A-Za-z])[0-9A-Za-
  * NUL (a save file kept as UTF-16, read as UTF-8, has one after every letter).
  */
 const INVISIBLE = /[\0\p{Cf}\p{Default_Ignorable_Code_Point}]+/gu;
+/**
+ * INVISIBLE and combining marks (accents, Arabic harakat), taken out before
+ * NFKC. A code never holds a mark, and NFKC sorts a run of mixed marks one
+ * by one: 400,000 of them took 2-3 s. Every mark goes, not only long runs:
+ * single marks between U+FF9E (which NFKC turns into a mark) are as slow.
+ */
+const STRIP = /[\0\p{Cf}\p{Default_Ignorable_Code_Point}\p{M}]+/gu;
 /** Dash look-alikes that apps and keyboards put in place of "-". */
 const DASHES = /[\u2010-\u2013\u2212\ufe63\uff0d]/g;
 /** Arabic-Indic and Eastern Arabic-Indic digits. */
@@ -467,14 +474,21 @@ const INDIC_DIGITS = /[\u0660-\u0669\u06f0-\u06f9]/g;
 const NON_ASCII = /[^\0-\x7f]/;
 const MARK = /^\p{M}/u;
 /** Long text is normalised a piece at a time, so a few characters that expand a lot (U+FDFA is 18) cannot make it huge. */
-const NFKC_PIECE = 16_384;
+export const NFKC_PIECE = 16_384;
 
-/** True when NFKC gives the same text cut at `i` as whole: before ASCII, or a character that never joins the one before it. */
+/**
+ * True when NFKC gives the same text cut at `i` as whole. With the marks
+ * gone, only these join the character before them: the halfwidth voiced
+ * marks U+FF9E/U+FF9F (to the kana before), Hangul vowels and finals (also
+ * their compatibility and halfwidth forms), and one astral letter; so a
+ * cut is never made before those, nor inside a surrogate pair.
+ */
 function cutsCleanly(s: string, i: number): boolean {
   const c = s.charCodeAt(i);
   if (c < 0x80) return true;
-  if ((c >= 0xdc00 && c <= 0xdfff) || (c >= 0x1160 && c <= 0x11ff) || (c >= 0xd7b0 && c <= 0xd7ff)) return false; // the second half of a pair; Hangul vowels and finals
-  return !MARK.test(s.slice(i, i + 2));
+  if (c >= 0xd800 && c <= 0xdfff) return false; // a pair: cut before a plain character instead
+  if ((c >= 0x1160 && c <= 0x11ff) || (c >= 0xd7b0 && c <= 0xd7ff) || (c >= 0x3131 && c <= 0x318e) || (c >= 0xff9e && c <= 0xffdc)) return false;
+  return !MARK.test(s[i]);
 }
 
 /** NFKC, or null as soon as the result passes `max` characters. */
@@ -505,7 +519,7 @@ function nfkcUpTo(s: string, max: number): string | null {
 
 /** cleanPasted, or null when the cleaned text would pass `max` characters. */
 function cleanUpTo(text: string, max: number): string | null {
-  const s = nfkcUpTo(text.replace(INVISIBLE, ""), max);
+  const s = nfkcUpTo(text.replace(STRIP, ""), max);
   if (s === null) return null;
   return s
     .replace(INVISIBLE, "")
@@ -514,11 +528,13 @@ function cleanUpTo(text: string, max: number): string | null {
 }
 
 /**
- * Pasted text, cleaned for reading a code: NFKC (fullwidth letters and
- * digits become plain ones; NBSP, thin and ideographic spaces become plain
- * spaces), invisible marks removed, dash look-alikes read as "-",
- * Arabic-Indic digits read as 0-9. Spaces and line breaks are kept: they
- * are where a code may have been wrapped.
+ * Pasted text, cleaned for reading a code: invisible marks and combining
+ * marks removed, NFKC (fullwidth letters and digits become plain ones;
+ * NBSP, thin and ideographic spaces become plain spaces), dash look-alikes
+ * read as "-", Arabic-Indic digits read as 0-9. Spaces and line breaks are
+ * kept: they are where a code may have been wrapped. (The few marks NFKC
+ * itself makes, from U+FF9E/U+FF9F and U+0E33/U+0EB3, stay: removing them
+ * costs more than it is worth, and they are not code characters either.)
  */
 export function cleanPasted(text: string): string {
   return cleanUpTo(text, Infinity) ?? "";
@@ -531,8 +547,12 @@ export function cleanPasted(text: string): string {
 export const FIND_LIMITS = {
   /** Places a code could start ("CR", a digit, a letter) that are tried: the last ones in the text (a chat's newest code comes last). */
   heads: 64,
-  /** Line breaks or spaces one code may continue across (a 900-character code wrapped at 76 is 12 lines). */
-  joins: 400,
+  /**
+   * Line breaks or spaces one code may continue across: a 900-character
+   * code wrapped at 76 is 12 lines; a 2,000-character plain code typed in
+   * groups of 3 among other words is about 670 groups.
+   */
+  joins: 4096,
   /** Characters of a word glued onto the end that may be cut off. */
   trim: 16,
   /** Check-character tests in all (each is a lookup, see `scanPaste`). */
@@ -552,13 +572,31 @@ export const FIND_LIMITS = {
 /** The shortest code: "CR1Z", one body character, the check. */
 const MIN_CODE = 6;
 /**
- * A real code is at least about 70 characters. When nothing loads, a
- * shorter start is not called a broken code ("I'm a CR7fan" is not a typo),
- * except the whole text or word itself, as before.
+ * A real code is at least about 70 characters. When nothing loads, a start
+ * with fewer characters that look like a code (`codeLike`) is not called a
+ * broken code ("I'm a CR7fan and so is my whole family" is not a typo),
+ * except when it is the whole text or word itself, as before.
  */
 const CODE_LIKE = 40;
+/** A run this long looks like part of a code, whatever its letters. */
+const LONG_RUN = 16;
 /** The first piece of a start that is read. */
 const FIRST_READ = 2048;
+
+/** The work one decodeSave did, to hold against FIND_LIMITS (tests). */
+export interface FindWork {
+  heads: number;
+  checks: number;
+  readChars: number;
+  readBytes: number;
+  readBlocks: number;
+}
+const noWork = (): FindWork => ({ heads: 0, checks: 0, readChars: 0, readBytes: 0, readBlocks: 0 });
+let work: FindWork = noWork();
+/** What the last decodeSave did (tests check it stays inside FIND_LIMITS). */
+export function lastFindWork(): FindWork {
+  return { ...work };
+}
 
 /** A value's Luhn addend when it is doubled. */
 const DOUBLED = Uint8Array.from({ length: 64 }, (_, x) => Math.floor((2 * x) / 64) + ((2 * x) % 64));
@@ -570,8 +608,9 @@ const V_0 = INDEX.get("0")!;
 const V_1 = INDEX.get("1")!;
 const V_9 = INDEX.get("9")!;
 
+/** LF, CR, NEL, and the Unicode line and paragraph separators. */
 function isLineBreak(c: number): boolean {
-  return c === 10 || c === 13 || c === 0x2028 || c === 0x2029;
+  return c === 10 || c === 13 || c === 0x85 || c === 0x2028 || c === 0x2029;
 }
 
 function isSpace(c: number): boolean {
@@ -609,6 +648,19 @@ interface PasteScan {
   /** Luhn sums of every prefix, with the even (q0) or odd (q1) positions doubled. */
   q0: Int32Array;
   q1: Int32Array;
+  /** Code characters in runs 0..k-1 that look like part of a code (`looksLikeCode`), at likeSum[k]. */
+  likeSum: Int32Array;
+}
+
+/**
+ * A run of code characters that looks like a piece of a code (a wrapped
+ * line, a group of a few characters) rather than a word: it is long, or
+ * holds a digit, "-" or "_", or a capital after its first letter with
+ * small letters too. About 4 in 5 random groups of 3 do; "and", "Ronaldo",
+ * "NASA" do not.
+ */
+function looksLikeCode(len: number, special: boolean, lower: boolean, upperLater: boolean): boolean {
+  return len >= LONG_RUN || special || (lower && upperLater);
 }
 
 function scanPaste(s: string): PasteScan {
@@ -618,12 +670,22 @@ function scanPaste(s: string): PasteScan {
   const start = new Int32Array(cap);
   const end = new Int32Array(cap);
   const joins = new Uint8Array(cap);
+  const likeSum = new Int32Array(cap + 1);
   let m = 0;
   let runs = 0;
   let inRun = false;
   let gapOk = true;
   let gapLine = false;
   let solid = 0;
+  let special = false;
+  let lower = false;
+  let upperLater = false;
+  const endRun = (): void => {
+    end[runs] = m;
+    const len = m - start[runs];
+    likeSum[runs + 1] = likeSum[runs] + (looksLikeCode(len, special, lower, upperLater) ? len : 0);
+    runs++;
+  };
   for (let i = 0; i < n; i++) {
     const c = s.charCodeAt(i);
     const v = c < 128 ? VALUE[c] : -1;
@@ -632,13 +694,16 @@ function scanPaste(s: string): PasteScan {
         if (runs > 0) joins[runs - 1] = gapOk ? 1 : 0;
         inRun = true;
         start[runs] = m;
-      }
+        special = lower = upperLater = false;
+      } else if (v < 26) upperLater = true;
+      if (v >= 52) special = true;
+      else if (v >= 26) lower = true;
       values[m++] = v;
       solid++;
       continue;
     }
     if (inRun) {
-      end[runs++] = m;
+      endRun();
       inRun = false;
       gapOk = true;
       gapLine = false;
@@ -650,7 +715,7 @@ function scanPaste(s: string): PasteScan {
       if (c !== 62 || !gapLine) gapOk = false; // ">" only as a quote mark after a line break
     }
   }
-  if (inRun) end[runs++] = m;
+  if (inRun) endRun();
   const q0 = new Int32Array(m + 1);
   const q1 = new Int32Array(m + 1);
   for (let i = 0; i < m; i++) {
@@ -659,7 +724,31 @@ function scanPaste(s: string): PasteScan {
     q0[i + 1] = q0[i] + (i & 1 ? x : d);
     q1[i + 1] = q1[i] + (i & 1 ? d : x);
   }
-  return { values, count: m, start, end, joins, runs, solid, q0, q1 };
+  return { values, count: m, start, end, joins, runs, solid, q0, q1, likeSum };
+}
+
+/** The run that holds values[i]. */
+function runAt(p: PasteScan, i: number): number {
+  let lo = 0;
+  let hi = p.runs - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (p.start[mid] <= i) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+
+/**
+ * How many of the characters values[h, b) look like a code: all of the
+ * start's own run (k), and of the runs after it only those that look like
+ * code (`looksLikeCode`), so ordinary words after a "CR7fan" do not count.
+ */
+function codeLike(p: PasteScan, h: number, k: number, b: number): number {
+  if (b <= p.end[k]) return b - h;
+  const r = runAt(p, b - 1);
+  const rLike = p.likeSum[r + 1] > p.likeSum[r];
+  return p.end[k] - h + p.likeSum[r] - p.likeSum[k + 1] + (rLike ? b - p.start[r] : 0);
 }
 
 /** checkOk of the characters values[a, b) as two lookups. */
@@ -787,6 +876,7 @@ function readHead(p: PasteScan, h: number, maxB: number, budget: Budget): HeadRe
       return null;
     }
     budget.chars -= want;
+    work.readChars += want;
     n = want;
     return bodyBytes(p.values, from, n);
   };
@@ -800,6 +890,7 @@ function readHead(p: PasteScan, h: number, maxB: number, budget: Budget): HeadRe
       if (e === "short") continue;
       if (e > budget.bytes) return { kind: "spent" };
       budget.bytes -= e;
+      work.readBytes += e;
       return { kind: "end", bytes: e, raw: src.subarray(0, e) };
     }
   }
@@ -808,11 +899,11 @@ function readHead(p: PasteScan, h: number, maxB: number, budget: Budget): HeadRe
   const cap = Math.min(JSON_MAX_CHARS, budget.bytes);
   const r = inflateCore(src, cap, next, budget.blocks);
   budget.blocks -= r.blocks;
-  if (!("fail" in r)) {
-    budget.bytes -= r.out.length;
-    return { kind: "end", bytes: r.end, raw: r.out };
-  }
-  budget.bytes -= r.made;
+  work.readBlocks += r.blocks;
+  const made = "fail" in r ? r.made : r.out.length;
+  budget.bytes -= made;
+  work.readBytes += made;
+  if (!("fail" in r)) return { kind: "end", bytes: r.end, raw: r.out };
   if (r.fail === "spent") return { kind: "spent" };
   if (r.fail === "short") return cutOff();
   if (r.fail === "damaged") return { kind: "damaged" };
@@ -864,6 +955,7 @@ const REASON_RANK: Record<SaveError, number> = {
  * when the text holds several codes. Never throws.
  */
 export async function decodeSave(text: string): Promise<DecodeResult> {
+  work = noWork();
   if (typeof text !== "string") return { ok: false, reason: "empty" };
   if (text.length > CODE_MAX_CHARS * 2) return { ok: false, reason: "too-big" };
   try {
@@ -885,68 +977,101 @@ function findSave(s: string): DecodeResult {
   };
   let checks = L.checks;
   const budget: Budget = { chars: L.readChars, bytes: L.readBytes, blocks: L.readBlocks };
+  const endB = new Int32Array(L.joins + 1);
+  const endLow = new Int32Array(L.joins + 1);
   let spent = false;
   let triedWhole = false;
   let best: { data: SaveData; dropped: string[]; at: number } | null = null;
 
   const heads = findHeads(p, L.heads);
+  work.heads = heads.length;
   for (const { at: h, run: k } of heads) {
     if (p.end[k] - L.trim - h > CODE_MAX_CHARS) {
       note("too-big");
       continue;
     }
-    // Where the code could end: the end of this run (`own`) or of a run it
-    // continues into (`low`: how far a word glued onto that end may be cut
-    // back), or right where another code starts (two codes pasted with
-    // nothing between).
-    const ends: { b: number; low: number; own: boolean }[] = [{ b: p.end[k], low: h + MIN_CODE, own: true }];
+    // Where the code could end: the end of this run (`own`, j = 0) or of
+    // run k + j it continues into (j <= J; how far a word glued onto that
+    // end may be cut back: not past the run's start), or, untrimmed, right
+    // where another code starts (`glued`: two codes pasted with nothing
+    // between).
+    let J = 0;
     let whole = false; // the last end takes in the whole wrapped run (only there does a garbled or cut-off code say so)
-    for (let r = k; ; r++) {
+    for (;;) {
+      const r = k + J;
       if (r + 1 >= p.runs || !p.joins[r]) {
         whole = true;
         break;
       }
-      if (ends.length > L.joins || p.end[r + 1] - h > CODE_MAX_CHARS + L.trim) break;
-      ends.push({ b: p.end[r + 1], low: Math.max(p.start[r + 1] + 1, h + MIN_CODE), own: false });
+      if (J >= L.joins || p.end[r + 1] - h > CODE_MAX_CHARS + L.trim) break;
+      J++;
     }
-    const last = ends[ends.length - 1].b;
+    const last = p.end[k + J];
     if (h === 0 && whole && last === p.count) triedWhole = true;
-    for (const o of heads) if (o.at >= h + MIN_CODE && o.at < last) ends.push({ b: o.at, low: o.at, own: false });
-    ends.sort((x, y) => x.b - y.b);
+    // Is this a broken code when nothing loads? Enough of it looks like a
+    // code, or it is the whole paste, made only of code-like pieces.
+    const like = codeLike(p, h, k, last);
+    const shaped = like >= CODE_LIKE || (whole && h === 0 && last === p.count && like === last - h);
+    const glued: number[] = [];
+    for (const o of heads) if (o.at >= h + MIN_CODE && o.at < last) glued.push(o.at);
+    glued.sort((x, y) => x - y);
     const newer = p.values[h + 2] - V_0 > SAVE_FORMAT;
     let read: HeadRead | null = null;
     let loaded = false;
-    search: for (let t = 0; t <= L.trim; t++) {
-      for (let j = 0; j < ends.length; j++) {
-        const e = ends[j];
-        const b = e.b - t;
-        if (b < e.low || b - h > CODE_MAX_CHARS) continue;
-        if (checks-- <= 0) break search;
-        if (!checkAt(p, h, b)) continue;
-        if (newer) {
-          // A code from a newer game: the check is all there is to go on, so
-          // only its own word, or a cut long enough to be a code.
-          if ((t === 0 && e.own) || b - h >= CODE_LIKE) note("newer");
-          continue;
-        }
-        read ??= readHead(p, h, last, budget);
-        if (read.kind === "spent") {
-          spent = true;
-          break search;
-        }
-        const res = cutResult(p, read, h, b);
-        if (res.ok) {
-          // Several codes: the newest save; the same time, the last one in the text.
-          const at = res.data.at;
-          if (!best || at > best.data.at || (at === best.data.at && h > best.at)) best = { data: res.data, dropped: res.dropped, at: h };
-          loaded = true;
-          break search;
-        }
-        if (!("unsure" in res)) note(res.reason);
-        else if (t === 0 && whole && b === last) note(res.reason); // the whole run: garbled ("damaged") or cut off ("typo")
+    /** Try the code values[h, b), `t` characters cut off a run's end; true to stop. */
+    const tryCut = (b: number, t: number, own: boolean): boolean => {
+      if (b - h > CODE_MAX_CHARS) return false;
+      if (checks <= 0) return true;
+      checks--;
+      work.checks++;
+      if (!checkAt(p, h, b)) return false;
+      if (newer) {
+        // A code from a newer game: the check is all there is to go on, so
+        // only its own word, or a cut that looks long enough to be a code.
+        if ((t === 0 && own) || codeLike(p, h, k, b) >= CODE_LIKE) note("newer");
+        return false;
       }
+      read ??= readHead(p, h, last, budget);
+      if (read.kind === "spent") {
+        spent = true;
+        return true;
+      }
+      const res = cutResult(p, read, h, b);
+      if (res.ok) {
+        // Several codes: the newest save; the same time, the last one in the text.
+        const at = res.data.at;
+        if (!best || at > best.data.at || (at === best.data.at && h > best.at)) best = { data: res.data, dropped: res.dropped, at: h };
+        loaded = true;
+        return true;
+      }
+      if (!("unsure" in res)) note(res.reason);
+      else if (t === 0 && whole && b === last && shaped) note(res.reason); // the whole run: garbled ("damaged") or cut off ("typo")
+      return false;
+    };
+    // The run ends, as far as each may be cut back; an end drops out once
+    // it cannot be cut any further, so a short word costs only its own cuts.
+    let live = 0;
+    for (let j = 0; j <= J; j++) {
+      endB[live] = p.end[k + j];
+      endLow[live] = j === 0 ? h + MIN_CODE : Math.max(p.start[k + j] + 1, h + MIN_CODE);
+      if (endB[live] >= endLow[live]) live++;
     }
-    if (!loaded && (last - h >= CODE_LIKE || (whole && h === 0 && last === p.count))) note("typo");
+    // Untrimmed ends first, shortest first (then where another code starts);
+    // then each end with one more character cut.
+    search: for (let t = 0; t <= L.trim && (live > 0 || t === 0); t++) {
+      let kept = 0;
+      for (let j = 0; j < live; j++) {
+        const b = endB[j] - t;
+        if (b < endLow[j]) continue;
+        const own = endB[j] === p.end[k];
+        endB[kept] = endB[j];
+        endLow[kept++] = endLow[j];
+        if (tryCut(b, t, own)) break search;
+      }
+      live = kept;
+      if (t === 0) for (const g of glued) if (tryCut(g, 0, false)) break search;
+    }
+    if (!loaded && shaped) note("typo");
     if (spent) break;
   }
   if (best) return { ok: true, data: best.data, dropped: best.dropped };
@@ -956,16 +1081,17 @@ function findSave(s: string): DecodeResult {
   // ("CR7 is the best player ever" is not called a broken code, though.)
   if (!spent && !triedWhole && p.solid === p.count && p.count <= CODE_MAX_CHARS && headAt(p.values, 0, p.count) && p.count >= MIN_CODE) {
     const n = p.count;
+    const shaped = codeLike(p, 0, 0, n) >= CODE_LIKE;
     if (!checkAt(p, 0, n)) {
-      if (n >= CODE_LIKE) note("typo");
+      if (shaped) note("typo");
     } else if (p.values[2] - V_0 > SAVE_FORMAT) {
-      if (n >= CODE_LIKE) note("newer");
+      if (shaped) note("newer");
     } else {
       const read = readHead(p, 0, n, budget);
       if (read.kind !== "spent") {
         const res = cutResult(p, read, 0, n);
         if (res.ok) return { ok: true, data: res.data, dropped: res.dropped };
-        note(res.reason);
+        if (shaped || !("unsure" in res)) note(res.reason);
       }
     }
   }
