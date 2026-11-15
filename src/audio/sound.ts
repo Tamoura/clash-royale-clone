@@ -9,6 +9,7 @@ import {
   MUSIC_FADE_SEC,
   MUSIC_START_SEC,
   SCHEDULER_TICK_MS,
+  STEPS_PER_BAR,
   TRACKS,
   compileTrack,
   dueSteps,
@@ -146,17 +147,17 @@ interface Patch {
 const PATCHES: Record<InstrumentId, Patch> = {
   flute: { wave: "triangle", wave2: "sine", oct2: 1, mix2: 0.25, attack: 0.04, decay: 0.2, sustain: 0.75, release: 0.18, cutoff: 2600, cutoffEnv: 0.3, q: 0.7, vibrato: { rate: 5, cents: 9, delay: 0.18 }, gain: 0.2 },
   ney: { wave: "sine", wave2: "triangle", oct2: 0, detune2: 4, mix2: 0.45, attack: 0.07, decay: 0.25, sustain: 0.8, release: 0.22, cutoff: 2200, cutoffEnv: 0.2, q: 0.7, vibrato: { rate: 5.5, cents: 16, delay: 0.14 }, gain: 0.22 },
-  brass: { wave: "sawtooth", wave2: "sawtooth", oct2: 0, detune2: 8, mix2: 0.7, attack: 0.025, decay: 0.16, sustain: 0.65, release: 0.09, cutoff: 950, cutoffEnv: 2.2, q: 1.6, gain: 0.13 },
-  mizmar: { wave: "sawtooth", wave2: "square", oct2: 0, detune2: -6, mix2: 0.35, attack: 0.02, decay: 0.14, sustain: 0.7, release: 0.08, cutoff: 1500, cutoffEnv: 1.3, q: 3.5, vibrato: { rate: 6.2, cents: 22, delay: 0.09 }, gain: 0.17 },
+  brass: { wave: "sawtooth", wave2: "sawtooth", oct2: 0, detune2: 8, mix2: 0.7, attack: 0.025, decay: 0.16, sustain: 0.65, release: 0.09, cutoff: 950, cutoffEnv: 2.2, q: 1.6, gain: 0.144 },
+  mizmar: { wave: "sawtooth", wave2: "square", oct2: 0, detune2: -6, mix2: 0.35, attack: 0.02, decay: 0.14, sustain: 0.7, release: 0.08, cutoff: 1500, cutoffEnv: 1.3, q: 3.5, vibrato: { rate: 6.2, cents: 22, delay: 0.09 }, gain: 0.139 },
   pluck: { wave: "triangle", wave2: "sine", oct2: -1, mix2: 0.6, attack: 0.005, decay: 0.2, sustain: 0.35, release: 0.08, cutoff: 700, cutoffEnv: 2, q: 1, gain: 0.34 },
   oud: { wave: "sawtooth", wave2: "triangle", oct2: -1, mix2: 0.5, attack: 0.003, decay: 0.14, sustain: 0.18, release: 0.1, cutoff: 520, cutoffEnv: 3.2, q: 2.6, gain: 0.38 },
   harp: { wave: "triangle", attack: 0.004, decay: 0.32, sustain: 0.12, release: 0.25, cutoff: 3200, cutoffEnv: 0.5, q: 0.7, gain: 0.1 },
   qanun: { wave: "triangle", wave2: "sawtooth", oct2: 0, detune2: 3, mix2: 0.3, attack: 0.003, decay: 0.16, sustain: 0.08, release: 0.14, cutoff: 2800, cutoffEnv: 1.2, q: 1.2, gain: 0.1 },
   pad: { wave: "sine", wave2: "triangle", oct2: 0, detune2: 7, mix2: 0.5, attack: 0.45, decay: 0.6, sustain: 0.8, release: 0.9, cutoff: 1300, cutoffEnv: 0.1, q: 0.6, gain: 0.05 },
   // War Drums. A war horn: a swelling, round brass call with a soft octave below.
-  horn: { wave: "sawtooth", wave2: "triangle", oct2: -1, mix2: 0.45, attack: 0.05, decay: 0.3, sustain: 0.7, release: 0.16, cutoff: 1250, cutoffEnv: 1.1, q: 1.1, vibrato: { rate: 5, cents: 7, delay: 0.25 }, gain: 0.095 },
+  horn: { wave: "sawtooth", wave2: "triangle", oct2: -1, mix2: 0.45, attack: 0.05, decay: 0.3, sustain: 0.7, release: 0.16, cutoff: 1600, cutoffEnv: 1.1, q: 1.1, vibrato: { rate: 5, cents: 7, delay: 0.25 }, gain: 0.146 },
   // The nafir, a long straight trumpet: brighter and more nasal, with a wider vibrato.
-  nafir: { wave: "sawtooth", wave2: "square", oct2: 0, detune2: 5, mix2: 0.35, attack: 0.035, decay: 0.22, sustain: 0.72, release: 0.12, cutoff: 1800, cutoffEnv: 1, q: 2.4, vibrato: { rate: 5.6, cents: 14, delay: 0.2 }, gain: 0.085 },
+  nafir: { wave: "sawtooth", wave2: "square", oct2: 0, detune2: 5, mix2: 0.35, attack: 0.035, decay: 0.22, sustain: 0.72, release: 0.12, cutoff: 1800, cutoffEnv: 1, q: 2.4, vibrato: { rate: 5.6, cents: 14, delay: 0.2 }, gain: 0.143 },
   // Drones: one note sounds its root and a pure fifth (702 cents) above it.
   drone: { wave: "sawtooth", wave2: "sawtooth", oct2: 0, detune2: 702, mix2: 0.6, attack: 0.4, decay: 0.9, sustain: 0.85, release: 0.5, cutoff: 600, cutoffEnv: 0.25, q: 0.8, gain: 0.065 },
   // The arghul's reedy drone pipe.
@@ -168,9 +169,35 @@ const LAYER = { lead: 1, bass: 0.9, arp: 0.85, pad: 1, hat: 0.05, drum: 0.55 } a
 
 /**
  * Drum levels per track, relative to LAYER.drum: the menu's soft darbuka,
- * and War Drums' groove, answering drums and rolls.
+ * and War Drums' groove (by intensity: it plays harder in overtime), its
+ * answering drums and its overtime rolls and ghost strokes.
  */
-const KIT = { menu: 0.45, groove: 1, answers: 0.8, rolls: 0.75 } as const;
+const KIT = { menu: 0.45, groove: [1, 1, 1.12], answers: 0.8, rolls: 0.9 } as const;
+
+/**
+ * War Drums' strokes are not all alike, as a drummer's are not. Beats sit
+ * above the off-steps; a bar's downbeat is struck harder, which on a drum
+ * means a louder stick slap (+1.5 dB) and a touch higher pitch, not more
+ * low boom over the game's thumps; and every stroke varies a little in
+ * level (+/-4%) and pitch (+/-2.4%) in fixed patterns that do not line up
+ * with the bar, so two bars of the same groove never sound quite the same.
+ * No randomness.
+ */
+const STEP_ACCENT = [1, 0.9, 1, 0.92, 1.04, 0.9, 1, 0.92] as const;
+export interface Accent {
+  level: number;
+  tune: number;
+  slap: number;
+}
+export function strokeAccent(step: number): Accent {
+  const downbeat = step % STEPS_PER_BAR === 0;
+  return {
+    level: STEP_ACCENT[step % STEPS_PER_BAR] * (1 + 0.04 * (((step * 7) % 3) - 1)),
+    tune: (downbeat ? 1.02 : 1) * (1 + 0.012 * (((step * 3) % 5) - 2)),
+    slap: downbeat ? 1.19 : 1,
+  };
+}
+const NO_ACCENT: Accent = { level: 1, tune: 1, slap: 1 };
 
 interface Deck {
   id: TrackId;
@@ -465,11 +492,13 @@ export class SoundEngine {
     if (!this.deck && this.wanted !== "none" && running) {
       const t = ctx.currentTime;
       const gain = ctx.createGain();
-      // Crossfade from a track it replaces. From silence (the battle track
-      // after the countdown) the first beat lands at full strength: every
-      // note has its own envelope, so nothing clicks.
+      // Crossfade from a track it replaces, and fade the menu theme in. Only
+      // the battle track starting from silence (after the countdown) skips
+      // the fade, so its first beat lands at full strength: every note has
+      // its own envelope, so nothing clicks.
+      const quick = !replacing && this.wanted === "battle";
       gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(1, t + (replacing ? MUSIC_FADE_SEC : MUSIC_START_SEC));
+      gain.gain.linearRampToValueAtTime(1, t + (quick ? MUSIC_START_SEC : MUSIC_FADE_SEC));
       gain.connect(this.musicBus);
       this.deck = { id: this.wanted, track: this.track(this.wanted), gain, cursor: { step: 0, time: t + 0.05 } };
     }
@@ -527,15 +556,16 @@ export class SoundEngine {
       if (ev.hat !== "+") this.hat(t, 1, out);
       if (ev.hat !== "x") this.hat(t + sec / 2, 0.7, out);
     }
-    const kit = (tok: string | undefined, on: boolean, level: number): void => {
-      if (tok && on) for (const k of tok) this.drum(k, t, out, level, sec);
+    const kit = (tok: string | undefined, on: boolean, level: number, a = NO_ACCENT): void => {
+      if (tok && on) for (const k of tok) this.drum(k, t, out, level * a.level, sec, a);
     };
     if (def.id === "menu") {
       kit(ev.drum, layers.drums, KIT.menu);
     } else {
-      kit(ev.drum, layers.drums, KIT.groove);
-      kit(ev.answer, layers.answers, KIT.answers);
-      kit(ev.roll, layers.rolls, KIT.rolls);
+      const a = strokeAccent(step);
+      kit(ev.drum, layers.drums, KIT.groove[this.intensity], a);
+      kit(ev.answer, layers.answers, KIT.answers, a);
+      kit(ev.roll, layers.rolls, KIT.rolls, a);
     }
   }
 
@@ -609,12 +639,17 @@ export class SoundEngine {
 
   /**
    * One drum stroke (see the drum letters in music.ts). `sec` is the step's
-   * length, which a roll fills. Each stroke is 2-5 nodes from shared
-   * buffers and the cached skin wave: nothing is allocated per hit.
+   * length, which a roll fills; `a.tune` scales the skins' pitch and
+   * `a.slap` the stick's slap (see strokeAccent). Each stroke is 2-5 nodes
+   * from shared buffers and the cached skin wave: nothing is allocated per
+   * hit.
    */
-  private drum(kind: string, t: number, out: AudioNode, level: number, sec: number): void {
+  private drum(kind: string, t: number, out: AudioNode, level: number, sec: number, a = NO_ACCENT): void {
     const ghost = kind === kind.toLowerCase();
     const v = LAYER.drum * level * (ghost ? 0.45 : 1);
+    const { tune, slap } = a;
+    const skin = (f0: number, f1: number, dur: number, vol: number, hold?: number): void =>
+      this.membrane(t, f0 * tune, f1 * tune, dur, vol, out, hold);
     switch (kind.toUpperCase()) {
       // ---- The menu's darbuka
       case "D": // dum: deep centre stroke of a darbuka
@@ -627,47 +662,49 @@ export class SoundEngine {
         break;
       // ---- Classic war drums
       case "B": // big war drum: a deep skin and the slap of the stick
-        this.membrane(t, 122, 66, 0.75, v, out);
-        this.noiseAt(t, 0.06, { vol: v * 0.55, type: "bandpass", freq: 650, q: 0.55, out });
+        // Its loud first part is short (and the dum's below), so a deploy
+        // thump or a hit that lands on it still comes through.
+        skin(122, 66, 0.75, v * 0.8, 0.18);
+        this.noiseAt(t, 0.06, { vol: v * 0.55 * slap, type: "bandpass", freq: 650, q: 0.55, out });
         break;
       case "L": // low war tom
-        this.membrane(t, 170, 118, 0.4, v * 0.8, out);
+        skin(170, 118, 0.4, v * 0.8);
         this.noiseAt(t, 0.03, { vol: v * 0.18, type: "bandpass", freq: 1800, q: 1, out });
         break;
       case "H": // high war tom
-        this.membrane(t, 245, 175, 0.32, v * 0.75, out);
+        skin(245, 175, 0.32, v * 0.75);
         this.noiseAt(t, 0.025, { vol: v * 0.16, type: "bandpass", freq: 2400, q: 1, out });
         break;
       case "S": // snare: a tight skin and the rattle of its wires
-        this.membrane(t, 235, 175, 0.12, v * 0.55, out);
-        this.noiseAt(t, 0.15, { vol: v * 0.7, type: "bandpass", freq: 2000, q: 0.7, out });
+        skin(235, 175, 0.12, v * 0.55);
+        this.noiseAt(t, 0.15, { vol: v * slap, type: "bandpass", freq: 2000, q: 0.7, out });
         break;
       case "R": // snare roll: four strokes growing across the step
         this.rollNoise(t, sec, 4, v * 0.75, 2000, 0.7, out);
         break;
       case "C": // stick click on the rim
-        this.toneAt(t, 1750, 0.035, { type: "triangle", slideTo: 1500, vol: v * 0.32, out });
+        this.toneAt(t, 1750, 0.035, { type: "triangle", slideTo: 1500, vol: v * 0.48, out });
         break;
       // ---- Golden Age war drums
       case "U": // tabl dum: the big drum's deep head, struck with the beater
-        this.membrane(t, 116, 74, 0.55, v * 1.15, out);
-        this.noiseAt(t, 0.05, { vol: v * 0.55, type: "bandpass", freq: 700, q: 0.6, out });
+        skin(116, 74, 0.55, v * 0.92, 0.18);
+        this.noiseAt(t, 0.05, { vol: v * 0.55 * slap, type: "bandpass", freq: 700, q: 0.6, out });
         break;
       case "A": // tabl tak: the thin stick on the other head
-        this.noiseAt(t, 0.05, { vol: v * 0.7, type: "bandpass", freq: 2900, q: 1.6, out });
-        this.membrane(t, 440, 380, 0.06, v * 0.55, out);
+        this.noiseAt(t, 0.05, { vol: v * slap, type: "bandpass", freq: 2900, q: 1.6, out });
+        skin(440, 380, 0.06, v * 0.55);
         break;
       case "N": // naqqara, the low kettle
-        this.membrane(t, 240, 205, 0.16, v * 0.75, out);
+        skin(240, 205, 0.16, v * 0.75);
         break;
       case "Q": // naqqara, the high kettle
-        this.membrane(t, 360, 315, 0.12, v * 0.7, out);
+        skin(360, 315, 0.12, v * 0.7);
         break;
       case "Z": // naqqara roll: high and low in turn across the step
-        this.rollSkin(t, sec, 4, v * 0.6, 360, 240, out);
+        this.rollSkin(t, sec, 4, v * 0.6, 360 * tune, 240 * tune, out);
         break;
       case "F": // daf: a low frame-drum stroke and its ringing jingles
-        this.membrane(t, 135, 92, 0.32, v * 0.7, out);
+        skin(135, 92, 0.32, v * 0.7);
         this.noiseAt(t, 0.22, { vol: v * 0.22, type: "bandpass", freq: 7200, q: 1.4, out });
         break;
       default:
@@ -679,9 +716,9 @@ export class SoundEngine {
   /**
    * A struck skin: the cached drum wave chirping down from the stick's
    * attack to `f0`, then sinking to `f1` as it rings for `dur` seconds,
-   * loud at the hit and fading fast, then a softer tail. Two nodes.
+   * loud for the first `hold` of it, then a softer tail. Two nodes.
    */
-  private membrane(t0: number, f0: number, f1: number, dur: number, vol: number, out: AudioNode): void {
+  private membrane(t0: number, f0: number, f1: number, dur: number, vol: number, out: AudioNode, hold = 0.25): void {
     const ctx = this.ctx;
     if (!ctx) return;
     const osc = ctx.createOscillator();
@@ -695,7 +732,7 @@ export class SoundEngine {
     gain.gain.value = 0;
     gain.gain.setValueAtTime(0.0001, t0);
     gain.gain.linearRampToValueAtTime(vol, t0 + 0.002);
-    gain.gain.exponentialRampToValueAtTime(vol * 0.3, t0 + dur * 0.25);
+    gain.gain.exponentialRampToValueAtTime(vol * 0.3, t0 + dur * hold);
     gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
     osc.connect(gain).connect(out);
     osc.start(t0);

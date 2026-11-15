@@ -85,7 +85,11 @@ export interface TrackDef {
   /** Drums that answer the groove in its gaps (toms, naqqara), from `answersFrom` up. */
   answers?: Readonly<Record<Edition, string>>;
   answersFrom?: Intensity;
-  /** Rolls into each phrase and section, from `rollsFrom` up. */
+  /**
+   * Overtime drums, from `rollsFrom` up: rolls into every second bar (longer
+   * into each phrase and section) and soft ghost strokes on the off-steps
+   * the groove leaves empty.
+   */
   rolls?: Readonly<Record<Edition, string>>;
   rollsFrom?: Intensity;
   voices: Readonly<Record<Edition, { lead: InstrumentId; bass: InstrumentId; arp: InstrumentId }>>;
@@ -154,7 +158,8 @@ const MENU: TrackDef = {
 //
 // Intensity: normal time is groove + drone + horn calls; double elixir adds
 // the answering drums (toms / naqqara and daf), hats or riq jingles and the
-// second horn; overtime is faster and adds rolls into every phrase.
+// second horn; overtime is faster, rolls into every second bar and fills the
+// groove's off-steps with ghost snares (Classic) or ghost taks (Golden Age).
 
 /** Repeat one bar `n` times. */
 const rep = (bar: string, n: number): string[] => Array<string>(n).fill(bar);
@@ -218,28 +223,29 @@ const G_DRIVE = "U A a A U a A a"; // Maqsum with ghost taks
 /**
  * The groove, from normal time up. The last bar of every 4-bar phrase is a
  * fill (bars 3, 7, 11 ... counting from 0), at the same places in both
- * editions.
+ * editions: a run of four strokes with the big drum under it (BS, UA strike
+ * both together), so each fill builds at least as hard as the groove before.
  */
 const WAR_DRUMS: Record<Edition, string[]> = {
   classic: [
-    C_CALL, C_CALL, C_REPLY, "B . S . S S S S",
-    C_CALL, C_CALL, C_REPLY, "B . B . S S S S",
-    C_MARCH, C_MARCH, C_MARCH, "B . S S B S S S",
-    C_MARCH, C_MARCH, C_MARCH, "B S S . S S S S",
-    C_HORN, C_ECHO, C_HORN, "B B S . S S S S",
+    C_CALL, C_CALL, C_REPLY, "B . B . BS S BS S",
+    C_CALL, C_CALL, C_REPLY, "B . B . BS S BS BS",
+    C_MARCH, C_MARCH, C_MARCH, "B . S S BS S BS S",
+    C_MARCH, C_MARCH, C_MARCH, "B S S . BS S BS BS",
+    C_HORN, C_ECHO, C_HORN, "B B S . BS S BS S",
     C_HORN, C_ECHO, C_HORN, "B . B . B B B B",
-    C_BREAK, C_BREAK, C_BREAK, "B . B . S S S S",
-    C_CHARGE, "B . S . B . S S", C_CHARGE, "B . S S B S S S",
+    C_BREAK, C_BREAK, C_BREAK, "B . B . BS S BS S",
+    C_CHARGE, "B . S . B . S S", C_CHARGE, "B . S S BS S BS BS",
   ],
   arabic: [
-    G_MAQSUM, G_MAQSUM, G_MAQSUM_REPLY, "U . A . A A A A",
-    G_MAQSUM, G_MAQSUM, G_MAQSUM_REPLY, "U . U . A A A A",
-    G_SAIDI, G_SAIDI, G_SAIDI, "U A . U U A A A",
-    G_SAIDI, G_SAIDI, G_SAIDI, "U A A . A A A A",
-    G_BALADI, G_BALADI, G_BALADI, "U U . A A A A A",
+    G_MAQSUM, G_MAQSUM, G_MAQSUM_REPLY, "U . U . UA A UA A",
+    G_MAQSUM, G_MAQSUM, G_MAQSUM_REPLY, "U . U . UA A UA UA",
+    G_SAIDI, G_SAIDI, G_SAIDI, "U A . U UA A UA A",
+    G_SAIDI, G_SAIDI, G_SAIDI, "U A A . UA A UA UA",
+    G_BALADI, G_BALADI, G_BALADI, "U U . A UA A UA A",
     G_BALADI, G_BALADI, G_BALADI, "U . U . U U U U",
-    G_MALFUF, G_MALFUF, G_MALFUF, "U . U . A A A A",
-    G_DRIVE, G_DRIVE, G_DRIVE, "U . A A U A A A",
+    G_MALFUF, G_MALFUF, G_MALFUF, "U . U . UA A UA A",
+    G_DRIVE, G_DRIVE, G_DRIVE, "U . A A UA A UA UA",
   ],
 };
 
@@ -269,17 +275,31 @@ const WAR_ANSWERS: Record<Edition, string[]> = {
   ],
 };
 
-/** Overtime rolls: into every phrase, longer into every section. */
-const rollsFor = (r: string): string[] => {
-  const into = (n: number): string => `${". ".repeat(8 - n)}${`${r} `.repeat(n)}`.trim();
-  return [
-    ...rep(REST, 3), into(1), ...rep(REST, 3), into(2), // call
-    ...rep(REST, 3), into(1), ...rep(REST, 3), into(2), // march
-    ...rep(REST, 3), into(1), ...rep(REST, 3), into(2), // answer
-    ...rep(REST, 3), into(4), // break
-    ...rep(REST, 3), into(2), // charge
-  ];
-};
+/**
+ * How many steps of roll end each bar in overtime: one into every second
+ * bar, two into every phrase and section, four into the break.
+ */
+const ROLL_INTO = [
+  0, 1, 0, 2, 0, 1, 0, 2, // call
+  0, 1, 0, 2, 0, 1, 0, 2, // march
+  0, 1, 0, 2, 0, 1, 0, 2, // answer
+  0, 1, 0, 4, // break
+  0, 1, 0, 2, // charge
+];
+
+/**
+ * The overtime drums, made from the groove: a ghost stroke (`ghost`) on
+ * every off-step (1, 3, 5, 7) the groove leaves empty, so the march drives
+ * on eighth notes, and a roll (`roll`) filling the last steps of a bar as
+ * ROLL_INTO says.
+ */
+const overtimeFor = (groove: readonly string[], ghost: string, roll: string): string[] =>
+  groove.map((bar, i) =>
+    bar
+      .split(" ")
+      .map((tok, k) => (k >= STEPS_PER_BAR - ROLL_INTO[i] ? roll : k % 2 === 1 && tok === "." ? ghost : "."))
+      .join(" "),
+  );
 
 const BATTLE: TrackDef = {
   id: "battle",
@@ -325,7 +345,10 @@ const BATTLE: TrackDef = {
   drumsFrom: 0,
   answers: { classic: WAR_ANSWERS.classic.join(" | "), arabic: WAR_ANSWERS.arabic.join(" | ") },
   answersFrom: 1,
-  rolls: { classic: rollsFor("R").join(" | "), arabic: rollsFor("Z").join(" | ") },
+  rolls: {
+    classic: overtimeFor(WAR_DRUMS.classic, "s", "R").join(" | "),
+    arabic: overtimeFor(WAR_DRUMS.arabic, "a", "Z").join(" | "),
+  },
   rollsFrom: 2,
   voices: {
     classic: { lead: "horn", bass: "drone", arp: "brass" },
@@ -501,8 +524,10 @@ export function hushedLayers(def: TrackDef): {
   arp: boolean;
   hats: boolean;
   drums: boolean;
+  answers: boolean;
+  rolls: boolean;
 } {
-  return { lead: false, bass: !def.pad, pad: def.pad, arp: false, hats: false, drums: false };
+  return { lead: false, bass: !def.pad, pad: def.pad, arp: false, hats: false, drums: false, answers: false, rolls: false };
 }
 
 /** Seconds per step for a track at an intensity. */
