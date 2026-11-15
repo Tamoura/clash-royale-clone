@@ -3,6 +3,7 @@ import {
   LOOKAHEAD_SEC,
   MAX_LOOKAHEAD_SEC,
   MUSIC_FADE_SEC,
+  MUSIC_START_SEC,
   STEPS_PER_BAR,
   TRACKS,
   clockTickDue,
@@ -606,6 +607,19 @@ describe("music control", () => {
     expect(battleGain.events[1].t).toBeCloseTo(now + MUSIC_FADE_SEC, 5);
     engine.playMusic("none");
     expect(engine.musicRunning).toBe(false);
+  });
+
+  it("from silence the battle track's first beat lands at full strength", async () => {
+    const { sound } = await load(memoryStorage());
+    const engine = new sound.SoundEngine({ edition: "classic" });
+    engine.resume();
+    const now = FakeAudioContext.last!.currentTime;
+    engine.playMusic("battle"); // after the countdown: nothing was playing
+    const gain = graph(engine).deck!.gain.gain;
+    expect(gain.events[0]).toMatchObject({ kind: "set", v: 0 });
+    expect(gain.events[1]).toMatchObject({ kind: "linear", v: 1 });
+    expect(gain.events[1].t).toBeCloseTo(now + MUSIC_START_SEC, 5);
+    expect(MUSIC_START_SEC).toBeLessThan(0.05); // before the first step
   });
 
   it("duck() dips the music 8 dB and restores it", async () => {

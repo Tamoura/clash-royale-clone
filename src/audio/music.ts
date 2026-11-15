@@ -72,6 +72,11 @@ export interface TrackDef {
   leadOct: number;
   arpOct: number;
   pad: boolean;
+  /**
+   * How much of its written length a bass note sounds (default 0.9, a
+   * detached bass); above 1 a drone overlaps its next note, so it never dips.
+   */
+  bassGate?: number;
   hats: string;
   hatsFrom: Intensity;
   /** The groove: the drum line each edition plays from `drumsFrom` up. */
@@ -308,6 +313,7 @@ const BATTLE: TrackDef = {
   leadOct: 0,
   arpOct: 0,
   pad: false,
+  bassGate: 1.05,
   hats: [
     ...rep("x . x . x . x .", 8), // call
     ...rep("x . x x x . x x", 8), // march
@@ -473,8 +479,11 @@ export function layersAt(def: TrackDef, level: Intensity): Layers {
   };
 }
 
-/** How loud the hushed bed plays, relative to its normal level. */
-export const HUSH_LEVEL = 0.7;
+/**
+ * How loud the hushed bed plays, relative to its normal level: a little
+ * softer (War Drums' drone is already its quietest layer).
+ */
+export const HUSH_LEVEL = 0.85;
 
 /**
  * The layers a track keeps while the game waits on the player (a tutorial
@@ -512,6 +521,8 @@ export const MAX_LOOKAHEAD_SEC = 0.4;
 export const RESYNC_SEC = 0.3;
 /** Crossfade between tracks. */
 export const MUSIC_FADE_SEC = 0.4;
+/** The ramp a track starts on from silence (its first note is 0.05 s in). */
+export const MUSIC_START_SEC = 0.01;
 
 export interface Cursor {
   /** Next step to schedule (monotonic; wrap with % length). */

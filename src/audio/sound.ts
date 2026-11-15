@@ -7,6 +7,7 @@ import {
   HUSH_LEVEL,
   MAX_LOOKAHEAD_SEC,
   MUSIC_FADE_SEC,
+  MUSIC_START_SEC,
   SCHEDULER_TICK_MS,
   TRACKS,
   compileTrack,
@@ -157,9 +158,9 @@ const PATCHES: Record<InstrumentId, Patch> = {
   // The nafir, a long straight trumpet: brighter and more nasal, with a wider vibrato.
   nafir: { wave: "sawtooth", wave2: "square", oct2: 0, detune2: 5, mix2: 0.35, attack: 0.035, decay: 0.22, sustain: 0.72, release: 0.12, cutoff: 1800, cutoffEnv: 1, q: 2.4, vibrato: { rate: 5.6, cents: 14, delay: 0.2 }, gain: 0.085 },
   // Drones: one note sounds its root and a pure fifth (702 cents) above it.
-  drone: { wave: "sawtooth", wave2: "sawtooth", oct2: 0, detune2: 702, mix2: 0.6, attack: 0.4, decay: 0.9, sustain: 0.85, release: 0.5, cutoff: 600, cutoffEnv: 0.25, q: 0.8, gain: 0.1 },
+  drone: { wave: "sawtooth", wave2: "sawtooth", oct2: 0, detune2: 702, mix2: 0.6, attack: 0.4, decay: 0.9, sustain: 0.85, release: 0.5, cutoff: 600, cutoffEnv: 0.25, q: 0.8, gain: 0.065 },
   // The arghul's reedy drone pipe.
-  arghul: { wave: "square", wave2: "sawtooth", oct2: 0, detune2: 702, mix2: 0.5, attack: 0.35, decay: 0.9, sustain: 0.85, release: 0.5, cutoff: 750, cutoffEnv: 0.2, q: 1.8, gain: 0.08 },
+  arghul: { wave: "square", wave2: "sawtooth", oct2: 0, detune2: 702, mix2: 0.5, attack: 0.35, decay: 0.9, sustain: 0.85, release: 0.5, cutoff: 750, cutoffEnv: 0.2, q: 1.8, gain: 0.052 },
 };
 
 /** Per-layer levels on top of each patch's own gain. */
@@ -449,7 +450,9 @@ export class SoundEngine {
   private syncMusic(): void {
     const ctx = this.ctx;
     if (!ctx || !this.musicBus) return;
+    let replacing = false;
     if (this.deck && this.deck.id !== this.wanted) {
+      replacing = true;
       const old = this.deck;
       this.deck = null;
       const t = ctx.currentTime;
@@ -462,8 +465,11 @@ export class SoundEngine {
     if (!this.deck && this.wanted !== "none" && running) {
       const t = ctx.currentTime;
       const gain = ctx.createGain();
+      // Crossfade from a track it replaces. From silence (the battle track
+      // after the countdown) the first beat lands at full strength: every
+      // note has its own envelope, so nothing clicks.
       gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(1, t + MUSIC_FADE_SEC);
+      gain.gain.linearRampToValueAtTime(1, t + (replacing ? MUSIC_FADE_SEC : MUSIC_START_SEC));
       gain.connect(this.musicBus);
       this.deck = { id: this.wanted, track: this.track(this.wanted), gain, cursor: { step: 0, time: t + 0.05 } };
     }
@@ -506,14 +512,15 @@ export class SoundEngine {
     const layers = layersAt(def, this.intensity);
     const hz = (n: Note): number => def.rootHz * Math.pow(2, n.semis / 12);
     const out = deck.gain;
+    const bassLen = (n: Note): number => n.len * sec * (def.bassGate ?? 0.9);
     if (this.hushOn && def.id === "battle") {
       const q = hushedLayers(def);
-      if (ev.bass && q.bass) this.voice(voices.bass, hz(ev.bass), t, ev.bass.len * sec * 0.9, LAYER.bass * HUSH_LEVEL, out);
+      if (ev.bass && q.bass) this.voice(voices.bass, hz(ev.bass), t, bassLen(ev.bass), LAYER.bass * HUSH_LEVEL, out);
       if (ev.pad && q.pad) for (const n of ev.pad) this.voice("pad", hz(n), t, n.len * sec, LAYER.pad * HUSH_LEVEL, out);
       return;
     }
     if (ev.lead) this.voice(voices.lead, hz(ev.lead), t, ev.lead.len * sec, LAYER.lead, out);
-    if (ev.bass) this.voice(voices.bass, hz(ev.bass), t, ev.bass.len * sec * 0.9, LAYER.bass, out);
+    if (ev.bass) this.voice(voices.bass, hz(ev.bass), t, bassLen(ev.bass), LAYER.bass, out);
     if (ev.arp && layers.arp) this.voice(voices.arp, hz(ev.arp), t, ev.arp.len * sec * 0.8, LAYER.arp, out);
     if (ev.pad) for (const n of ev.pad) this.voice("pad", hz(n), t, n.len * sec, LAYER.pad, out);
     if (ev.hat && layers.hats) {
@@ -621,7 +628,7 @@ export class SoundEngine {
       // ---- Classic war drums
       case "B": // big war drum: a deep skin and the slap of the stick
         this.membrane(t, 122, 66, 0.75, v, out);
-        this.noiseAt(t, 0.05, { vol: v * 0.5, type: "bandpass", freq: 950, q: 0.8, out });
+        this.noiseAt(t, 0.06, { vol: v * 0.55, type: "bandpass", freq: 650, q: 0.55, out });
         break;
       case "L": // low war tom
         this.membrane(t, 170, 118, 0.4, v * 0.8, out);
@@ -631,12 +638,12 @@ export class SoundEngine {
         this.membrane(t, 245, 175, 0.32, v * 0.75, out);
         this.noiseAt(t, 0.025, { vol: v * 0.16, type: "bandpass", freq: 2400, q: 1, out });
         break;
-      case "S": // snare: body + rattle
-        this.toneAt(t, 200, 0.08, { type: "triangle", slideTo: 140, vol: v * 0.45, out });
-        this.noiseAt(t, 0.14, { vol: v * 0.5, type: "bandpass", freq: 2200, q: 0.8, out });
+      case "S": // snare: a tight skin and the rattle of its wires
+        this.membrane(t, 235, 175, 0.12, v * 0.55, out);
+        this.noiseAt(t, 0.15, { vol: v * 0.7, type: "bandpass", freq: 2000, q: 0.7, out });
         break;
       case "R": // snare roll: four strokes growing across the step
-        this.rollNoise(t, sec, 4, v * 0.5, 2300, 0.9, out);
+        this.rollNoise(t, sec, 4, v * 0.75, 2000, 0.7, out);
         break;
       case "C": // stick click on the rim
         this.toneAt(t, 1750, 0.035, { type: "triangle", slideTo: 1500, vol: v * 0.32, out });
@@ -644,7 +651,7 @@ export class SoundEngine {
       // ---- Golden Age war drums
       case "U": // tabl dum: the big drum's deep head, struck with the beater
         this.membrane(t, 116, 74, 0.55, v * 1.15, out);
-        this.noiseAt(t, 0.05, { vol: v * 0.5, type: "bandpass", freq: 750, q: 1, out });
+        this.noiseAt(t, 0.05, { vol: v * 0.55, type: "bandpass", freq: 700, q: 0.6, out });
         break;
       case "A": // tabl tak: the thin stick on the other head
         this.noiseAt(t, 0.05, { vol: v * 0.7, type: "bandpass", freq: 2900, q: 1.6, out });
