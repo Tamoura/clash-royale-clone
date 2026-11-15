@@ -711,7 +711,6 @@ export class SoundEngine {
     const gap = sec / n;
     const times: number[] = [];
     let floor = 0.0001;
-    g.setValueAtTime(floor, t0);
     for (let i = 0; i < n; i++) {
       const t = t0 + i * gap;
       const v = vol * (0.55 + (0.45 * i) / Math.max(1, n - 1));

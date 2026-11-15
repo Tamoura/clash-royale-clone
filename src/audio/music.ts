@@ -168,7 +168,7 @@ const WAR_LEAD = [
   // march
   "1 . 1 . 3 . 4 .", "5 - - - . . . .", "4 . 4 . 3 . 2 .", "1 - - - . . . .",
   "5 . 5 . 6 . 7 .", "^1 - - - 5 - . .", "6 . 5 . 4 . 3 .", "5 - - - . . . .",
-  // answer: the horn calls on the even bars, rests on the odd ones
+  // answer: the horn calls (bars 17, 19, 21, 23); the drums answer in its rests
   "^1 . ^1 . 5 - - .", REST, "6 . 6 . 4 - - .", REST,
   "5 . 5 6 7 - - .", "^1 - - - . . . .", "7 . 6 . 5 . 4 .", "5 - - - . . . .",
   // break: drums alone
