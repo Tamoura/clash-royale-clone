@@ -74,6 +74,9 @@ class FakeSource extends FakeNode {
     this.ctx.started.push(this);
   }
   stop() {}
+  setPeriodicWave() {
+    this.type = "custom";
+  }
 }
 
 class FakeAudioContext {
@@ -111,6 +114,9 @@ class FakeAudioContext {
   createBuffer(_ch: number, length: number, rate: number) {
     const data = new Float32Array(length);
     return { duration: length / rate, getChannelData: () => data };
+  }
+  createPeriodicWave() {
+    return {};
   }
   resume() {
     this.state = "running";
@@ -197,22 +203,29 @@ describe("music data", () => {
     expect(degreeSemis(SCALES.bayati, 1)).toBe(1.5); // the quarter-tone second
   });
 
-  it("the menu theme is 64 steps in A/B sections and the battle track is 96+ with a bridge", () => {
-    expect(TRACKS.menu.chords.length * STEPS_PER_BAR).toBe(64);
-    expect(TRACKS.menu.sections.map((s) => s.name)).toEqual(["A", "B"]);
-    expect(TRACKS.battle.chords.length * STEPS_PER_BAR).toBeGreaterThanOrEqual(96);
-    expect(TRACKS.battle.sections.map((s) => s.name)).toEqual(["A", "B", "A'", "bridge"]);
+  it("the menu theme is 64 steps in A/B sections", () => {
+    const def = TRACKS.menu;
+    expect(def.chords.length * STEPS_PER_BAR).toBe(64);
+    expect(def.sections.map((s) => s.name)).toEqual(["A", "B"]);
+    for (const edition of ["classic", "arabic"] as const) {
+      const c = compileTrack(def, edition);
+      expect(c.steps.filter((s) => s.lead).length).toBeGreaterThan(c.length / 4);
+    }
+  });
+
+  it("every line fills its loop exactly and stays in a sane register", () => {
     for (const def of Object.values(TRACKS)) {
       const length = def.chords.length * STEPS_PER_BAR;
       // Every line fills the loop exactly; no stray tokens.
-      expect(parseLine(def.lead).steps).toBe(length);
-      expect(parseLine(def.bass).steps).toBe(length);
-      expect(parseLine(def.arp).steps).toBe(length);
+      const lines = [def.lead, def.bass, def.arp];
+      if (def.hats) lines.push(def.hats);
+      for (const edition of ["classic", "arabic"] as const) {
+        for (const line of [def.drums[edition], def.answers?.[edition], def.rolls?.[edition]]) if (line) lines.push(line);
+      }
+      for (const line of lines) expect(parseLine(line).steps).toBe(length);
       for (const edition of ["classic", "arabic"] as const) {
         const c = compileTrack(def, edition);
         expect(c.length).toBe(length);
-        const leads = c.steps.filter((s) => s.lead).length;
-        expect(leads).toBeGreaterThan(length / 4);
         for (const s of c.steps) {
           for (const n of [s.lead, s.bass, s.arp, ...(s.pad ?? [])]) {
             if (!n) continue;
@@ -227,28 +240,118 @@ describe("music data", () => {
     }
   });
 
+  it("War Drums is a 32-bar loop in five named sections", () => {
+    const def = TRACKS.battle;
+    expect(def.chords.length * STEPS_PER_BAR).toBe(256);
+    expect(def.sections).toEqual([
+      { name: "call", bar: 0 },
+      { name: "march", bar: 8 },
+      { name: "answer", bar: 16 },
+      { name: "break", bar: 24 },
+      { name: "charge", bar: 28 },
+    ]);
+    // The drone (the bass line) is the low bed: D2 and G2, long held notes.
+    for (const edition of ["classic", "arabic"] as const) {
+      const bass = compileTrack(def, edition).steps.flatMap((s) => (s.bass ? [s.bass] : []));
+      expect(bass.length).toBeLessThanOrEqual(def.chords.length);
+      for (const n of bass) {
+        expect(n.len).toBeGreaterThanOrEqual(STEPS_PER_BAR);
+        expect([-24, -19]).toContain(n.semis);
+      }
+    }
+  });
+
   it("each edition renders the same tune in its own mode", () => {
     const classic = compileTrack(TRACKS.battle, "classic");
     const arabic = compileTrack(TRACKS.battle, "arabic");
     const rhythm = (c: typeof classic) => c.steps.map((s) => (s.lead ? s.lead.len : 0));
     expect(rhythm(arabic)).toEqual(rhythm(classic));
     expect(arabic.steps.map((s) => s.lead?.semis)).not.toEqual(classic.steps.map((s) => s.lead?.semis));
-    expect(classic.steps.some((s) => s.drum === "K")).toBe(true);
-    expect(arabic.steps.some((s) => s.drum === "D")).toBe(true); // darbuka dum
+    expect(TRACKS.battle.voices.classic).toEqual({ lead: "horn", bass: "drone", arp: "brass" });
+    expect(TRACKS.battle.voices.arabic).toEqual({ lead: "nafir", bass: "arghul", arp: "mizmar" });
   });
 
-  it("intensity 1 adds hats and the counter-melody; 2 adds drums and a faster tempo", () => {
+  it("each edition beats its own war drums: no shared letters, no darbuka", () => {
+    const kit = (edition: "classic" | "arabic"): Set<string> => {
+      const c = compileTrack(TRACKS.battle, edition);
+      return new Set(c.steps.flatMap((s) => [s.drum, s.answer, s.roll]).join("").toUpperCase().split(""));
+    };
+    expect([...kit("classic")].sort()).toEqual(["B", "C", "H", "L", "R", "S"]);
+    expect([...kit("arabic")].sort()).toEqual(["A", "F", "N", "Q", "U", "Z"]);
+    // The menu keeps its darbuka (D dum, T tak).
+    const menu = compileTrack(TRACKS.menu, "arabic");
+    expect(new Set(menu.steps.map((s) => s.drum?.toUpperCase()).filter(Boolean))).toEqual(new Set(["D", "T"]));
+  });
+
+  it("the drums play from the first beat, with a big stroke on every downbeat", () => {
+    for (const level of [0, 1, 2] as const) expect(layersAt(TRACKS.battle, level).drums).toBe(true);
+    const big = { classic: "B", arabic: "U" } as const;
+    for (const edition of ["classic", "arabic"] as const) {
+      const c = compileTrack(TRACKS.battle, edition);
+      for (let bar = 0; bar < TRACKS.battle.chords.length; bar++) {
+        const groove = c.steps.slice(bar * STEPS_PER_BAR, (bar + 1) * STEPS_PER_BAR).map((s) => s.drum);
+        expect(groove[0]).toBe(big[edition]);
+        expect(groove.filter(Boolean).length).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
+  it("every 4-bar phrase ends in a drum fill: a run of four full strokes", () => {
+    const run = (bar: (string | undefined)[]): boolean => bar.slice(4).every((t) => !!t && t === t.toUpperCase());
+    for (const edition of ["classic", "arabic"] as const) {
+      const c = compileTrack(TRACKS.battle, edition);
+      const groove = (bar: number) => c.steps.slice(bar * STEPS_PER_BAR, (bar + 1) * STEPS_PER_BAR).map((s) => s.drum);
+      for (let phrase = 0; phrase < TRACKS.battle.chords.length / 4; phrase++) {
+        const bars = [0, 1, 2, 3].map((i) => groove(phrase * 4 + i));
+        expect(bars.map(run)).toEqual([false, false, false, true]);
+      }
+    }
+  });
+
+  it("horn calls are short phrases with space between them; the break is drums alone", () => {
     const def = TRACKS.battle;
-    expect(layersAt(def, 0)).toEqual({ arp: false, hats: false, drums: false });
-    expect(layersAt(def, 1)).toEqual({ arp: true, hats: true, drums: false });
-    expect(layersAt(def, 2)).toEqual({ arp: true, hats: true, drums: true });
-    expect(stepSeconds(def, 2)).toBeLessThan(stepSeconds(def, 0));
+    const c = compileTrack(def, "classic");
+    const sounding = new Array<boolean>(c.length).fill(false);
+    c.steps.forEach((s, i) => {
+      for (let k = 0; s.lead && k < s.lead.len; k++) sounding[i + k] = true;
+    });
+    expect(sounding.filter(Boolean).length).toBeLessThan(c.length * 0.6);
+    const brk = def.sections.find((s) => s.name === "break")!.bar * STEPS_PER_BAR;
+    for (let i = brk; i < brk + 4 * STEPS_PER_BAR; i++) {
+      expect(c.steps[i].lead).toBeUndefined();
+      expect(c.steps[i].arp).toBeUndefined();
+    }
+    // Calls never run longer than two bars without a rest.
+    let run = 0;
+    for (const on of sounding) {
+      run = on ? run + 1 : 0;
+      expect(run).toBeLessThanOrEqual(2 * STEPS_PER_BAR);
+    }
+  });
+
+  it("intensity: answering drums, hats and the second horn at 1; rolls and a faster tempo at 2", () => {
+    const def = TRACKS.battle;
+    expect(layersAt(def, 0)).toEqual({ arp: false, hats: false, drums: true, answers: false, rolls: false });
+    expect(layersAt(def, 1)).toEqual({ arp: true, hats: true, drums: true, answers: true, rolls: false });
+    expect(layersAt(def, 2)).toEqual({ arp: true, hats: true, drums: true, answers: true, rolls: true });
+    expect(stepSeconds(def, 1)).toBeLessThan(stepSeconds(def, 0));
+    expect(stepSeconds(def, 2)).toBeLessThan(stepSeconds(def, 1));
+    expect(stepSeconds(def, 2) / stepSeconds(def, 0)).toBeLessThan(0.9);
     expect(MUSIC_STEP_MS[2]).toBeLessThan(MUSIC_STEP_MS[0]);
+    // A roll leads into every phrase (and so every section).
+    for (const edition of ["classic", "arabic"] as const) {
+      const c = compileTrack(def, edition);
+      for (let bar = 3; bar < def.chords.length; bar += 4) expect(c.steps[(bar + 1) * STEPS_PER_BAR - 1].roll).toBeDefined();
+      for (const s of def.sections) {
+        const before = (s.bar === 0 ? def.chords.length : s.bar) * STEPS_PER_BAR;
+        expect(c.steps[before - 2].roll).toBeDefined();
+      }
+    }
     // The menu theme ignores the match's intensity.
     expect(stepSeconds(TRACKS.menu, 2)).toBe(stepSeconds(TRACKS.menu, 0));
   });
 
-  it("a held clock keeps only the quietest bed: the pad, else the bass", () => {
+  it("a held clock keeps only the quietest bed: the pad, else the bass (War Drums' drone)", () => {
     expect(hushedLayers(TRACKS.battle)).toEqual({ lead: false, bass: true, pad: false, arp: false, hats: false, drums: false });
     expect(hushedLayers(TRACKS.menu)).toEqual({ lead: false, bass: false, pad: true, arp: false, hats: false, drums: false });
   });
@@ -347,44 +450,105 @@ describe("look-ahead scheduler", () => {
     }
   });
 
-  it("really synthesizes notes and speeds up at overtime", async () => {
+  it("really synthesizes notes and drum strokes from the first beat, busier and faster at overtime", async () => {
+    const run = async (level: 0 | 2) => {
+      const { sound } = await load(memoryStorage());
+      const engine = new sound.SoundEngine({ edition: "arabic" });
+      engine.resume();
+      engine.setIntensity(level);
+      engine.playMusic("battle");
+      const priv = engine as unknown as { playStep: (d: unknown, s: number, t: number) => void };
+      const real = priv.playStep.bind(engine);
+      let steps = 0;
+      vi.spyOn(priv, "playStep").mockImplementation((d, s, t) => {
+        steps++;
+        real(d, s, t);
+      });
+      advance(8000);
+      return { notes: engine.notesScheduled, hits: engine.drumHits, steps };
+    };
+    const normal = await run(0);
+    expect(normal.notes).toBeGreaterThan(5);
+    expect(normal.hits).toBeGreaterThan(15); // the drums play in normal time
+    const overtime = await run(2);
+    expect(overtime.steps).toBeGreaterThan(normal.steps * 1.1); // faster
+    // The answering drums, jingles, rolls and the second horn join.
+    expect(overtime.hits + overtime.notes).toBeGreaterThan((normal.hits + normal.notes) * 1.3);
+  });
+
+  it("an intensity change takes the next step, without a stumble", async () => {
     const { sound } = await load(memoryStorage());
-    const engine = new sound.SoundEngine({ edition: "arabic" });
+    const engine = new sound.SoundEngine({ edition: "classic" });
     engine.resume();
     engine.playMusic("battle");
-    advance(4000);
-    const normal = engine.notesScheduled;
-    expect(normal).toBeGreaterThan(10);
+    const times: number[] = [];
+    const spy = vi.spyOn(engine as unknown as { playStep: (d: unknown, s: number, t: number) => void }, "playStep");
+    spy.mockImplementation((_d, _s, t) => void times.push(t));
+    advance(3000);
+    const switchAt = FakeAudioContext.last!.currentTime;
     engine.setIntensity(2);
-    const before = engine.notesScheduled;
-    advance(4000);
-    // Drums, hats and the counter-melody join: clearly busier.
-    expect(engine.notesScheduled - before).toBeGreaterThan(normal * 1.3);
+    advance(3000);
+    const [slow, fast] = [stepSeconds(TRACKS.battle, 0), stepSeconds(TRACKS.battle, 2)];
+    const gaps = times.slice(1).map((t, i) => t - times[i]);
+    // Every gap is one step at the old or the new tempo, and the tempo
+    // changes once: nothing skipped, doubled or dragged.
+    const kinds = gaps.map((g) => (Math.abs(g - slow) < 1e-6 ? "slow" : Math.abs(g - fast) < 1e-6 ? "fast" : "stumble"));
+    expect(kinds).not.toContain("stumble");
+    const firstFast = kinds.indexOf("fast");
+    expect(firstFast).toBeGreaterThan(0);
+    expect(kinds.slice(firstFast).every((k) => k === "fast")).toBe(true);
+    // ... from the first step booked after the change.
+    expect(times[firstFast]).toBeLessThanOrEqual(switchAt + LOOKAHEAD_SEC + slow);
+  });
+
+  it("every drum letter has a voice, and strokes reuse the cached noise and skin wave", async () => {
+    const { sound } = await load(memoryStorage());
+    const engine = new sound.SoundEngine({ edition: "classic" });
+    engine.resume();
+    const ctx = FakeAudioContext.last!;
+    const buffers = vi.spyOn(ctx, "createBuffer");
+    const waves = vi.spyOn(ctx, "createPeriodicWave");
+    const priv = engine as unknown as { drum: (k: string, t: number, out: unknown, level: number, sec: number) => void };
+    const out = ctx.createGain();
+    for (const k of "BLHSRCUANQZFDTbscuat") {
+      const [hits, started] = [engine.drumHits, ctx.started.length];
+      priv.drum(k, 1, out, 1, 0.2);
+      expect(engine.drumHits, k).toBe(hits + 1);
+      expect(ctx.started.length, k).toBeGreaterThan(started);
+    }
+    expect(ctx.started.some((s) => s.type === "custom")).toBe(true); // the skins' wave
+    expect(buffers).not.toHaveBeenCalled();
+    expect(waves).not.toHaveBeenCalled();
   });
 });
 
 // ---- The quiet wait ------------------------------------------------------------
 
 describe("hushed battle music", () => {
-  it("plays far fewer notes while hushed and the full track again after", async () => {
+  it("keeps only the drone while hushed, and the drums come back after", async () => {
     const { sound } = await load(memoryStorage());
     const engine = new sound.SoundEngine({ edition: "classic" });
     engine.resume();
     engine.playMusic("battle");
     advance(4000);
-    const normal = engine.notesScheduled;
-    expect(normal).toBeGreaterThan(10);
+    expect(engine.drumHits).toBeGreaterThan(8);
+    const voices: string[] = [];
+    const priv = engine as unknown as { voice: (id: string, ...rest: unknown[]) => void };
+    const real = priv.voice.bind(engine);
+    vi.spyOn(priv, "voice").mockImplementation((id, ...rest) => {
+      voices.push(id);
+      real(id, ...rest);
+    });
     engine.setHushed(true);
     expect(engine.hushed).toBe(true);
-    let before = engine.notesScheduled;
-    advance(4000);
-    const hushed = engine.notesScheduled - before;
-    expect(hushed).toBeGreaterThan(0); // still music: the bass keeps time
-    expect(hushed).toBeLessThan(normal * 0.6);
+    const hits = engine.drumHits;
+    advance(8000);
+    expect(engine.drumHits).toBe(hits); // no drums, answers or rolls
+    expect(voices.length).toBeGreaterThan(0); // still music: the drone sounds on
+    expect(new Set(voices)).toEqual(new Set(["drone"])); // no horns
     engine.setHushed(false);
-    before = engine.notesScheduled;
     advance(4000);
-    expect(engine.notesScheduled - before).toBeGreaterThan(hushed * 1.4);
+    expect(engine.drumHits - hits).toBeGreaterThan(8);
   });
 
   it("never hushes the menu theme", async () => {

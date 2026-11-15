@@ -151,12 +151,25 @@ const PATCHES: Record<InstrumentId, Patch> = {
   oud: { wave: "sawtooth", wave2: "triangle", oct2: -1, mix2: 0.5, attack: 0.003, decay: 0.14, sustain: 0.18, release: 0.1, cutoff: 520, cutoffEnv: 3.2, q: 2.6, gain: 0.38 },
   harp: { wave: "triangle", attack: 0.004, decay: 0.32, sustain: 0.12, release: 0.25, cutoff: 3200, cutoffEnv: 0.5, q: 0.7, gain: 0.1 },
   qanun: { wave: "triangle", wave2: "sawtooth", oct2: 0, detune2: 3, mix2: 0.3, attack: 0.003, decay: 0.16, sustain: 0.08, release: 0.14, cutoff: 2800, cutoffEnv: 1.2, q: 1.2, gain: 0.1 },
-  chip: { wave: "square", attack: 0.004, decay: 0.09, sustain: 0.3, release: 0.05, cutoff: 2400, cutoffEnv: 0.8, q: 0.8, gain: 0.055 },
   pad: { wave: "sine", wave2: "triangle", oct2: 0, detune2: 7, mix2: 0.5, attack: 0.45, decay: 0.6, sustain: 0.8, release: 0.9, cutoff: 1300, cutoffEnv: 0.1, q: 0.6, gain: 0.05 },
+  // War Drums. A war horn: a swelling, round brass call with a soft octave below.
+  horn: { wave: "sawtooth", wave2: "triangle", oct2: -1, mix2: 0.45, attack: 0.05, decay: 0.3, sustain: 0.7, release: 0.16, cutoff: 1250, cutoffEnv: 1.1, q: 1.1, vibrato: { rate: 5, cents: 7, delay: 0.25 }, gain: 0.095 },
+  // The nafir, a long straight trumpet: brighter and more nasal, with a wider vibrato.
+  nafir: { wave: "sawtooth", wave2: "square", oct2: 0, detune2: 5, mix2: 0.35, attack: 0.035, decay: 0.22, sustain: 0.72, release: 0.12, cutoff: 1800, cutoffEnv: 1, q: 2.4, vibrato: { rate: 5.6, cents: 14, delay: 0.2 }, gain: 0.085 },
+  // Drones: one note sounds its root and a pure fifth (702 cents) above it.
+  drone: { wave: "sawtooth", wave2: "sawtooth", oct2: 0, detune2: 702, mix2: 0.6, attack: 0.4, decay: 0.9, sustain: 0.85, release: 0.5, cutoff: 600, cutoffEnv: 0.25, q: 0.8, gain: 0.1 },
+  // The arghul's reedy drone pipe.
+  arghul: { wave: "square", wave2: "sawtooth", oct2: 0, detune2: 702, mix2: 0.5, attack: 0.35, decay: 0.9, sustain: 0.85, release: 0.5, cutoff: 750, cutoffEnv: 0.2, q: 1.8, gain: 0.08 },
 };
 
 /** Per-layer levels on top of each patch's own gain. */
 const LAYER = { lead: 1, bass: 0.9, arp: 0.85, pad: 1, hat: 0.05, drum: 0.55 } as const;
+
+/**
+ * Drum levels per track, relative to LAYER.drum: the menu's soft darbuka,
+ * and War Drums' groove, answering drums and rolls.
+ */
+const KIT = { menu: 0.45, groove: 1, answers: 0.8, rolls: 0.75 } as const;
 
 interface Deck {
   id: TrackId;
@@ -200,6 +213,8 @@ export class SoundEngine {
   private out: AudioNode | null = null;
   private noiseWhite: AudioBuffer | null = null;
   private noiseBrown: AudioBuffer | null = null;
+  /** The drum skins' waveform (a fundamental and three overtones), made once. */
+  private drumWave: PeriodicWave | null = null;
   private lastPlayed = new Map<string, number>();
   private wanted: MusicId = "none";
   private deck: Deck | null = null;
@@ -214,6 +229,8 @@ export class SoundEngine {
   intensity: Intensity = 0;
   /** Notes booked by the music scheduler (a test/debug counter). */
   notesScheduled = 0;
+  /** Drum strokes booked by the music scheduler (a test/debug counter). */
+  drumHits = 0;
   private hushOn = false;
 
   constructor(opts: { edition?: Edition } = {}) {
@@ -263,6 +280,11 @@ export class SoundEngine {
       tone.connect(wet).connect(this.duckGain);
       this.noiseWhite = this.makeNoise(ctx, false);
       this.noiseBrown = this.makeNoise(ctx, true);
+      if (typeof ctx.createPeriodicWave === "function") {
+        // Sine partials 1..4: a fundamental the phone can't play much of,
+        // and the overtones (2x to 4x, 130-500 Hz) it can.
+        this.drumWave = ctx.createPeriodicWave(new Float32Array([0, 0, 0, 0, 0]), new Float32Array([0, 1, 0.8, 0.55, 0.3]));
+      }
       this.out = this.sfxBus;
       this.applyVolumes(getPrefs(), true);
       ctx.addEventListener("statechange", () => this.syncMusic());
@@ -392,8 +414,8 @@ export class SoundEngine {
 
   /**
    * Raise or lower musical tension (0 normal, 1 double elixir, 2 overtime).
-   * The battle track picks it up on its next step: hats and a counter-
-   * melody at 1, drums and a faster tempo at 2.
+   * The battle track picks it up on its next step: answering drums, hats
+   * or riq jingles and the second horn at 1, rolls and a faster tempo at 2.
    */
   setIntensity(level: Intensity): void {
     this.intensity = level;
@@ -498,7 +520,16 @@ export class SoundEngine {
       if (ev.hat !== "+") this.hat(t, 1, out);
       if (ev.hat !== "x") this.hat(t + sec / 2, 0.7, out);
     }
-    if (ev.drum && layers.drums) this.drum(ev.drum, t, out, def.id === "menu" ? 0.45 : 1);
+    const kit = (tok: string | undefined, on: boolean, level: number): void => {
+      if (tok && on) for (const k of tok) this.drum(k, t, out, level, sec);
+    };
+    if (def.id === "menu") {
+      kit(ev.drum, layers.drums, KIT.menu);
+    } else {
+      kit(ev.drum, layers.drums, KIT.groove);
+      kit(ev.answer, layers.answers, KIT.answers);
+      kit(ev.roll, layers.rolls, KIT.rolls);
+    }
   }
 
   /** One synthesized note from a patch. */
@@ -569,17 +600,16 @@ export class SoundEngine {
     });
   }
 
-  private drum(kind: string, t: number, out: AudioNode, level: number): void {
+  /**
+   * One drum stroke (see the drum letters in music.ts). `sec` is the step's
+   * length, which a roll fills. Each stroke is 2-5 nodes from shared
+   * buffers and the cached skin wave: nothing is allocated per hit.
+   */
+  private drum(kind: string, t: number, out: AudioNode, level: number, sec: number): void {
     const ghost = kind === kind.toLowerCase();
     const v = LAYER.drum * level * (ghost ? 0.45 : 1);
     switch (kind.toUpperCase()) {
-      case "K": // kick
-        this.toneAt(t, 120, 0.2, { type: "sine", slideTo: 42, vol: v, out });
-        break;
-      case "S": // snare: body + rattle
-        this.toneAt(t, 200, 0.08, { type: "triangle", slideTo: 140, vol: v * 0.45, out });
-        this.noiseAt(t, 0.14, { vol: v * 0.5, type: "bandpass", freq: 2200, q: 0.8, out });
-        break;
+      // ---- The menu's darbuka
       case "D": // dum: deep centre stroke of a darbuka
         this.toneAt(t, 95, 0.28, { type: "sine", slideTo: 62, vol: v, out });
         this.noiseAt(t, 0.05, { vol: v * 0.25, type: "lowpass", freq: 500, out, brown: true });
@@ -588,7 +618,142 @@ export class SoundEngine {
         this.noiseAt(t, 0.06, { vol: v * 0.55, type: "bandpass", freq: 2600, q: 2.2, out });
         this.toneAt(t, 720, 0.035, { type: "triangle", vol: v * 0.2, out });
         break;
+      // ---- Classic war drums
+      case "B": // big war drum: a deep skin and the slap of the stick
+        this.membrane(t, 122, 66, 0.75, v, out);
+        this.noiseAt(t, 0.05, { vol: v * 0.5, type: "bandpass", freq: 950, q: 0.8, out });
+        break;
+      case "L": // low war tom
+        this.membrane(t, 170, 118, 0.4, v * 0.8, out);
+        this.noiseAt(t, 0.03, { vol: v * 0.18, type: "bandpass", freq: 1800, q: 1, out });
+        break;
+      case "H": // high war tom
+        this.membrane(t, 245, 175, 0.32, v * 0.75, out);
+        this.noiseAt(t, 0.025, { vol: v * 0.16, type: "bandpass", freq: 2400, q: 1, out });
+        break;
+      case "S": // snare: body + rattle
+        this.toneAt(t, 200, 0.08, { type: "triangle", slideTo: 140, vol: v * 0.45, out });
+        this.noiseAt(t, 0.14, { vol: v * 0.5, type: "bandpass", freq: 2200, q: 0.8, out });
+        break;
+      case "R": // snare roll: four strokes growing across the step
+        this.rollNoise(t, sec, 4, v * 0.5, 2300, 0.9, out);
+        break;
+      case "C": // stick click on the rim
+        this.toneAt(t, 1750, 0.035, { type: "triangle", slideTo: 1500, vol: v * 0.32, out });
+        break;
+      // ---- Golden Age war drums
+      case "U": // tabl dum: the big drum's deep head, struck with the beater
+        this.membrane(t, 116, 74, 0.55, v * 1.15, out);
+        this.noiseAt(t, 0.05, { vol: v * 0.5, type: "bandpass", freq: 750, q: 1, out });
+        break;
+      case "A": // tabl tak: the thin stick on the other head
+        this.noiseAt(t, 0.05, { vol: v * 0.7, type: "bandpass", freq: 2900, q: 1.6, out });
+        this.membrane(t, 440, 380, 0.06, v * 0.55, out);
+        break;
+      case "N": // naqqara, the low kettle
+        this.membrane(t, 240, 205, 0.16, v * 0.75, out);
+        break;
+      case "Q": // naqqara, the high kettle
+        this.membrane(t, 360, 315, 0.12, v * 0.7, out);
+        break;
+      case "Z": // naqqara roll: high and low in turn across the step
+        this.rollSkin(t, sec, 4, v * 0.6, 360, 240, out);
+        break;
+      case "F": // daf: a low frame-drum stroke and its ringing jingles
+        this.membrane(t, 135, 92, 0.32, v * 0.7, out);
+        this.noiseAt(t, 0.22, { vol: v * 0.22, type: "bandpass", freq: 7200, q: 1.4, out });
+        break;
+      default:
+        return;
     }
+    this.drumHits++;
+  }
+
+  /**
+   * A struck skin: the cached drum wave chirping down from the stick's
+   * attack to `f0`, then sinking to `f1` as it rings for `dur` seconds,
+   * loud at the hit and fading fast, then a softer tail. Two nodes.
+   */
+  private membrane(t0: number, f0: number, f1: number, dur: number, vol: number, out: AudioNode): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    if (this.drumWave) osc.setPeriodicWave(this.drumWave);
+    else osc.type = "triangle";
+    osc.frequency.value = f0 * 1.5;
+    osc.frequency.setValueAtTime(f0 * 1.5, t0);
+    osc.frequency.exponentialRampToValueAtTime(f0, t0 + 0.015);
+    osc.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.linearRampToValueAtTime(vol, t0 + 0.002);
+    gain.gain.exponentialRampToValueAtTime(vol * 0.3, t0 + dur * 0.25);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    osc.connect(gain).connect(out);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.03);
+  }
+
+  /**
+   * Gain bumps for `n` strokes across `sec` seconds, each louder than the
+   * last (the last at `vol`), on one gain: a roll costs its nodes once, not
+   * per stroke. Returns the stroke times.
+   */
+  private strokes(g: AudioParam, t0: number, sec: number, n: number, vol: number): number[] {
+    const gap = sec / n;
+    const times: number[] = [];
+    let floor = 0.0001;
+    g.setValueAtTime(floor, t0);
+    for (let i = 0; i < n; i++) {
+      const t = t0 + i * gap;
+      const v = vol * (0.55 + (0.45 * i) / Math.max(1, n - 1));
+      g.setValueAtTime(floor, t);
+      g.linearRampToValueAtTime(v, t + 0.002);
+      const last = i === n - 1;
+      floor = last ? 0.0005 : v * 0.08;
+      g.exponentialRampToValueAtTime(floor, t + (last ? Math.max(gap, 0.12) : gap * 0.9));
+      times.push(t);
+    }
+    return times;
+  }
+
+  /** A roll on one noise source (a snare): three nodes for the whole step. */
+  private rollNoise(t0: number, sec: number, n: number, vol: number, freq: number, q: number, out: AudioNode): void {
+    const ctx = this.ctx;
+    const buffer = this.noiseWhite;
+    if (!ctx || !buffer) return;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.value = freq;
+    filter.Q.value = q;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    this.strokes(gain.gain, t0, sec, n, vol);
+    src.connect(filter).connect(gain).connect(out);
+    const span = Math.min(sec + 0.2, buffer.duration);
+    src.start(t0, Math.random() * (buffer.duration - span), span);
+  }
+
+  /** A roll on one skin that alternates two pitches (a naqqara pair): two nodes. */
+  private rollSkin(t0: number, sec: number, n: number, vol: number, hi: number, lo: number, out: AudioNode): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    if (this.drumWave) osc.setPeriodicWave(this.drumWave);
+    else osc.type = "triangle";
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    this.strokes(gain.gain, t0, sec, n, vol).forEach((t, i) => {
+      const f = i % 2 ? lo : hi;
+      osc.frequency.setValueAtTime(f * 1.3, t);
+      osc.frequency.exponentialRampToValueAtTime(f, t + 0.012);
+    });
+    osc.connect(gain).connect(out);
+    osc.start(t0);
+    osc.stop(t0 + sec + 0.2);
   }
 
   // ---- One-shot primitives ----------------------------------------------------

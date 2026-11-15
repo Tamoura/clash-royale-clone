@@ -1,6 +1,7 @@
 /**
  * The soundtrack as data: step tables for the menu theme and the battle
- * track, plus the pure look-ahead scheduling math the engine runs on.
+ * track ("War Drums", طبول الحرب), plus the pure look-ahead scheduling math
+ * the engine runs on.
  *
  * Everything here is plain numbers and strings (no Web Audio), so the
  * composition and the timing are unit-tested in node; src/audio/sound.ts
@@ -13,12 +14,19 @@
  * - in chord-relative lines (bass, arp) the degree counts up from the bar's
  *   chord root (1 = root, 3 = third, 5 = fifth, '^1' = root an octave up),
  *   and the bass also accepts R (root), F (fifth) and O (root an octave up)
- * - drums: K kick, S snare, D dum, T tak, lower case = ghost (soft) hit
- * - hats: x on the step, + on the half step after it, * both
+ * - drums: one letter per drum (a token of several letters strikes them
+ *   together), lower case = ghost (soft) stroke:
+ *   - darbuka (the menu): D dum, T tak
+ *   - Classic war drums: B big war drum, L low war tom, H high war tom,
+ *     S snare, R snare roll (fills its step), C stick / rim click
+ *   - Golden Age war drums: U tabl dum, A tabl tak, N naqqara low, Q naqqara
+ *     high, Z naqqara roll (fills its step), F daf
+ * - hats: x on the step, + on the half step after it, * both (Classic plays
+ *   a closed hat, the Golden Age edition the jingles of a riq)
  *
  * Melodies are written in scale degrees so each edition renders the same
- * tune in its own mode: Classic in major / dorian, the Islamic edition in
- * maqam Bayati (with its true quarter-tone second) and Hijaz.
+ * tune in its own mode: Classic in major / dorian, the Golden Age edition
+ * in maqam Bayati (with its true quarter-tone second) and Hijaz.
  */
 
 export type TrackId = "menu" | "battle";
@@ -38,7 +46,8 @@ export type ScaleId = keyof typeof SCALES;
 
 /** Synth patches, implemented in sound.ts. */
 export type InstrumentId =
-  | "flute" | "ney" | "brass" | "mizmar" | "pluck" | "oud" | "harp" | "qanun" | "chip" | "pad";
+  | "flute" | "ney" | "brass" | "mizmar" | "pluck" | "oud" | "harp" | "qanun" | "pad"
+  | "horn" | "nafir" | "drone" | "arghul";
 
 /** 8 steps per bar; a step is an eighth note. */
 export const STEPS_PER_BAR = 8;
@@ -65,8 +74,15 @@ export interface TrackDef {
   pad: boolean;
   hats: string;
   hatsFrom: Intensity;
+  /** The groove: the drum line each edition plays from `drumsFrom` up. */
   drums: Readonly<Record<Edition, string>>;
   drumsFrom: Intensity;
+  /** Drums that answer the groove in its gaps (toms, naqqara), from `answersFrom` up. */
+  answers?: Readonly<Record<Edition, string>>;
+  answersFrom?: Intensity;
+  /** Rolls into each phrase and section, from `rollsFrom` up. */
+  rolls?: Readonly<Record<Edition, string>>;
+  rollsFrom?: Intensity;
   voices: Readonly<Record<Edition, { lead: InstrumentId; bass: InstrumentId; arp: InstrumentId }>>;
 }
 
@@ -106,57 +122,208 @@ const MENU: TrackDef = {
   },
 };
 
-// ---- Battle track: 16 bars (128 steps), A / B / A' / bridge --------------
+// ---- Battle track: "War Drums" (طبول الحرب), 32 bars (256 steps) ----------
+//
+// A heroic army marching into battle. The drums are the star from the first
+// beat at every intensity; short horn calls ring out over them with space
+// between, on a low drone. Five sections, each ending its 4-bar phrases with
+// a drum fill (bars 4, 8, 12 ... of the loop):
+//
+//   call   (bars 1-8)   the horn calls twice; the drums answer each call.
+//   march  (bars 9-16)  a march tune over a steady stomp; the drone moves to
+//                       the fourth for two bars to lift it.
+//   answer (bars 17-24) call and response: horn, then drums (and from double
+//                       elixir the second horn) answer.
+//   break  (bars 25-28) drums and drone alone, three big strokes a bar for
+//                       kids to stomp to (3 + 3 + 2).
+//   charge (bars 29-32) the horn climbs the chord to its top note, and a fill
+//                       leads back to the call.
+//
+// Classic: big war drum, war toms, snare and stick clicks under a war horn
+// and a brass answer, in D dorian over a low drone (root and fifth).
+// Golden Age: the same structure on Arab war drums: tabl (deep dum, sharp
+// tak), a naqqara pair, daf and riq jingles, under nafir calls and a mizmar
+// answer in maqam Hijaz on D, over an arghul drone. Its grooves are real Arab
+// rhythms: Maqsum in the call, Saidi in the march, Baladi in the answer,
+// Malfuf (3 + 3 + 2) in the break and Maqsum with ghost taks in the charge.
+//
+// Intensity: normal time is groove + drone + horn calls; double elixir adds
+// the answering drums (toms / naqqara and daf), hats or riq jingles and the
+// second horn; overtime is faster and adds rolls into every phrase.
 
-const DRIVE = "R . R O R . F O";
-const HOLD = "R - - - O - F -";
-const COUNTER = ". 5 ^1 5 . 3 5 .";
-const COUNTER_BRIDGE = "^1 . . ^1 . . 7 .";
+/** Repeat one bar `n` times. */
+const rep = (bar: string, n: number): string[] => Array<string>(n).fill(bar);
+const REST = ". . . . . . . .";
+
+/** The horn calls, in scale degrees: short phrases with space between them. */
+const WAR_LEAD = [
+  // call: two calls, each answered by the drums
+  "1 . 1 5 - - - .", "^1 - - - 5 - . .", REST, REST,
+  "1 . 1 5 - - 6 5", "4 - 3 - 1 - - .", REST, REST,
+  // march
+  "1 . 1 . 3 . 4 .", "5 - - - . . . .", "4 . 4 . 3 . 2 .", "1 - - - . . . .",
+  "5 . 5 . 6 . 7 .", "^1 - - - 5 - . .", "6 . 5 . 4 . 3 .", "5 - - - . . . .",
+  // answer: the horn calls on the even bars, rests on the odd ones
+  "^1 . ^1 . 5 - - .", REST, "6 . 6 . 4 - - .", REST,
+  "5 . 5 6 7 - - .", "^1 - - - . . . .", "7 . 6 . 5 . 4 .", "5 - - - . . . .",
+  // break: drums alone
+  ...rep(REST, 4),
+  // charge
+  "1 . 3 . 5 . ^1 .", "^1 - - - - - . .", "6 . 5 . 4 . 3 .", "5 - - - . . . .",
+];
+
+/** The second horn, chord-relative: it answers the calls and harmonises the charge. */
+const WAR_ANSWER = [
+  // call
+  REST, REST, "5 . 5 4 - - 3 -", "1 - - - . . . .",
+  REST, REST, "5 . 5 6 - - 5 -", "^1 - - - . . . .",
+  // march: answers in the lead's rests
+  REST, ". . . . 3 . 2 1", REST, ". . . . 5 . 4 .",
+  REST, ". . . . . . 1 -", REST, ". . . . 5 4 3 2",
+  // answer: echoes each call
+  REST, "5 . 5 . 1 - - .", REST, "3 . 3 . 1 - - .",
+  REST, ". . . . 5 6 5 .", REST, ". . . . 3 . 1 .",
+  // break
+  ...rep(REST, 4),
+  // charge: thirds and fourths under the lead
+  "_5 . 1 . 3 . 5 .", "5 - - - - - . .", "1 . _7 . _6 . _5 .", "3 - - - . . . .",
+];
+
+/** The drone: root and fifth (the patch sounds the fifth), mostly held two bars. */
+const DRONE2 = "R - - - - - - - - - - - - - - -";
+const DRONE1 = "R - - - - - - -";
+
+// Classic grooves (B big drum, S snare, C stick click; lower case = ghost).
+const C_CALL = "B . . B B . C ."; // boom . . boom boom . click .
+const C_REPLY = "B . C . B B C ."; // the drums answer a call
+const C_MARCH = "B . S s B B S .";
+const C_HORN = "B . C . B . C ."; // light under a horn call
+const C_ECHO = "B B S . B B S ."; // the drums' answer
+const C_BREAK = "B . . B . . B ."; // three big strokes, 3 + 3 + 2
+const C_CHARGE = "B . S . B . S .";
+
+// Golden Age grooves on the tabl (U dum, A tak; lower case = ghost).
+const G_MAQSUM = "U A . A U . A ."; // Maqsum: dum tak . tak dum . tak .
+const G_MAQSUM_REPLY = "U A a A U U A .";
+const G_SAIDI = "U A . U U . A ."; // Saidi: dum tak . dum dum . tak .
+const G_BALADI = "U U . A U . A ."; // Baladi: dum dum . tak dum . tak .
+const G_MALFUF = "U . . A . . A ."; // Malfuf: dum . . tak . . tak . (3 + 3 + 2)
+const G_DRIVE = "U A a A U a A a"; // Maqsum with ghost taks
+
+/**
+ * The groove, from normal time up. The last bar of every 4-bar phrase is a
+ * fill (bars 3, 7, 11 ... counting from 0), at the same places in both
+ * editions.
+ */
+const WAR_DRUMS: Record<Edition, string[]> = {
+  classic: [
+    C_CALL, C_CALL, C_REPLY, "B . S . S S S S",
+    C_CALL, C_CALL, C_REPLY, "B . B . S S S S",
+    C_MARCH, C_MARCH, C_MARCH, "B . S S B S S S",
+    C_MARCH, C_MARCH, C_MARCH, "B S S . S S S S",
+    C_HORN, C_ECHO, C_HORN, "B B S . S S S S",
+    C_HORN, C_ECHO, C_HORN, "B . B . B B B B",
+    C_BREAK, C_BREAK, C_BREAK, "B . B . S S S S",
+    C_CHARGE, "B . S . B . S S", C_CHARGE, "B . S S B S S S",
+  ],
+  arabic: [
+    G_MAQSUM, G_MAQSUM, G_MAQSUM_REPLY, "U . A . A A A A",
+    G_MAQSUM, G_MAQSUM, G_MAQSUM_REPLY, "U . U . A A A A",
+    G_SAIDI, G_SAIDI, G_SAIDI, "U A . U U A A A",
+    G_SAIDI, G_SAIDI, G_SAIDI, "U A A . A A A A",
+    G_BALADI, G_BALADI, G_BALADI, "U U . A A A A A",
+    G_BALADI, G_BALADI, G_BALADI, "U . U . U U U U",
+    G_MALFUF, G_MALFUF, G_MALFUF, "U . U . A A A A",
+    G_DRIVE, G_DRIVE, G_DRIVE, "U . A A U A A A",
+  ],
+};
+
+/** Answering drums (double elixir up): war toms / naqqara and daf in the groove's gaps. */
+const C_FILL_TOMS = ". H . H . . . .";
+const G_FILL_NAQ = ". Q . N . . . .";
+const WAR_ANSWERS: Record<Edition, string[]> = {
+  classic: [
+    ...rep(". . L . . H . H", 3), C_FILL_TOMS,
+    ...rep(". . L . . H . H", 3), C_FILL_TOMS,
+    ...rep(". H . . . . . L", 3), C_FILL_TOMS,
+    ...rep(". H . . . . . L", 3), C_FILL_TOMS,
+    ". . . H . . . H", ". . . L . . . L", ". . . H . . . H", C_FILL_TOMS,
+    ". . . H . . . H", ". . . L . . . L", ". . . H . . . H", C_FILL_TOMS,
+    ...rep(". H L . H L . L", 3), C_FILL_TOMS,
+    ...rep(". L . L . H . H", 3), C_FILL_TOMS,
+  ],
+  arabic: [
+    ...rep(". . Q . . N . Q", 3), G_FILL_NAQ,
+    ...rep(". . Q . . N . Q", 3), G_FILL_NAQ,
+    ...rep("F . Q . F N . Q", 3), G_FILL_NAQ,
+    ...rep("F . Q . F N . Q", 3), G_FILL_NAQ,
+    ...rep(". . N . . Q . Q", 3), G_FILL_NAQ,
+    ...rep(". . N . . Q . Q", 3), G_FILL_NAQ,
+    ...rep("F Q N . Q N . Q", 3), G_FILL_NAQ,
+    ...rep("F Q . N F Q . N", 3), G_FILL_NAQ,
+  ],
+};
+
+/** Overtime rolls: into every phrase, longer into every section. */
+const rollsFor = (r: string): string[] => {
+  const into = (n: number): string => `${". ".repeat(8 - n)}${`${r} `.repeat(n)}`.trim();
+  return [
+    ...rep(REST, 3), into(1), ...rep(REST, 3), into(2), // call
+    ...rep(REST, 3), into(1), ...rep(REST, 3), into(2), // march
+    ...rep(REST, 3), into(1), ...rep(REST, 3), into(2), // answer
+    ...rep(REST, 3), into(4), // break
+    ...rep(REST, 3), into(2), // charge
+  ];
+};
 
 const BATTLE: TrackDef = {
   id: "battle",
-  stepSec: [0.2, 0.19, 0.168],
+  // Eighth notes at 130, 140 and 154 beats a minute.
+  stepSec: [0.23, 0.215, 0.195],
   rootHz: 293.66, // D4
   scale: { classic: "dorian", arabic: "hijaz" },
   chords: [
-    1, 7, 4, 1, // A
-    3, 7, 4, 5, // B
-    1, 7, 4, 5, // A'
-    4, 4, 5, 5, // bridge
+    1, 1, 1, 1, 1, 1, 1, 1, // call
+    1, 1, 1, 1, 4, 4, 1, 1, // march
+    1, 1, 4, 4, 1, 1, 4, 1, // answer
+    1, 1, 1, 1, // break
+    1, 1, 4, 1, // charge
   ],
   sections: [
-    { name: "A", bar: 0 },
-    { name: "B", bar: 4 },
-    { name: "A'", bar: 8 },
-    { name: "bridge", bar: 12 },
+    { name: "call", bar: 0 },
+    { name: "march", bar: 8 },
+    { name: "answer", bar: 16 },
+    { name: "break", bar: 24 },
+    { name: "charge", bar: 28 },
   ],
-  lead: [
-    // A
-    "1 . 1 2 3 - 5 - | 4 - 3 2 _7 - . . | 4 . 4 5 6 - ^1 - | 7 6 5 4 5 - - .",
-    // B
-    "^3 - ^2 ^1 7 - 5 - | ^2 - ^1 7 ^1 - 5 - | 4 - 6 - ^1 - 6 5 | 5 - - . 7 - ^2 -",
-    // A'
-    "1 . 1 2 3 - 5 - | 4 - 3 2 _7 - . . | 4 . 4 5 6 - ^1 - | 5 - 7 - ^2 - ^1 7",
-    // bridge
-    "6 - - - 4 - - - | 6 - ^1 - ^2 - - - | 7 - - - 5 - - - | ^2 - ^1 - 7 - 6 5",
+  lead: WAR_LEAD.join(" | "),
+  bass: [
+    ...rep(DRONE2, 11), // bars 1-22
+    DRONE1, DRONE1, // bars 23-24: G then D
+    ...rep(DRONE2, 3), // bars 25-30
+    DRONE1, DRONE1, // bars 31-32: G then D
   ].join(" | "),
-  bass: bars([DRIVE, 12], [HOLD, 4]),
-  arp: bars([COUNTER, 12], [COUNTER_BRIDGE, 4]),
+  arp: WAR_ANSWER.join(" | "),
   arpFrom: 1,
   leadOct: 0,
-  arpOct: 1,
+  arpOct: 0,
   pad: false,
-  hats: bars(["+ + * + + + * +", 16]),
+  hats: [
+    ...rep("x . x . x . x .", 8), // call
+    ...rep("x . x x x . x x", 8), // march
+    ...rep("x . x . x . x .", 12), // answer, break
+    ...rep("x . x x x . x x", 4), // charge
+  ].join(" | "),
   hatsFrom: 1,
-  drums: {
-    classic: bars(["K . S . K K S .", 15], ["K . S S K S S S", 1]),
-    // Maqsum: dum tak . tak dum . tak .
-    arabic: bars(["D T . T D . T .", 15], ["D T t T D T T T", 1]),
-  },
-  drumsFrom: 2,
+  drums: { classic: WAR_DRUMS.classic.join(" | "), arabic: WAR_DRUMS.arabic.join(" | ") },
+  drumsFrom: 0,
+  answers: { classic: WAR_ANSWERS.classic.join(" | "), arabic: WAR_ANSWERS.arabic.join(" | ") },
+  answersFrom: 1,
+  rolls: { classic: rollsFor("R").join(" | "), arabic: rollsFor("Z").join(" | ") },
+  rollsFrom: 2,
   voices: {
-    classic: { lead: "brass", bass: "pluck", arp: "chip" },
-    arabic: { lead: "mizmar", bass: "oud", arp: "qanun" },
+    classic: { lead: "horn", bass: "drone", arp: "brass" },
+    arabic: { lead: "nafir", bass: "arghul", arp: "mizmar" },
   },
 };
 
@@ -177,7 +344,10 @@ export interface StepEvents {
   /** Chord tones held for the bar (only on the bar's first step). */
   pad?: Note[];
   hat?: "x" | "+" | "*";
+  /** Drum tokens: the groove, the answering drums and the rolls. */
   drum?: string;
+  answer?: string;
+  roll?: string;
 }
 
 export interface CompiledTrack {
@@ -273,16 +443,34 @@ export function compileTrack(def: TrackDef, edition: Edition): CompiledTrack {
   tokens(def.hats).forEach((t, i) => {
     if (i < length && (t === "x" || t === "+" || t === "*")) steps[i].hat = t;
   });
-  tokens(def.drums[edition]).forEach((t, i) => {
-    if (i < length && t !== ".") steps[i].drum = t;
-  });
+  const drumLine = (line: string | undefined, key: "drum" | "answer" | "roll"): void =>
+    tokens(line ?? "").forEach((t, i) => {
+      if (i < length && t !== ".") steps[i][key] = t;
+    });
+  drumLine(def.drums[edition], "drum");
+  drumLine(def.answers?.[edition], "answer");
+  drumLine(def.rolls?.[edition], "roll");
   return { def, edition, length, steps };
 }
 
+export interface Layers {
+  arp: boolean;
+  hats: boolean;
+  drums: boolean;
+  answers: boolean;
+  rolls: boolean;
+}
+
 /** Which layers sound at an intensity (the menu ignores intensity). */
-export function layersAt(def: TrackDef, level: Intensity): { arp: boolean; hats: boolean; drums: boolean } {
+export function layersAt(def: TrackDef, level: Intensity): Layers {
   const lv = def.id === "menu" ? 0 : level;
-  return { arp: lv >= def.arpFrom, hats: lv >= def.hatsFrom, drums: lv >= def.drumsFrom };
+  return {
+    arp: lv >= def.arpFrom,
+    hats: lv >= def.hatsFrom,
+    drums: lv >= def.drumsFrom,
+    answers: def.answers !== undefined && lv >= (def.answersFrom ?? 0),
+    rolls: def.rolls !== undefined && lv >= (def.rollsFrom ?? 0),
+  };
 }
 
 /** How loud the hushed bed plays, relative to its normal level. */
@@ -291,8 +479,11 @@ export const HUSH_LEVEL = 0.7;
 /**
  * The layers a track keeps while the game waits on the player (a tutorial
  * step holding the clock): only its quietest bed, the pad where the track
- * has one, else the bass line. No lead, counter-melody, hats or drums,
- * whatever the intensity. Existing material only: nothing new is played.
+ * has one, else the bass line, which in War Drums is the drone (root and
+ * fifth, re-struck every bar or two). No horns, second horn, hats, drums,
+ * answering drums or rolls, whatever the intensity: the army waits on the
+ * drone and marches again from the next step after the kid plays. Existing
+ * material only: nothing new is played.
  */
 export function hushedLayers(def: TrackDef): {
   lead: boolean;
