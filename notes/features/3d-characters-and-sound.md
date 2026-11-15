@@ -14,7 +14,9 @@ binary assets.
   stream (TDD'd): deploy / spell / attack / death / crown / finish.
   main.ts drains it each frame into the sound engine + 3D effects.
 - `src/audio/sound.ts` — SoundEngine, all sounds synthesized
-  (oscillators + noise buffers). Background tune is a 16-step loop.
+  (oscillators + noise buffers). Background tune was a 16-step loop;
+  it is now the menu theme and the War Drums battle track
+  (`war-drums.md`).
   Throttles per-sound so skeleton swarms don't deafen. Mute button.
   AudioContext unlocks on first pointerdown (browser requirement).
 - `src/render3d/characters3d.ts` — TroopRig builders (group, arm,
@@ -36,5 +38,7 @@ instead: rig unit tests + full sim/event suite (69 tests).
 ## Tuning knobs (if kids want changes)
 
 - Camera: Battle3D constructor (`position.set(0, 24, 27)`, fov 48).
-- Music tempo/melody: `startMusic()` in sound.ts (`stepMs`, arrays).
+- Music tempo/melody: the step tables in `src/audio/music.ts`
+  (`TRACKS`). The battle track is War Drums (`war-drums.md`). The drum
+  voices and patches are in sound.ts.
 - Character look: builders in characters3d.ts.
