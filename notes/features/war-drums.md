@@ -245,7 +245,52 @@ same for old and new, so their relative loudness is true. MP3, 192 kbps,
 
 ## Browser check (production build)
 
-See the "Browser acceptance" part of this package's report.
+`npm run build:all`, served by `dist-server/relay.mjs` on port 3811, in
+headless Chromium. Classic ran on a phone (390x844, touch) and Golden Age
+on a desktop (1440x900). Headless Chromium cannot be heard, so the page's
+Web Audio was instrumented before the game loaded:
+
+- every `create*` call is counted;
+- every skin stroke is counted (`OscillatorNode.setPeriodicWave`, which
+  only the new drum voices call; the old engine never did);
+- an AnalyserNode taps the music bus (the gain that feeds the hall echo).
+
+The production build has no debug hooks (`window.__cr` and `__crAudio`
+are undefined), so these checks go through the audio graph only. Each
+edition played a real bot battle from Home with real taps.
+
+| Check | Classic (phone) | Golden Age (desktop) |
+|---|---|---|
+| Battle, normal time: skin strokes a second, music bus RMS | 3.3 /s, median -37.8 dB | 3.0 /s, median -40.0 dB |
+| The skin wave is made once, not per hit | 1 | 1 |
+| Pause menu open (the clock is held, so the music hushes): strokes, bus | 0 /s, -44.6 dB (the drone alone) | 0 /s, -42.6 dB |
+| Battle menu "Sound: Off", playing: strokes, master gain, bus | 0 /s, 0, silent | 0 /s, 0, silent |
+| "Sound: On" again: strokes, bus | 2.9 /s, -39.4 dB | 2.7 /s, -40.1 dB |
+| Double elixir, waited for on the real clock (0:48 left) | not run | strokes 3.0 → 4.9 /s, noise sources 3.7 → 5.9 /s |
+| Settings > Music to 0% (keyboard Home on the slider): music bus gain, level on Home | 0, silent | 0, silent |
+| Then a battle at music 0%: strokes (the music keeps time), bus | 2.6 /s, silent | 2.8 /s, silent |
+| Page errors, console errors, failed requests | none | none |
+
+The waited-for Golden Age match ended in a 3-crown loss (only two cards
+were played), so overtime was not reached in production.
+
+**Dev server, with hooks:** `__cr.battle().time` was moved on to reach
+double elixir and overtime in a real bot battle. `__crAudio()` then read
+the engine directly:
+
+| Edition | Normal: intensity, step, drum hits | Double elixir | Overtime |
+|---|---|---|---|
+| Golden Age | 0, 0.23 s, 3.0 /s | 1, 0.215 s, 6.0 /s | 2, 0.195 s, 5.6 /s |
+| Classic | 0, 0.23 s, 2.2 /s | 1, 0.215 s, 4.7 /s | 2, 0.195 s, 5.0 /s |
+
+In every row the music was "battle" and running, and nothing hushed.
+There were no errors.
+
+The drum-hit rate is lower in overtime than at double elixir because the
+sample fell in a sparser section. In one earlier Classic run, a double
+elixir window averaged 0.227 s a step. A stall in the dev build's main
+thread (software rendering) had made the scheduler resync, which jumps
+ahead instead of bursting; a re-run measured 0.215 s exactly.
 
 ## Known gaps
 
