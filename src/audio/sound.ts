@@ -148,7 +148,7 @@ const PATCHES: Record<InstrumentId, Patch> = {
   flute: { wave: "triangle", wave2: "sine", oct2: 1, mix2: 0.25, attack: 0.04, decay: 0.2, sustain: 0.75, release: 0.18, cutoff: 2600, cutoffEnv: 0.3, q: 0.7, vibrato: { rate: 5, cents: 9, delay: 0.18 }, gain: 0.2 },
   ney: { wave: "sine", wave2: "triangle", oct2: 0, detune2: 4, mix2: 0.45, attack: 0.07, decay: 0.25, sustain: 0.8, release: 0.22, cutoff: 2200, cutoffEnv: 0.2, q: 0.7, vibrato: { rate: 5.5, cents: 16, delay: 0.14 }, gain: 0.22 },
   brass: { wave: "sawtooth", wave2: "sawtooth", oct2: 0, detune2: 8, mix2: 0.7, attack: 0.025, decay: 0.16, sustain: 0.65, release: 0.09, cutoff: 950, cutoffEnv: 2.2, q: 1.6, gain: 0.144 },
-  mizmar: { wave: "sawtooth", wave2: "square", oct2: 0, detune2: -6, mix2: 0.35, attack: 0.02, decay: 0.14, sustain: 0.7, release: 0.08, cutoff: 1500, cutoffEnv: 1.3, q: 3.5, vibrato: { rate: 6.2, cents: 22, delay: 0.09 }, gain: 0.139 },
+  mizmar: { wave: "sawtooth", wave2: "square", oct2: 0, detune2: -6, mix2: 0.35, attack: 0.02, decay: 0.14, sustain: 0.7, release: 0.08, cutoff: 1500, cutoffEnv: 1.3, q: 3.5, vibrato: { rate: 6.2, cents: 22, delay: 0.09 }, gain: 0.117 },
   pluck: { wave: "triangle", wave2: "sine", oct2: -1, mix2: 0.6, attack: 0.005, decay: 0.2, sustain: 0.35, release: 0.08, cutoff: 700, cutoffEnv: 2, q: 1, gain: 0.34 },
   oud: { wave: "sawtooth", wave2: "triangle", oct2: -1, mix2: 0.5, attack: 0.003, decay: 0.14, sustain: 0.18, release: 0.1, cutoff: 520, cutoffEnv: 3.2, q: 2.6, gain: 0.38 },
   harp: { wave: "triangle", attack: 0.004, decay: 0.32, sustain: 0.12, release: 0.25, cutoff: 3200, cutoffEnv: 0.5, q: 0.7, gain: 0.1 },
@@ -157,7 +157,7 @@ const PATCHES: Record<InstrumentId, Patch> = {
   // War Drums. A war horn: a swelling, round brass call with a soft octave below.
   horn: { wave: "sawtooth", wave2: "triangle", oct2: -1, mix2: 0.45, attack: 0.05, decay: 0.3, sustain: 0.7, release: 0.16, cutoff: 1600, cutoffEnv: 1.1, q: 1.1, vibrato: { rate: 5, cents: 7, delay: 0.25 }, gain: 0.146 },
   // The nafir, a long straight trumpet: brighter and more nasal, with a wider vibrato.
-  nafir: { wave: "sawtooth", wave2: "square", oct2: 0, detune2: 5, mix2: 0.35, attack: 0.035, decay: 0.22, sustain: 0.72, release: 0.12, cutoff: 1800, cutoffEnv: 1, q: 2.4, vibrato: { rate: 5.6, cents: 14, delay: 0.2 }, gain: 0.143 },
+  nafir: { wave: "sawtooth", wave2: "square", oct2: 0, detune2: 5, mix2: 0.35, attack: 0.035, decay: 0.22, sustain: 0.72, release: 0.12, cutoff: 1800, cutoffEnv: 1, q: 2.4, vibrato: { rate: 5.6, cents: 14, delay: 0.2 }, gain: 0.12 },
   // Drones: one note sounds its root and a pure fifth (702 cents) above it.
   drone: { wave: "sawtooth", wave2: "sawtooth", oct2: 0, detune2: 702, mix2: 0.6, attack: 0.4, decay: 0.9, sustain: 0.85, release: 0.5, cutoff: 600, cutoffEnv: 0.25, q: 0.8, gain: 0.065 },
   // The arghul's reedy drone pipe.
@@ -691,8 +691,8 @@ export class SoundEngine {
         this.noiseAt(t, 0.05, { vol: v * 0.55 * slap, type: "bandpass", freq: 700, q: 0.6, out });
         break;
       case "A": // tabl tak: the thin stick on the other head
-        this.noiseAt(t, 0.05, { vol: v * slap, type: "bandpass", freq: 2900, q: 1.6, out });
-        skin(440, 380, 0.06, v * 0.55);
+        this.noiseAt(t, 0.055, { vol: v * 1.5 * slap, type: "bandpass", freq: 2900, q: 1.6, out });
+        skin(440, 380, 0.07, v * 0.7);
         break;
       case "N": // naqqara, the low kettle
         skin(240, 205, 0.16, v * 0.75);
