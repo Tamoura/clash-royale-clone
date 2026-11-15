@@ -3,10 +3,13 @@
 ## Changes
 
 - Music intensity levels (0 normal / 1 double elixir / 2 overtime):
-  the 16-step loop retimes live (`MUSIC_STEP_MS = [220, 190, 160]`)
-  and layers percussion — closed-hat noise at ≥1, a deep kick every
-  4 steps at ≥2. `main.ts` drives `setIntensity` from battle state
-  each frame and resets it on restart.
+  `main.ts` drives `setIntensity` from battle state each frame and
+  resets it on restart. The battle track is now War Drums (see
+  `war-drums.md`). Its drums play from the first beat at every level.
+  Double elixir adds answering drums, hats or riq jingles and a second
+  horn. Overtime adds rolls and a faster tempo: steps of 230, 215 and
+  195 ms (`MUSIC_STEP_MS`). This replaces the 16-step loop, which added
+  hats at 1 and a kick at 2.
 - Deploy sounds scale with card cost (`deployPitch`): a P.E.K.K.A
   lands with a long deep thump, skeletons with a light tick.
 - A balloon's death bomb now booms like a fireball instead of the
