@@ -217,7 +217,9 @@ const G_MAQSUM = "U A . A U . A ."; // Maqsum: dum tak . tak dum . tak .
 const G_MAQSUM_REPLY = "U A a A U U A .";
 const G_SAIDI = "U A . U U . A ."; // Saidi: dum tak . dum dum . tak .
 const G_BALADI = "U U . A U . A ."; // Baladi: dum dum . tak dum . tak .
-const G_MALFUF = "U . . A . . A ."; // Malfuf: dum . . tak . . tak . (3 + 3 + 2)
+// Malfuf: dum . . tak . . tak . (3 + 3 + 2). In the break the beater
+// strikes with the stick on its last two strokes: three stomps a bar.
+const G_MALFUF = "U . . UA . . UA .";
 const G_DRIVE = "U A a A U a A a"; // Maqsum with ghost taks
 
 /**
