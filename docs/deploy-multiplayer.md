@@ -164,7 +164,7 @@ npm run play
 `npm run play` builds the relay bundle (`dist-server/relay.mjs`) when it is
 missing or out of date. It then starts the game on port 3101 and the relay on
 port 3110, and prints a link like `http://192.168.1.20:3101`. Open that link
-on each device on the same Wi-Fi. It works on Node 20 and Node 22.
+on each device on the same Wi-Fi. It needs Node 22.12 or newer.
 
 Then play as in [step 4 of the Render section](#easiest-one-click-on-render).
 
