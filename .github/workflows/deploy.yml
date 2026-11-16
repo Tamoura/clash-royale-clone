@@ -2,11 +2,18 @@ name: Deploy to GitHub Pages
 
 # Verifies (typecheck + tests), builds the game and publishes the static
 # site to GitHub Pages. A failing test or a sim drift blocks the deploy.
-# Runs on pushes to the listed branches and on manual dispatch.
+# These jobs are also the commit's GitHub checks that Render waits for
+# (render.yaml: autoDeployTrigger: checksPass), so a red run here keeps the
+# Render copy on its last good version too.
 # (Requires: repo public + Settings → Pages → Source: "GitHub Actions".)
 on:
   push:
-    branches: [feature/arabesque-theme, claude/game-visuals-character-balance-w122wb, main]
+    # The ONE branch that publishes. It must match `branch:` in render.yaml.
+    # Older branches still carry their own copy of this file, so the owner
+    # also limits Settings → Environments → github-pages → Deployment
+    # branches and tags to this branch (docs/deploy-multiplayer.md, (e)).
+    # No paths filter: Render deploys only commits that have checks.
+    branches: [claude/game-visuals-character-balance-w122wb]
   workflow_dispatch:
 
 permissions:
@@ -47,8 +54,10 @@ jobs:
         env:
           # Project Pages live under /<repo>/, so assets need that base.
           VITE_BASE: /clash-royale-clone/
-          # Multiplayer relay (wss://...), set under Settings → Variables.
-          VITE_RELAY_URL: ${{ vars.RELAY_URL }}
+          # Multiplayer relay baked into the Pages copy. By default it is the
+          # Render service's relay (the friend server kids already use); the
+          # RELAY_URL repository variable (Settings → Variables) wins when set.
+          VITE_RELAY_URL: ${{ vars.RELAY_URL || 'wss://clash-royale-clone.onrender.com/ws' }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

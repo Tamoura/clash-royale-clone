@@ -25,9 +25,9 @@ and no settings to change: the page finds the server it came from.
 
 **1. Make a Render account.** Go to <https://render.com>, choose **Get
 Started**, then **GitHub**. Signing up with GitHub lets Render rebuild the
-game by itself whenever the code changes. Render's free plan has not needed
-a credit card so far. If the sign-up asks for one anyway, you can still keep
-this service on the Free plan.
+game by itself when the code changes and its checks pass. Render's free plan
+has not needed a credit card so far. If the sign-up asks for one anyway, you
+can still keep this service on the Free plan.
 
 **2. Click the button.**
 
@@ -59,10 +59,16 @@ Good to know about the free plan:
 * **It sleeps** after 15 minutes with nobody on it. The next visit wakes it:
   Render shows a loading page for about a minute, then the game appears. A
   match in progress keeps it awake.
-* **Updates are automatic.** Every push to the branch rebuilds and restarts
-  the server (docs-only pushes are skipped), which ends matches in progress.
-  To update only when you choose, set `autoDeployTrigger: "off"` in
-  `render.yaml`, then use **Manual Deploy → Deploy latest commit**.
+* **Updates are automatic, after the checks.** A push to the branch goes live
+  within minutes, but only once its GitHub checks (typecheck and tests) pass,
+  so a red build never reaches the kids; the **Actions** tab shows why a push
+  is held back. Docs-only pushes are skipped. After the next push, the
+  service's **Settings → Auto-Deploy** should read **After CI Checks Pass**; if
+  not, open the Blueprint and click **Manual Sync**, or pick it in that setting.
+  Each update restarts the server, which ends matches in progress. To update
+  only when you choose, set
+  `autoDeployTrigger: "off"` in `render.yaml`, then use **Manual Deploy →
+  Deploy latest commit**.
 * **Limits:** 750 free hours a month (enough to run all month) and a limited
   amount of outbound traffic (5 GB a month when this was written). A first
   visit downloads about 1.4 MB (0.55 MB of code, then 0.85 MB of 3D characters
@@ -71,13 +77,14 @@ Good to know about the free plan:
 * **One server.** Rooms live in its memory, and the free plan always runs
   exactly one instance, which is what the relay needs.
 
-**Optional: let the GitHub Pages copy play online too.** `render.yaml`
-already allows pages from `https://tamoura.github.io`. Set the repository
-variable `RELAY_URL` to `wss://<your-address>/ws` before you push, then
-re-run the Pages workflow ([section (e)](#e-wiring-github-pages-to-the-relay)).
-It is the only way: Pages ignores `?relay=` links, so a device that used one
-loses online play there until `RELAY_URL` is set. The first connection to a
-sleeping server can time out, so try again after a minute.
+**The GitHub Pages copy plays online too.** Its build uses the Render relay,
+`wss://clash-royale-clone.onrender.com/ws`, by default, and `render.yaml`
+already allows pages from `https://tamoura.github.io`. If your service has
+another address, set the repository variable `RELAY_URL` to
+`wss://<your-address>/ws` ([section (e)](#e-wiring-github-pages-to-the-relay));
+it wins over the default, and it is the only way to change it: Pages ignores
+`?relay=` links. The first connection to a sleeping server can time out, so
+try again after a minute.
 
 **Two addresses, two saves.** The Render address and the Pages address
 (`https://tamoura.github.io/clash-royale-clone/`) are different websites to
@@ -271,18 +278,24 @@ page ([section (e)](#e-wiring-github-pages-to-the-relay)).
 ## (e) Wiring GitHub Pages to the relay
 
 1. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
-2. **Settings → Secrets and variables → Actions → Variables → New repository
+2. **Only for a different relay.** With no variable, the Pages build uses the
+   Render relay, `wss://clash-royale-clone.onrender.com/ws`. To change it:
+   **Settings → Secrets and variables → Actions → Variables → New repository
    variable.** Name: `RELAY_URL`. Value: your relay, e.g.
    `wss://clash-royale-clone-relay.fly.dev/ws` or `wss://<name>.onrender.com/ws`.
    This is a *variable*, not a secret. The address ends up in the public page anyway.
-3. The Pages workflow (`.github/workflows/deploy.yml`) passes it to the build
-   as `VITE_RELAY_URL`. Re-run it from **Actions → Deploy to GitHub Pages →
-   Run workflow**, or push a commit.
+3. The Pages workflow (`.github/workflows/deploy.yml`) passes it (else the
+   Render relay) to the build as `VITE_RELAY_URL`. Re-run it from **Actions →
+   Deploy to GitHub Pages → Run workflow**, or push a commit.
 
-Pages deploys run on pushes to `main`, `claude/game-visuals-character-balance-w122wb`
-and `feature/arabesque-theme`, and on manual runs. If a run fails with *"not
-allowed to deploy to github-pages due to environment protection rules"*, add
-the branch under **Settings → Environments → github-pages → Deployment branches**.
+Only pushes to `claude/game-visuals-character-balance-w122wb` (the branch in
+`render.yaml`) and manual runs publish Pages. Older branches such as `main`
+and `feature/arabesque-theme` still carry their own old copy of the workflow,
+and a push to one of them would publish it. To stop that, set **Settings →
+Environments → github-pages → Deployment branches and tags** to that one
+branch; runs from other branches then fail with *"not allowed to deploy to
+github-pages due to environment protection rules"*. Render waits for this
+workflow too, so a failed Pages run also holds that commit back on Render.
 
 How the page picks a relay (`src/net/relayUrl.ts`), first match wins:
 
@@ -396,7 +409,7 @@ socket glue would need rewriting. Not needed at kid-and-friends scale.
 | `QUICK_MATCH`      | relay env       | off                                       | Online play is friends-only: players meet only through a room code. `on` opens the stranger queue (Quick match) for developers testing it; the game has no button for it, and `render.yaml` pins it `off`. |
 | `NODE_ENV`         | relay env       | unset                                     | `production` tightens the default `ALLOWED_ORIGINS` of a relay-only server too. |
 | `LOG_LEVEL`        | relay env       | `info`                                    | `debug` adds IPs and invalid-message detail. Use it briefly. |
-| `VITE_RELAY_URL`   | page build env  | unset (`same-origin` in `npm run build:all`) | Relay baked into the page: a `wss://` address (from the `RELAY_URL` repo variable), or `same-origin` for the server the page came from. |
+| `VITE_RELAY_URL`   | page build env  | unset (`same-origin` in `npm run build:all`) | Relay baked into the page: a `wss://` address (in the Pages build: the `RELAY_URL` repo variable, else the Render relay), or `same-origin` for the server the page came from. |
 | `?relay=`          | page link       | none                                      | Only the dev server opened at `localhost` (`npm run dev`): override, remembered; `?relay=clear` forgets it. Only `ws://` and `wss://` are accepted. Published builds and the devices in `npm run play` ignore it. |
 
 Built-in limits: 4 KB per message; 60 messages per second per socket (bursts up
@@ -421,6 +434,10 @@ The page and the relay must speak the same protocol. `PROTOCOL_VERSION` in
 * **Always deploy the relay first, then Pages.** A new relay accepts older
   messages; an old relay does not understand new ones. `/healthz` shows the
   relay's `v`. (On Render the game and the relay always ship together.)
+  With the default setup one push updates both copies, and Render goes live
+  only after the Pages job, so after a breaking change the Pages copy says
+  `update-required` until Render's build finishes (several minutes; a refresh
+  will not help sooner). Push such changes when nobody is playing.
 
 ---
 
@@ -504,7 +521,7 @@ versions. Deploy the relay, re-run the Pages workflow, hard-refresh the phones.
   (`LION042`; old two-digit codes still work). "Too many wrong codes": 10 in
   10 minutes from one home pause its joins for 10 minutes. Check the code.
 * The two phones use different relays. Check that both opened the same
-  address. The Pages copy shares a relay only with the one `RELAY_URL` names.
+  address. The Pages copy uses the Render relay unless `RELAY_URL` names another.
 * `fly status` shows two machines. Run `fly scale count 1`.
 
 **"Connection out of sync" during a match.** Usually one phone has an old
