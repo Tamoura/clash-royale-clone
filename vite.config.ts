@@ -111,5 +111,9 @@ export default defineConfig({
     // The rig bake/budget suites build every troop in both editions and
     // run near vitest's 5 s default under load; each new troop adds more.
     testTimeout: 20_000,
+    // Vitest 5 clears every mock's call history before each test by default.
+    // These tests were written with the history kept (they clear it
+    // themselves where needed), so keep that: each check means what it did.
+    clearMocks: false,
   },
 });
