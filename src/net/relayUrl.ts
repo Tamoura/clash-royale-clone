@@ -1,15 +1,22 @@
 /**
  * Where the online relay lives. Pure: the page location, build env and
- * storage are passed in, so main.ts (or a test) decides what to feed it.
+ * storage are passed in, so match/online.ts (or a test) decides what to
+ * feed it.
  *
  * Priority:
- *   1. `?relay=ws(s)://…` in the page URL (remembered in storage;
+ *   1. development builds only (`npm run dev`, `npm run play`: env.DEV):
+ *      `?relay=ws(s)://…` in the page URL (remembered in storage;
  *      `?relay=clear` forgets it), else a previously remembered one
  *   2. the build's VITE_RELAY_URL: a ws(s):// URL, or "same-origin" / a
  *      path like "/ws" when the relay serves the page itself (one service,
  *      one address: `npm run build:all && npm start`, Render, Docker)
  *   3. a plain-http page (LAN dev or `npm run play`): ws://<host>:3110
  *   4. nothing: online play is unavailable
+ * A published build (anything not DEV) never reads `?relay=` or a
+ * remembered relay: it talks only to the relay baked in at build time, or
+ * to the LAN relay beside a plain-http page. It also removes any relay an
+ * older build remembered, so that device is clean from then on. The player's
+ * name, crest and deck go to the relay, so a link must not be able to pick it.
  * On an https page a ws: URL is upgraded to wss: (browsers block mixed content).
  */
 
@@ -30,6 +37,11 @@ export interface RelayEnv {
   VITE_RELAY_URL?: string;
   /** The build's base path (Vite's BASE_URL, e.g. "/" or "/clash-royale-clone/"). */
   BASE_URL?: string;
+  /**
+   * Vite's import.meta.env.DEV: true only for the development server
+   * (`npm run dev`, `npm run play`). Only then may a link pick the relay.
+   */
+  DEV?: boolean;
 }
 
 export interface RelayTarget {
@@ -96,21 +108,40 @@ export function buildRelayUrl(loc: PageLocation, env: RelayEnv): string | null {
   return url ? upgrade(url, loc.protocol) : null;
 }
 
-export function resolveRelayUrl(loc: PageLocation, env: RelayEnv, store?: Storage): RelayTarget {
+/**
+ * Remove a remembered relay. A published build calls this on every
+ * resolve (and once at boot, match/online.ts): it never uses one.
+ */
+export function forgetRelayOverride(store?: Storage): void {
+  write(store, null);
+}
+
+/** Development builds only: `?relay=` (remembered), `?relay=clear`, or the remembered relay. */
+function devOverride(loc: PageLocation, store: Storage | undefined): string | null {
   const param = new URLSearchParams(loc.search).get("relay");
   if (param !== null) {
     if (param.trim().toLowerCase() === "clear") {
       write(store, null);
-    } else {
-      const url = wsUrl(param);
-      if (url) {
-        write(store, url);
-        return { url: upgrade(url, loc.protocol), lan: false };
-      }
+      return null;
+    }
+    const url = wsUrl(param);
+    if (url) {
+      write(store, url);
+      return url;
     }
   }
-  const remembered = param?.trim().toLowerCase() === "clear" ? null : wsUrl(read(store));
-  if (remembered) return { url: upgrade(remembered, loc.protocol), lan: false };
+  return wsUrl(read(store));
+}
+
+export function resolveRelayUrl(loc: PageLocation, env: RelayEnv, store?: Storage): RelayTarget {
+  if (env.DEV === true) {
+    const picked = devOverride(loc, store);
+    if (picked) return { url: upgrade(picked, loc.protocol), lan: false };
+  } else {
+    // A published build: the link and the remembered value are ignored, and
+    // a relay an older build remembered is removed for good.
+    forgetRelayOverride(store);
+  }
 
   const fromEnv = buildRelayUrl(loc, env);
   if (fromEnv) return { url: fromEnv, lan: false };
@@ -119,4 +150,18 @@ export function resolveRelayUrl(loc: PageLocation, env: RelayEnv, store?: Storag
     return { url: `ws://${loc.hostname}:${LAN_RELAY_PORT}`, lan: true };
   }
   return { url: null, lan: false };
+}
+
+/**
+ * The relay an invite link should name, or null. Only a development build
+ * puts one in, and only a relay picked by hand (?relay=), so a friend
+ * opening the link reaches the same server. The build's own relay
+ * (including a same-origin one) and the implied LAN relay need no
+ * parameter, and a published build never names one: it would ignore it.
+ */
+export function inviteRelay(target: RelayTarget, loc: PageLocation, env: RelayEnv): string | null {
+  if (env.DEV !== true || !target.url || target.lan) return null;
+  const built = buildRelayUrl(loc, env);
+  if (built && target.url.replace(/^ws:/i, "wss:") === built.replace(/^ws:/i, "wss:")) return null;
+  return target.url;
 }

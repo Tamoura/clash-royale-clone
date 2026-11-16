@@ -18,7 +18,7 @@ import type { Side } from "../game/arena";
 import type { CardId } from "../game/cards";
 import { DEFAULT_DECK } from "../game/cards";
 import type { Loadout, MatchMode } from "../net/protocol";
-import { buildRelayUrl, resolveRelayUrl, type RelayTarget } from "../net/relayUrl";
+import { forgetRelayOverride, inviteRelay, resolveRelayUrl, type RelayTarget } from "../net/relayUrl";
 import { OnlineSession, type MatchInfo } from "../net/session";
 import type { AppCtx } from "../app/ctx";
 import { emit, on, setPendingSpend } from "../app/hooks";
@@ -43,16 +43,19 @@ const listeners = new Set<(s: OnlineSession) => void>();
 
 let relay: RelayTarget | null = null;
 
+/** This page's localStorage, or undefined where there is none or it is blocked. */
+function pageStore(): Storage | undefined {
+  try {
+    return typeof localStorage === "undefined" ? undefined : localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Where the relay lives (resolved once per page load), url null = not set up. */
 export function relayTarget(): RelayTarget {
   if (!relay) {
-    let store: Storage | undefined;
-    try {
-      store = localStorage;
-    } catch {
-      store = undefined;
-    }
-    relay = resolveRelayUrl(location, import.meta.env, store);
+    relay = resolveRelayUrl(location, import.meta.env, pageStore());
     // Dev aid: ?relay=none previews a site with no relay configured.
     if (import.meta.env.DEV && new URLSearchParams(location.search).get("relay") === "none") {
       relay = { url: null, lan: false };
@@ -62,18 +65,21 @@ export function relayTarget(): RelayTarget {
 }
 
 /**
- * The relay to name in invite links: only one the player chose by hand
- * (?relay=), so a friend opening the link reaches the same server. The
- * build's own relay (including a same-origin one) and the implied LAN relay
- * need no parameter.
+ * The relay to name in invite links (inviteRelay in net/relayUrl.ts): one
+ * picked by hand with ?relay=, and only in a development build. A
+ * published build's links never carry one.
  */
 export function inviteRelayParam(): string | null {
-  const t = relayTarget();
-  if (!t.url || t.lan) return null;
-  const env = buildRelayUrl(location, import.meta.env);
-  if (env && t.url.replace(/^ws:/, "wss:") === env.replace(/^ws:/, "wss:")) return null;
-  return t.url;
+  if (!import.meta.env.DEV) return null;
+  return inviteRelay(relayTarget(), location, import.meta.env);
 }
+
+// A published build never uses a hand-picked relay, and resolveRelayUrl
+// removes a remembered one on the first online use. Remove it at boot as
+// well: a device that never opens online play is cleaned all the same, and
+// an older copy of the game that the service worker may still start once
+// (on a slow network) finds nothing to pick up. One removeItem.
+if (!import.meta.env.DEV) forgetRelayOverride(pageStore());
 
 // ---- Loadout and decks -------------------------------------------------------
 
@@ -261,8 +267,18 @@ export function sendOnlineEmote(index: number): boolean {
   return true;
 }
 
+/**
+ * The glyph for an emote id from the relay: only a whole number that
+ * indexes the fixed table counts (never a property name such as "length").
+ */
+export function emoteGlyphFor(glyphs: readonly string[], e: unknown): string | null {
+  if (typeof e !== "number" || !Number.isInteger(e) || e < 0 || e >= glyphs.length) return null;
+  const glyph = glyphs[e];
+  return typeof glyph === "string" && glyph ? glyph : null;
+}
+
 function showOnlineEmote(ctx: AppCtx, side: Side, e: number): void {
-  const glyph = emoteGlyphs[e];
+  const glyph = emoteGlyphFor(emoteGlyphs, e);
   if (!glyph) return;
   ctx.scene.showEmote(side, glyph);
   ctx.sound.emotePop();
@@ -282,7 +298,7 @@ export function cleanCode(raw: string | null | undefined): string | null {
   return /^[A-Z0-9]{3,12}$/.test(c) ? c : null;
 }
 
-/** The link a friend opens to join `code` (carries a hand-picked relay too). */
+/** The link a friend opens to join `code` (in a development build, with a hand-picked relay too). */
 export function inviteLink(code: string): string {
   const url = new URL(`${location.origin}${import.meta.env.BASE_URL}`);
   url.searchParams.set("join", code);

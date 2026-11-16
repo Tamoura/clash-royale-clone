@@ -167,13 +167,13 @@ firewall for private networks.
 
 ## (c) Free 5-minute test (Cloudflare quick tunnel)
 
-This puts the relay on your own computer and gives it a temporary public
-`wss://` address. You need no account. It lasts until you close the terminal.
+This puts the game and the relay on your own computer and gives them a
+temporary public address. You need no account. It lasts until you close the terminal.
 
 ```sh
 npm install
-npm run build:relay        # bundles server/relay.ts into dist-server/relay.mjs
-npm run relay:prod         # relay on port 3110 (any origin allowed by default)
+npm run build:all          # the game (dist/) + the relay bundle (dist-server/)
+npm start                  # game and relay on port 3110
 ```
 
 In a **second** terminal:
@@ -182,23 +182,17 @@ In a **second** terminal:
 npx cloudflared tunnel --url http://localhost:3110
 ```
 
-Wait for a line like `https://quiet-river-1234.trycloudflare.com`. Then open
-this on both phones, with your tunnel name:
+Wait for a line like `https://quiet-river-1234.trycloudflare.com`. Open that
+address on both phones: it is the game, and the game finds its relay there.
 
-```
-https://tamoura.github.io/clash-royale-clone/?relay=wss://quiet-river-1234.trycloudflare.com/ws
-```
-
-* Use `wss://` (not `https://`) and keep `/ws` at the end.
-* The game remembers the relay on that device, so later visits need no
-  `?relay=`. Open `?relay=clear` once to forget it.
-* Check it: `node tools/relay-smoke.mjs wss://quiet-river-1234.trycloudflare.com/ws`
+* Check it: `node tools/relay-smoke.mjs wss://quiet-river-1234.trycloudflare.com/ws --origin https://quiet-river-1234.trycloudflare.com`
 * The address changes every time you restart `cloudflared`.
 * Through the tunnel every player shares your computer's IP limits (8
-  sockets). For more devices, start the relay with
-  `TRUST_PROXY=cf-connecting-ip npm run relay:prod` (Cloudflare sets that header).
-* Shortcut: run `npm run build:all && npm start` instead of the two relay
-  commands. Then the tunnel address itself is the game, with no `?relay=`.
+  sockets). For more devices, start it with
+  `TRUST_PROXY=cf-connecting-ip npm start` (Cloudflare sets that header).
+* A `?relay=wss://…` link only changes the relay in development builds
+  (`npm run dev`, `npm run play`). The GitHub Pages copy and every other
+  published build always use the relay baked in at build time.
 
 ---
 
@@ -267,8 +261,8 @@ The smoke test needs `--origin`, because the relay only accepts pages from
 `ALLOWED_ORIGINS` and from its own address. Without it you get
 `FAIL … HTTP 403`, which also proves the origin check works.
 
-Your relay is `wss://clash-royale-clone-relay.fly.dev/ws`. Try it with
-`https://tamoura.github.io/clash-royale-clone/?relay=wss://clash-royale-clone-relay.fly.dev/ws`, then bake it into the page.
+Your relay is `wss://clash-royale-clone-relay.fly.dev/ws`. Bake it into the
+page ([section (e)](#e-wiring-github-pages-to-the-relay)).
 
 ---
 
@@ -290,12 +284,16 @@ the branch under **Settings → Environments → github-pages → Deployment bra
 
 How the page picks a relay (`src/net/relayUrl.ts`), first match wins:
 
-1. `?relay=wss://…` in the link (then remembered on that device), or a
-   relay remembered earlier.
+1. Development builds only (`npm run dev`, `npm run play`): `?relay=wss://…`
+   in the link (remembered on that device), or one remembered earlier.
 2. `VITE_RELAY_URL` from the build: a `wss://` address, or `same-origin`
    (what `npm run build:all` sets) for the server the page came from.
 3. On a plain `http://` page (LAN), `ws://<same host>:3110`.
 4. Otherwise online play is off.
+
+A published build (Pages, Render, `npm start`) ignores `?relay=` and forgets
+any relay a device remembered. To point the Pages copy at another relay,
+change the `RELAY_URL` variable and re-run the Pages workflow.
 
 On an `https://` page, `ws://` is upgraded to `wss://` automatically.
 
@@ -397,7 +395,7 @@ socket glue would need rewriting. Not needed at kid-and-friends scale.
 | `NODE_ENV`         | relay env       | unset                                     | `production` tightens the default `ALLOWED_ORIGINS` of a relay-only server too. |
 | `LOG_LEVEL`        | relay env       | `info`                                    | `debug` adds IPs and invalid-message detail. Use it briefly. |
 | `VITE_RELAY_URL`   | page build env  | unset (`same-origin` in `npm run build:all`) | Relay baked into the page: a `wss://` address (from the `RELAY_URL` repo variable), or `same-origin` for the server the page came from. |
-| `?relay=`          | page link       | none                                      | Per-device override, remembered; `?relay=clear` forgets it. Only `ws://` and `wss://` are accepted. |
+| `?relay=`          | page link       | none                                      | Development builds only (`npm run dev`, `npm run play`): per-device override, remembered; `?relay=clear` forgets it. Only `ws://` and `wss://` are accepted. Published builds ignore it and use the relay baked in at build time. |
 
 Built-in limits: 4 KB per message; 60 messages per second per socket (bursts up
 to 90); 5 create/join per IP per 10 s; 10 wrong codes in 10 minutes per address
@@ -504,7 +502,7 @@ versions. Deploy the relay, re-run the Pages workflow, hard-refresh the phones.
   (`LION042`; old two-digit codes still work). "Too many wrong codes": 10 in
   10 minutes from one home pause its joins for 10 minutes. Check the code.
 * The two phones use different relays. Check that both opened the same
-  address (or the same `?relay=` link).
+  address. The Pages copy shares a relay only with the one `RELAY_URL` names.
 * `fly status` shows two machines. Run `fly scale count 1`.
 
 **"Connection out of sync" during a match.** Usually one phone has an old

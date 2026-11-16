@@ -128,7 +128,12 @@ export const SAVE_KEYS: readonly SaveKeyDef[] = [
     shape: "json",
     note: "settings (prefs.ts): volumes, graphics, text size; the name and crest travel separately",
   },
-  { key: "cr-clone-relay", cls: D, shape: "text", note: "online relay address override (relayUrl.ts)" },
+  {
+    key: "cr-clone-relay",
+    cls: D,
+    shape: "text",
+    note: "relay picked with ?relay= (relayUrl.ts): development builds only; a published build removes it; never in a save",
+  },
   { key: "cr-clone-replay", cls: D, shape: "json", note: "the last battle's replay tape (main.ts); large" },
   { key: "cr-clone-left-match", cls: D, shape: "json", note: "a ladder match left mid-battle on this device (leftMatch.ts)" },
   { key: "cr-clone-lobby-tab", cls: D, shape: "text", note: "an old lobby tab, cleared when the lobby opens (lobby.ts)" },
