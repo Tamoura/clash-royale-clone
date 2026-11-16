@@ -94,6 +94,11 @@ describe("multiplayer docs", () => {
     expect(push, "deploy.yml on.push.branches").not.toBeNull();
     expect(push![1].split(",").map((b) => b.trim())).toEqual([branch]);
     expect(deployYml).toMatch(/^ {2}workflow_dispatch:/m);
+    // These checks run on every push to it: Render skips a commit that has
+    // no checks, so a paths filter here would silently hold back some pushes.
+    const onBlock = /^on:\n((?:[ \t].*\n|\n)*)/m.exec(deployYml)?.[1] ?? "";
+    expect(onBlock).toContain("push:");
+    expect(onBlock).not.toMatch(/^\s+paths(?:-ignore)?:/m);
     // The checks Render waits for: typecheck and tests, before the build.
     expect(deployYml).toContain("run: npx tsc --noEmit");
     expect(deployYml).toContain("run: npx vitest run");

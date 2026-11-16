@@ -62,8 +62,11 @@ Good to know about the free plan:
 * **Updates are automatic, after the checks.** A push to the branch goes live
   within minutes, but only once its GitHub checks (typecheck and tests) pass,
   so a red build never reaches the kids; the **Actions** tab shows why a push
-  is held back. Docs-only pushes are skipped. Each update restarts the server,
-  which ends matches in progress. To update only when you choose, set
+  is held back. Docs-only pushes are skipped. After the next push, the
+  service's **Settings → Auto-Deploy** should read **After CI Checks Pass**; if
+  not, open the Blueprint and click **Manual Sync**, or pick it in that setting.
+  Each update restarts the server, which ends matches in progress. To update
+  only when you choose, set
   `autoDeployTrigger: "off"` in `render.yaml`, then use **Manual Deploy →
   Deploy latest commit**.
 * **Limits:** 750 free hours a month (enough to run all month) and a limited
@@ -407,7 +410,7 @@ socket glue would need rewriting. Not needed at kid-and-friends scale.
 | `QUICK_MATCH`      | relay env       | off                                       | Online play is friends-only: players meet only through a room code. `on` opens the stranger queue (Quick match) for developers testing it; the game has no button for it, and `render.yaml` pins it `off`. |
 | `NODE_ENV`         | relay env       | unset                                     | `production` tightens the default `ALLOWED_ORIGINS` of a relay-only server too. |
 | `LOG_LEVEL`        | relay env       | `info`                                    | `debug` adds IPs and invalid-message detail. Use it briefly. |
-| `VITE_RELAY_URL`   | page build env  | unset (`same-origin` in `npm run build:all`) | Relay baked into the page: a `wss://` address (from the `RELAY_URL` repo variable), or `same-origin` for the server the page came from. |
+| `VITE_RELAY_URL`   | page build env  | unset (`same-origin` in `npm run build:all`) | Relay baked into the page: a `wss://` address (in the Pages build: the `RELAY_URL` repo variable, else the Render relay), or `same-origin` for the server the page came from. |
 | `?relay=`          | page link       | none                                      | Per-device override, remembered; `?relay=clear` forgets it. Only `ws://` and `wss://` are accepted. |
 
 Built-in limits: 4 KB per message; 60 messages per second per socket (bursts up
@@ -432,6 +435,10 @@ The page and the relay must speak the same protocol. `PROTOCOL_VERSION` in
 * **Always deploy the relay first, then Pages.** A new relay accepts older
   messages; an old relay does not understand new ones. `/healthz` shows the
   relay's `v`. (On Render the game and the relay always ship together.)
+  With the default setup one push updates both copies, and Render goes live
+  only after the Pages job, so after a breaking change the Pages copy says
+  `update-required` until Render's build finishes (several minutes; a refresh
+  will not help sooner). Push such changes when nobody is playing.
 
 ---
 

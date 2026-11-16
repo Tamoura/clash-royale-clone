@@ -12,6 +12,7 @@ on:
     # Older branches still carry their own copy of this file, so the owner
     # also limits Settings → Environments → github-pages → Deployment
     # branches and tags to this branch (docs/deploy-multiplayer.md, (e)).
+    # No paths filter: Render deploys only commits that have checks.
     branches: [claude/game-visuals-character-balance-w122wb]
   workflow_dispatch:
 
