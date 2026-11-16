@@ -33,14 +33,17 @@ class FakeSocket implements NetSocket {
 }
 
 const DECK = ["knight"] as CardId[];
+/** Real 8-card decks: the page refuses a start whose decks the relay would refuse. */
+const HOST_DECK: CardId[] = ["knight", "archers", "giant", "fireball", "musketeer", "mini-pekka", "baby-dragon", "arrows"];
+const GUEST_DECK: CardId[] = ["wizard", "witch", "skeletons", "gargoyles", "valkyrie", "hog-rider", "cannon", "zap"];
 const MODE = { elixirRate: 1, mirror: false };
 const LOADOUT: Loadout = { name: "Omar", crest: 1, tower: "princess", ability: null };
 const TOKEN = "ab".repeat(16);
 const START: StartMsg = {
   t: "start",
   role: "guest",
-  hostDeck: DECK,
-  guestDeck: DECK,
+  hostDeck: HOST_DECK,
+  guestDeck: GUEST_DECK,
   mode: MODE,
   hostLoadout: LOADOUT,
   guestLoadout: null,
@@ -50,8 +53,8 @@ const START: StartMsg = {
 };
 const PAYLOAD = {
   role: "guest",
-  hostDeck: DECK,
-  guestDeck: DECK,
+  hostDeck: HOST_DECK,
+  guestDeck: GUEST_DECK,
   mode: MODE,
   hostLoadout: LOADOUT,
   guestLoadout: null,
@@ -145,7 +148,7 @@ describe("RoomClient", () => {
     const onStart = vi.fn();
     client.onStart = onStart;
     sock.open();
-    sock.emit({ t: "start", role: "host", hostDeck: DECK, guestDeck: DECK, mode: MODE } as unknown as ServerMsg);
+    sock.emit({ t: "start", role: "host", hostDeck: HOST_DECK, guestDeck: GUEST_DECK, mode: MODE } as unknown as ServerMsg);
     expect(onStart).toHaveBeenCalledWith({ ...PAYLOAD, role: "host", hostLoadout: null, delay: 4, token: "", code: null });
   });
 

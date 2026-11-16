@@ -3,13 +3,19 @@ import { ARENA_HEIGHT, ARENA_WIDTH, type Side } from "../game/arena";
 import { TOWER_TROOP_IDS, type TowerTroopId } from "../game/towers";
 import { ABILITY_IDS, type AbilityId } from "../game/abilities";
 import type { DeployCommand, InputFrame } from "./lockstep";
-import { PROTOCOL_VERSION, type ClientMsg, type Loadout, type MatchMode } from "./protocol";
+import { PROTOCOL_VERSION, type ClientMsg, type ErrorReason, type Loadout, type MatchMode } from "./protocol";
+import type { StartPayload } from "./roomClient";
 
 /**
  * Untrusted-input gate for the relay. Everything a socket sends passes through
  * {@link parseClientMsg}, which either returns a fresh, well-formed message
  * (unknown fields stripped) or an error. Pure: no DOM, no Node APIs, so the
  * relay bundle stays small and the rules are unit-tested.
+ *
+ * The other direction uses the same rules: the page does not trust the relay
+ * either ({@link cleanStartMsg} and the other clean* helpers at the end, used
+ * by roomClient.ts), so a relay that misbehaves cannot put text on a kid's
+ * screen or build the battle from a deck or mode the relay itself would refuse.
  */
 
 /** Longest raw message we even try to parse (the socket caps at 4 KB too). */
@@ -233,4 +239,131 @@ export function parseClientMsg(raw: string, cardIds: ReadonlySet<string>): Clien
 /** Narrowing helper for callers of {@link parseClientMsg}. */
 export function isParseError(r: ClientMsg | ParseError): r is ParseError {
   return "error" in r;
+}
+
+// ---- Relay to page ------------------------------------------------------------
+//
+// What the page accepts from the relay mirrors what the relay accepts from a
+// page (above) and what rooms.ts sends. Anything the battle is built from
+// (role, decks, mode, delay) must be exactly right, or the whole message is
+// broken; anything only shown (a name, a crest) is cleaned to something safe.
+
+/** The relay's input delay range: rooms.ts inputDelay clamps to it. */
+export const MIN_INPUT_DELAY = 3;
+export const MAX_INPUT_DELAY = 10;
+/** The delay when the relay names none (an old relay): rooms.ts DEFAULT_DELAY. */
+export const DEFAULT_INPUT_DELAY = 4;
+/** Match seeds are integers in [0, 2^31) (server/relay.ts: randomInt(2 ** 31)). */
+export const MAX_SEED = 2 ** 31 - 1;
+/** A dropped peer's resume grace in seconds (rooms.ts GRACE_SEC), and the most we believe. */
+export const DEFAULT_GRACE_SEC = 20;
+export const MAX_GRACE_SEC = 60;
+/** The relay's own cap on a reported round trip (ping `rtt`, above). */
+export const MAX_RTT_MS = 60_000;
+
+const ERROR_REASONS: ReadonlySet<string> = new Set<ErrorReason>([
+  "bad-message",
+  "update-required",
+  "no-such-room",
+  "room-full",
+  "expired",
+  "rate-limited",
+  "server-restart",
+  "resume-failed",
+  "quick-disabled",
+]);
+
+/** Run a validator; null instead of the internal failure. */
+function attempt<T>(fn: () => T): T | null {
+  try {
+    return fn();
+  } catch (e) {
+    if (e instanceof Bad) return null;
+    throw e;
+  }
+}
+
+/**
+ * A loadout as the relay passed it on, safe to show: the name through
+ * {@link sanitizePlayerName} ("" when it is not text), a crest index in
+ * 0..CREST_COUNT-1 (else 0), a known tower troop (else the first, the
+ * default) and a known ability (else none). Anything that is not an object
+ * (null, or an old relay leaving it out) is no loadout at all.
+ */
+export function cleanLoadout(v: unknown): Loadout | null {
+  if (!isObj(v)) return null;
+  const crest = v.crest;
+  const tower = v.tower;
+  const ability = v.ability;
+  return {
+    name: typeof v.name === "string" ? sanitizePlayerName(v.name.slice(0, MAX_NAME_INPUT)) : "",
+    crest: typeof crest === "number" && Number.isInteger(crest) && crest >= 0 && crest < CREST_COUNT ? crest : 0,
+    tower: typeof tower === "string" && (TOWER_TROOP_IDS as string[]).includes(tower) ? (tower as TowerTroopId) : TOWER_TROOP_IDS[0],
+    ability: typeof ability === "string" && (ABILITY_IDS as string[]).includes(ability) ? (ability as AbilityId) : null,
+  };
+}
+
+/** A room code from the relay, upper-cased, or null when it is not one. */
+export function cleanRoomCode(v: unknown): string | null {
+  return attempt(() => code(v));
+}
+
+/** A resume token from the relay, or "" when it is not one (the seat then cannot resume). */
+export function cleanToken(v: unknown): string {
+  return typeof v === "string" && TOKEN_PATTERN.test(v) ? v : "";
+}
+
+/** The relay's mode: a mode the relay accepts, plus the seed it dealt. */
+function startMode(v: unknown): MatchMode {
+  const out = mode(v);
+  const seed = (v as Obj).seed;
+  if (seed !== undefined) out.seed = int(seed, 0, MAX_SEED);
+  return out;
+}
+
+/**
+ * A `start` message (also the one replayed inside `resumed`), checked and
+ * cleaned, or null when it is broken: a role other than host or guest, a
+ * deck that is not DECK_SIZE different playable cards, a mode the relay
+ * would refuse, or a delay outside the relay's range. Loadouts are cleaned
+ * with {@link cleanLoadout}; a bad token or room code only turns resuming
+ * off. Old relays that leave out delay, token or code get the defaults.
+ */
+export function cleanStartMsg(v: unknown, cardIds: ReadonlySet<string> = playableCardIds()): StartPayload | null {
+  if (!isObj(v)) return null;
+  return attempt(() => {
+    if (v.role !== "host" && v.role !== "guest") fail();
+    return {
+      role: v.role,
+      hostDeck: deck(v.hostDeck, cardIds),
+      guestDeck: deck(v.guestDeck, cardIds),
+      mode: startMode(v.mode),
+      hostLoadout: cleanLoadout(v.hostLoadout),
+      guestLoadout: cleanLoadout(v.guestLoadout),
+      delay: v.delay === undefined ? DEFAULT_INPUT_DELAY : int(v.delay, MIN_INPUT_DELAY, MAX_INPUT_DELAY),
+      token: cleanToken(v.token),
+      code: v.code === undefined || v.code === null ? null : cleanRoomCode(v.code),
+    };
+  });
+}
+
+/** A frame the relay forwarded, by the rules the relay checked it with, or null. */
+export function cleanFrame(v: unknown, cardIds: ReadonlySet<string> = playableCardIds()): InputFrame | null {
+  return attempt(() => frame(v, cardIds));
+}
+
+/** A sync digest from the relay, or null. */
+export function cleanSync(tick: unknown, checksum: unknown): { tick: number; checksum: number } | null {
+  return attempt(() => ({ tick: int(tick, 0, MAX_TICK), checksum: int(checksum, 0, 0xffffffff) }));
+}
+
+/** A peer's resume grace (whole seconds, 0..MAX_GRACE_SEC); the relay's default when it is not a number. */
+export function cleanGraceSec(v: unknown): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return DEFAULT_GRACE_SEC;
+  return Math.min(MAX_GRACE_SEC, Math.max(0, Math.round(v)));
+}
+
+/** A relay refusal the page knows; anything else reads as "bad-message". */
+export function cleanErrorReason(v: unknown): ErrorReason {
+  return typeof v === "string" && ERROR_REASONS.has(v) ? (v as ErrorReason) : "bad-message";
 }
