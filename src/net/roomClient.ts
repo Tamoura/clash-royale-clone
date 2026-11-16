@@ -1,14 +1,17 @@
 import type { CardId } from "../game/cards";
 import type { InputFrame } from "./lockstep";
+import { PROTOCOL_VERSION, type ClientMsg, type ErrorReason, type Loadout, type MatchMode, type Role } from "./protocol";
 import {
-  PROTOCOL_VERSION,
-  type ClientMsg,
-  type Loadout,
-  type MatchMode,
-  type Role,
-  type ServerMsg,
-  type StartMsg,
-} from "./protocol";
+  MAX_RTT_MS,
+  cleanErrorReason,
+  cleanFrame,
+  cleanGraceSec,
+  cleanRoomCode,
+  cleanStartMsg,
+  cleanSync,
+  cleanToken,
+  playableCardIds,
+} from "./validate";
 
 /** Minimal subset of the browser WebSocket the client needs (mockable). */
 export interface NetSocket {
@@ -39,7 +42,7 @@ export interface StartPayload {
   delay: number;
   /** This seat's resume token. Keep it private. */
   token: string;
-  /** The room code (for resuming), or null from a relay that omits it. */
+  /** The room code (for resuming), or null from a relay that omits it (or sends no real code). */
   code: string | null;
 }
 
@@ -61,18 +64,11 @@ const PING_EVERY_MS = 5000;
 export const MATCH_PING_EVERY_MS = 2000;
 const RTT_SAMPLES = 5;
 
-function toPayload(msg: StartMsg): StartPayload {
-  return {
-    role: msg.role,
-    hostDeck: msg.hostDeck,
-    guestDeck: msg.guestDeck,
-    mode: msg.mode,
-    hostLoadout: msg.hostLoadout ?? null,
-    guestLoadout: msg.guestLoadout ?? null,
-    delay: msg.delay ?? 4,
-    token: msg.token ?? "",
-    code: msg.code ?? null,
-  };
+/** A parsed relay message before its fields are checked. */
+type RawMsg = Record<string, unknown> & { t: string };
+
+function isMsg(v: unknown): v is RawMsg {
+  return typeof v === "object" && v !== null && !Array.isArray(v) && typeof (v as { t?: unknown }).t === "string";
 }
 
 /**
@@ -100,7 +96,8 @@ export class RoomClient {
   /** The other player asked for a rematch (we have not, yet). */
   onPeerRematch: (() => void) | null = null;
   onPong: ((rtt: number) => void) | null = null;
-  onError: ((reason: string) => void) | null = null;
+  /** A refusal from the relay, or "bad-message" when the relay sent something broken (the socket then closes). */
+  onError: ((reason: ErrorReason) => void) | null = null;
   /** Fired once: the socket closed, errored, or never opened in time. */
   onClose: (() => void) | null = null;
 
@@ -116,6 +113,8 @@ export class RoomClient {
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private pingEvery = PING_EVERY_MS;
   private heardAt: number;
+  /** Cards a deck or a frame from the relay may name (validate.ts playableCardIds). */
+  private readonly cardIds = playableCardIds();
 
   constructor(
     private readonly socket: NetSocket,
@@ -143,13 +142,13 @@ export class RoomClient {
     };
     socket.onmessage = (ev) => {
       this.heardAt = this.now();
-      let msg: ServerMsg;
+      let msg: unknown;
       try {
-        msg = JSON.parse(ev.data) as ServerMsg;
+        msg = JSON.parse(ev.data);
       } catch {
         return; // ignore malformed input
       }
-      this.handle(msg);
+      if (isMsg(msg)) this.handle(msg);
     };
     socket.onclose = () => this.finish();
     socket.onerror = () => this.finish();
@@ -308,32 +307,62 @@ export class RoomClient {
     this.onClose?.();
   }
 
-  private handle(msg: ServerMsg): void {
+  /**
+   * The relay sent something the battle cannot be built from (a broken
+   * start or room code): report it as the relay's own "bad-message" refusal,
+   * which the lobby already explains, and close the link.
+   */
+  private broken(): void {
+    this.onError?.("bad-message");
+    this.drop();
+  }
+
+  /**
+   * One message from the relay. Nothing from it is trusted: every field is
+   * checked (validate.ts) before a handler sees it. A broken start ends the
+   * link; a bad frame, sync or pong is dropped, like unparsable text.
+   */
+  private handle(msg: RawMsg): void {
     switch (msg.t) {
-      case "created":
-        this.onCreated?.(msg.code, msg.token);
+      case "created": {
+        const code = cleanRoomCode(msg.code);
+        if (code === null) return this.broken();
+        this.onCreated?.(code, cleanToken(msg.token));
         break;
-      case "start":
-        this.onStart?.(toPayload(msg));
+      }
+      case "start": {
+        const start = cleanStartMsg(msg, this.cardIds);
+        if (!start) return this.broken();
+        this.onStart?.(start);
         break;
-      case "queued":
-        this.onQueued?.(msg.position);
+      }
+      case "queued": {
+        const position = msg.position;
+        if (typeof position === "number" && Number.isInteger(position) && position >= 0) this.onQueued?.(position);
         break;
-      case "frame":
-        this.onFrame?.(msg.frame);
+      }
+      case "frame": {
+        const frame = cleanFrame(msg.frame, this.cardIds);
+        if (frame) this.onFrame?.(frame);
         break;
-      case "sync":
-        this.onSync?.(msg.tick, msg.checksum);
+      }
+      case "sync": {
+        const sync = cleanSync(msg.tick, msg.checksum);
+        if (sync) this.onSync?.(sync.tick, sync.checksum);
         break;
+      }
       case "pong": {
+        // `at` is our own clock reading, echoed back.
+        if (typeof msg.at !== "number" || !Number.isFinite(msg.at)) break;
         const rtt = Math.max(0, this.now() - msg.at);
+        if (rtt > MAX_RTT_MS) break;
         this.rtts.push(rtt);
         if (this.rtts.length > RTT_SAMPLES) this.rtts.shift();
         this.onPong?.(rtt);
         break;
       }
       case "peer-dropped":
-        this.onPeerDropped?.(msg.graceSec);
+        this.onPeerDropped?.(cleanGraceSec(msg.graceSec));
         break;
       case "peer-back":
         this.onPeerBack?.();
@@ -342,11 +371,19 @@ export class RoomClient {
         this.onPeerLeft?.();
         break;
       case "peer-paused":
-        this.onPeerPaused?.(msg.paused);
+        this.onPeerPaused?.(msg.paused === true);
         break;
-      case "resumed":
-        this.onResumed?.(msg.frames, toPayload(msg.start));
+      case "resumed": {
+        const start = cleanStartMsg(msg.start, this.cardIds);
+        if (!start || !Array.isArray(msg.frames)) return this.broken();
+        const frames: InputFrame[] = [];
+        for (const f of msg.frames) {
+          const clean = cleanFrame(f, this.cardIds);
+          if (clean) frames.push(clean);
+        }
+        this.onResumed?.(frames, start);
         break;
+      }
       case "rematch-wait":
         this.onRematchWait?.();
         break;
@@ -354,7 +391,7 @@ export class RoomClient {
         this.onPeerRematch?.();
         break;
       case "error":
-        this.onError?.(msg.reason);
+        this.onError?.(cleanErrorReason(msg.reason));
         break;
     }
   }
