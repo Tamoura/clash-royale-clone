@@ -30,19 +30,20 @@ class MemStore implements Storage {
   }
 }
 
-/** A page served by `npm start` on this machine, opened with `search`. */
-function page(search: string) {
-  return { search, protocol: "http:", hostname: "127.0.0.1", host: "127.0.0.1:4111", origin: "http://127.0.0.1:4111", pathname: "/" };
+/** A page served on this machine (`npm start`, or `npm run dev` opened here), opened with `search`. */
+function page(search: string, hostname = "127.0.0.1", port = 4111) {
+  const host = `${hostname}:${port}`;
+  return { search, protocol: "http:", hostname, host, origin: `http://${host}`, pathname: "/" };
 }
 
-async function loadOnline(opts: { dev: boolean; search: string; stored?: string }) {
+async function loadOnline(opts: { dev: boolean; search: string; stored?: string; hostname?: string; relayEnv?: string }) {
   vi.resetModules();
   vi.stubEnv("DEV", opts.dev);
-  vi.stubEnv("VITE_RELAY_URL", "same-origin");
+  vi.stubEnv("VITE_RELAY_URL", opts.relayEnv ?? "same-origin");
   const store = new MemStore();
   if (opts.stored) store.setItem(RELAY_STORE_KEY, opts.stored);
   vi.stubGlobal("localStorage", store);
-  vi.stubGlobal("location", page(opts.search));
+  vi.stubGlobal("location", page(opts.search, opts.hostname));
   const online = await import("./online");
   return { online, store };
 }
@@ -91,6 +92,35 @@ describe("online relay wiring in a development build", () => {
   it("keeps ?relay=none (preview a site with no relay)", async () => {
     const { online } = await loadOnline({ dev: true, search: "?relay=none" });
     expect(online.relayTarget()).toEqual({ url: null, lan: false });
+  });
+
+  it("keeps a remembered relay at boot on the developer's own computer", async () => {
+    const { store } = await loadOnline({ dev: true, search: "", stored: "wss://picked.invalid/ws" });
+    expect(store.getItem(RELAY_STORE_KEY)).toBe("wss://picked.invalid/ws");
+  });
+});
+
+/**
+ * `npm run play`: the kids' devices open the dev server by its LAN address
+ * (no relay baked in), and always use the LAN relay beside the page.
+ */
+describe("online relay wiring on the dev server reached from another device", () => {
+  const PLAY = { dev: true, hostname: "192.168.1.20", relayEnv: "" };
+
+  it("wipes a remembered relay as soon as the game loads", async () => {
+    const { store } = await loadOnline({ ...PLAY, search: "", stored: "ws://192.168.1.66:4134/ws" });
+    expect(store.getItem(RELAY_STORE_KEY)).toBeNull();
+  });
+
+  it("ignores ?relay= and never puts a relay in an invite link", async () => {
+    const { online, store } = await loadOnline({ ...PLAY, search: "?join=LION042&relay=ws://192.168.1.66:4134/ws" });
+    expect(online.relayTarget()).toEqual({ url: "ws://192.168.1.20:3110", lan: true });
+    expect(store.getItem(RELAY_STORE_KEY)).toBeNull();
+    expect(online.inviteRelayParam()).toBeNull();
+    const link = new URL(online.inviteLink("LION042"));
+    expect(link.searchParams.get("join")).toBe("LION042");
+    expect(link.searchParams.has("relay")).toBe(false);
+    expect(link.origin).toBe("http://192.168.1.20:4111");
   });
 });
 

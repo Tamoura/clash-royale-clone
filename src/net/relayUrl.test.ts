@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { RELAY_STORE_KEY, buildRelayUrl, forgetRelayOverride, inviteRelay, resolveRelayUrl } from "./relayUrl";
+import {
+  RELAY_STORE_KEY,
+  buildRelayUrl,
+  forgetRelayOverride,
+  inviteRelay,
+  relayOverrideAllowed,
+  resolveRelayUrl,
+} from "./relayUrl";
 
 /** In-memory Storage stand-in. */
 class MemStore implements Storage {
@@ -26,8 +33,10 @@ class MemStore implements Storage {
 
 const PAGES = { search: "", protocol: "https:", hostname: "tamoura.github.io" };
 const LAN = { search: "", protocol: "http:", hostname: "192.168.1.20" };
+/** The dev server opened on the computer that runs it: the only page that reads ?relay=. */
+const HOME = { search: "", protocol: "http:", hostname: "localhost", host: "localhost:3101" };
 const ENV = { VITE_RELAY_URL: "wss://relay.example.com/ws" };
-/** A development build (npm run dev, npm run play): the only kind that reads ?relay=. */
+/** A development build (npm run dev, npm run play). */
 const DEV = { DEV: true };
 const DEV_ENV = { ...ENV, ...DEV };
 
@@ -50,24 +59,24 @@ describe("resolveRelayUrl", () => {
 
   it("in development, takes ?relay=wss://… over everything and remembers it", () => {
     const store = new MemStore();
-    const page = { ...PAGES, search: "?relay=wss://x.trycloudflare.com/ws" };
+    const page = { ...HOME, search: "?relay=wss://x.trycloudflare.com/ws" };
     expect(resolveRelayUrl(page, DEV_ENV, store)).toEqual({ url: "wss://x.trycloudflare.com/ws", lan: false });
     expect(store.getItem(RELAY_STORE_KEY)).toBe("wss://x.trycloudflare.com/ws");
     // Later visits without the parameter still use it.
-    expect(resolveRelayUrl(PAGES, DEV_ENV, store).url).toBe("wss://x.trycloudflare.com/ws");
-    expect(resolveRelayUrl({ ...PAGES, search: "?relay=wss://x" }, DEV, store).url).toBe("wss://x");
+    expect(resolveRelayUrl(HOME, DEV_ENV, store).url).toBe("wss://x.trycloudflare.com/ws");
+    expect(resolveRelayUrl({ ...HOME, search: "?relay=wss://x" }, DEV, store).url).toBe("wss://x");
   });
 
   it("in development, rejects ?relay=javascript:alert(1) and other non-ws URLs", () => {
     const store = new MemStore();
     for (const bad of ["javascript:alert(1)", "http://x.com", "https://x.com/ws", "wss://", "not a url"]) {
-      const page = { ...PAGES, search: `?relay=${encodeURIComponent(bad)}` };
+      const page = { ...HOME, protocol: "https:", search: `?relay=${encodeURIComponent(bad)}` };
       expect(resolveRelayUrl(page, DEV, store)).toEqual({ url: null, lan: false });
     }
     expect(store.getItem(RELAY_STORE_KEY)).toBeNull();
     // A bad parameter does not wipe a good remembered relay.
     store.setItem(RELAY_STORE_KEY, "wss://good.example/ws");
-    expect(resolveRelayUrl({ ...PAGES, search: "?relay=javascript:alert(1)" }, DEV, store).url).toBe(
+    expect(resolveRelayUrl({ ...HOME, search: "?relay=javascript:alert(1)" }, DEV, store).url).toBe(
       "wss://good.example/ws",
     );
   });
@@ -75,7 +84,7 @@ describe("resolveRelayUrl", () => {
   it("in development, ?relay=clear forgets the remembered relay", () => {
     const store = new MemStore();
     store.setItem(RELAY_STORE_KEY, "wss://old.example/ws");
-    expect(resolveRelayUrl({ ...PAGES, search: "?relay=clear" }, DEV_ENV, store)).toEqual({
+    expect(resolveRelayUrl({ ...HOME, search: "?relay=clear" }, DEV_ENV, store)).toEqual({
       url: "wss://relay.example.com/ws",
       lan: false,
     });
@@ -86,8 +95,9 @@ describe("resolveRelayUrl", () => {
     expect(resolveRelayUrl(PAGES, { VITE_RELAY_URL: "ws://relay.example.com/ws" }).url).toBe(
       "wss://relay.example.com/ws",
     );
-    expect(resolveRelayUrl({ ...PAGES, search: "?relay=ws://10.0.0.5:3110" }, DEV).url).toBe("wss://10.0.0.5:3110");
-    expect(resolveRelayUrl({ ...LAN, search: "?relay=ws://10.0.0.5:3110" }, DEV).url).toBe("ws://10.0.0.5:3110");
+    const homeTls = { ...HOME, protocol: "https:" };
+    expect(resolveRelayUrl({ ...homeTls, search: "?relay=ws://10.0.0.5:3110" }, DEV).url).toBe("wss://10.0.0.5:3110");
+    expect(resolveRelayUrl({ ...HOME, search: "?relay=ws://10.0.0.5:3110" }, DEV).url).toBe("ws://10.0.0.5:3110");
   });
 
   it('"same-origin" points at the page\'s own server, wss on https', () => {
@@ -135,11 +145,10 @@ describe("resolveRelayUrl", () => {
   it("in development, a ?relay= link still beats a same-origin build, and ?relay=clear returns to it", () => {
     const store = new MemStore();
     const SAME = { VITE_RELAY_URL: "same-origin", BASE_URL: "/", DEV: true };
-    const page = { ...PAGES, host: "tamoura.github.io" };
-    expect(resolveRelayUrl({ ...page, search: "?relay=wss://other.example/ws" }, SAME, store).url).toBe(
+    expect(resolveRelayUrl({ ...HOME, search: "?relay=wss://other.example/ws" }, SAME, store).url).toBe(
       "wss://other.example/ws",
     );
-    expect(resolveRelayUrl({ ...page, search: "?relay=clear" }, SAME, store).url).toBe("wss://tamoura.github.io/ws");
+    expect(resolveRelayUrl({ ...HOME, search: "?relay=clear" }, SAME, store).url).toBe("ws://localhost:3101/ws");
     expect(store.getItem(RELAY_STORE_KEY)).toBeNull();
   });
 
@@ -164,7 +173,7 @@ describe("resolveRelayUrl", () => {
         throw new Error("blocked");
       },
     } as unknown as Storage;
-    expect(resolveRelayUrl({ ...PAGES, search: "?relay=wss://x" }, DEV, broken).url).toBe("wss://x");
+    expect(resolveRelayUrl({ ...HOME, search: "?relay=wss://x" }, DEV, broken).url).toBe("wss://x");
     expect(resolveRelayUrl(PAGES, ENV, broken).url).toBe("wss://relay.example.com/ws");
     expect(resolveRelayUrl({ ...PAGES, search: "?relay=wss://x" }, ENV, broken).url).toBe("wss://relay.example.com/ws");
   });
@@ -232,7 +241,7 @@ describe("resolveRelayUrl in a published build", () => {
   });
 
   it("only DEV === true counts as a development build", () => {
-    const page = { ...PAGES, search: "?relay=wss://picked.example/ws" };
+    const page = { ...HOME, search: "?relay=wss://picked.example/ws" };
     for (const env of [{}, { DEV: false }, { DEV: "true" }, { DEV: 1 }] as unknown as { DEV?: boolean }[]) {
       expect(resolveRelayUrl(page, { ...ENV, ...env }, new MemStore()).url).toBe("wss://relay.example.com/ws");
     }
@@ -254,22 +263,72 @@ describe("resolveRelayUrl in a published build", () => {
   });
 });
 
+/**
+ * `npm run play` serves the dev server to the kids' devices by its LAN
+ * address. Those pages are development builds too, but a link must not pick
+ * their relay either: they always find the LAN relay beside the page.
+ */
+describe("resolveRelayUrl on the dev server reached from another device (npm run play)", () => {
+  const PLAY = { ...LAN, host: "192.168.1.20:3101" };
+
+  it("ignores ?relay= and uses the LAN relay beside the page", () => {
+    const store = new MemStore();
+    const page = { ...PLAY, search: "?relay=ws://192.168.1.66:4134/ws" };
+    expect(resolveRelayUrl(page, DEV, store)).toEqual({ url: "ws://192.168.1.20:3110", lan: true });
+    expect(store.getItem(RELAY_STORE_KEY)).toBeNull();
+    const invite = { ...PLAY, search: "?join=LION042&relay=ws%3A%2F%2F192.168.1.66%3A4134%2Fws" };
+    expect(resolveRelayUrl(invite, DEV, store)).toEqual({ url: "ws://192.168.1.20:3110", lan: true });
+    expect(store.getItem(RELAY_STORE_KEY)).toBeNull();
+  });
+
+  it("ignores and removes a remembered relay", () => {
+    const store = new MemStore();
+    store.setItem(RELAY_STORE_KEY, "ws://192.168.1.66:4134/ws");
+    expect(resolveRelayUrl(PLAY, DEV, store)).toEqual({ url: "ws://192.168.1.20:3110", lan: true });
+    expect(store.getItem(RELAY_STORE_KEY)).toBeNull();
+  });
+
+  it("only localhost, 127.0.0.1 and [::1] count as the developer's own computer", () => {
+    for (const hostname of ["localhost", "LOCALHOST", "127.0.0.1", "[::1]"]) {
+      expect(relayOverrideAllowed({ ...HOME, hostname }, DEV), hostname).toBe(true);
+      expect(relayOverrideAllowed({ ...HOME, hostname }, {}), hostname).toBe(false);
+      expect(relayOverrideAllowed({ ...HOME, hostname }, { DEV: false }), hostname).toBe(false);
+    }
+    for (const hostname of [
+      "192.168.1.20",
+      "10.0.0.5",
+      "my-laptop.local",
+      "localhost.evil.example",
+      "127.0.0.1.nip.io",
+      "evil-localhost",
+      "tamoura.github.io",
+      "",
+    ]) {
+      expect(relayOverrideAllowed({ ...HOME, hostname }, DEV), hostname).toBe(false);
+    }
+  });
+});
+
 describe("inviteRelay (the relay an invite link names)", () => {
   const picked = { url: "wss://picked.example/ws", lan: false };
 
-  it("names a hand-picked relay only in a development build", () => {
-    expect(inviteRelay(picked, PAGES, DEV_ENV)).toBe("wss://picked.example/ws");
+  it("names a hand-picked relay only on the development server opened on its own computer", () => {
+    expect(inviteRelay(picked, HOME, DEV_ENV)).toBe("wss://picked.example/ws");
+    expect(inviteRelay(picked, HOME, ENV)).toBeNull();
+    expect(inviteRelay(picked, HOME, { ...ENV, DEV: false })).toBeNull();
+    expect(inviteRelay(picked, HOME, {})).toBeNull();
     expect(inviteRelay(picked, PAGES, ENV)).toBeNull();
-    expect(inviteRelay(picked, PAGES, { ...ENV, DEV: false })).toBeNull();
-    expect(inviteRelay(picked, PAGES, {})).toBeNull();
+    // The kids' devices in npm run play: a dev build reached by its LAN address.
+    expect(inviteRelay(picked, LAN, DEV)).toBeNull();
+    expect(inviteRelay(picked, PAGES, DEV_ENV)).toBeNull();
   });
 
   it("never names the build's own relay, the LAN relay or no relay", () => {
-    expect(inviteRelay({ url: "wss://relay.example.com/ws", lan: false }, PAGES, DEV_ENV)).toBeNull();
+    expect(inviteRelay({ url: "wss://relay.example.com/ws", lan: false }, HOME, DEV_ENV)).toBeNull();
     // ws: and wss: name the same relay.
-    expect(inviteRelay({ url: "ws://relay.example.com/ws", lan: false }, PAGES, DEV_ENV)).toBeNull();
-    expect(inviteRelay({ url: "ws://192.168.1.20:3110", lan: true }, LAN, DEV)).toBeNull();
-    expect(inviteRelay({ url: null, lan: false }, PAGES, DEV)).toBeNull();
+    expect(inviteRelay({ url: "ws://relay.example.com/ws", lan: false }, HOME, DEV_ENV)).toBeNull();
+    expect(inviteRelay({ url: "ws://localhost:3110", lan: true }, HOME, DEV)).toBeNull();
+    expect(inviteRelay({ url: null, lan: false }, HOME, DEV)).toBeNull();
     const SAME = { VITE_RELAY_URL: "same-origin", BASE_URL: "/", DEV: true };
     const local = { search: "", protocol: "http:", hostname: "localhost", host: "localhost:3101" };
     expect(inviteRelay({ url: "ws://localhost:3101/ws", lan: false }, local, SAME)).toBeNull();

@@ -73,9 +73,11 @@ Good to know about the free plan:
 
 **Optional: let the GitHub Pages copy play online too.** `render.yaml`
 already allows pages from `https://tamoura.github.io`. Set the repository
-variable `RELAY_URL` to `wss://<your-address>/ws` and re-run the Pages
-workflow ([section (e)](#e-wiring-github-pages-to-the-relay)). The first
-connection to a sleeping server can time out, so try again after a minute.
+variable `RELAY_URL` to `wss://<your-address>/ws` before you push, then
+re-run the Pages workflow ([section (e)](#e-wiring-github-pages-to-the-relay)).
+It is the only way: Pages ignores `?relay=` links, so a device that used one
+loses online play there until `RELAY_URL` is set. The first connection to a
+sleeping server can time out, so try again after a minute.
 
 **Two addresses, two saves.** The Render address and the Pages address
 (`https://tamoura.github.io/clash-royale-clone/`) are different websites to
@@ -190,9 +192,9 @@ address on both phones: it is the game, and the game finds its relay there.
 * Through the tunnel every player shares your computer's IP limits (8
   sockets). For more devices, start it with
   `TRUST_PROXY=cf-connecting-ip npm start` (Cloudflare sets that header).
-* A `?relay=wss://…` link only changes the relay in development builds
-  (`npm run dev`, `npm run play`). The GitHub Pages copy and every other
-  published build always use the relay baked in at build time.
+* A `?relay=wss://…` link only works on the dev server opened at `localhost`
+  (`npm run dev`). The Pages copy, every other published build and the
+  devices in `npm run play` ignore it.
 
 ---
 
@@ -284,16 +286,16 @@ the branch under **Settings → Environments → github-pages → Deployment bra
 
 How the page picks a relay (`src/net/relayUrl.ts`), first match wins:
 
-1. Development builds only (`npm run dev`, `npm run play`): `?relay=wss://…`
-   in the link (remembered on that device), or one remembered earlier.
+1. Only on the dev server opened at `localhost`, `127.0.0.1` or `[::1]`:
+   `?relay=wss://…` in the link (remembered there), or one remembered earlier.
 2. `VITE_RELAY_URL` from the build: a `wss://` address, or `same-origin`
    (what `npm run build:all` sets) for the server the page came from.
 3. On a plain `http://` page (LAN), `ws://<same host>:3110`.
 4. Otherwise online play is off.
 
-A published build (Pages, Render, `npm start`) ignores `?relay=` and forgets
-any relay a device remembered. To point the Pages copy at another relay,
-change the `RELAY_URL` variable and re-run the Pages workflow.
+A published build (Pages, Render, `npm start`), and any other device on the
+dev server (`npm run play`), ignores `?relay=` and forgets a remembered relay.
+To point the Pages copy elsewhere, change `RELAY_URL` and re-run the workflow.
 
 On an `https://` page, `ws://` is upgraded to `wss://` automatically.
 
@@ -395,7 +397,7 @@ socket glue would need rewriting. Not needed at kid-and-friends scale.
 | `NODE_ENV`         | relay env       | unset                                     | `production` tightens the default `ALLOWED_ORIGINS` of a relay-only server too. |
 | `LOG_LEVEL`        | relay env       | `info`                                    | `debug` adds IPs and invalid-message detail. Use it briefly. |
 | `VITE_RELAY_URL`   | page build env  | unset (`same-origin` in `npm run build:all`) | Relay baked into the page: a `wss://` address (from the `RELAY_URL` repo variable), or `same-origin` for the server the page came from. |
-| `?relay=`          | page link       | none                                      | Development builds only (`npm run dev`, `npm run play`): per-device override, remembered; `?relay=clear` forgets it. Only `ws://` and `wss://` are accepted. Published builds ignore it and use the relay baked in at build time. |
+| `?relay=`          | page link       | none                                      | Only the dev server opened at `localhost` (`npm run dev`): override, remembered; `?relay=clear` forgets it. Only `ws://` and `wss://` are accepted. Published builds and the devices in `npm run play` ignore it. |
 
 Built-in limits: 4 KB per message; 60 messages per second per socket (bursts up
 to 90); 5 create/join per IP per 10 s; 10 wrong codes in 10 minutes per address

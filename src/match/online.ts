@@ -18,7 +18,13 @@ import type { Side } from "../game/arena";
 import type { CardId } from "../game/cards";
 import { DEFAULT_DECK } from "../game/cards";
 import type { Loadout, MatchMode } from "../net/protocol";
-import { forgetRelayOverride, inviteRelay, resolveRelayUrl, type RelayTarget } from "../net/relayUrl";
+import {
+  forgetRelayOverride,
+  inviteRelay,
+  relayOverrideAllowed,
+  resolveRelayUrl,
+  type RelayTarget,
+} from "../net/relayUrl";
 import { OnlineSession, type MatchInfo } from "../net/session";
 import type { AppCtx } from "../app/ctx";
 import { emit, on, setPendingSpend } from "../app/hooks";
@@ -66,20 +72,27 @@ export function relayTarget(): RelayTarget {
 
 /**
  * The relay to name in invite links (inviteRelay in net/relayUrl.ts): one
- * picked by hand with ?relay=, and only in a development build. A
- * published build's links never carry one.
+ * picked by hand with ?relay=, and only on the development server opened on
+ * its own computer. A published build's links never carry one, nor do those
+ * of the kids' devices in `npm run play`.
  */
 export function inviteRelayParam(): string | null {
   if (!import.meta.env.DEV) return null;
   return inviteRelay(relayTarget(), location, import.meta.env);
 }
 
-// A published build never uses a hand-picked relay, and resolveRelayUrl
+/** Whether this page may take its relay from a ?relay= link (relayOverrideAllowed). */
+function relayOverrideHere(): boolean {
+  return import.meta.env.DEV && typeof location !== "undefined" && relayOverrideAllowed(location, import.meta.env);
+}
+
+// A published build (or the dev server reached from another device, as in
+// `npm run play`) never uses a hand-picked relay, and resolveRelayUrl
 // removes a remembered one on the first online use. Remove it at boot as
 // well: a device that never opens online play is cleaned all the same, and
 // an older copy of the game that the service worker may still start once
 // (on a slow network) finds nothing to pick up. One removeItem.
-if (!import.meta.env.DEV) forgetRelayOverride(pageStore());
+if (!relayOverrideHere()) forgetRelayOverride(pageStore());
 
 // ---- Loadout and decks -------------------------------------------------------
 

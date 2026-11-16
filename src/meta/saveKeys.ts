@@ -132,7 +132,7 @@ export const SAVE_KEYS: readonly SaveKeyDef[] = [
     key: "cr-clone-relay",
     cls: D,
     shape: "text",
-    note: "relay picked with ?relay= (relayUrl.ts): development builds only; a published build removes it; never in a save",
+    note: "relay picked with ?relay= (relayUrl.ts): only the dev server opened on its own computer; every other page removes it; never in a save",
   },
   { key: "cr-clone-replay", cls: D, shape: "json", note: "the last battle's replay tape (main.ts); large" },
   { key: "cr-clone-left-match", cls: D, shape: "json", note: "a ladder match left mid-battle on this device (leftMatch.ts)" },

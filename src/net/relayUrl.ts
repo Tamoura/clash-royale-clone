@@ -4,19 +4,21 @@
  * feed it.
  *
  * Priority:
- *   1. development builds only (`npm run dev`, `npm run play`: env.DEV):
- *      `?relay=ws(s)://…` in the page URL (remembered in storage;
- *      `?relay=clear` forgets it), else a previously remembered one
+ *   1. the development server opened on its own computer only (env.DEV and
+ *      a localhost page): `?relay=ws(s)://…` in the page URL (remembered in
+ *      storage; `?relay=clear` forgets it), else a previously remembered one
  *   2. the build's VITE_RELAY_URL: a ws(s):// URL, or "same-origin" / a
  *      path like "/ws" when the relay serves the page itself (one service,
  *      one address: `npm run build:all && npm start`, Render, Docker)
  *   3. a plain-http page (LAN dev or `npm run play`): ws://<host>:3110
  *   4. nothing: online play is unavailable
- * A published build (anything not DEV) never reads `?relay=` or a
- * remembered relay: it talks only to the relay baked in at build time, or
- * to the LAN relay beside a plain-http page. It also removes any relay an
- * older build remembered, so that device is clean from then on. The player's
- * name, crest and deck go to the relay, so a link must not be able to pick it.
+ * Everywhere else (a published build, or the development server reached
+ * from another device, as the kids' tablets do with `npm run play`) the page
+ * never reads `?relay=` or a remembered relay: it talks only to the relay
+ * baked in at build time, or to the LAN relay beside a plain-http page. It
+ * also removes any relay remembered earlier, so that device is clean from
+ * then on. The player's name, crest and deck go to the relay, so a link must
+ * not be able to pick it.
  * On an https page a ws: URL is upgraded to wss: (browsers block mixed content).
  */
 
@@ -39,7 +41,8 @@ export interface RelayEnv {
   BASE_URL?: string;
   /**
    * Vite's import.meta.env.DEV: true only for the development server
-   * (`npm run dev`, `npm run play`). Only then may a link pick the relay.
+   * (`npm run dev`, `npm run play`). Only then, and only on a localhost
+   * page, may a link pick the relay (relayOverrideAllowed).
    */
   DEV?: boolean;
 }
@@ -116,7 +119,20 @@ export function forgetRelayOverride(store?: Storage): void {
   write(store, null);
 }
 
-/** Development builds only: `?relay=` (remembered), `?relay=clear`, or the remembered relay. */
+/** Page hosts that are the computer itself: where a developer runs the dev server. */
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * Whether a `?relay=` link (or one remembered from it) may pick the relay:
+ * only in a development build opened on the computer that runs it. The
+ * kids' devices in `npm run play` reach the same dev server by its LAN
+ * address, and they never need it (step 3 finds the LAN relay).
+ */
+export function relayOverrideAllowed(loc: PageLocation, env: RelayEnv): boolean {
+  return env.DEV === true && LOOPBACK_HOSTS.has(loc.hostname.toLowerCase());
+}
+
+/** Development on this computer only: `?relay=` (remembered), `?relay=clear`, or the remembered relay. */
 function devOverride(loc: PageLocation, store: Storage | undefined): string | null {
   const param = new URLSearchParams(loc.search).get("relay");
   if (param !== null) {
@@ -134,12 +150,13 @@ function devOverride(loc: PageLocation, store: Storage | undefined): string | nu
 }
 
 export function resolveRelayUrl(loc: PageLocation, env: RelayEnv, store?: Storage): RelayTarget {
-  if (env.DEV === true) {
+  if (relayOverrideAllowed(loc, env)) {
     const picked = devOverride(loc, store);
     if (picked) return { url: upgrade(picked, loc.protocol), lan: false };
   } else {
-    // A published build: the link and the remembered value are ignored, and
-    // a relay an older build remembered is removed for good.
+    // A published build, or the dev server reached from another device: the
+    // link and the remembered value are ignored, and a remembered relay is
+    // removed for good.
     forgetRelayOverride(store);
   }
 
@@ -153,14 +170,15 @@ export function resolveRelayUrl(loc: PageLocation, env: RelayEnv, store?: Storag
 }
 
 /**
- * The relay an invite link should name, or null. Only a development build
- * puts one in, and only a relay picked by hand (?relay=), so a friend
- * opening the link reaches the same server. The build's own relay
- * (including a same-origin one) and the implied LAN relay need no
- * parameter, and a published build never names one: it would ignore it.
+ * The relay an invite link should name, or null. Only the development
+ * server opened on its own computer (relayOverrideAllowed) puts one in, and
+ * only a relay picked by hand (?relay=), so a friend opening the link reaches
+ * the same server. The build's own relay (including a same-origin one) and
+ * the implied LAN relay need no parameter, and every other page never names
+ * one: it would ignore it.
  */
 export function inviteRelay(target: RelayTarget, loc: PageLocation, env: RelayEnv): string | null {
-  if (env.DEV !== true || !target.url || target.lan) return null;
+  if (!relayOverrideAllowed(loc, env) || !target.url || target.lan) return null;
   const built = buildRelayUrl(loc, env);
   if (built && target.url.replace(/^ws:/i, "wss:") === built.replace(/^ws:/i, "wss:")) return null;
   return target.url;
