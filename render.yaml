@@ -21,16 +21,22 @@ services:
     # Closest Render region to the Gulf. Pick before the first deploy:
     # Render may not let you move a service later.
     region: frankfurt
-    # The branch the game lives on. Change it if you move the game to main.
+    # The branch the game lives on. Change it if you move the game to main,
+    # and change the push branch in .github/workflows/deploy.yml with it.
     branch: claude/game-visuals-character-balance-w122wb
     # NODE_ENV=production (below) also applies to the build, so ask npm for
     # the dev dependencies (Vite, TypeScript, esbuild) explicitly.
     buildCommand: npm ci --include=dev && npm run build:all
     startCommand: node dist-server/relay.mjs
     healthCheckPath: /healthz
-    # Every push to the branch redeploys (and restarts the server, which ends
-    # any match in progress). Use "off" to update only with Manual Deploy.
-    autoDeployTrigger: commit
+    # A push still goes live by itself within minutes, but only after the
+    # commit's GitHub checks (typecheck + tests in .github/workflows/deploy.yml)
+    # pass: a red build never reaches the kids. Every job that reports on the
+    # commit counts, the Pages publish too. Render skips a commit whose checks
+    # fail, and one with no checks at all (e.g. a "[skip ci]" commit).
+    # Each deploy restarts the server, which ends any match in progress.
+    # Use "off" to update only with Manual Deploy.
+    autoDeployTrigger: checksPass
     # Pushes that only touch these never redeploy.
     buildFilter:
       ignoredPaths:
@@ -55,7 +61,8 @@ services:
       - key: TRUST_PROXY
         value: true-client-ip
       # This service's own page is always allowed. This also lets the GitHub
-      # Pages copy of the game use this relay (see the docs, optional step).
+      # Pages copy of the game use this relay, which its build (deploy.yml)
+      # bakes in by default.
       - key: ALLOWED_ORIGINS
         value: https://tamoura.github.io
       # Friends-only: never match strangers (the owner's decision). Kids meet

@@ -5,6 +5,8 @@ import pkgRaw from "../package.json?raw";
 import relaySource from "../server/relay.ts?raw";
 import relayUrlSource from "./net/relayUrl.ts?raw";
 import renderYaml from "../render.yaml?raw";
+import deployYml from "../.github/workflows/deploy.yml?raw";
+import { buildRelayUrl } from "./net/relayUrl";
 
 /**
  * Keeps the multiplayer docs honest: every `npm run <script>` they tell the
@@ -79,12 +81,45 @@ describe("multiplayer docs", () => {
     expect(deployDoc).toContain(`\`${branch}\``);
   });
 
+  it("match the deploy gate: checks before Render, one publishing branch, a relay for Pages", () => {
+    const field = (yaml: string, name: string) =>
+      new RegExp(`^\\s*${name}:\\s*(.+)$`, "m").exec(yaml)?.[1].trim();
+    // Render goes live only after the commit's GitHub checks pass.
+    expect(field(renderYaml, "autoDeployTrigger")).toBe("checksPass");
+
+    // Pages publishes from exactly the branch Render deploys, so both copies
+    // of the game come from the same code, and that branch always has checks.
+    const branch = field(renderYaml, "branch");
+    const push = /^on:\n {2}push:\n(?: {4}#.*\n)* {4}branches:\s*\[([^\]]*)\]/m.exec(deployYml);
+    expect(push, "deploy.yml on.push.branches").not.toBeNull();
+    expect(push![1].split(",").map((b) => b.trim())).toEqual([branch]);
+    expect(deployYml).toMatch(/^ {2}workflow_dispatch:/m);
+    // The checks Render waits for: typecheck and tests, before the build.
+    expect(deployYml).toContain("run: npx tsc --noEmit");
+    expect(deployYml).toContain("run: npx vitest run");
+    expect(deployYml).toMatch(/^ {2}build:\n {4}needs: verify$/m);
+
+    // The Pages build bakes in a working relay even with no RELAY_URL
+    // variable; the variable still wins when it is set.
+    const relayLine = field(deployYml, "VITE_RELAY_URL") ?? "";
+    const m = /^\$\{\{\s*vars\.RELAY_URL\s*\|\|\s*'([^']+)'\s*\}\}$/.exec(relayLine);
+    expect(m, `VITE_RELAY_URL: ${relayLine}`).not.toBeNull();
+    const fallback = m![1];
+    expect(fallback).toBe(`wss://${field(renderYaml, "name")}.onrender.com/ws`);
+    const pages = { search: "", protocol: "https:", hostname: "tamoura.github.io" };
+    expect(buildRelayUrl(pages, { VITE_RELAY_URL: fallback, BASE_URL: "/clash-royale-clone/" })).toBe(fallback);
+    // ...and that relay lets the Pages copy in.
+    const origins = /- key: ALLOWED_ORIGINS\n\s+value:\s*(.+)/.exec(renderYaml)?.[1] ?? "";
+    expect(origins.split(",").map((o) => o.trim())).toContain("https://tamoura.github.io");
+  });
+
   // 520: round 2 added "Two addresses, two saves" (moving progress between
   // the Render and Pages links with a save code) and its troubleshooting line.
-  it("stay within the 350-520 line budget and keep the README link", () => {
+  // 540: Stage 0 added the checks gate and the one publishing branch.
+  it("stay within the 350-540 line budget and keep the README link", () => {
     const lines = deployDoc.split("\n").length;
     expect(lines).toBeGreaterThanOrEqual(350);
-    expect(lines).toBeLessThanOrEqual(520);
+    expect(lines).toBeLessThanOrEqual(540);
     expect(readme).toContain("docs/deploy-multiplayer.md");
   });
 });

@@ -25,9 +25,9 @@ and no settings to change: the page finds the server it came from.
 
 **1. Make a Render account.** Go to <https://render.com>, choose **Get
 Started**, then **GitHub**. Signing up with GitHub lets Render rebuild the
-game by itself whenever the code changes. Render's free plan has not needed
-a credit card so far. If the sign-up asks for one anyway, you can still keep
-this service on the Free plan.
+game by itself when the code changes and its checks pass. Render's free plan
+has not needed a credit card so far. If the sign-up asks for one anyway, you
+can still keep this service on the Free plan.
 
 **2. Click the button.**
 
@@ -59,10 +59,13 @@ Good to know about the free plan:
 * **It sleeps** after 15 minutes with nobody on it. The next visit wakes it:
   Render shows a loading page for about a minute, then the game appears. A
   match in progress keeps it awake.
-* **Updates are automatic.** Every push to the branch rebuilds and restarts
-  the server (docs-only pushes are skipped), which ends matches in progress.
-  To update only when you choose, set `autoDeployTrigger: "off"` in
-  `render.yaml`, then use **Manual Deploy → Deploy latest commit**.
+* **Updates are automatic, after the checks.** A push to the branch goes live
+  within minutes, but only once its GitHub checks (typecheck and tests) pass,
+  so a red build never reaches the kids; the **Actions** tab shows why a push
+  is held back. Docs-only pushes are skipped. Each update restarts the server,
+  which ends matches in progress. To update only when you choose, set
+  `autoDeployTrigger: "off"` in `render.yaml`, then use **Manual Deploy →
+  Deploy latest commit**.
 * **Limits:** 750 free hours a month (enough to run all month) and a limited
   amount of outbound traffic (5 GB a month when this was written). A first
   visit downloads about 1.4 MB (0.55 MB of code, then 0.85 MB of 3D characters
@@ -71,11 +74,13 @@ Good to know about the free plan:
 * **One server.** Rooms live in its memory, and the free plan always runs
   exactly one instance, which is what the relay needs.
 
-**Optional: let the GitHub Pages copy play online too.** `render.yaml`
-already allows pages from `https://tamoura.github.io`. Set the repository
-variable `RELAY_URL` to `wss://<your-address>/ws` and re-run the Pages
-workflow ([section (e)](#e-wiring-github-pages-to-the-relay)). The first
-connection to a sleeping server can time out, so try again after a minute.
+**The GitHub Pages copy plays online too.** Its build uses the Render relay,
+`wss://clash-royale-clone.onrender.com/ws`, by default, and `render.yaml`
+already allows pages from `https://tamoura.github.io`. If your service has
+another address, set the repository variable `RELAY_URL` to
+`wss://<your-address>/ws` ([section (e)](#e-wiring-github-pages-to-the-relay));
+it wins over the default. The first connection to a sleeping server can time
+out, so try again after a minute.
 
 **Two addresses, two saves.** The Render address and the Pages address
 (`https://tamoura.github.io/clash-royale-clone/`) are different websites to
@@ -275,18 +280,24 @@ Your relay is `wss://clash-royale-clone-relay.fly.dev/ws`. Try it with
 ## (e) Wiring GitHub Pages to the relay
 
 1. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
-2. **Settings → Secrets and variables → Actions → Variables → New repository
+2. **Only for a different relay.** With no variable, the Pages build uses the
+   Render relay, `wss://clash-royale-clone.onrender.com/ws`. To change it:
+   **Settings → Secrets and variables → Actions → Variables → New repository
    variable.** Name: `RELAY_URL`. Value: your relay, e.g.
    `wss://clash-royale-clone-relay.fly.dev/ws` or `wss://<name>.onrender.com/ws`.
    This is a *variable*, not a secret. The address ends up in the public page anyway.
-3. The Pages workflow (`.github/workflows/deploy.yml`) passes it to the build
-   as `VITE_RELAY_URL`. Re-run it from **Actions → Deploy to GitHub Pages →
-   Run workflow**, or push a commit.
+3. The Pages workflow (`.github/workflows/deploy.yml`) passes it (else the
+   Render relay) to the build as `VITE_RELAY_URL`. Re-run it from **Actions →
+   Deploy to GitHub Pages → Run workflow**, or push a commit.
 
-Pages deploys run on pushes to `main`, `claude/game-visuals-character-balance-w122wb`
-and `feature/arabesque-theme`, and on manual runs. If a run fails with *"not
-allowed to deploy to github-pages due to environment protection rules"*, add
-the branch under **Settings → Environments → github-pages → Deployment branches**.
+Only pushes to `claude/game-visuals-character-balance-w122wb` (the branch in
+`render.yaml`) and manual runs publish Pages. Older branches such as `main`
+and `feature/arabesque-theme` still carry their own old copy of the workflow,
+and a push to one of them would publish it. To stop that, set **Settings →
+Environments → github-pages → Deployment branches and tags** to that one
+branch; runs from other branches then fail with *"not allowed to deploy to
+github-pages due to environment protection rules"*. Render waits for this
+workflow too, so a failed Pages run also holds that commit back on Render.
 
 How the page picks a relay (`src/net/relayUrl.ts`), first match wins:
 
