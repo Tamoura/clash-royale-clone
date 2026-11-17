@@ -113,7 +113,7 @@ export function roadButton(ctx: AppCtx): HTMLElement {
       ? tr(ready === 1 ? "1 reward!" : `${ready} rewards!`, `${fmtNum(ready)} مكافأة!`)
       : next
         ? `${tr("Next", "التالي")} ${fmtNum(next.at)}`
-        : tr("Road complete", "اكتمل الطريق");
+        : tr("Trail complete", "اكتمل السلّم");
   btn.append(art, title, sub);
   if (ready > 0) {
     const dot = document.createElement("span");
@@ -166,7 +166,7 @@ function buildRoad(ctx: AppCtx, scrollToMarker: boolean): void {
       ? tr(`${waiting.length} reward${waiting.length === 1 ? "" : "s"} waiting. Tap Claim!`, `${fmtNum(waiting.length)} مكافأة بانتظارك. اضغط استلم!`)
       : next
         ? tr(`Win battles to reach ${next.at} trophies for the next reward.`, `انتصر لتبلغ ${fmtNum(next.at)} كأسًا وتنال المكافأة التالية.`)
-        : tr("You reached the end of the road. Legend!", "بلغت نهاية الطريق. أسطورة!");
+        : tr("You reached the end of the trail. Legend!", "بلغت قمة السلّم. أسطورة!");
   screen.appendChild(intro);
 
   const list = document.createElement("ol");

@@ -145,7 +145,7 @@ function resultLines(ctx: AppCtx, s: MatchEndPayload): HTMLElement | null {
     box.appendChild(row);
   }
   if (res.roadNowClaimable.length > 0) {
-    box.appendChild(line("trophy", tr("Road reward ready", "مكافأة الطريق جاهزة"), "rw-result__line--road"));
+    box.appendChild(line("trophy", tr("Trail reward ready", "مكافأة السلّم جاهزة"), "rw-result__line--road"));
   }
   if (res.draftReward) {
     box.appendChild(line("chest", tr("Draft run complete! A Rare Chest waits at Home", "اكتملت سلسلة الانتقاء! صندوق نادر بانتظارك"), "rw-result__line--draft"));
