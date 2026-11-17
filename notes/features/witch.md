@@ -10,7 +10,7 @@ Skeletons (the existing 1-elixir card) on her own side.
   `spawnInterval`, `spawnTimer`). Any troop or building card can be a
   spawner later (Tombstone, Goblin Hut, ...).
 - First wave fires `FIRST_SPAWN_DELAY` (1s) after the deploy freeze,
-  then every `spawnInterval` (7s) — matches CR feel and means a witch
+  then every `spawnInterval` (7s) — feels right and means a witch
   played at the back has skeletons with her before reaching the bridge.
   (Initial naive version spawned the first wave only after a full
   interval; by then the witch had walked to the river and her skeletons

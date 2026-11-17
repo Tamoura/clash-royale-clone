@@ -8,5 +8,5 @@ through spawnBuilding since the Witch round.
 - 3D: gravestone (mound, slab, rounded cap, inscription, tiny skull,
   green necro orb). 2D HUD art matches.
 - README deck count updated to 21.
-- Future: CR's tombstone bursts 4 skeletons on death — would need a
+- Future: the tombstone could burst 4 skeletons on death — would need a
   deathSpawn mechanic; noted, not built.

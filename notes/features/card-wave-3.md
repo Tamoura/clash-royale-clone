@@ -16,7 +16,7 @@ enhancement round (plan in `/tmp/claude-0/enh/plan.json`).
   match. Before, 30 of 150 Balloon-vs-Balloon lab games lost a tower with no
   crown. Crowns now cap at 3.
 - **Spawned units take the spawner's level** (`Entity.sourceCardId`). Witch,
-  Tombstone and Skeleton Barrel skeletons, and death spawns, use the parent
+  Tombstone and Bone Barrel skeletons, and death spawns, use the parent
   card's level and credit their damage to it. A level-5 Witch now makes
   112 HP skeletons, not 80.
 - **The bot accepts even spell trades** (`bot.ts` `findCluster`:
@@ -27,21 +27,21 @@ enhancement round (plan in `/tmp/claude-0/enh/plan.json`).
 
 | What | Before | After | Why |
 |---|---|---|---|
-| Mega Knight HP / damage / charge | 3400 / 240 / 2x after 3 tiles | 3000 / 200 / none | 66.8% across random decks; the jump is his charge |
+| Thunder Knight HP / damage / charge | 3400 / 240 / 2x after 3 tiles | 3000 / 200 / none | 66.8% across random decks; the jump is his charge |
 | Zap damage | 250 | 210 | it beat Arrows and one-shot Archers |
 | Arrows damage | 240 | 300 | now kills Archers and the Princess |
-| Royal Giant HP / damage | 2400 / 200 | 3100 / 240 | 36.7%, the bottom of the table |
+| Cannon Giant HP / damage | 2400 / 200 | 3100 / 240 | 36.7%, the bottom of the table |
 | Executioner HP | 700 | 1000 | 40.6% |
 | Firecracker HP | 140 | 200 | 44.2% |
 | Cannon damage | 130 | 160 | 40.2% |
-| Electro Wizard stun on hit | 1 s | 0.5 s | stunned targets ~55% of the time |
-| Tombstone | spawns every 6 s | also releases 4 skeletons when it falls (interval stays 6) | 40.0%; CR-accurate |
+| Lightning Wizard stun on hit | 1 s | 0.5 s | stunned targets ~55% of the time |
+| Tombstone | spawns every 6 s | also releases 4 skeletons when it falls (interval stays 6) | 40.0% |
 | Princess tower damage | 120 | 100 | pacing (see below) |
 | Cannoneer damage | 330 | 242 (290 × 100/120) | beat the Princess 62% |
-| Dagger Duchess damage / reload | 70 / 1.1 s | 58 (70 × 100/120) / 0.6 s | lost to the Princess 67-33 |
+| Swift Duchess damage / reload | 70 / 1.1 s | 58 (70 × 100/120) / 0.6 s | lost to the Princess 67-33 |
 | Royal Restore tower heal | 500 | 250 | 66.7% against no ability |
 | Baby Dragon HP | 1050 | 980 | 63.1% in a 6000-match sample, over the 63% band edge |
-| Skeleton Barrel burst damage | 60 | 150 | 39-40%, near the 38% floor |
+| Bone Barrel burst damage | 60 | 150 | 39-40%, near the 38% floor |
 | Giant | 3600 HP | unchanged | 39%, but every buff made the rookie and practice bots harder for a beginner (see Novice bands) |
 | Overtime | 120 s, 2x then 3x | 60 s, 3x elixir throughout, troop hits on crown towers 3x | 0-0 tiebreaks after five minutes |
 
@@ -67,10 +67,10 @@ The Duchess blurb now says "then a steady reload", and the Restore blurb says 25
 
 | Card | Cost | Stats | Mechanic | Unlock |
 |---|---|---|---|---|
-| Stone Golem `stone-golem` | 8 | 5000 HP, 260 dmg / 2.5 s, slow, targets buildings, 260 death blast | bursts into 2 Pebble Golems | Bone Pit (200) |
+| Stone Golem `stone-golem` | 8 | 5000 HP, 260 dmg / 2.5 s, slow, targets buildings, 260 death blast | bursts into 2 Pebble Golems | Fossil Hollow (200) |
 | Pebble Golem `pebble-golem` (token) | 0 | 950 HP, 55 dmg / 2.5 s, slow, targets buildings, 55 death blast | never in a deck | none |
-| Digger `digger` | 3 | 1000 HP, 160 dmg / 1.2 s, fast, 35% damage to towers (56 a hit) | deploys anywhere, tunnels there | Barbarian Bowl (400) |
-| Comet `comet` | 6 | 1000 damage (400 to crown towers), radius 2, knockback 1 | lands 1.8 s after the cast | Legendary Peak (3000) |
+| Digger `digger` | 3 | 1000 HP, 160 dmg / 1.2 s, fast, 35% damage to towers (56 a hit) | deploys anywhere, tunnels there | Snowdrift Fort (400) |
+| Comet `comet` | 6 | 1000 damage (400 to crown towers), radius 2, knockback 1 | lands 1.8 s after the cast | Lantern Summit (3000) |
 
 Sim mechanics:
 - **Death spawns**: `UnitStats`/`Entity` `deathSpawnId` and `deathSpawnCount`.
@@ -119,7 +119,7 @@ Placeholders (real art and fx arrive in wave 2, `card-wave-art`):
 - `CARD_COLOR` and `ARCHETYPES` entries.
 - `ISLAMIC_NAME`: حارس الحجر, حصاة, حفّار الرمال, شهاب.
 - Rigs borrowed from existing cards. Golem and Pebble use the Giant (the war
-  elephant in the Golden Age edition). The Digger uses the Mini P.E.K.K.A
+  elephant in the Golden Age edition). The Digger uses the Little Steel Guard
   (the Duelist).
 - `views/troops.ts` hides a tunnelling troop.
 - Card info lines: "Splits into 2 Pebble Golems", "Releases 4 Skeletons when
@@ -188,23 +188,23 @@ Columns:
 - "Before": this branch with the bug fixes and the new cards, but sim-v2
   stats and pacing (commit `2508db1`). It reproduces the analyst's a1ed21f
   numbers (mirror n=64: OT 82.8%, tiebreak 42.2%, any crown 57.8%, 3-crown
-  0%). The analyst's a1ed21f random-deck run (2132 games) had Mega Knight at
+  0%). The analyst's a1ed21f random-deck run (2132 games) had Thunder Knight at
   71.1%.
 - "First v3 pass": the version the reviewers measured (one-minute 3x
-  overtime, no tower-damage rule, Baby Dragon 1050, Skeleton Barrel 60).
+  overtime, no tower-damage rule, Baby Dragon 1050, Bone Barrel 60).
 - "Shipped": the final sim v3.
 
 ## Random decks: per-card win rate
 
 Target: every deckable card 38-63%, the new cards 42-60%. **Met.** Pooled
-over 12000 matches, the lowest card is Giant at 39.3% and the highest P.E.K.K.A
+over 12000 matches, the lowest card is Giant at 39.3% and the highest Steel Guard
 at 61.1%. Pooled standard error is about +/-0.8 points, and each 6000-match
 run is about +/-1.1. In single runs the extremes are Giant 38.6% (offsets
-0-2) and Skeleton Army 61.7% (offsets 0-2). Both are inside the band, but
+0-2) and Bone Swarm 61.7% (offsets 0-2). Both are inside the band, but
 within one single-run standard error of its edge. New cards (pooled): Comet
 50.0%, Digger 46.8%, Stone Golem 44.1%.
 
-Skeleton Army and Arrows swing about 4-7 points between the two runs, more
+Bone Swarm and Arrows swing about 4-7 points between the two runs, more
 than the noise allows. Each run uses different deck pairs, so I read the
 pooled column.
 
@@ -291,10 +291,10 @@ rather than at its stats.
 | royal-giant | 37.6% | 41.5% |
 | giant | 38.4% | 40.1% |
 
-Pooled with the 12000 matches above (about 20000), Mini P.E.K.K.A is about
-60.8% and Royal Giant about 39.6%, so the band is met; which edge a card
+Pooled with the 12000 matches above (about 20000), Little Steel Guard is about
+60.8% and Cannon Giant about 39.6%, so the band is met; which edge a card
 touches depends on the seeds sampled. First candidates for the next balance
-pass: Mini P.E.K.K.A at the top, Giant and Royal Giant at the bottom. No sim
+pass: Little Steel Guard at the top, Giant and Cannon Giant at the bottom. No sim
 change was made for this (it would force another golden re-capture).
 
 ## Tower troops and King's abilities (192 matches each)
@@ -305,7 +305,7 @@ on 768: 60.4% (+/-1.8).
 
 | Matchup | Before | First v3 pass | Shipped |
 |---|---:|---:|---:|
-| Dagger Duchess vs Princess | 33.1% | 52.3% | 47.4% |
+| Swift Duchess vs Princess | 33.1% | 52.3% | 47.4% |
 | Cannoneer vs Princess | 62.0% | 49.2% | 47.4% |
 | Royal Restore vs no ability | 66.7% | 57.3% | 63.0% (768 matches: 60.4%) |
 | King's Salvo vs no ability | 52.9% | 51.6% | 53.6% |
@@ -375,7 +375,7 @@ princess-damage fallback in the spec (100 down to 90) reached only 48.4% 0-0
 in the first pass, so princess damage stays at 100.
 
 The shipped config was then re-measured with the final Baby Dragon and
-Skeleton Barrel numbers (the shipped row of the first table).
+Bone Barrel numbers (the shipped row of the first table).
 
 `pacing.test.ts` now plays the first 128 lab seeds, not 20. There the build
 gives 37 0-0 finishes (28.9%), 39 tiebreaks and 210.5 s. That is close to the
@@ -463,9 +463,9 @@ seeds (see first-hour.md). Every challenge clears 10/10 for the normal bot.
   Digger check (b), drop it next to a tower, about 1.5 tiles behind it: there
   it lands 5-8 hits whatever the tower troop. Mid-field at (9, 9) it lands one
   hit against the Princess, two against the Cannoneer and none against the
-  Dagger Duchess, whose daggers kill it on the walk.
+  Swift Duchess, whose daggers kill it on the walk.
 
-| Digger spot | vs Princess | vs Cannoneer | vs Dagger Duchess |
+| Digger spot | vs Princess | vs Cannoneer | vs Swift Duchess |
 |---|---:|---:|---:|
 | (9, 9), mid-field | 56 | 112 | 0 |
 | 2.3 tiles in front of the tower (3.5, 9.2) | 336 | 448 | 280 |

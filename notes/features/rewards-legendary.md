@@ -7,8 +7,8 @@ unchanged.
 ## Legendary tier
 - `Rarity` gains `"legendary"` (`src/game/cards.ts`, type + `rarity:` fields
   only). Six legendaries: **Digger** and **Comet** (the new signature cards),
-  plus the pool cards that are Legendary in the original game: **Mega Knight,
-  Electro Wizard, Magic Archer, Princess**. Ice Wizard stays Epic to keep the
+  plus the pool cards that are Legendary in the original game: **Thunder Knight,
+  Lightning Wizard, Arrow Mage, Princess**. Ice Wizard stays Epic to keep the
   tier at six. No starter-deck card and no token is legendary (tested).
 - Labels: "Legendary" / "أسطورية" (card info badge, reveal, pass picker) and
   "أسطوري" in the battle tooltip (`src/render/cardinfo.ts`, `rarityWord`).
@@ -42,7 +42,7 @@ unchanged.
   a new one when one is findable at the player's arena, else shards for an
   owned one. Wooden chests never cash the guarantee in. Below 400 trophies
   (Digger's arena) nothing can drop, so the counter is simply full when a kid
-  reaches Barbarian Bowl: the arena's gate chest on the Trophy Road (a Rare
+  reaches Snowdrift Fort: the arena's gate chest on the Trophy Trail (a Rare
   chest) then brings the Digger.
 - `rollChest(chest, trophies, owned, rng, pity)` is pure (tests drive it);
   `openChest(..., kv)` reads and moves the stored counter, once per chest
@@ -98,7 +98,7 @@ unchanged.
   they land and ends exactly on the new total. The wallet is looked up after
   the caller's re-render (`[data-wallet]` pills, the top-bar chips, the chest
   room's pills). Reduced motion just shows the total.
-- Used by the Trophy Road and Crown Pass claims (both screens now carry a
+- Used by the Trophy Trail and Crown Pass claims (both screens now carry a
   gold / gems wallet in their header; the road's trophies stay on the "You"
   marker), Profile achievements, and chest gold and gems on Collect.
 - Toasts now stack near the bottom of the screen, lifted above the tab bar

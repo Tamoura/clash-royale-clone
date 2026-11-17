@@ -13,8 +13,8 @@ and what is left open.
   - Spawned units take the spawner's level and credit.
   - The bot accepts even spell trades (it Zaps a full Bats pack).
 - **Rebalance**:
-  - Mega Knight, Zap, Arrows, Royal Giant, Executioner, Firecracker, Cannon,
-    Electro Wizard.
+  - Thunder Knight, Zap, Arrows, Cannon Giant, Executioner, Firecracker, Cannon,
+    Lightning Wizard.
   - Tombstone releases 4 skeletons when it falls.
   - Duchess reload 0.6 s, Cannoneer 290 (then the pacing scaling).
   - Royal Restore heals towers 250.
@@ -23,11 +23,11 @@ and what is left open.
     3x (`OVERTIME_TOWER_DAMAGE`; spells are not tripled). The banner reads
     "OVERTIME!" / "3x elixir" / "Troops hit towers 3x!".
   - Princess towers deal 100. Cannoneer is 242 and Duchess 58.
-  - Baby Dragon 1050 to 980 HP, Skeleton Barrel burst 60 to 150. The Giant
+  - Baby Dragon 1050 to 980 HP, Bone Barrel burst 60 to 150. The Giant
     stays at 3600 (see Targets).
 - **New cards** (epic for now): Stone Golem (with the Pebble Golem token),
   Digger and Comet.
-  - Unlock arenas: Bone Pit, Barbarian Bowl and Legendary Peak.
+  - Unlock arenas: Fossil Hollow, Snowdrift Fort and Lantern Summit.
   - The bot plays all three.
   - Placeholder colours, Golden Age names, rigs and card info lines are in
     place until wave 2 brings their art.
@@ -59,7 +59,7 @@ minimal edit, and I'm flagging them for the owners:
   `OVERTIME_DURATION`.
 - `src/render3d/scene/views/animate.test.ts` (no wave-1 owner; card-wave-art
   in wave 2): the "1 s on-hit stun doesn't ice" case now builds its 1 s stun
-  directly instead of reading the Electro Wizard's (now 0.5 s).
+  directly instead of reading the Lightning Wizard's (now 0.5 s).
 
 ## How it was verified
 
@@ -89,7 +89,7 @@ with the three cards. Sandbox at 390x844 for (a)-(d).
   - It stayed burrowed for about 3.3 s, untargeted (no tower or projectile
     aimed at it), then surfaced.
   - It hit the tower 56 a hit: 8 hits (2534 to 2086) against a Cannoneer
-    tower in Classic, and 5 against a Dagger Duchess tower in Golden Age.
+    tower in Classic, and 5 against a Swift Duchess tower in Golden Age.
   - A node check of every tower troop is in card-wave-3.md: 280-448 tower
     damage next to a tower, against 0-112 mid-field.
 - **(c) Comet** on the enemy's right princess tower: 2534 at +1.2 s, 2134
@@ -132,7 +132,7 @@ All met (card-wave-3.md has every table):
   passed on a lucky window, as the reviewers found. Overtime's 3x troop hits
   on towers close the gap, and `pacing.test` now plays 128 seeds.
 - **Cards** (two independent 6000-match random-deck runs): every deckable
-  card is inside 38-63%. Pooled, the range is Giant 39.3% to P.E.K.K.A 61.1%.
+  card is inside 38-63%. Pooled, the range is Giant 39.3% to Steel Guard 61.1%.
   New cards: Comet 50.0%, Digger 46.8%, Stone Golem 44.1%.
 - **Tower troops**: Duchess and Cannoneer both 47.4% against the Princess.
 - **Restore** against no ability: 60.4% over 768 matches (63.0% on the
@@ -159,7 +159,7 @@ The Giant stays at 3600, inside the band.
 - The Giant is near the bottom of the bot-vs-bot lab (39%). The next balance
   pass should look at how the bot plays it.
 - The Digger needs a spot near a tower. Mid-field at (9, 9) it lands 0-2 hits,
-  depending on the tower troop, and none against the Dagger Duchess. A kid
+  depending on the tower troop, and none against the Swift Duchess. A kid
   hint such as "Drop it next to a tower" belongs in battle-clarity's or
   card-wave-art's blurbs.
 - Placeholders until wave 2:

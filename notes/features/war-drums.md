@@ -308,7 +308,7 @@ The files:
 - `war-drums-with-battle-sounds-{classic,golden-age}.mp3` and
   `old-battle-music-with-battle-sounds-classic.mp3`: 30 s with deploys,
   hits, archers, a fireball, a Comet, a tower falling with the crown cheer,
-  a Hog Rider, a Zap and a Giant, played through the engine's `onEvent`.
+  a Boar Rider, a Zap and a Giant, played through the engine's `onEvent`.
   These let you hear the music sitting under the game's sounds.
 
 All are the speaker output at default prefs, made louder by one fixed gain

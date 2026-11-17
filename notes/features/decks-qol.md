@@ -27,7 +27,7 @@ misses a reward or an upgrade.
     wins over a stale copy in the active slot.
 - Migration: the first load (or the first save) copies the existing saved
   deck into slot 1, and into slots 2 and 3 as starting points (like a fresh
-  Clash Royale account), slot 1 active. No deck is lost.
+  account), slot 1 active. No deck is lost.
 - `activateSlot` (deckPicker.ts) makes a slot active: clamps it to owned
   cards (`playableDeck`, e.g. a deleted Champion), saves the slots, sets
   `meta.playerDeck` and calls `persistProfile`. The next bot battle and the
@@ -124,7 +124,7 @@ misses a reward or an upgrade.
 - Pure helpers: `affordableUpgrades(profile, levels)` (shards and gold for
   the next level), `badgeCounts(sources)` (upgrades, road, pass,
   achievements, today's quests) and `tabBadges(counts)`:
-  - **Battle**: claimable Trophy Road nodes + Crown Pass tiers + finished
+  - **Battle**: claimable Trophy Trail nodes + Crown Pass tiers + finished
     daily quests (the road button, pass pill and quest board all live there);
   - **Cards**: upgrades the player can pay for;
   - **Profile**: earned, unclaimed achievements.

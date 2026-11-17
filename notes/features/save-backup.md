@@ -36,11 +36,11 @@ keep a copy, so you can undo it." and a table, **This save** (highlighted)
 next to **This tablet now**: name (when either has one), trophies, arena,
 cards, gold, gems, and the edition when it would change. Numbers go through
 `fmtNum` (Arabic-Indic digits in Golden Age). Each edition names its arenas
-its own way (Barbarian Bowl is سوق التوابل in the Golden Age), so each
+its own way (Snowdrift Fort is سوق التوابل in the Golden Age), so each
 column names its arena the way its own edition does (`arenaNameIn`): a
 Golden Age save on a Classic tablet shows سوق التوابل, the name the kid will
 see after the load, in its own right-to-left island (`<bdi lang="ar"
-dir="rtl">`), and the reverse shows Barbarian Bowl left to right. A side
+dir="rtl">`), and the reverse shows Snowdrift Fort left to right. A side
 with no edition (an old save) uses this tablet's. If the save has fewer trophies:
 "This save has fewer trophies than this tablet." If the backup slot holds a
 copy with more trophies than this tablet now, the load would replace it, so
@@ -72,22 +72,22 @@ under the two buttons, which stay pinned to the bottom of the sheet; under
 no word is split.
 
 Load errors (kid wording, both languages in `saveSheet.ts saveErrorText`):
-empty, too long, not a Crown Rush code, a deck code ("That's a deck code, not
+empty, too long, not a Banner Lanes code, a deck code ("That's a deck code, not
 a save code."), a typo ("Part of this code is wrong or missing. Copy the
 whole code again and paste it."), a newer game ("This save is from a newer
-Crown Rush. Update the game, then try again."), another game, broken, a save
+Banner Lanes. Update the game, then try again."), another game, broken, a save
 with nothing in it, no room to save.
 
 After the kid's first real win (not a replay, not Sandbox) the game asks
 `navigator.storage.persist()` once. On an iPhone or iPad in a browser tab
 (not opened from the Home Screen) the next Home opens, once, a small sheet
-**"Keep your progress safe" / "حافظ على تقدّمك في أمان"**: "Add Crown Rush to
-your Home Screen so your progress stays safe." / "أضف هجمة التاج إلى الشاشة
+**"Keep your progress safe" / "حافظ على تقدّمك في أمان"**: "Add Banner Lanes to
+your Home Screen so your progress stays safe." / "أضف درب الرايات إلى الشاشة
 الرئيسية ليبقى تقدّمك في أمان.", "The Home Screen game starts empty. Copy your
 save code first, then load it there." / "اللعبة على الشاشة الرئيسية تبدأ
 فارغة. انسخ رمز الحفظ أولًا، ثم حمّله هناك.", and how ("In Safari, tap Share,
 then Add to Home Screen."). **Copy my save code** opens the code sheet, whose
-first line then reads "Copy this code. Then open Crown Rush from your Home
+first line then reads "Copy this code. Then open Banner Lanes from your Home
 Screen and tap Load my save."; **Not now** closes it.
 
 Why the sheet: on iOS a Home Screen web app keeps its own storage, apart from
@@ -477,7 +477,7 @@ line; shapes this round changed: the code with a space between every
 character among words (636 joins), wrapped with NEL, and with an accent
 after its last letter each showed the confirm table, and "I'm a CR7fan and
 so is my dad and my uncle and my whole family too" showed "That isn't a
-Crown Rush save code...". 400,000-character pastes answered 24-134 ms after
+Banner Lanes save code...". 400,000-character pastes answered 24-134 ms after
 the tap, drawing included (alternating accents 134 ms, blocks of marks
 126 ms, alternating harakat 24 ms, halfwidth voiced marks between accents
 132 ms; before the fix the first two took 3.0 s and 5.7 s), and 64 starts

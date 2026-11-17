@@ -11,7 +11,7 @@ move and attack 35% faster.
   recovery (`RAGE_BOOST = 1.35` in sim.ts) — a single code path, no
   stat mutation, so leaving the zone instantly drops the bonus.
 - Buildings/towers inside the zone also recover attacks faster
-  (matches CR where rage affects buildings).
+  (rage speeds buildings as well as troops).
 - Renderer: spell event spawns a pulsing purple ring + haze for the
   zone's lifetime; effects list also carries it for the 2D path.
 - Tests compare displacement of identical knights across separate

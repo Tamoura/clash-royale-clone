@@ -56,11 +56,11 @@ Tests run the real screens on a small fake DOM (`src/ui/fakeDom.testkit.ts`, sin
 
 ### C04. The season reset keeps their arena
 
-Before: `softReset = 1000 + floor((t - 1000) / 2)`. A kid at 1600 (Royal Arena) woke up at 1300 (Builder's Workshop), and a banner showed the drop.
+Before: `softReset = 1000 + floor((t - 1000) / 2)`. A kid at 1600 (Castle Court) woke up at 1300 (Tinker Yard), and a banner showed the drop.
 
 After (`src/meta/achievements.ts`): `seasonResetTrophies(t) = max(floor of the arena t stands in, 1000 + floor((t - 1000) / 2))`.
 - 1600 stays 1600, 1900 trims to 1600, 2500 to 2400 and 3400 to 3000. Values at or below 1000 are untouched.
-- `checkSeason` also reports `rolled`, and every season rollover is celebrated with a toast above the tab bar: "November 2026 season starts! You kept Royal Arena." / "بدأ موسم نوفمبر ٢٠٢٦! بقيت في قصر الحمراء." The season name brings the edition's digits, and the line goes through `tr()`.
+- `checkSeason` also reports `rolled`, and every season rollover is celebrated with a toast above the tab bar: "November 2026 season starts! You kept Castle Court." / "بدأ موسم نوفمبر ٢٠٢٦! بقيت في قصر الحمراء." The season name brings the edition's digits, and the line goes through `tr()`.
 - The toast stays up 6 s (`SEASON_TOAST_MS`; `toast()` takes an optional lifetime, the default is still 2.4 s), long enough for a young reader.
 
 Tests: every trophy count from 0 to 6000 (twice the road's end) keeps its arena index; the 1600 case; trims that stop at the arena floor; the toast text in both languages; `toast()`'s default and longer lifetimes. The road test's reset expectation moves from 1200 to 1300.
@@ -94,13 +94,13 @@ Drivers are in /tmp/claude-0/r1/kind (`tut.cjs`, `nudge.cjs`, `chest.cjs`, `misc
 
 - **Fresh profile, full tutorial, both editions.** The tutorial finished with Victory and Home with the chest: Classic in 214 s, Golden Age in 261 s. Every lesson showed its chip (Knight/فارس, Musketeer/إنكشاري, Fireball/قذيفة نفط, Giant/فيل الحرب).
 - **Wrong card in the Fireball lesson.** The coach showed "Not that one. Use the glowing Fireball card!" (and the Arabic line). The Fireball card's wiggle animation ran, and the glove restarted from the card. No troop was deployed, the clock stayed held (battle time unchanged) and elixir was untouched. The lesson's line returned after about 3 s, and the right card then played. Shots: `normal-nudge.png`, `arabic-nudge.png`.
-- **The tutorial's own chest, tapped through at the screen centre** (the playtester's move). The new card was Skeletons (ميليشيا in Golden Age).
+- **The tutorial's own chest, tapped through at the screen centre** (the playtester's move). The new card was Skeletons (المشاة in Golden Age).
   - No Add button and no dialog appeared during the sequence. A MutationObserver watched every stage.
   - On the summary, the centre of the screen is Collect. Tapping through there just collects, with the deck unchanged.
   - Add opened the strip with Keep focused and yellow. Keep left the deck unchanged. Tapping Archers swapped exactly that slot ("Added to your deck! Archers is still in your cards.").
   - The same flow worked at 1440x900 in both editions.
   - Shots: `normal-chest-newcard.png`, `normal-forced-chest-summary.png`, `normal-forced-chest-strip.png`, `normal-forced-chest-added.png`, `arabic-chest-summary.png`, `arabic-chest-strip.png`, `arabic-forced-desktop-chest-strip.png`.
-- **Season.** A profile at 1600 trophies with last month's season booted to the toast "November 2026 season starts! You kept Royal Arena." (Arabic: "بدأ موسم نوفمبر ٢٠٢٦! بقيت في قصر الحمراء."), still at 1600 trophies. Shots: `normal-season-banner.png`, `arabic-season-banner.png`.
+- **Season.** A profile at 1600 trophies with last month's season booted to the toast "November 2026 season starts! You kept Castle Court." (Arabic: "بدأ موسم نوفمبر ٢٠٢٦! بقيت في قصر الحمراء."), still at 1600 trophies. Shots: `normal-season-banner.png`, `arabic-season-banner.png`.
 - **Emotes.** The tray shows wave, thumbs up, wow and heart with English and Arabic labels, and a sent wave pops in the inked bubble beside the king. Shots: `normal-emote-tray.png`, `normal-emote-bubble.png`.
 - **Music.** Measured in the Classic edition only:
   - While the Fireball lesson held the clock: `hushed` true, 15 notes in 4 s.
