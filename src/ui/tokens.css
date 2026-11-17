@@ -100,7 +100,7 @@
   --cr-panel:       var(--cr-panel-arabic);
   --cr-border:      var(--cr-border-arabic);
   --cr-gold-border: var(--cr-gold-arabic);
-  /* Lobby: deep teal radial glow replacing the Clash gold */
+  /* Lobby: deep teal radial glow replacing the Classic gold */
   --cr-lobby-glow:  rgba(26, 163, 160, 0.28);
   --cr-lobby-glow-b: rgba(14, 124, 132, 0.14);
   --cr-lobby-top:   rgba(10, 28, 40, 0.90);
@@ -211,7 +211,7 @@
   --team-enemy-cb: #ff8a00;
   --scrim: rgba(3, 7, 16, 0.62);
 
-  /* CR text: white, dark outline, hard drop. */
+  /* Game text: white, dark outline, hard drop. */
   --cr-outline:
     -1.5px -1.5px 0 #1a1030, 1.5px -1.5px 0 #1a1030,
     -1.5px 1.5px 0 #1a1030, 1.5px 1.5px 0 #1a1030,

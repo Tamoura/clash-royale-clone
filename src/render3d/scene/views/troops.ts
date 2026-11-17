@@ -320,7 +320,7 @@ function drawLevelBadge(b: LevelBadge, palette: TeamPalette): void {
 }
 
 /**
- * CR-style level shield capping an HP bar (towers and troops). `simSide`
+ * Level shield capping an HP bar (towers and troops). `simSide`
  * is the entity's sim side; the shield wears the viewer-relative team.
  */
 export function makeLevelBadge(simSide: Side, level = 9): THREE.Sprite {
@@ -592,7 +592,7 @@ export function buildTroopMesh(e: Entity): EntityView {
   } else {
     rig = buildTroop(e.cardId!, team);
     bakeRig(rig, `${e.cardId}:${team}:${ARABIC ? "arabic" : "normal"}:${teamPalette()}`);
-    // CR readability comes from silhouette CONTRAST: tanks tower, swarm
+    // Readability comes from silhouette CONTRAST: tanks tower, swarm
     // units stay small, everyone else sits between.
     const scale =
       (e.cardId === "mega-knight" ? 1.6
@@ -617,7 +617,7 @@ export function buildTroopMesh(e: Entity): EntityView {
   }
   root.add(disc);
 
-  // Soft contact shadow under every unit (CR grounds everything with one);
+  // Soft contact shadow under every unit (it grounds everything);
   // flyers' shadow also shrinks with altitude (see the render loop).
   let blobShadow: THREE.Mesh | undefined;
   {

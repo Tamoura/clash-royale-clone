@@ -1,6 +1,6 @@
 /**
  * Edition-aware UI strings for modules outside main.ts: English in the
- * Clash edition, Arabic in the Islamic edition.
+ * Classic edition (id 'clash'), Arabic in the Golden Age edition.
  */
 import { ARABIC } from "../render3d/theme";
 

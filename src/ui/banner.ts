@@ -208,7 +208,7 @@ export function botTrophies(myTrophies: number): number {
   return Math.max(0, Math.round(myTrophies));
 }
 
-/** CR-style "VS" splash before a match: you vs the opponent, 1.6 s. */
+/** A "VS" splash before a match: you vs the opponent, 1.6 s. */
 export function showVersus(
   opponent: string,
   me: { trophies: number; towerTroop: TowerTroopId; ability: AbilityId },

@@ -112,7 +112,7 @@ const castTowerCrews: TowerCrewProvider = {
   },
 };
 
-/** CR-readable spell telegraph colours. */
+/** Readable spell telegraph colours. */
 const SPELL_TINT: Partial<Record<CardId, number>> = {
   fireball: 0xff8c1a,
   zap: 0xffe566,
@@ -471,7 +471,7 @@ export class Battle3D {
         : 0.3;
   }
 
-  /** Brief white flash at a deploy point (CR drop feedback). */
+  /** Brief white flash at a deploy point (drop feedback). */
   deployFlash(ax: number, ay: number): void {
     deployFlash(this, ax, ay);
   }
@@ -714,7 +714,7 @@ export class Battle3D {
               ? buildBuildingMesh(e)
               : buildTowerMesh(e);
         if (e.kind === "troop" && e.cardId) {
-          // Level shield on the (damage-only) HP bar, CR-style. Swarm-sized
+          // Level shield on the (damage-only) HP bar. Swarm-sized
           // members past the first go without: one shield names the pack's
           // level and saves a draw per unit.
           if (packLead || !isSwarmSized(e)) {

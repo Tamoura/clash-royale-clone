@@ -2055,7 +2055,7 @@ button.card.ready-pop {
 .ability-btn.ready-pop { animation: crownBannerPop 0.5s ease-out; }
 
 /* ══════════════════════════════════════════════════════════════
-   Phase 1 — CR battle chrome: the top bar floats over the arena
+   Phase 1 — battle chrome: the top bar floats over the arena
    ══════════════════════════════════════════════════════════════ */
 #app {
   position: relative;
@@ -2236,7 +2236,7 @@ button.card.ready-pop {
   cursor: pointer;
 }
 
-/* ── Hand: CR cards carry no captions or key hints on phones ── */
+/* ── Hand: cards carry no captions or key hints on phones ── */
 @media (hover: none), (max-width: 480px) {
   .key-chip {
     display: none;
@@ -2287,7 +2287,7 @@ button.card.locked {
   height: 22px;
 }
 
-/* CR text: white, dark outline, hard drop (--cr-outline lives in tokens.css). */
+/* Game text: white, dark outline, hard drop (--cr-outline lives in tokens.css). */
 #topbar .crowns span,
 #topbar .clock,
 .card-cost,
@@ -2413,7 +2413,7 @@ button.card.locked {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   Phase 6 — CR home: resource bar, live arena window, tabs
+   Phase 6 — home: resource bar, live arena window, tabs
    ══════════════════════════════════════════════════════════════ */
 #deckpicker:has(> .home-shell) {
   background: transparent;

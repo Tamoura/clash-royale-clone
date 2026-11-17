@@ -72,10 +72,10 @@ function readStoredEdition(): StoredEdition {
 }
 
 export const STORED_EDITION: StoredEdition = readStoredEdition();
-/** True once the player has picked Clash or Islamic. */
+/** True once the player has picked an edition (Classic or Golden Age). */
 export const EDITION_CHOSEN = STORED_EDITION !== "unset";
 /**
- * Resolved arena theme for 3D bootstrap. When unset, use Clash art so the
+ * Resolved arena theme for 3D bootstrap. When unset, use Classic art so the
  * scene can construct; battle stays gated until the player picks an edition.
  */
 export const ARENA_THEME: ArenaTheme = STORED_EDITION === "arabic" ? "arabic" : "normal";

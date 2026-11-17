@@ -108,7 +108,7 @@ export function setTowerFlair(tier: number): void {
   TOWER_FLAIR = Math.max(0, Math.min(2, Math.floor(tier)));
 }
 
-/** Towers stand 1.1x (CR's true 3x3 / 4x4 footprints with a landmark bump). */
+/** Towers stand 1.1x (their true 3x3 / 4x4 footprints with a landmark bump). */
 export const TOWER_SCALE = 1.1;
 
 // ---- Crew seam (shared rules 4) ---------------------------------------------------------
@@ -367,7 +367,7 @@ export function buildTowerMesh(e: Entity): EntityView {
     plate.push(zzz);
   }
 
-  // CR plate: a chunky pill with the HP number inside and a level shield
+  // HP plate: a chunky pill with the HP number inside and a level shield
   // riding its left end. Placed every frame (placePlate).
   const barWidth = king ? 2.8 : 2.3;
   const bar = makeHpBar(barWidth, colors.hp, 0, 0.36);

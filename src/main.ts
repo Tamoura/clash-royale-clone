@@ -1084,7 +1084,7 @@ if (EDITION_CHOSEN && !tutorialDone()) {
 
 // ---- Emotes ------------------------------------------------------------
 
-// One chat bubble (CR): tap to open the tray, pick an emote, it closes.
+// One chat bubble: tap to open the tray, pick an emote, it closes.
 // Only friendly emotes (ui/emotes.ts); the wire table keeps old ids stable.
 setOnlineEmotes(EMOTES);
 const emoteToggle = document.createElement("button");

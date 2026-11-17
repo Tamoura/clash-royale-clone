@@ -4,7 +4,7 @@
  * Achievements accumulate forever (unlike daily quests) from simple
  * counters, and pay gold once on claim. Seasons are keyed by calendar
  * month: on the first boot of a new month, trophies above the season
- * floor are halved back toward it (CR-style soft reset), but never below
+ * floor are halved back toward it (a soft reset), but never below
  * the floor of the arena the player stands in, and the previous season's
  * best is archived.
  */
