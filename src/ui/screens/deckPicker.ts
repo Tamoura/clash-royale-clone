@@ -37,7 +37,7 @@ import {
 import { isOwnedDeck, ownedSet } from "../../meta/progress";
 import { cardDisplayName } from "../../render/cardNames";
 import { button, toast } from "../components";
-import { fmtNum } from "../i18n";
+import { fmtNum, sparksAr, sparksEn } from "../i18n";
 import { icon } from "../icons";
 import { reducedMotion } from "../prefs";
 import { setupChipRow } from "./battleSetup";
@@ -872,8 +872,8 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
     summary.innerHTML = icon("elixir");
     const t = document.createElement("span");
     t.textContent = tr(
-      `${fmtNum(deck.length)} / ${fmtNum(8)} cards · average ${fmtNum(Number(avg.toFixed(1)))} elixir`,
-      `${fmtNum(deck.length)} / ${fmtNum(8)} بطاقات · متوسط الإكسير ${fmtNum(Number(avg.toFixed(1)))}`,
+      `${fmtNum(deck.length)} / ${fmtNum(8)} cards · average ${fmtNum(Number(avg.toFixed(1)))} sparks`,
+      `${fmtNum(deck.length)} / ${fmtNum(8)} بطاقات · متوسط الشرارات ${fmtNum(Number(avg.toFixed(1)))}`,
     );
     summary.appendChild(t);
     summary.classList.toggle("is-short", deck.length < 8);
@@ -898,7 +898,7 @@ function buildDeckPicker(ctx: AppCtx, opts: DeckPickerOpts): void {
     b.type = "button";
     b.className = `v2-tile rarity-${card.rarity}`;
     b.dataset.card = id;
-    b.setAttribute("aria-label", tr(`${cardDisplayName(id)}, ${card.cost} elixir`, `${cardDisplayName(id)}، ${fmtNum(card.cost)} إكسير`));
+    b.setAttribute("aria-label", tr(`${cardDisplayName(id)}, ${sparksEn(card.cost)}`, `${cardDisplayName(id)}، ${sparksAr(card.cost)}`));
     const art = document.createElement("div");
     art.className = "v2-tile-art";
     art.appendChild(cardTileCanvas(id));

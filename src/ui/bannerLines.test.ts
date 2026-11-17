@@ -7,13 +7,13 @@ describe("bannerLines", () => {
   });
 
   it("splits the overtime call into a headline and short detail lines", () => {
-    expect(bannerLines("OVERTIME!\n3x elixir\nTroops hit towers 3x!")).toEqual({
+    expect(bannerLines("OVERTIME!\n3x sparks\nTroops hit towers 3x!")).toEqual({
       head: "OVERTIME!",
-      details: ["3x elixir", "Troops hit towers 3x!"],
+      details: ["3x sparks", "Troops hit towers 3x!"],
     });
   });
 
   it("drops empty detail lines", () => {
-    expect(bannerLines("OVERTIME!\n\n3x elixir\n")).toEqual({ head: "OVERTIME!", details: ["3x elixir"] });
+    expect(bannerLines("OVERTIME!\n\n3x sparks\n")).toEqual({ head: "OVERTIME!", details: ["3x sparks"] });
   });
 });

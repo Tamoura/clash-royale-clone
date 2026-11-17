@@ -46,9 +46,9 @@ export const FEATURE_LABEL: Readonly<Record<Feature, readonly [string, string]>>
   challenges: ["Challenges", "التحديات"],
   towerTroops: ["Tower troops", "حماة الأبراج"],
   abilities: ["King's abilities", "قدرات الملك"],
-  triple: ["Triple Elixir", "الإكسير الثلاثي"],
+  triple: ["Triple Sparks", "الشرارات الثلاثية"],
   mirror: ["Mirror Match", "مباراة المرآة"],
-  mega: ["Mega Elixir", "الإكسير الهائل"],
+  mega: ["Mega Sparks", "الشرارات الهائلة"],
   crazy: ["Crazy mode", "نمط الجنون"],
   draft: ["Draft", "الانتقاء"],
 });
