@@ -47,3 +47,16 @@ describe("2D card art for card wave 3", () => {
     expect(f.colors.has("#ffe082")).toBe(true); // the hottest flame band
   });
 });
+
+describe("2D card art in the Golden Age edition (node tests run it)", () => {
+  it("the foot-soldier barrel (برميل المشاة) shows a turbaned soldier, never a skull", () => {
+    const f = fakeCtx();
+    drawCardArt(f.ctx, "skeleton-barrel", 12, 12, 24);
+    expect(f.colors.has("#f6c9a0")).toBe(true); // a face (skin), and hands on the rim
+    expect(f.colors.has("#f5f0e6")).toBe(true); // the cream turban of the 3D المشاة
+    expect(f.colors.has("#d8e2ec")).toBe(true); // his spear tip
+    expect(f.colors.has("#f5f2ea")).toBe(false); // no bone-white skull
+    expect(f.colors.has("#1f2430")).toBe(false); // no black eye sockets
+  });
+});
+
