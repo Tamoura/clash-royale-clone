@@ -43,7 +43,7 @@ services:
         - "docs/**"
         - "notes/**"
         - "tools/**"
-        - "Clash-Royale-Kids-Presentation/**"
+        - "Kids-Presentation/**"
         - "**/*.md"
         - ".github/**"
         - "Dockerfile"

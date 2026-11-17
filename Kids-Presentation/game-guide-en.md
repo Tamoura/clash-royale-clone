@@ -17,7 +17,7 @@ You drop **cards** — knights, dragons, wizards, giants — onto a battlefield
 split by a **river** with two **bridges**.
 
 - Your troops march toward the enemy and fight.
-- You spend **elixir** (a purple energy that slowly refills) to play cards.
+- You spend **sparks** (a glowing energy that slowly refills) to play cards.
 - The match lasts **3 minutes**. Knock down towers to earn **crowns**.
 - Destroy the enemy **King Tower**, or have the most crowns when time runs out — **you win!** 👑
 
@@ -73,7 +73,7 @@ src/
 ├── game/        ← 🧠 THE BRAIN: rules, math, who-beats-who (no pictures!)
 │    ├── cards.ts      every card's stats (the Knight, Giant, Dragon…)
 │    ├── sim.ts        the "heartbeat" that moves the battle forward
-│    ├── battle.ts     the battlefield, towers, and elixir
+│    ├── battle.ts     the battlefield, towers, and sparks
 │    └── bot.ts        the computer opponent's thinking
 │
 ├── render3d/    ← 🦾 THE BODY (eyes): turns the Brain into 3D pictures
@@ -97,7 +97,7 @@ list of facts. Here is the **Knight**:
 ```typescript
 knight: {
   name: "Knight",
-  cost: 3,            // costs 3 elixir to play
+  cost: 3,            // costs 3 sparks to play
   count: 1,           // you get 1 knight
   unit: unit({
     maxHp: 1400,      // health: how much damage it can take
@@ -109,12 +109,14 @@ knight: {
 }
 ```
 
+(In the code, sparks are still called *elixir*: `cost`, `elixirRate` and so on. The game shows them as Sparks.)
+
 That's it! A card is **just numbers and words**. Change `maxHp: 1400` to
 `maxHp: 5000` and suddenly the Knight is a super-tank. 💪
 
 <img src="img/deck-builder.png" width="280" alt="The deck builder showing the whole card collection." />
 
-*The card collection — every card lives here, including the Firecracker and Magic Archer we added.*
+*The card collection — every card lives here, including the Firecracker and Arrow Mage we added.*
 
 ---
 
@@ -128,7 +130,7 @@ this `tick` function in `src/game/sim.ts`:
 
 ```typescript
 export function tick(state, dt) {
-  // 1. Give both players a little more elixir
+  // 1. Give both players a few more sparks
   // 2. For every unit: find a target, walk toward it, attack
   // 3. Move the arrows and fireballs that are flying
   // 4. Remove anything whose health hit zero
@@ -174,7 +176,7 @@ the game didn't have before:
 - Shoots a firework that **splashes** (hits several enemies).
 - **Recoils** — she hops *backward* after every shot, like a real firework's kick!
 
-### 🏹 Magic Archer
+### 🏹 Arrow Mage
 - Shoots one arrow that **pierces** — it flies in a straight line and hits
   **every** enemy it passes through, not just the first one.
 
@@ -306,7 +308,7 @@ Building a game teaches you skills that work **everywhere**:
 - 🎨 **Creativity** — designing characters and worlds.
 - 🤝 **Teamwork** — sharing code and ideas, just like real game studios.
 
-Every professional game — Minecraft, Roblox, Clash Royale — started with
+Every professional game — Minecraft, Roblox, Angry Birds — started with
 someone writing their **first line of code**, exactly like you can today.
 
 ---

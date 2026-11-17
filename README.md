@@ -1,55 +1,60 @@
-# Crown Rush
+# Banner Lanes
 
-Crown Rush is a browser-based 3D lane-battle card game for kids, built
-with TypeScript + Three.js (the repository keeps its first name,
-clash-royale-clone, so saved progress and links keep working). You play
-against an AI bot in a 3-minute, two-lane tower-defense battle, with fully
-synthesized sound. The art is
-procedural low-poly work of our own plus a CC0 character cast (see
+Banner Lanes (درب الرايات in the Golden Age edition) is a free, ad-free
+browser 3D lane-battle card game for kids, an original game by Pebble Kite
+Games, built with TypeScript + Three.js. The repository, its web addresses
+and the Render service keep the project's first name, clash-royale-clone,
+so saved progress and links keep working. You play against an AI bot in a
+3-minute, two-lane tower-defense battle, with fully synthesized sound. The
+art is procedural low-poly work of our own plus a CC0 character cast (see
 [Assets and licences](#assets-and-licences)); the audio is Web Audio
-synthesis. No Supercell assets are used.
+synthesis. No third-party game assets are used.
 
 ## Gameplay
 
 - One arena: two lanes, a river, two bridges.
-- Each side has 2 princess (crown) towers and 1 king tower (the king
-  sleeps until damaged or a princess tower falls — and wakes with a
-  war-horn, shockwave, and screen shake). Towers show a live numeric
-  HP readout and collapse into rubble with a camera shake when they
-  fall.
-- Elixir regenerates over time (max 10, double-elixir in the last 60s).
-- 25-card deck, 4-card rotating hand: Knight, Archers, Firecracker,
-  Magic Archer, Giant, Musketeer, Mini P.E.K.K.A, Skeletons, Wizard,
-  Witch, Hog Rider, Balloon, Baby Dragon, Gargoyles, Valkyrie, Prince,
-  P.E.K.K.A, Cannon, Tombstone, Elixir Collector, Fireball, Arrows,
-  Zap, Rage, Freeze.
-- CR-style mechanics: flying units (straight paths, only
-  air-targeters can hit them), splash damage, the Prince's charge
-  (2x damage after a run-up), deployable buildings that decay and
-  bait building-seekers, a 1s deploy freeze, spawner troops (the
-  Witch summons skeleton waves), river-jumpers (the Hog Rider skips
-  the bridges), death bombs (the Balloon blasts its killers), stuns
-  (Zap roots everything it hits), rage zones (friendly troops move
-  and attack faster), piercing shots (the Magic Archer's arrow
-  damages everything in a line), recoil (the Firecracker kicks
+- Each side has 2 side towers and 1 King tower (the King sleeps until
+  damaged or a side tower falls, and wakes with a war-horn, shockwave and
+  screen shake). Towers show a live numeric HP readout and collapse into
+  rubble with a camera shake when they fall.
+- Sparks fill up over time (max 10, Double Sparks in the last 60 s); every
+  card costs some.
+- About forty cards to collect and a 4-card rotating hand. In the
+  Classic edition: Knight, Archers, Firecracker, Arrow Mage, Giant,
+  Musketeer, Little Steel Guard, Steel Guard, Skeletons, Wizard, Witch,
+  Boar Rider, Balloon, Baby Dragon, Gargoyles, Imps, Bats, Valkyrie, Prince,
+  Thunder Knight, Lightning Wizard, Cannon Giant, Axe Bearer, Bone Swarm,
+  Bone Barrel, Cannon, Tombstone, Spark Well, Fireball, Arrows, Zap, Rage,
+  Freeze and more. The Golden Age edition gives the same cards
+  Islamic-history names and looks.
+- Lane-battle mechanics: flying units (straight paths, only air-targeters
+  can hit them), splash damage, the Prince's charge (2x damage after a
+  run-up), deployable buildings that decay and bait building-seekers, a 1 s
+  deploy freeze, spawner troops (the Witch summons skeleton waves),
+  river-jumpers (the Boar Rider skips the bridges), bursts on falling (the
+  Balloon blasts its killers), stuns (Zap roots everything it hits), rage
+  zones (friendly troops move and attack faster), piercing shots (the Arrow
+  Mage's arrow damages everything in a line), recoil (the Firecracker kicks
   herself backward after each shot), target persistence (an engaged
-  attacker keeps hammering its current foe instead of chasing a
-  newly deployed nearer one), and spells dealing reduced damage to
-  crown towers.
-- Destroy the enemy king tower for an instant win, otherwise most crowns
+  attacker keeps hammering its current foe instead of chasing a newly
+  deployed nearer one), and spells dealing reduced damage to towers.
+- Destroy the enemy King tower for an instant win, otherwise most crowns
   when the clock runs out (sudden-death overtime on a tie, then a
-  lowest-tower-HP tiebreak like CR). The
-  result screen shows damage dealt and elixir spent per side.
-- Opponent is an elixir-aware AI bot: it holds spells for clusters
-  worth more than they cost, defends with troops that can actually
-  hit the invader (air-targeters vs flyers, never building-seekers),
-  and saves elixir when it has no good answer.
+  lowest-tower-HP tiebreak). The result screen shows damage dealt and
+  Sparks spent per side.
+- The opponent is a Sparks-aware AI bot: it holds spells for clusters worth
+  more than they cost, defends with troops that can actually hit the
+  invader (air-targeters vs flyers, never building-seekers), and saves
+  Sparks when it has no good answer.
+- The battle simulation keeps its canonical card names and calls Sparks
+  "elixir" in code (`src/game/` is pinned by its tests); names on screen
+  come from the display layer (`src/render/cardNames.ts`).
 
 ## Stack
 
 - TypeScript, Vite (dev server on port **3101**), Vitest for tests,
   Three.js for rendering, Web Audio for synthesized SFX/music (the
-  battle tune speeds up and gains percussion in double elixir and
+  battle tune speeds up and gains percussion in Double Sparks and
   overtime).
 - Game simulation is pure, deterministic, and fully unit-tested
   (`src/game/`); the 3D renderer, DOM HUD, and audio (`src/render3d/`,
@@ -124,7 +129,8 @@ running relay end to end.
 Progress lives in the browser, per web address: the Render address and the
 GitHub Pages address (`https://tamoura.github.io/clash-royale-clone/`) each
 keep their own. **Settings → Backup & move** copies a save code (or saves a
-`crown-rush-save-<date>.txt` file) and loads one on the other address or a
+`banner-lanes-save-<date>.txt` file; files saved before the rename as
+`crown-rush-save-<date>.txt` still load) and loads one on the other address or a
 new tablet, with a summary to check first and an undo. On an iPhone or iPad
 the Home Screen icon keeps its own save too, so copy the code in Safari
 first. Nothing is sent to any server. See [docs/deploy-multiplayer.md](docs/deploy-multiplayer.md#easiest-one-click-on-render)
