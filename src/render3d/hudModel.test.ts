@@ -133,6 +133,19 @@ describe("mergeTimeline", () => {
   });
 });
 
+describe("the Sparks bar's multiplier tag", () => {
+  // Node tests run the Golden Age edition: Arabic-Indic digits, never "x2".
+  it("counts in the edition's digits", () => {
+    const b = createBattle();
+    expect(hudModel(b, "player").mult).toBe("");
+    b.time = BATTLE_DURATION - 30;
+    expect(hudModel(b, "player").mult).toBe(`×${fmtNum(2)}`);
+    b.overtime = true;
+    expect(hudModel(b, "player").mult).toBe(`×${fmtNum(3)}`);
+    expect(hudModel(b, "player").mult).not.toMatch(/[0-9x]/);
+  });
+});
+
 describe("lossTip", () => {
   const stats = (enemy: Partial<Record<CardId, number>>): ResultStats => ({
     ...buildResultStats(createBattle(), "player"),

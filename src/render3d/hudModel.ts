@@ -130,7 +130,8 @@ export function hudModel(state: BattleState, side: Side, pendingSpend = 0, clock
     crowns: { me: me.crowns, them: foe.crowns },
     elixirInt: Math.floor(amount),
     elixirPct: quantiseElixirPct(amount),
-    mult: multValue >= SANDBOX_ELIXIR_RATE ? "∞" : multValue >= 2 && !state.result ? `x${multValue}` : "",
+    // In the edition's own digits ("×٢"), like the banner above the bar.
+    mult: multValue >= SANDBOX_ELIXIR_RATE ? "∞" : multValue >= 2 && !state.result ? tr(`x${multValue}`, `×${fmtNum(multValue)}`) : "",
     leak: amount >= ELIXIR_MAX && !state.result,
     ability: me.ability
       ? { id: me.ability, pct: Math.floor(clamp01(me.abilityCharge) * 100), ready: me.abilityCharge >= 1 }
