@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createBattle, type BattleState } from "../game/battle";
-import { DEFAULT_DECK, getCard, type CardId } from "../game/cards";
+import { DEFAULT_DECK, type CardId } from "../game/cards";
+import { cardNameIn } from "../render/cardNames";
 import { spawnUnits } from "../game/battle";
 import {
   BASIC_TIPS,
@@ -13,7 +14,8 @@ import {
   type DefeatFacts,
 } from "./coachTips";
 
-const plainName = (id: CardId): string => getCard(id).name;
+/** The Classic edition's card names (what the game passes as nameOf there). */
+const plainName = (id: CardId): string => cardNameIn(id, false);
 
 function facts(over: Partial<DefeatFacts> = {}): DefeatFacts {
   return {
@@ -33,8 +35,9 @@ describe("chooseCoachTip", () => {
   it("leaked elixir comes first", () => {
     const t = tip({ elixirLeaked: LEAK_TIP_ELIXIR, towerLostToBuildingTargeter: true, spellsCast: 0 });
     expect(t.id).toBe("leak");
-    expect(t.en).toBe("Don't let elixir sit at 10, play a card!");
-    expect(t.ar).toMatch(/الإكسير/);
+    expect(t.en).toBe("Don't let sparks sit at 10, play a card!");
+    expect(t.ar).toMatch(/الشرارات/);
+    expect(`${t.en} ${t.ar}`).not.toMatch(/elixir|إكسير/i);
     expect(tip({ elixirLeaked: LEAK_TIP_ELIXIR - 0.5 }).id).not.toBe("leak");
   });
 

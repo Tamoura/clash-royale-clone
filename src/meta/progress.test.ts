@@ -85,7 +85,7 @@ describe("progress", () => {
   describe("trophy floors", () => {
     const lose = (trophies: number) => applyMatchResult(baseProfile({ trophies }), "enemy", 5_000, 7);
 
-    it("a Training Camp loss costs nothing: 50 stays 50", () => {
+    it("a Practice Meadow loss costs nothing: 50 stays 50", () => {
       const { profile, summary } = lose(50);
       expect(profile.trophies).toBe(50);
       expect(summary.trophiesDelta).toBe(0);

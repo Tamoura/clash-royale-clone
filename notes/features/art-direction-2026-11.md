@@ -28,7 +28,7 @@ WHY B'S CAST IS THE CORE
 
 WHAT B GETS WRONG
 - Your own troops are seen from behind and above, so they read as hat discs: blue dish wizard, green "V" hoods, orange-ball giant and valkyrie. Today they are no better than the baseline blobs.
-- Team colour breaks its own rule: a navy enemy Mini P.E.K.K.A., and a wizard hat that flips colour with the team.
+- Team colour breaks its own rule: a navy enemy Little Steel Guard, and a wizard hat that flips colour with the team.
 - Haze and bloom wash out the midfield. Damage numbers turn white and unreadable. Hit flashes blow out.
 - Floating name tags are about 6 px tall, too small to read.
 - The tower archers are oversized, and the king reads as a "sunflower" from above.
@@ -320,7 +320,7 @@ HOW TO A/B
 
 ## Art bible
 
-TOY TOURNAMENT: ART BIBLE (Crown Rush, both editions, all 22 arena looks)
+TOY TOURNAMENT: ART BIBLE (Banner Lanes, both editions, all 22 arena looks)
 
 0. PILLARS (the tie-breakers for every decision)
 1. Team at a glance. Red and blue live ONLY on roofs, trim, banners, troop cloth (cape, mantle, hood, tabard) and the team discs.
@@ -487,7 +487,7 @@ Humanoids:
 Scale (head-top height in world units):
 - swarm: 1.6-1.9
 - standard: 2.3-2.7
-- large (giant, P.E.K.K.A, mega knight): 3.3-3.8
+- large (giant, Steel Guard, thunder knight): 3.3-3.8
 - the giant is at most 1.3 tiles wide on a 390 px phone and must not cover a whole bridge.
 Shading (starting values; the integrator owns final tuning):
 - a 3-band toon ramp at 0.62, 0.86 and 1.0 with soft 0.04 edges;
@@ -498,7 +498,7 @@ Ink: #1F1A2E at 85% alpha, 1.6 CSS px (fitInk). Characters, creatures, towers an
 TEAM RULE (all cards, both editions):
 - team colour goes ONLY on the largest back-visible cloth (cape, mantle, hood or tabard), plus the team disc;
 - signature colours are fixed per card and never change with team;
-- no signature colour may fall in either team hue family: within 25 degrees of a team hue, at saturation above 0.45 and lightness 0.25-0.75. So no navy enemy Mini P.E.K.K.A., no blue Minions, and no wizard hat that flips colour.
+- no signature colour may fall in either team hue family: within 25 degrees of a team hue, at saturation above 0.45 and lightness 0.25-0.75. So no navy enemy Little Steel Guard, no blue Imps, and no wizard hat that flips colour.
 - Team colour is a live uniform or palette row, so changing the team or colour-blind palette repaints units that are already on the field.
 Back-readability: every card has at least 2 back-visible silhouette features (a weapon held outside the body outline, a distinct hair, hat or helmet shape, a quiver, backpack or cape cut). No hood marks as identity.
 Animation:
@@ -551,7 +551,7 @@ The other 14 looks must render correctly with no missing pieces (contact sheet).
 - Everything else is procedural: towers, ground, river, bridges, surround, crowd, creatures, mounts and FX.
 - Fonts already in the project: Lilita One and Baloo Bhaijaan 2 (OFL).
 - Meshopt decoder: ships with three, MIT. gltfpack (MIT) may be used as a dev-time tool via npx.
-- No other external art without the integrator's sign-off. No Supercell or Clash Royale assets, logos or likenesses.
+- No other external art without the integrator's sign-off. No other game's assets, logos or likenesses.
 - Each asset folder has a CREDITS.txt with the exact source URL, version, licence and the SHA-256 of each source archive. The repo root gets THIRD_PARTY_NOTICES.md.
 Download budget (bytes transferred, compressed):
 - troop pack at most 1.0 MB, loaded at app boot and cached by the service worker;
@@ -566,7 +566,7 @@ Measured by tools/perf-budget.mjs at 390x844@2, ?quality=high, first arena, both
 | Measure | Hard gate | Target |
 |---|---|---|
 | Empty battle, draw calls | 220 | 200 or fewer |
-| 12-card fight, draw calls | 450 | 400 or fewer (headroom for Skeleton Army) |
+| 12-card fight, draw calls | 450 | 400 or fewer (headroom for Bone Swarm) |
 | Empty battle, triangles | 300k | 260k |
 | 12-card fight, triangles | 850k | 750k |
 | Textures in the fight | 110 | — |
@@ -644,7 +644,7 @@ Every humanoid unit on the field, every tower crew and every humanoid card portr
 
 6. TEAM RULE (sharedRules)
 - Enforced in data: team paint lands only on cape, mantle, hood or tabard, plus the disc.
-- Signature colours are fixed and outside the team hue families. Fix B's navy enemy Mini P.E.K.K.A. and the wizard hat that flips colour.
+- Signature colours are fixed and outside the team hue families. Fix B's navy enemy Little Steel Guard and the wizard hat that flips colour.
 - Team colour is a material uniform or palette row; the onPrefs hook in troops.ts repaints live units when the team or colour-blind palette changes.
 - Make teamBase discs thicker and more saturated, and keep the enemy notches.
 
@@ -1225,7 +1225,7 @@ SHARED RULES FOR ALL ART PACKAGES
 7. LICENCES
 - Only CC0 KayKit packs (Adventurers 1.0, Skeletons 1.0, Medieval Hexagon 1.0) and procedural art.
 - Every asset folder has a CREDITS.txt with the source URL, version, licence and SHA-256 of each source archive. Ship writes THIRD_PARTY_NOTICES.md at the repo root.
-- No Supercell or Clash Royale assets, logos or likenesses.
+- No other game's assets, logos or likenesses.
 - Downloaded packs go in their own new directory outside the repo and are read as data only.
 
 8. QUALITY BAR FOR EVERY COMMIT YOU CALL DONE

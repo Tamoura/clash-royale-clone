@@ -116,7 +116,7 @@ and token.
   shooters walking in clumps. Golden Age names are حارس الحجر, حفّار الرمال
   and الشهاب.
 - The Challenges screen lists the trials first ("Try the new cards"), each
-  with the card's portrait and an "Unlocks in Bone Pit (200 trophies)" chip
+  with the card's portrait and an "Unlocks in Fossil Hollow (200 trophies)" chip
   (`lockInfo`; once the player stands in that arena it reads "Find it in
   chests" with a chest icon, like the collection's "In chests"), then the
   puzzles.
@@ -130,13 +130,13 @@ and token.
 | 3 trials, 3 starters | 1 | 30/30 each | 10/10 each | 30/30 each |
 | Air Raid | 2 | 29/30 | 10/10 | 25/30 |
 | The Horde | 2 | 22/30 | 6/10 | 22/30 |
-| Hog Rush | 2 | 30/30 | 10/10 | 30/30 |
-| Mega Drop | 2 | 21/30 | 7/10 | 30/30 |
+| Boar Rush | 2 | 30/30 | 10/10 | 30/30 |
+| Thunder Drop | 2 | 21/30 | 7/10 | 30/30 |
 | Witch Party | 2 | 17/30 | 7/10 | 30/30 |
 | Skeleton Storm | 2 | 23/30 | 10/10 | 30/30 |
 | Giant Trouble | 3 | 15/30 | 6/10 | 11/30 |
 | Sky Pirates | 3 | 14/30 | 4/10 | 14/30 |
-| Bridge Spam | 3 | 9/30 | 5/10 | 0/30 |
+| Bridge Rush | 3 | 9/30 | 5/10 | 0/30 |
 
   Means (Normal, seeds 1-10): one-star 10.0, two-star 8.3, three-star 5.0.
   `challenges.test` keeps solvability (one-stars and trials >= 8/10, all
@@ -215,8 +215,8 @@ at 0.22 (it was 1.0 before).
   `cards.ts` and `bot.ts` are unchanged since `6736388`.
 - Draw calls (`tools/perf-budget.mjs`, 390x844@2, `?quality=high`): Classic
   empty 154 / fight 377, Golden Age 165 / 399 (budgets 220 / 450). The same
-  fight with the Stone Golem and Digger in place of the Giant / P.E.K.K.A /
-  Mini P.E.K.K.A / Hog Rider: 397 Classic, 394 Golden Age.
+  fight with the Stone Golem and Digger in place of the Giant / Steel Guard /
+  Little Steel Guard / Boar Rider: 397 Classic, 394 Golden Age.
 - Headless Chromium (dev server :3801, DPR 1, SwiftShader):
   - Gallery `?gallery=<id>&quality=high` front and side views of the three
     rigs in both editions. Also an in-battle line-up at `?quality=high` in
@@ -273,4 +273,4 @@ at 0.22 (it was 1.0 before).
   for the particle sizes.
 - The Comet on a tower: the crater and scorch sit under the tower body, so
   only the airborne part of the blast reads there (by design).
-- Bridge Spam is 0/30 for the Easy bot: it is the hardest three-star.
+- Bridge Rush is 0/30 for the Easy bot: it is the hardest three-star.

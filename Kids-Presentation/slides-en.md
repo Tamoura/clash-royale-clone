@@ -1,7 +1,7 @@
 ---
 marp: true
 title: Build Your Own Battle Arena
-author: Clash Royale Clone
+author: Pebble Kite Games
 paginate: true
 size: 16:9
 backgroundColor: "#ffffff"
@@ -48,7 +48,7 @@ A friendly guide for curious kids 🎮
 Defend your **3 towers**. Drop **cards** — knights, dragons, wizards — onto a
 battlefield split by a **river** and two **bridges**.
 
-- Spend **elixir** (purple energy) to play cards
+- Spend **sparks** (glowing energy) to play cards
 - Troops march and fight on their own
 - Match lasts **3 minutes** → smash towers to win **crowns** 👑
 - Destroy the enemy **King Tower** = instant win!
@@ -126,7 +126,7 @@ The **game/** folder never draws anything — that's the secret! ✨
 
 You build a deck of **8 cards** from the whole collection.
 
-Two of these — the **🧨 Firecracker** and the **🏹 Magic Archer** — were
+Two of these — the **🧨 Firecracker** and the **🏹 Arrow Mage** — were
 added recently, step by step, with code.
 
 You can invent your own cards too! ➡️
@@ -140,7 +140,7 @@ Open `src/game/cards.ts` — every card is simple facts:
 ```typescript
 knight: {
   name: "Knight",
-  cost: 3,            // costs 3 elixir
+  cost: 3,            // costs 3 sparks (the code says elixir)
   unit: unit({
     maxHp: 1400,      // health
     damage: 160,      // how hard it hits
@@ -162,7 +162,7 @@ A game is like a **flipbook** — many pictures per second. Each page is a
 
 ```typescript
 export function tick(state, dt) {
-  // 1. Give both players elixir
+  // 1. Give both players sparks
   // 2. Every unit: find a target, walk, attack
   // 3. Move the flying arrows & fireballs
   // 4. Remove anything that died
@@ -199,7 +199,7 @@ if (current && gap(e, current) <= e.attackRange) {
 ### 🧨 Firecracker
 Shoots a **splashing** firework and **recoils** — hops backward after firing!
 
-### 🏹 Magic Archer
+### 🏹 Arrow Mage
 Fires one arrow that **pierces** — hits *every* enemy in a straight line.
 
 ```typescript
@@ -344,13 +344,13 @@ no dice and no clock, both phones make the **same game** — not a video! 📨�
 The bot in `bot.ts` follows a **priority ladder** every second — the first
 that fits, it does:
 
-1. 🎯 **Spell** a tight clump of my troops (only if it's worth the elixir)
+1. 🎯 **Spell** a tight clump of my troops (only if it's worth the sparks)
 2. 🛡️ **Defend** — answer an attacker (kite a tank with a *building*!)
-3. 🏦 **Save up** — drop an Elixir Collector when safe and full
+3. 🏦 **Save up** — drop a Spark Well when safe and full
 4. ⚔️ **Attack** — lead with a tank, then send **support** to its lane
 
 We recently made it **smarter**: it now picks *one* lane and presses harder in
-double elixir, instead of dribbling troops everywhere. 🧠
+Double Sparks, instead of dribbling troops everywhere. 🧠
 
 ---
 
@@ -459,7 +459,7 @@ separate.** That's how the pros do it!
 - 🎨 **Creativity** — design characters and worlds
 - 🤝 **Teamwork** — share code, like real studios
 
-Minecraft, Roblox, Clash Royale — all started with someone's **first line of code.**
+Minecraft, Roblox, Angry Birds — all started with someone's **first line of code.**
 
 ---
 

@@ -244,7 +244,7 @@ export function createRenderer(container: HTMLElement): THREE.WebGLRenderer {
   // still, so the depth pass only runs when something marks it dirty.
   renderer.shadowMap.autoUpdate = false;
   renderer.shadowMap.needsUpdate = true;
-  // CR daylight grade: filmic tone mapping with a touch of extra
+  // Daylight grade: filmic tone mapping with a touch of extra
   // exposure keeps the greens punchy without blowing highlights.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.08;

@@ -21,7 +21,7 @@ export function toWorld(ax: number, ay: number): { x: number; z: number } {
 }
 
 export const SIDE_COLOR: Record<Side, number> = { player: 0x3b82f6, enemy: 0xef4444 };
-/** HP-bar fill: CR convention — your units green, the enemy's red. */
+/** HP-bar fill: your units green, the enemy's red. */
 export const HP_COLOR: Record<Side, number> = { player: 0x35d04a, enemy: 0xef4444 };
 
 // Which side sits at the bottom of the screen. The host views as "player"
@@ -51,7 +51,7 @@ export function setLook(look: ArenaLook): void {
 }
 
 /**
- * CR-style camera, lowered to ~49° elevation: steep enough that the
+ * Steep battle camera, lowered to ~49° elevation: steep enough that the
  * board reads flat, shallow enough that characters show their FACES,
  * bodies and weapons instead of the tops of their heads — silhouettes
  * are unreadable from directly above.

@@ -288,7 +288,7 @@ export interface ReportWords {
 }
 
 export const ENGLISH_WORDS: ReportWords = {
-  title: "Crown Rush problem report",
+  title: "Banner Lanes problem report",
   build: "Build",
   browser: "Browser",
   screen: "Screen",

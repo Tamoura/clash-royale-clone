@@ -9,7 +9,7 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Crown Rush" />
+    <meta name="apple-mobile-web-app-title" content="Banner Lanes" />
     <meta name="theme-color" content="#0f1829" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
@@ -20,7 +20,7 @@
     <meta name="cr-app-shell" content="game" />
     <!-- The game's name. src/app/brand.ts renames the tab in the Golden Age
          edition at runtime; src/app/brand.test.ts keeps these in step. -->
-    <title>Crown Rush</title>
+    <title>Banner Lanes</title>
     <style>
       /* ── Critical baseline: prevents a white/unstyled flash before the
          Vite-bundled CSS loads.  All other rules live in src/ui/style.css
@@ -76,16 +76,17 @@
         background: linear-gradient(180deg, #2a72d4, #14203a);
         clip-path: polygon(50% 0, 100% 14%, 100% 58%, 50% 100%, 0 58%, 0 14%);
       }
+      /* The emblem: a gold banner with a swallowtail, hung in the crest. */
       #boot .boot-crest::before {
         content: "";
         position: absolute;
         z-index: 1;
-        left: 24px;
-        top: 30px;
-        width: 36px;
-        height: 26px;
+        left: 28px;
+        top: 22px;
+        width: 28px;
+        height: 42px;
         background: #ffd23f;
-        clip-path: polygon(0 100%, 0 20%, 25% 55%, 50% 0, 75% 55%, 100% 20%, 100% 100%);
+        clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 76%, 0 100%);
       }
       #boot .boot-title {
         margin: 0 24px;
@@ -177,8 +178,8 @@
         } catch (e) {}
         var arabic = theme === "arabic";
         var words = arabic
-          ? { name: "هجمة التاج", slow: "ما زالت اللعبة تُحمَّل… اقتربنا!", retry: "اضغط لتحاول مجددًا" }
-          : { name: "Crown Rush", slow: "Still loading… nearly there!", retry: "Tap to try again" };
+          ? { name: "درب الرايات", slow: "ما زالت اللعبة تُحمَّل… اقتربنا!", retry: "اضغط لتحاول مجددًا" }
+          : { name: "Banner Lanes", slow: "Still loading… nearly there!", retry: "Tap to try again" };
         var failed = false;
         var booted = function () {
           return !!document.body && document.body.classList.contains("booted");
@@ -354,7 +355,7 @@
     <div id="deckpicker"></div>
     <div id="boot">
       <div class="boot-crest" aria-hidden="true"></div>
-      <div class="boot-title">Crown Rush</div>
+      <div class="boot-title">Banner Lanes</div>
       <div class="boot-bar" aria-hidden="true"></div>
       <p class="boot-note" role="status" aria-live="polite"></p>
       <button class="boot-retry" type="button" hidden>Tap to try again</button>

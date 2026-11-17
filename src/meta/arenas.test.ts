@@ -18,7 +18,7 @@ describe("arenas", () => {
     expect(unlocked).toHaveLength(41);
   });
 
-  it("Training Camp unlocks the starter deck", () => {
+  it("Practice Meadow unlocks the starter deck", () => {
     const available = cardsAvailableAt(0);
     expect(available.sort()).toEqual([...DEFAULT_DECK].sort());
   });

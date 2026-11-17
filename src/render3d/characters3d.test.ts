@@ -935,7 +935,9 @@ describe("card buildings (art bible 7)", () => {
             const rig = m.buildBuildingRig(id, side)!;
             expect(rig, id).not.toBeNull();
             const { slots, parents } = teamSlots(rig.group);
-            expect([...slots], id).toEqual(id === "tombstone" ? ["wreath", "unnamed"] : [SLOTS[id]]);
+            // The Golden Age shows the Tombstone as a camp tent flying the team pennant.
+            const want = id !== "tombstone" ? [SLOTS[id]] : edition === "classic" ? ["wreath", "unnamed"] : ["pennant"];
+            expect([...slots], id).toEqual(want);
             expect(parents.size, id).toBe(1);
             expect(rig.barY).toBeGreaterThan(rig.height);
             const stats = bakeRig(rig, `${id}:${side}:${edition === "classic" ? "normal" : "arabic"}:default`);
@@ -951,6 +953,11 @@ describe("card buildings (art bible 7)", () => {
           }
         }
         expect(m.buildBuildingRig("knight")).toBeNull();
+        // The Golden Age camp is never a grave: no skull, bones or soul-light.
+        const names = new Set<string>();
+        m.buildBuildingRig("tombstone", "player")!.group.traverse((o) => names.add(o.name));
+        expect(names.has("soul-light"), edition).toBe(edition === "classic");
+        expect(names.has("lantern"), edition).toBe(edition !== "classic");
       } finally {
         vi.doUnmock("./theme");
         vi.resetModules();

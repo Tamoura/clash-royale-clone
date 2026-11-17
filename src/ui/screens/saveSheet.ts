@@ -4,7 +4,7 @@
  *
  * - Copy my save code: the code (meta/saveCode.ts) in a read-only box with
  *   a Copy button (and Save to a file).
- * - Save to a file: downloads crown-rush-save-<date>.txt holding the code.
+ * - Save to a file: downloads banner-lanes-save-<date>.txt holding the code.
  * - Load a save: paste a code or pick a file. A friendly line says what is
  *   wrong with a bad code; a good one opens the confirm screen.
  * - Undo the last load: while a pre-load backup exists. An undo keeps what
@@ -227,7 +227,7 @@ export async function currentCode(deps: SaveSheetDeps = {}): Promise<string | nu
   return encodeSave(gatherSave(r.store, r.now()));
 }
 
-/** Download crown-rush-save-<date>.txt holding `shown` (the code on screen) or a fresh code. */
+/** Download banner-lanes-save-<date>.txt holding `shown` (the code on screen) or a fresh code. */
 export async function saveToFile(deps: SaveSheetDeps = {}, shown?: string): Promise<void> {
   const code = shown || (await currentCode(deps));
   if (!code) {
@@ -437,7 +437,7 @@ export function openLoadSheet(deps: SaveSheetDeps = {}): { close: () => void } {
 
 /**
  * The arena's name as the kid sees it in that edition: each edition names
- * its arenas its own way (Barbarian Bowl is سوق التوابل in the Golden Age),
+ * its arenas its own way (Snowdrift Fort is سوق التوابل in the Golden Age),
  * so a save's arena is named in the save's edition, not this tablet's. No
  * edition (an old save, or none picked yet): this tablet's.
  */

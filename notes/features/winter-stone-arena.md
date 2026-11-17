@@ -1,7 +1,7 @@
-# Winter stone arena + flatter camera (from CR screenshots)
+# Winter stone arena + flatter camera
 
-User: real CR arenas are stone-tile with snow, and the board
-should be flat in the screen like the first version.
+User: a stone-tile arena with snow, and the board should be flat in
+the screen like the first version.
 
 - Floor: makeGrassTexture rewritten as sandy stone tiles (32px/
   unit, 2-unit beige blocks with per-tile shade, grit speckle,

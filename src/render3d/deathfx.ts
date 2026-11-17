@@ -20,7 +20,11 @@ export function deathStyle(cardId: CardId | null): DeathStyle {
   switch (cardId) {
     case "skeletons":
     case "skeleton-army":
-      return { kind: "bones", color: 0xe9dfc8, scale: 0.9, particles: 4 };
+      // The Golden Age dresses them as foot soldiers (المشاة): people, so a
+      // puff of sand, never a scatter of bones.
+      return ARABIC
+        ? { kind: "puff", color: 0xd8c49a, scale: 0.8, particles: 4 }
+        : { kind: "bones", color: 0xe9dfc8, scale: 0.9, particles: 4 };
     case "pekka":
     case "mini-pekka":
       return { kind: "sparks", color: 0x8c7bff, scale: 1.1, particles: 9 };

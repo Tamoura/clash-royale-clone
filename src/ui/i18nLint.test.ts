@@ -9,6 +9,9 @@
  *    TypeScript checker decides what a number is, so a name or a card name
  *    passes and a count, cost or HP does not. Wrap it in fmtNum().
  * 3. Latin digits typed into the Arabic half of a tr() call ("+100").
+ * 4. A number and its time unit split by a breaking space in the Arabic
+ *    half (`${fmtNum(n)} ث`): on a narrow phone the unit wraps onto a line
+ *    of its own. Join them with a no-break space (\u00a0). Same for د and س.
  *
  * The allowlists are short on purpose; each entry says why.
  */
@@ -92,6 +95,15 @@ const SHOWN_OPERATORS = new Set<ts.SyntaxKind>([
 ]);
 
 const englishOnly = (text: string): boolean => LATIN.test(text) && !ARABIC_LETTER.test(text);
+
+/** A time unit (ث seconds, د minutes, س hours) right after a ${…} piece, set off by a breaking space. */
+const SPLIT_UNIT = /^ [ثدس](?![؀-ۿ])/;
+
+/** The pieces of an Arabic template that start with a split time unit. */
+function splitUnits(ar: ts.Expression): string[] {
+  if (!ts.isTemplateExpression(ar)) return [];
+  return ar.templateSpans.filter((s) => SPLIT_UNIT.test(s.literal.text)).map((s) => s.literal.text);
+}
 
 /** True when `type` is a number (or a number that may be null/undefined). */
 function isNumeric(type: ts.Type): boolean {
@@ -187,6 +199,18 @@ describe("Golden Age language lint", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("keeps a number and its time unit on one line (a no-break space before ث, د or س)", () => {
+    const offenders: string[] = [];
+    for (const sf of sources) {
+      const visit = (n: ts.Node): void => {
+        if (isTr(n)) for (const piece of splitUnits(n.arguments[1])) offenders.push(`${where(sf, n)}: ${JSON.stringify(piece)}`);
+        ts.forEachChild(n, visit);
+      };
+      visit(sf);
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("catches what it is meant to catch", () => {
     // A tiny program with one of each mistake, checked by the same rules.
     const src = [
@@ -199,6 +223,8 @@ describe("Golden Age language lint", () => {
       'tr(`${count} chests`, `${count} صناديق`);',
       'tr(`${name} wins`, `${name} يفوز`);',
       'tr("+100 gold", "+100 ذهب");',
+      'tr(`${count}s`, `${count} ث`);',
+      'tr(`${name}s`, `${name}\\u00a0ث`);',
     ].join("\n");
     const host = ts.createCompilerHost({});
     const real = host.getSourceFile;
@@ -217,10 +243,11 @@ describe("Golden Age language lint", () => {
           for (const s of ar.templateSpans) if (isNumeric(c.getTypeAtLocation(s.expression))) found.push(`num:${s.expression.getText(sf)}`);
         }
         if (/[0-9]/.test(staticText(ar).join(""))) found.push(`digits:${staticText(ar).join("")}`);
+        found.push(...splitUnits(ar).map((t) => `unit:${t}`));
       }
       ts.forEachChild(n, visit);
     };
     visit(sf);
-    expect(found).toEqual(["aria:Open the chest", "aria:Back", "num:count", "digits:+100 ذهب"]);
+    expect(found).toEqual(["aria:Open the chest", "aria:Back", "num:count", "digits:+100 ذهب", "num:count", "unit: ث"]);
   });
 });

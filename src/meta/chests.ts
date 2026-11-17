@@ -358,7 +358,7 @@ export function openChest(
 
 /**
  * The card a player's very first chest guarantees: the first unowned card
- * findable at their arena (in unlock order), or, in Training Camp where
+ * findable at their arena (in unlock order), or, in Practice Meadow where
  * every card is already owned, the first one the next arena unlocks.
  * Deterministic, so a reload can never reroll it.
  */

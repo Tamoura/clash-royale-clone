@@ -1,4 +1,4 @@
-# Hog Rider (river jump)
+# Boar Rider (river jump)
 
 4-elixir fast melee troop that only targets buildings and leaps the
 river instead of detouring to a bridge.

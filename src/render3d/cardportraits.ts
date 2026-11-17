@@ -7,7 +7,7 @@ import { animateKitTroop, hasKitTroop, makeKitTroop } from "./cast/index";
 /**
  * Pre-rendered 3D card portraits: each troop/building character is
  * rendered ONCE (on first request) into a small canvas and cached — the HUD
- * gets real model art (like CR's cards) for free at runtime.
+ * gets real model art for free at runtime.
  *
  * The WebGL context behind it is a cost too (browsers cap live contexts and
  * each holds GPU memory), so one offscreen renderer serves every capture and

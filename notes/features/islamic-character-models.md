@@ -6,7 +6,7 @@ Branch: `feature/islamic-character-models`
 
 Islamic mode should change the **look** of characters, not just their
 names. The naming layer (`src/render/cardNames.ts`) already renames every
-card (Giant → "War Elephant", Hog Rider → "Camel Raider", etc.). Now the
+card (Giant → "War Elephant", Boar Rider → "Camel Raider", etc.). Now the
 3D geometry must match — the flagship example the user gave is the Giant
 becoming an actual **war elephant carrying a turbaned rider**.
 

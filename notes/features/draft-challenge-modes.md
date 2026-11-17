@@ -5,7 +5,7 @@ Branch `draft-challenge-modes`, stacked on `enhancement-wave-1` (PR #97).
 ## Draft mode
 - Pure logic in `src/game/draft.ts` (seeded, deterministic, TDD).
 - 8 rounds. Each round offers 3 distinct cards from the FULL card pool
-  (like CR's Mega Draft — ignores arena unlocks; avoids tiny early pools).
+  (ignores arena unlocks; avoids tiny early pools).
 - Player picks 1; the bot secretly takes 1 of the remaining 2 (seeded rng).
   After 8 rounds both sides have 8 unique cards; battle starts normally.
 - No card repeats across the whole draft (24 cards drawn from 29).

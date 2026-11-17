@@ -14,7 +14,7 @@ function claimAll(state: RoadState, reached: number): RoadState {
   return state;
 }
 
-describe("trophy road table", () => {
+describe("trophy trail table", () => {
   it("has a node every 50 trophies up to 3000", () => {
     expect(ROAD).toHaveLength(60);
     ROAD.forEach((n, i) => expect(n.at).toBe((i + 1) * 50));
@@ -45,7 +45,7 @@ describe("trophy road table", () => {
   });
 });
 
-describe("trophy road claims", () => {
+describe("trophy trail claims", () => {
   it("only reached nodes are claimable, low to high", () => {
     expect(claimable(49, [])).toEqual([]);
     expect(claimable(120, []).map((n) => n.at)).toEqual([50, 100]);
@@ -68,7 +68,7 @@ describe("trophy road claims", () => {
     let road = claimAll(freshRoad(), 1400);
     expect(road.claimed).toHaveLength(28);
     // The monthly soft reset trims 1400 to 1300 (halving says 1200, but
-    // the reset never drops below Builder's Workshop, the arena at 1300).
+    // the reset never drops below Tinker Yard, the arena at 1300).
     const season = checkSeason({ key: "2026-09", best: 1400, history: [] }, "2026-10", 1400);
     expect(season.reset).toBe(true);
     expect(season.trophies).toBe(1300);

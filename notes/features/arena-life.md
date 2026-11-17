@@ -7,4 +7,4 @@
 - Voice barks (sound.ts bark()): synth war-cries layered on the
   deploy thump — hog rider's falling yell, witch's 3-note cackle,
   knight/giant grunts, valkyrie's rising cry, prince's pony trill,
-  P.E.K.K.A clank+servo, wizard's "ha!" + fire hiss.
+  Steel Guard clank+servo, wizard's "ha!" + fire hiss.

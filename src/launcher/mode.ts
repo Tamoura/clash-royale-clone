@@ -1,5 +1,5 @@
 /**
- * Which game the intro launches: the Clash Royale clone ("clash", Western art)
+ * Which game the intro launches: the Classic edition ("clash", Western art)
  * or the Islamic Golden Age version ("islamic", turbaned warriors + crescents).
  *
  * A mode IS an arena theme under the hood — clash = "normal", islamic = "arabic"

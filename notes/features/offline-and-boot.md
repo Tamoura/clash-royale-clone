@@ -125,7 +125,7 @@ script only ever talk to the game's own origin.
     the reload stalled, tries again;
   - the words follow the saved edition (`cr-clone-arena-theme` =
     `arabic`): Arabic, `dir="rtl"` on the splash text only; the title reads
-    هجمة التاج there;
+    درب الرايات there;
   - `prefers-reduced-motion` keeps the bar still and the line appears
     without a fade;
   - the first boot error (or the 45 s retry) also goes in the local

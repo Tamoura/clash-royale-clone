@@ -256,7 +256,7 @@ no Golden Age entry line holds Arabic script.
 The copied text (Classic):
 
 ```
-Crown Rush problem report
+Banner Lanes problem report
 Build: b106594-mwewgx6yjco7
 Browser: Mozilla/5.0 (...)
 Screen: 390x844 @1x

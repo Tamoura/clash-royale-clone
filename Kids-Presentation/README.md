@@ -1,6 +1,6 @@
 # 📚 Game Guide for Kids / دليل اللعبة للأطفال
 
-A classroom-ready presentation that explains how this 3D battle game is built,
+A classroom-ready presentation that explains how Banner Lanes, this 3D battle game, is built,
 shows real code examples, gives AI prompts kids can use, and suggests future
 features to encourage them to keep developing.
 
@@ -30,7 +30,7 @@ local Chrome):
 
 ```sh
 CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  npx @marp-team/marp-cli docs/slides-en.md --pdf --allow-local-files -o docs/game-slides-en.pdf
+  npx @marp-team/marp-cli Kids-Presentation/slides-en.md --pdf --allow-local-files -o Kids-Presentation/game-slides-en.pdf
 ```
 
 ## How to use it / كيفية الاستخدام

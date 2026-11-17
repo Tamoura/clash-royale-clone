@@ -90,7 +90,7 @@ their very first visit.
   the cycle-tweaked practice are unchanged.
 
 ### 5. Trophy floors (`src/meta/economy.ts`, `progress.ts`)
-- `trophyLossAt(trophies)`: 0 below 100 (Training Camp); otherwise
+- `trophyLossAt(trophies)`: 0 below 100 (Practice Meadow); otherwise
   `min(20, trophies - arenaForTrophies(trophies).trophies)`. 50 stays 50,
   110 goes to 100, 130 goes to 110. `applyMatchResult` uses it (and never
   reports -0).
@@ -142,9 +142,10 @@ Twelve survive puzzles, troop waves only, every blurb ends with the goal:
 - Arabic text shows only in the Golden Age edition, so every `nameAr`
   and `blurbAr` uses that edition's card names (`render/cardNames.ts`)
   and its rules (no sorcery, no undead): Witch Party is 'حفلة الطبول'
-  (two drummers rousing the militia), Skeleton Storm 'عاصفة الميليشيا',
-  Tank Stop 'أوقف فيل الحرب', Giant Trouble 'ورطة الفيلة', Hog Rush
-  'اندفاع الجمّالة', Mega Drop names 'أمير المماليك', Little Ones names
+  (two drummers rousing the foot soldiers), Skeleton Storm 'عاصفة المشاة'
+  (a display override since the rename; the sim data keeps its first words),
+  Tank Stop 'أوقف فيل الحرب', Giant Trouble 'ورطة الفيلة', Boar Rush
+  'اندفاع الجمّالة', Thunder Drop names 'أمير المماليك', Little Ones names
   'وابل السهام' and 'مسحوق الوميض'. challenges.test fails on any
   Classic creature word (ساحر, هياكل, عملاق, دبابة, منطاد, تنين, خيّال,
   توابع, بيكا, صاعقة…) in `nameAr`/`blurbAr`.
@@ -154,7 +155,7 @@ Twelve survive puzzles, troop waves only, every blurb ends with the goal:
   (shield + 'Survive 0:45' / 'اصمد ٠:٤٥'), a 'Cleared' chip, the blurb.
 - Stars were set from a sloppy-bot proxy (the old rookie profile playing
   the challenge deck, 20 seeds): starters 20/20; Giant Trouble 0-8/20,
-  The Horde 2-9/20, Bridge Spam 4-5/20 (three stars); the rest 16-20/20.
+  The Horde 2-9/20, Bridge Rush 4-5/20 (three stars); the rest 16-20/20.
 - challenges.test solvability: a normal bot on the player's side clears
   every one-star starter in >= 8/10 seeds and every challenge in >= 2/10.
   Today all are 10/10 except Giant Trouble (4/10 on this base, 10/10 on
@@ -170,7 +171,7 @@ Twelve survive puzzles, troop waves only, every blurb ends with the goal:
   finger, so it covers neither the Crown Pass tile above nor the next
   slot (checked at 360x740, 390x844, 844x390, 1280x800, both editions).
 - Lock pills in Battle setup and on Home's event tiles name the arena and
-  its trophies ('Goblin Stadium · 100' with lock and trophy icons, AR
+  its trophies ('Firefly Marsh · 100' with lock and trophy icons, AR
   arena names in the Golden Age), stacked on two lines inside narrow
   options. The difficulty picker wraps to two rows of three on phones.
 

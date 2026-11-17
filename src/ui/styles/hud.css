@@ -92,7 +92,7 @@
   transform: translateY(-14px) scale(1.08) rotate(-3deg);
 }
 
-/* Cost droplet: bottom centre, a quarter of it hanging below the card. */
+/* Cost badge: bottom centre, a quarter of it hanging below the card. */
 #hud.v2 .card-cost {
   left: 50%;
   bottom: -7px;
@@ -106,9 +106,10 @@
   border-width: 2px;
 }
 #hud.v2 .card-cost::before {
-  top: -6px;
-  border-width: 4px;
-  border-bottom-width: 7px;
+  top: -4px;
+  right: -4px;
+  width: 9px;
+  height: 9px;
 }
 
 /* Charge veil: a static gradient; --charge (0..100) moves the line. */

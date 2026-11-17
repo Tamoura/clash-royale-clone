@@ -133,6 +133,19 @@ describe("mergeTimeline", () => {
   });
 });
 
+describe("the Sparks bar's multiplier tag", () => {
+  // Node tests run the Golden Age edition: Arabic-Indic digits, never "x2".
+  it("counts in the edition's digits", () => {
+    const b = createBattle();
+    expect(hudModel(b, "player").mult).toBe("");
+    b.time = BATTLE_DURATION - 30;
+    expect(hudModel(b, "player").mult).toBe(`×${fmtNum(2)}`);
+    b.overtime = true;
+    expect(hudModel(b, "player").mult).toBe(`×${fmtNum(3)}`);
+    expect(hudModel(b, "player").mult).not.toMatch(/[0-9x]/);
+  });
+});
+
 describe("lossTip", () => {
   const stats = (enemy: Partial<Record<CardId, number>>): ResultStats => ({
     ...buildResultStats(createBattle(), "player"),
@@ -157,6 +170,23 @@ describe("lossTip", () => {
 
   it("is silent when no enemy card touched a tower", () => {
     expect(lossTip(stats({}), "player")).toBeNull();
+  });
+
+  // Node tests run the Golden Age edition, so these are the Arabic tips.
+  it("speaks of the enemy's card in Arabic, so verbs agree with any name", () => {
+    // Plural (المشاة), feminine (صاحبة القوس), a phrase (حشد المشاة), a
+    // building (المعسكر), a flyer (سرب الصقور) and a spell: one per template.
+    const ids: CardId[] = ["skeletons", "princess", "skeleton-army", "tombstone", "minions", "fireball", "hog-rider", "skeleton-barrel"];
+    const tips = ids.map((id) => lossTip(stats({ [id]: 100 }), "player") ?? "");
+    expect(new Set(tips.map((t) => t.replace(/^بطاقة .+? لدى الخصم /, ""))).size).toBe(6);
+    ids.forEach((id, i) => {
+      const tip = tips[i];
+      expect(tip.startsWith(`بطاقة ${cardDisplayName(id)} لدى الخصم `), tip).toBe(true);
+      // The verb right after the card is feminine past (…ت), the pronouns ‑ها.
+      expect(tip.replace(`بطاقة ${cardDisplayName(id)} لدى الخصم `, "").split(" ")[0], tip).toMatch(/ت$/);
+      // Never the old "X الخصم" head, nor a masculine pronoun on the card.
+      expect(tip, tip).not.toMatch(/[^ى] الخصم|(عليه|حاصره|هاجمه|اسحبه)(?![؀-ۿ])|يصل/);
+    });
   });
 });
 

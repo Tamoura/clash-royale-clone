@@ -1,5 +1,7 @@
 import * as THREE from "three";
-import { getCard, type CardId } from "../game/cards";
+import { type CardId } from "../game/cards";
+import { cardNameIn } from "../render/cardNames";
+import { towerTroopNameIn } from "../render/towerTroopText";
 import {
   animateTroop,
   buildTowerCannoneer,
@@ -51,7 +53,7 @@ function showGallery(container: HTMLElement, subject: string): void {
   const kit: KitUnit | null = hasKitTroop(crewId) ? makeKitTroop(crewId, "player", undefined, false) : null;
   if (kit) {
     rig = { group: kit.group, height: kit.height, armRest: 0, swingAmp: 0 } as unknown as TroopRig;
-    title = crewId.startsWith("tower-") || crewId === "cannoneer" || crewId === "duchess" ? crewId : getCard(subject as CardId).name;
+    title = crewId.startsWith("tower-") || crewId === "cannoneer" || crewId === "duchess" ? crewId : cardNameIn(subject as CardId, false);
   } else if (subject === "tower-princess") {
     rig = buildTowerPrincess();
     outlineRig(rig.group);
@@ -67,10 +69,10 @@ function showGallery(container: HTMLElement, subject: string): void {
   } else if (subject === "tower-duchess") {
     rig = buildTowerDuchess();
     outlineRig(rig.group);
-    title = "Dagger Duchess";
+    title = towerTroopNameIn("duchess", false);
   } else {
     rig = buildTroop(subject as CardId, "player"); // throws on unknown/spell ids
-    title = getCard(subject as CardId).name;
+    title = cardNameIn(subject as CardId, false);
   }
   if (!kit && rig.arm) rig.arm.rotation.x = rig.armRest;
 

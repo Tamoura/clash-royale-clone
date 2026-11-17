@@ -148,16 +148,16 @@ export const CLASSIC: Record<string, Variant> = {
       "0,0": 0x1b1a22, "1,0": 0x1b1a22, "6,0": 0x34323f, "4,0": 0x34323f, "0,1": "team", "2,2": 0x34323f,
     },
     extras: [
-      // Curled horns and a glowing cyan visor slit.
-      x("head", 0xe8e0d0, () => cone(0.13, 0.55, 0.52, HEAD_TOP + 0.08, 0.02, -0.8, 0, 8)),
-      x("head", 0xe8e0d0, () => cone(0.13, 0.55, -0.52, HEAD_TOP + 0.08, 0.02, 0.8, 0, 8)),
-      x("head", 0x7df9ff, () => box(0.56, 0.12, 0.08, 0, 1.78, 0.5)),
+      // The Little Steel Guard: a brass crest ridge and a warm amber visor
+      // slit (no curved horns: those read as another game's robot knight).
+      x("head", 0xd4a848, () => ball(0.3, 0, HEAD_TOP + 0.06, -0.04, 0.28, 0.7, 1.12, 10)),
+      x("head", 0xffc04a, () => box(0.56, 0.12, 0.08, 0, 1.78, 0.5)),
     ],
     idle: "2H_Melee_Idle",
     walk: "Running_A",
     attack: "2H_Melee_Attack_Chop",
     strike: 0.42,
-    back: ["two pale horns on a gunmetal helm", "big two-handed sword"],
+    back: ["brass crest ridge on a gunmetal helm", "big two-handed sword"],
   },
   skeletons: {
     file: "skeleton_minion",
@@ -199,9 +199,9 @@ Object.assign(CLASSIC, {
       "0,0": 0x12121a, "1,0": 0x12121a, "6,0": 0x2a2838, "4,0": 0x2a2838, "0,1": "team", "2,2": 0x2a2838,
     },
     extras: [
-      x("head", 0xe8e0d0, () => cone(0.16, 0.75, 0.56, HEAD_TOP + 0.14, 0.02, -0.7, 0, 8)),
-      x("head", 0xe8e0d0, () => cone(0.16, 0.75, -0.56, HEAD_TOP + 0.14, 0.02, 0.7, 0, 8)),
-      x("head", 0xff5fe0, () => box(0.56, 0.12, 0.08, 0, 1.78, 0.5)),
+      // The Steel Guard: a tall brass crest and an amber visor slit.
+      x("head", 0xd4a848, () => ball(0.38, 0, HEAD_TOP + 0.12, -0.05, 0.28, 0.78, 1.15, 10)),
+      x("head", 0xffc04a, () => box(0.56, 0.12, 0.08, 0, 1.78, 0.5)),
       x("chest", 0x4e4a66, () => ball(0.24, 0.55, 1.62, 0, 1, 0.7, 1, 10)),
       x("chest", 0x4e4a66, () => ball(0.24, -0.55, 1.62, 0, 1, 0.7, 1, 10)),
     ],
@@ -209,7 +209,7 @@ Object.assign(CLASSIC, {
     walk: "Walking_A",
     attack: "2H_Melee_Attack_Chop",
     strike: 0.42,
-    back: ["long curved horns", "huge pauldrons", "two-handed sword"],
+    back: ["tall brass crest ridge", "huge pauldrons", "two-handed sword"],
   },
   "ice-wizard": {
     file: "mage",
@@ -304,16 +304,15 @@ Object.assign(CLASSIC, {
     paint: { "0,1": 0x3a3f4a, "1,1": 0x3a3f4a, "7,0": 0x2e2a2a, "1,0": 0x2e2a2a },
     propPaint: { "2,2": 0x6a4a3a },
     extras: [
-      // A leather executioner's hood with a tall peak.
-      x("head", 0x4a3a35, () => cap(0.58, 0.62, 0, 1.78, 0, 1.15)),
-      x("head", 0x4a3a35, () => cone(0.24, 0.48, 0, HEAD_TOP + 0.27, -0.14, 0, -0.45, 8)),
-      x("head", 0xd8e2ec, () => ball(0.06, 0, HEAD_TOP + 0.48, -0.25, 1, 1, 1, 6)),
+      // The Axe Bearer: a knotted leather bandana (no executioner's hood).
+      x("head", 0x7a5230, () => cap(0.58, 0.62, 0, 1.78, 0, 0.95)),
+      x("head", 0x7a5230, () => ball(0.11, 0, HEAD_TOP - 0.12, -0.42, 1, 0.8, 1, 8)),
     ],
     idle: "2H_Melee_Idle",
     walk: "Walking_A",
     attack: "2H_Melee_Attack_Spin",
     strike: 0.45,
-    back: ["tall peaked leather hood", "double axe held out past the body", "team mantle"],
+    back: ["knotted leather bandana", "double axe held out past the body", "team mantle"],
   },
   "royal-giant": {
     file: "barbarian",

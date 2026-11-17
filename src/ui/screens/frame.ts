@@ -277,7 +277,7 @@ export function buildTabBar(ctx: AppCtx, active: HomeTab | null, pick: (t: HomeT
 // ---- Tab badges -----------------------------------------------------------------
 
 /**
- * What waits on each tab right now: claimable Trophy Road, Crown Pass and
+ * What waits on each tab right now: claimable Trophy Trail, Crown Pass and
  * daily quest rewards (Battle), upgrades the player can pay for (Cards)
  * and earned achievements (Profile). Pure counting lives in meta/progress.
  */

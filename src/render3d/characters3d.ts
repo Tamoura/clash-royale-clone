@@ -42,7 +42,7 @@ import { BASE_CADENCE, hopScale, legPhase, stepSquash } from "./anim/gait";
 const SKIN = 0xf6c9a0;
 
 /**
- * Shared painted light ramp (CR look): three soft bands that also carry
+ * Shared painted light ramp (the toy look): three soft bands that also carry
  * COLOUR — shadows fall toward a cool blue-violet, the lit side stays a
  * warm cream — instead of a grey multiply. The shader patch in
  * addRimLight() reads the ramp's RGB (stock three.js reads only red).
@@ -259,7 +259,7 @@ function addRimLight(
 }
 
 export function toon(color: number): THREE.MeshToonMaterial {
-  // Punch up saturation for bold, candy-cartoon colors (CR look).
+  // Punch up saturation for bold, candy-cartoon colors.
   const c = new THREE.Color(color);
   const hsl = { h: 0, s: 0, l: 0 };
   c.getHSL(hsl);
@@ -612,10 +612,10 @@ function buildKnight(): TroopRig {
     g.add(sphere(0.055, GOLD, sx * 0.38, 0.92, 0.1)); // rivet
   }
 
-  // Bigger head + face + helmet (CR chunky toy proportions).
+  // Bigger head + face + helmet (chunky toy proportions).
   const head = sphere(0.44, SKIN, 0, 1.22, 0);
   addEyes(head, 0.44, 0.3, 0.08, "brave");
-  // Hero cue: oversized blonde handlebar moustache (CR knight read).
+  // Hero cue: oversized blonde handlebar moustache (the knight's read).
   const stache = box(0.38, 0.09, 0.08, 0xd9b34a, 0, -0.14, 0.4);
   stache.name = "mustache";
   head.add(stache);
@@ -683,7 +683,7 @@ function buildArcher(): TroopRig {
   const g = new THREE.Group();
   const legs = [makeLeg(0x254d28, -0.11, 0.26, 0.13), makeLeg(0x254d28, 0.11, 0.26, 0.13)];
   g.add(...legs);
-  // Sleeveless green tunic (CR archer silhouette).
+  // Sleeveless green tunic (archer silhouette).
   g.add(cyl(0.22, 0.28, 0.42, 0x2e7d32, 0, 0.48, 0));
   g.add(teamPart(cyl(0.29, 0.29, 0.07, 0x6d4c41, 0, 0.3, 0))); // belt
   for (const s of [-1, 1]) g.add(box(0.08, 0.14, 0.1, 0x6d4c41, s * 0.18, 0.7, 0.1)); // bracers cue
@@ -695,7 +695,7 @@ function buildArcher(): TroopRig {
     t.position.y = 0.96;
     g.add(t);
   } else {
-    // Magenta bob: blunt fringe + side braid (CR signature hair).
+    // Magenta bob: blunt fringe + side braid (signature hair).
     const hair = sphere(0.34, 0xec5fa3, 0, 1.04, -0.02);
     hair.name = "pink-hair";
     hair.scale.set(1, 0.7, 1);
@@ -1150,7 +1150,7 @@ function buildMusketeer(): TroopRig {
   const head = sphere(0.32, SKIN, 0, 1.02, 0);
   addEyes(head, 0.32, 0.36, 0.1, "brave");
   g.add(head);
-  // CR look: purple coiffed curls under a steel helmet with a
+  // Look: purple coiffed curls under a steel helmet with a
   // team-colored feather, plus a metal shoulder pad.
   if (ARABIC) {
     const t = turban(0.32, 0x3a2f7a, 0xf2c14e); // indigo turban, gold band
@@ -1312,7 +1312,7 @@ const CLASSIC_WIZARD: WizardTheme = {
   robe: 0x84399a, // plum: crimson read as the red team
   robeDk: 0x521f60,
   trim: 0xf2c14e,
-  hair: 0x6b4a2e, // brown, per the CR reference (not white)
+  hair: 0x6b4a2e, // brown (not white)
   beard: 0x6b4a2e,
   orb: 0xff7a00,
   crystal: 0xffb35c,
@@ -1559,7 +1559,7 @@ function buildWitch(): TroopRig {
     skull.rotation.y = -a + Math.PI / 2; // always faces outward
   };
 
-  // Staff hand: CR's ram-skull staff with golden horns.
+  // Staff hand: ram-skull staff with golden horns.
   const offArm = new THREE.Group();
   offArm.position.set(-0.34, 0.78, 0);
   offArm.add(box(0.11, 0.26, 0.11, 0x4a148c, 0, -0.13, 0));
@@ -2008,7 +2008,7 @@ function buildPrince(): TroopRig {
   g.add(cyl(0.27, 0.27, 0.07, 0xf2c14e, 0, 1.12, -0.1)); // gold trim
   const head = sphere(0.3, SKIN, 0, 1.7, -0.1);
   addEyes(head, 0.3, 0.38, 0.11, "brave");
-  // CR prince: brown goatee under the visored golden helm.
+  // Prince: brown goatee under the visored golden helm.
   const goatee = sphere(0.1, 0x5b3a21, 0, -0.2, 0.22);
   goatee.scale.set(0.9, 0.8, 0.6);
   head.add(goatee);
@@ -2087,7 +2087,7 @@ function buildHogRider(): TroopRig {
     g.add(ear);
   }
 
-  // Bare-chested rider with top-knot + roaring beard (CR hog personality).
+  // Bare-chested rider with top-knot + roaring beard (the rider's personality).
   const RIDER = 0x9c6644; // darker skin
   g.add(cyl(0.2, 0.24, 0.36, RIDER, 0, 1.06, -0.12)); // torso
   g.add(teamPart(cyl(0.26, 0.26, 0.08, 0x4e342e, 0, 0.9, -0.12), "dark")); // belt
@@ -2099,7 +2099,7 @@ function buildHogRider(): TroopRig {
     t.position.set(0, 1.52, -0.12);
     g.add(t);
   } else {
-    // Top-knot bun (not a flat mohawk) — CR hog-rider hair cue.
+    // Top-knot bun (not a flat mohawk) — the rider's hair cue.
     const knot = sphere(0.12, 0x2d1b0e, 0, 1.82, -0.18);
     knot.name = "topknot";
     g.add(knot);
@@ -2606,7 +2606,7 @@ function buildFirecracker(): TroopRig {
   const g = new THREE.Group();
   const legs = [makeLeg(0x4a2c1a, -0.11, 0.26, 0.13), makeLeg(0x4a2c1a, 0.11, 0.26, 0.13)];
   g.add(...legs);
-  // Tan/olive outfit with dark gloves (CR firecracker palette).
+  // Tan/olive outfit with dark gloves (firecracker palette).
   g.add(cyl(0.23, 0.3, 0.4, 0x8a7a4a, 0, 0.46, 0));
   g.add(cyl(0.31, 0.31, 0.07, 0x5a4a2a, 0, 0.3, 0)); // belt
   const head = sphere(0.3, SKIN, 0, 0.94, 0);
@@ -2706,7 +2706,7 @@ function buildMagicArcher(): TroopRig {
   arm.add(box(0.015, 0.7, 0.015, 0xb39ddb, 0, -0.28, 0.16)); // string
   const glowArrow = cyl(0.03, 0.03, 0.56, 0x35c8b4, 0, -0.28, 0.3);
   glowArrow.rotation.x = Math.PI / 2;
-  glowArrow.material = glow(0x53f0dc); // cyan piercing shot (CR signature)
+  glowArrow.material = glow(0x53f0dc); // cyan piercing shot (signature)
   arm.add(glowArrow);
   const magicTip = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), glow(0x9ffcf0, 2));
   magicTip.position.set(0, -0.28, 0.56);
@@ -3413,8 +3413,45 @@ function buildCannonRig(): BuildingRig {
   return { group: g, arm: null, armRest: 0, swingAmp: 0, height: 1.25, barrel, barY: 1.55 };
 }
 
+/**
+ * Golden Age TOMBSTONE, shown as المعسكر (the camp) that keeps sending out
+ * its foot soldiers: a striped campaign tent on packed sand, a spear rack
+ * and a warm lantern by the door; the team pennant on the tent pole is its
+ * one team slot. Never a grave: troops attack it, and the edition keeps
+ * graves, skulls and souls off the field. Same footprint, height and bar.
+ */
+function buildCampRig(): BuildingRig {
+  const g = new THREE.Group();
+  const SAND = 0xc9a96e, CANVAS = 0xf0e4c8, STRIPE = THEME.turquoise, WOOD = 0x7a5a36, DOOR = 0x4a3426;
+  g.add(cyl(0.6, 0.7, 0.12, SAND, 0, 0.06, 0)); // packed-sand footing
+  // The tent: a round pavilion with a turquoise band round its skirt.
+  g.add(cone(0.66, 1.12, CANVAS, 0, 0.12 + 0.56, 0));
+  g.add(cyl(0.6, 0.68, 0.16, STRIPE, 0, 0.22, 0));
+  g.add(cyl(0.22, 0.26, 0.08, STRIPE, 0, 1.12, 0)); // a band near the top
+  // The doorway, leaning with the tent's wall.
+  const door = box(0.3, 0.46, 0.06, DOOR, 0, 0.42, 0.47);
+  door.rotation.x = Math.atan2(0.66, 1.12);
+  g.add(door);
+  // The pole runs through the top and flies the team pennant.
+  g.add(...teamPennant(0, 0, 1.72));
+  // A spear rack beside the door: two crossed hafts with brass tips.
+  for (const sx of [-1, 1]) {
+    const haft = cyl(0.025, 0.025, 0.9, WOOD, 0.66, 0.5, 0.18 + sx * 0.08);
+    haft.rotation.x = sx * 0.22;
+    g.add(haft);
+    g.add(cone(0.05, 0.14, THEME.goldLight, 0.66, 0.99, 0.18 + sx * 0.18));
+  }
+  // A warm lantern by the door (under the bloom threshold).
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), glow(0xffb347, 2));
+  lamp.name = "lantern";
+  lamp.position.set(-0.42, 0.62, 0.42);
+  g.add(lamp);
+  return { group: g, arm: null, armRest: 0, swingAmp: 0, height: 1.7, barY: 2.05 };
+}
+
 /** TOMBSTONE: a rounded headstone on an earth mound, a carved skull, a green soul-light, a team wreath. */
 function buildTombstoneRig(): BuildingRig {
+  if (ARABIC) return buildCampRig();
   const g = new THREE.Group();
   const STONE = ARABIC ? 0xcdbb94 : 0x9aa1a8, STONEDK = ARABIC ? 0x9c8b6e : 0x6d747c, EARTH = ARABIC ? 0xa88a5c : 0x6b5a45, BONE = 0xe9dfc8;
   const mound = cyl(0.56, 0.68, 0.22, EARTH, 0, 0.11, 0);
@@ -3459,7 +3496,7 @@ function buildTombstoneRig(): BuildingRig {
   return { group: g, arm: null, armRest: 0, swingAmp: 0, height: 1.7, barY: 2.05 };
 }
 
-/** ELIXIR COLLECTOR: a hooped vat brimming with glowing elixir, a pump, a big drop; a team rim band. */
+/** ELIXIR COLLECTOR (the Spark Well): a hooped vat brimming with glow, a pump, a big spark crystal; a team rim band. */
 function buildCollectorRig(): BuildingRig {
   const g = new THREE.Group();
   const WOOD = ARABIC ? 0xb08a4a : 0x8d6e4a, WOODDK = ARABIC ? 0x8a6a34 : 0x5e4632, HOOP = ARABIC ? THEME.goldLight : 0x4a4f57;
@@ -3476,18 +3513,15 @@ function buildCollectorRig(): BuildingRig {
   const rim = cyl(0.6, 0.6, 0.12, 0xffffff, 0, 0.92, 0);
   rim.name = "rim-band";
   g.add(teamPart(rim));
-  // Elixir (pink-magenta, under the bloom threshold) and its drop.
+  // The well's glow (pink-magenta, under the bloom threshold) and the spark
+  // it makes: a four-pointed crystal (the Sparks resource), not a drop.
   const brew = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.06, 18), glow(0xd946ef, 2));
   brew.position.y = 0.96;
   g.add(brew);
-  const drop = new THREE.Mesh(cachedGeo("elixir-drop", () => {
-    const pts: THREE.Vector2[] = [];
-    for (let i = 0; i <= 10; i++) {
-      const t = i / 10;
-      const a = t * Math.PI;
-      pts.push(new THREE.Vector2(Math.sin(a) * 0.18 * (t < 0.5 ? 1 : 1 - (t - 0.5) * 1.6), -Math.cos(a) * 0.18 + t * t * 0.22));
-    }
-    return new THREE.LatheGeometry(pts, 14);
+  const drop = new THREE.Mesh(cachedGeo("spark-crystal", () => {
+    const geo = new THREE.OctahedronGeometry(0.18, 0);
+    geo.scale(0.8, 1.45, 0.8);
+    return geo;
   }), glow(0xe879f9, 2));
   drop.name = "elixir-drop";
   drop.position.y = 1.3;

@@ -1,7 +1,6 @@
-# CR character proportions
+# Character proportions
 
-Per the reference (cr-ref-3): CR troops read large against the
-field, tanks towering over swarms.
+Troops read large against the field, tanks towering over swarms.
 
 - Troop rig scale up ~30% (tanks giant/pekka +35%); collision radii
   untouched (visual only). HP bars/labels follow via rig.height.

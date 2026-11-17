@@ -70,6 +70,7 @@ import {
   type AbilityId,
 } from "./game/abilities";
 import { applyWaves, challengeStatus, type Challenge } from "./game/challenges";
+import { challengeName } from "./render/challengeText";
 import { dailyDeck, dateKey } from "./game/daily";
 import { checkSeason, loadAchievements, loadSeason, saveSeason, seasonKey } from "./meta/achievements";
 import { SEASON_TOAST_MS, seasonStartText } from "./ui/seasonBanner";
@@ -179,7 +180,7 @@ import "./ui/keepSafeWire";
 
 // Apply edition-aware CSS variables before any DOM is rendered.
 applyEditionTokens(STORED_EDITION);
-// The tab title, splash and boot labels in the edition's language (Crown Rush).
+// The tab title, splash and boot labels in the edition's language (Banner Lanes).
 localizeStaticMarkup(document);
 // Canvas labels (unit names, banners) are painted once, so warm the
 // Arabic face up front in the Islamic edition.
@@ -432,7 +433,7 @@ let activeChallenge: Challenge | null = null;
 let waveCursor = { next: 0 };
 let draftDecks: { mine: CardId[]; bot: CardId[] } | null = null;
 
-// ---- Game variant (Clash Royale clone vs Islamic version) ---------------
+// ---- Game variant (Classic edition vs Golden Age edition) ---------------
 // The variant is the arena theme under the hood; switching reloads the page.
 // (Named "variant" to avoid colliding with the in-match GameMode rulesets.)
 // Null until the player picks an edition in the lobby.
@@ -811,7 +812,7 @@ function startSpecialBattle(
 function startChallenge(ch: Challenge): void {
   activeChallenge = ch;
   waveCursor = { next: 0 };
-  startSpecialBattle("challenge", ch.deck, ch.deck, tr(ch.name, ch.nameAr));
+  startSpecialBattle("challenge", ch.deck, ch.deck, challengeName(ch));
   // The goal is the clock: "SURVIVE 0:45" and a goal card (the tutorial's
   // endless surviveFor keeps the normal clock).
   hud.setClockGoal(battle, challengeClock(ch.surviveFor));
@@ -991,7 +992,7 @@ const ctx: AppCtx = {
     sandboxResetBtn.style.display = "none";
   },
 };
-// Reward loop (chests, Trophy Road, Crown Pass): hooks and Home slots.
+// Reward loop (chests, Trophy Trail, Crown Pass): hooks and Home slots.
 registerRewards(ctx);
 registerNewCards(ctx);
 
@@ -1083,7 +1084,7 @@ if (EDITION_CHOSEN && !tutorialDone()) {
 
 // ---- Emotes ------------------------------------------------------------
 
-// One chat bubble (CR): tap to open the tray, pick an emote, it closes.
+// One chat bubble: tap to open the tray, pick an emote, it closes.
 // Only friendly emotes (ui/emotes.ts); the wire table keeps old ids stable.
 setOnlineEmotes(EMOTES);
 const emoteToggle = document.createElement("button");
@@ -1513,12 +1514,12 @@ const battleEventSteps: readonly EventStep[] = [
       const mm = Math.floor(battle.time / 60);
       const ss = String(Math.floor(battle.time % 60)).padStart(2, "0");
       const mine = ev.side === localSide();
-      const tower =
-        ev.kind === "king-tower" ? tr("King", "الملك") : tr("Princess", "الأميرة");
+      const king = ev.kind === "king-tower";
       towerTimeline.push(
         `${mm}:${ss} — ${mine ? "🛡️" : "⚔️"} ${
-          mine ? tr(`your ${tower} tower fell`, `سقط برج ${tower} لديك`)
-               : tr(`enemy ${tower} tower fell`, `سقط برج ${tower} للخصم`)
+          king
+            ? mine ? tr("your King tower fell", "سقط برج الملك لديك") : tr("enemy King tower fell", "سقط برج الملك للخصم")
+            : mine ? tr("your side tower fell", "سقط البرج الجانبي لديك") : tr("enemy side tower fell", "سقط البرج الجانبي للخصم")
         }`,
       );
     }

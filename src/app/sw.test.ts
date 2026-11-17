@@ -9,6 +9,7 @@ import sw from "../../public/sw.js?raw";
 import viteConfig from "../../vite.config.ts?raw";
 import indexHtml from "../../index.html?raw";
 import manifestRaw from "../../public/manifest.webmanifest?raw";
+import { GAME_NAME } from "./brand";
 import {
   BUILD_ID_PLACEHOLDER,
   PRECACHE_PLACEHOLDER,
@@ -222,9 +223,13 @@ function world(base = "/") {
 const html = (body: string, status = 200): Response =>
   new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 
-/** A built index.html for `build`, linking its entry script, preload and styles as Vite writes them. */
-const pageOf = (build: string, base = "/"): string =>
-  `<!doctype html><html><head><meta name="cr-app-shell" content="game" /><title>Crown Rush</title>` +
+/**
+ * A built index.html for `build`, linking its entry script, preload and
+ * styles as Vite writes them. Its title defaults to the game's name before
+ * the rename (Crown Rush), as the builds already installed carry it.
+ */
+const pageOf = (build: string, base = "/", title = "Crown Rush"): string =>
+  `<!doctype html><html><head><meta name="cr-app-shell" content="game" /><title>${title}</title>` +
   `<link rel="manifest" href="manifest.webmanifest" />` +
   `<script type="module" crossorigin src="${base}assets/index-${build}.js"></script>` +
   `<link rel="modulepreload" crossorigin href="${base}assets/three-${build}.js">` +
@@ -249,11 +254,11 @@ const workerOf = (build: string, list = filesOf(build)): string => stampPrecache
  * its page, its files, the cast and the icons. Anything else is a 404, like
  * an older build's hashed files once the new one is live.
  */
-function serverOf(build: string, base = "/", opts: { failing?: string[] } = {}): Net {
+function serverOf(build: string, base = "/", opts: { failing?: string[]; title?: string } = {}): Net {
   return async (url) => {
     const rel = url.pathname.slice(base.length);
     if (opts.failing?.includes(rel)) return new Response("busy", { status: 503 });
-    if (rel === "" || rel === "index.html") return html(pageOf(build, base));
+    if (rel === "" || rel === "index.html") return html(pageOf(build, base, opts.title));
     if (filesOf(build).includes(rel)) return new Response(`/* ${build}: ${rel} */`, { headers: { "content-type": "text/javascript" } });
     if (rel.startsWith("models/") || /\.(png|webmanifest)$/.test(rel)) return new Response(`bin:${rel}`);
     if (rel === "healthz") return new Response('{"ok":true}', { headers: { "content-type": "application/json" } });
@@ -682,6 +687,33 @@ describe("service worker upgrades: a cached page always finds its own files", ()
     w.setNetwork(offline);
     expect((await w3.open("", "kid-4")).text).toBe(pageOf("b3"));
     expect(w.cacheNames()).toEqual([cacheOf("b3")]);
+  });
+
+  it("the rename: an install from before it (titled Crown Rush) upgrades to the renamed build and opens offline", async () => {
+    const w = world();
+    w.setNetwork(serverOf("b1"));
+    const w1 = w.startWorker(workerOf("b1"));
+    await w1.deploy();
+    expect((await w1.open("", "kid-1")).text).toContain("<title>Crown Rush</title>");
+
+    // The renamed build goes live while the old page is open.
+    const renamed = { title: GAME_NAME };
+    w.setNetwork(serverOf("b2", "/", renamed));
+    const w2 = w.startWorker(workerOf("b2"));
+    expect(await w2.deploy()).toBe(true);
+    // The open old page still finds its own files.
+    expect(await bodyOf(await w2.get("assets/roster-b1.js", "kid-1"))).toContain("b1: assets/roster-b1.js");
+
+    // Reopened: the renamed build, and the old cache goes.
+    w.closePage("kid-1");
+    expect((await w2.open("", "kid-2")).text).toBe(pageOf("b2", "/", GAME_NAME));
+    expect(w.cacheNames()).toEqual([cacheOf("b2")]);
+
+    // Offline next time: the renamed build opens with all its files.
+    w.setNetwork(offline);
+    w.closePage("kid-2");
+    expect((await w2.open("", "kid-3")).text).toContain(`<title>${GAME_NAME}</title>`);
+    for (const f of filesOf("b2")) expect(await bodyOf(await w2.get(f, "kid-3"))).toContain(f);
   });
 
   it("a launch served the previous build's cached page while the new build activates still starts", async () => {

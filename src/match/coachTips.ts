@@ -90,8 +90,8 @@ export function chooseCoachTip(f: DefeatFacts, nameOf: (id: CardId) => string = 
   if (f.elixirLeaked >= LEAK_TIP_ELIXIR) {
     return {
       id: "leak",
-      en: "Don't let elixir sit at 10, play a card!",
-      ar: "لا تترك الإكسير واقفًا عند ١٠، العب بطاقة!",
+      en: "Don't let sparks sit at 10, play a card!",
+      ar: "لا تترك الشرارات تقف عند ١٠، العب بطاقة!",
     };
   }
   if (f.towerLostToBuildingTargeter) {

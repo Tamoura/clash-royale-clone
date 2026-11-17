@@ -1,6 +1,6 @@
 # Overtime tower-HP tiebreak
 
-CR rule: if overtime ends with crowns still tied, the player whose
+Rule: if overtime ends with crowns still tied, the player whose
 most-damaged crown tower is healthier wins; identical damage draws.
 
 - `towerHpTiebreak` compares min tower HP per side (towers have

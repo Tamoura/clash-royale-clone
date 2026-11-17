@@ -130,7 +130,8 @@ export function hudModel(state: BattleState, side: Side, pendingSpend = 0, clock
     crowns: { me: me.crowns, them: foe.crowns },
     elixirInt: Math.floor(amount),
     elixirPct: quantiseElixirPct(amount),
-    mult: multValue >= SANDBOX_ELIXIR_RATE ? "∞" : multValue >= 2 && !state.result ? `x${multValue}` : "",
+    // In the edition's own digits ("×٢"), like the banner above the bar.
+    mult: multValue >= SANDBOX_ELIXIR_RATE ? "∞" : multValue >= 2 && !state.result ? tr(`x${multValue}`, `×${fmtNum(multValue)}`) : "",
     leak: amount >= ELIXIR_MAX && !state.result,
     ability: me.ability
       ? { id: me.ability, pct: Math.floor(clamp01(me.abilityCharge) * 100), ready: me.abilityCharge >= 1 }
@@ -263,7 +264,7 @@ export function abilitySecondsLeft(state: BattleState, side: Side): number | nul
 
 /** The bubble over a KING that is not ready yet. */
 export function chargingText(seconds: number): string {
-  return tr(`Charging… ${fmtNum(seconds)}s`, `يشحن… ${fmtNum(seconds)} ث`);
+  return tr(`Charging… ${fmtNum(seconds)}s`, `يشحن… ${fmtNum(seconds)}\u00a0ث`);
 }
 
 // ---- Refused drops -------------------------------------------------------------
@@ -631,12 +632,12 @@ function towerFellText(mine: boolean, tower: TimelineEntry["tower"], n: number):
   }
   if (n === 1) {
     return mine
-      ? tr("Your Princess tower fell", "سقط برج أميرتك")
-      : tr("Enemy Princess tower fell", "سقط برج أميرة الخصم");
+      ? tr("Your side tower fell", "سقط برجك الجانبي")
+      : tr("Enemy side tower fell", "سقط البرج الجانبي للخصم");
   }
   return mine
-    ? tr(`${count} of your Princess towers fell`, `سقط ${count} من أبراج أميراتك`)
-    : tr(`${count} enemy Princess towers fell`, `سقط ${count} من أبراج أميرات الخصم`);
+    ? tr(`${count} of your side towers fell`, `سقط ${count} من أبراجك الجانبية`)
+    : tr(`${count} enemy side towers fell`, `سقط ${count} من أبراج الخصم الجانبية`);
 }
 
 /**
@@ -667,6 +668,10 @@ export function mergeTimeline(entries: readonly TimelineEntry[]): TimelineLine[]
  * After a loss: name the enemy card that did the most damage to the local
  * player's towers and suggest a counter that fits how that card targets.
  * Null when no enemy card touched a tower.
+ *
+ * The Arabic always talks about the card ("بطاقة X لدى الخصم"), which is
+ * feminine singular, so verbs and pronouns agree whatever the name is:
+ * plural (المشاة), feminine (صاحبة القوس) or a phrase (حشد المشاة).
  */
 export function lossTip(stats: ResultStats, side: Side): string | null {
   const foeSide: Side = side === "player" ? "enemy" : "player";
@@ -680,36 +685,36 @@ export function lossTip(stats: ResultStats, side: Side): string | null {
   if (card.kind === "spell") {
     return tr(
       `Their ${name} chipped your towers. Keep a spell of your own to trade back.`,
-      `${name} الخصم أصاب أبراجك. احتفظ بتعويذة لترد عليه.`,
+      `بطاقة ${name} لدى الخصم أصابت أبراجك. احتفظ بحيلة لترد عليها.`,
     );
   }
   if (card.kind === "building") {
     return tr(
       `Their ${name} hit your towers. Drop a tank or a spell on it early.`,
-      `${name} الخصم ضرب أبراجك. أسقط عليه وحدة قوية أو تعويذة مبكرًا.`,
+      `بطاقة ${name} لدى الخصم ضربت أبراجك. أسقط عليها وحدة قوية أو حيلة مبكرًا.`,
     );
   }
   const u = card.unit;
   if (u.targetsBuildingsOnly) {
     return tr(
       `Their ${name} went straight for your towers. Pull it with a building or swarm it with cheap troops.`,
-      `${name} الخصم اتجه مباشرة إلى أبراجك. اسحبه ببناء أو حاصره بوحدات رخيصة.`,
+      `بطاقة ${name} لدى الخصم اتجهت مباشرة إلى أبراجك. اسحبها ببناء أو حاصرها بوحدات رخيصة.`,
     );
   }
   if (u.flying) {
     return tr(
       `Their ${name} flew over your defence. Keep a troop that hits air ready.`,
-      `${name} الخصم طار فوق دفاعك. جهّز وحدة تصيب الطائرين.`,
+      `بطاقة ${name} لدى الخصم طارت فوق دفاعك. جهّز وحدة تصيب الطائرين.`,
     );
   }
   if (u.attackRange >= 3) {
     return tr(
       `Their ${name} shot your towers from range. Close in with a fast melee troop or a spell.`,
-      `${name} الخصم رمى أبراجك من بعيد. هاجمه بوحدة سريعة قريبة أو بتعويذة.`,
+      `بطاقة ${name} لدى الخصم رمت أبراجك من بعيد. هاجمها بوحدة سريعة قريبة أو بحيلة.`,
     );
   }
   return tr(
     `Their ${name} did the most damage to your towers. Swarm it with cheap troops before it reaches them.`,
-    `${name} الخصم أحدث أكبر ضرر بأبراجك. حاصره بوحدات رخيصة قبل أن يصل إليها.`,
+    `بطاقة ${name} لدى الخصم أحدثت أكبر ضرر بأبراجك. حاصرها بوحدات رخيصة قبل أن تصل إليها.`,
   );
 }

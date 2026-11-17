@@ -65,11 +65,11 @@ describe("seasons", () => {
     const roll = checkSeason(s, "2026-09", 1250);
     expect(roll.reset).toBe(true);
     expect(roll.rolled).toBe(true);
-    expect(roll.trophies).toBe(SEASON_FLOOR + 125); // 1000 + (250 / 2), still Spell Valley
+    expect(roll.trophies).toBe(SEASON_FLOOR + 125); // 1000 + (250 / 2), still Starlight Glade
     expect(roll.state.history[0]).toEqual({ key: "2026-08", best: 1500 });
   });
 
-  it("keeps the arena: 1600 (the first step of Royal Arena) stays 1600", () => {
+  it("keeps the arena: 1600 (the first step of Castle Court) stays 1600", () => {
     const s = { key: "2026-08", best: 1600, history: [] };
     const roll = checkSeason(s, "2026-09", 1600);
     expect(roll.trophies).toBe(1600);
@@ -83,7 +83,7 @@ describe("seasons", () => {
     expect(seasonResetTrophies(2500)).toBe(2400); // halving says 1750
     expect(seasonResetTrophies(3400)).toBe(3000); // halving says 2200
     expect(seasonResetTrophies(1500)).toBe(1300); // halving says 1250
-    expect(seasonResetTrophies(1200)).toBe(1100); // halving stays in Spell Valley
+    expect(seasonResetTrophies(1200)).toBe(1100); // halving stays in Starlight Glade
     expect(seasonResetTrophies(1000)).toBe(1000);
     expect(seasonResetTrophies(400)).toBe(400);
   });

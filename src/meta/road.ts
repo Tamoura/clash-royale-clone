@@ -1,5 +1,5 @@
 /**
- * Trophy Road claims. A node is claimable once the player has reached its
+ * Trophy Trail claims. A node is claimable once the player has reached its
  * threshold (their best ever, so a monthly soft reset never takes a reached
  * reward away) and is claimed at most once, forever: claims are stored per
  * threshold in 'cr-clone-road', so dropping below and climbing back can

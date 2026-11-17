@@ -1,10 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { deathMotion, deathStyle, toppleDirection } from "./deathfx";
 
 describe("death effect styles", () => {
-  it("skeletal troops scatter bones", () => {
-    expect(deathStyle("skeletons").kind).toBe("bones");
-    expect(deathStyle("skeleton-army").kind).toBe("bones");
+  it("Classic skeletal troops scatter bones", async () => {
+    vi.resetModules();
+    vi.doMock("./theme", async (orig) => ({ ...(await orig<typeof import("./theme")>()), ARABIC: false }));
+    try {
+      const classic = (await import("./deathfx")).deathStyle;
+      expect(classic("skeletons").kind).toBe("bones");
+      expect(classic("skeleton-army").kind).toBe("bones");
+    } finally {
+      vi.doUnmock("./theme");
+      vi.resetModules();
+    }
+  });
+
+  it("the Golden Age foot soldiers leave a puff of sand, never bones (Node runs that edition)", () => {
+    expect(deathStyle("skeletons").kind).toBe("puff");
+    expect(deathStyle("skeleton-army").kind).toBe("puff");
   });
 
   it("the robots burst into purple sparks", () => {

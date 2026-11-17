@@ -313,10 +313,10 @@ export class ResultScreen {
       table.appendChild(r);
     };
     line(tr("Damage", "الضرر"), s.me.damage, s.them.damage);
-    line(tr("Elixir spent", "الإكسير المصروف"), s.me.spent, s.them.spent);
-    line(tr("Elixir leaked", "الإكسير المهدور"), s.me.leaked, s.them.leaked);
+    line(tr("Sparks spent", "الشرارات المصروفة"), s.me.spent, s.them.spent);
+    line(tr("Sparks wasted", "الشرارات الضائعة"), s.me.leaked, s.them.leaked);
     if (s.me.collected > 0 || s.them.collected > 0) {
-      line(tr("Elixir collected", "الإكسير المجموع"), s.me.collected, s.them.collected);
+      line(tr("Bonus sparks", "الشرارات الإضافية"), s.me.collected, s.them.collected);
     }
     body.appendChild(table);
 

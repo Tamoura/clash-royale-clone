@@ -1,9 +1,20 @@
 # Islamic Golden Age Rebrand — Design & Content Plan
 
-A historically grounded re-skin of the whole game (currently a Clash Royale
-clone) into an **Islamic military-history** strategy game. Gameplay/stats stay
+A historically grounded re-skin of the whole game (then a plain fantasy
+lane battler) into an **Islamic military-history** strategy game. Gameplay/stats stay
 identical; only **names, art, and flavor** change. This doc is the working map
 from every existing card/tower/building to a real (or folkloric) equivalent.
+
+> **Later changes (the Banner Lanes rename, Stage 1).** An Arabic review
+> replaced some names below; `src/render/cardNames.ts` holds the shipped
+> ones. Princess خولة -> صاحبة القوس (a Companion's name is not a combat
+> unit, and الرامية would clash with رماة); Executioner الجلّاد -> حامل
+> الفأس; Skeletons -> المشاة, with حشد المشاة and برميل المشاة (not
+> "militia", a loaded word, nor the Scouts' الكشّافة); Tombstone رباط ->
+> المعسكر (a camp tent, not a grave; ribāṭ is a religious frontier term);
+> Rage -> حماسة; Cannon Giant (`royal-giant`) -> عملاق المدفع (no clash with the tower
+> troop المدفعي); the spell kind تعويذة -> حيلة. The floor crescent became
+> a ten-fold rosette. The tables below keep the first proposal.
 
 ---
 
@@ -70,7 +81,7 @@ This theme must be celebratory and respectful. Hard rules:
 | Princess Towers ×2 | **برج الرماة · Burj al-Rumāt · Archer Bastion** | Corner watchtowers manned by archers. |
 | Cannon (building) | **منجنيق · Manjanīq · Mangonel** | Torsion/trebuchet catapult; defensive lobber. (Alt: *Midfaʿ*, early cannon.) |
 | Tombstone (spawns swarm on death) | **رباط · Ribāṭ · Frontier Outpost** | Garrison post that keeps sending out **Murābiṭūn** volunteers. (Replaces undead.) |
-| Elixir Collector | **خان · Khān / Caravanserai** | Trade waystation generating wealth/oil. (Alt: *naphtha cistern*.) |
+| Spark Well | **خان · Khān / Caravanserai** | Trade waystation generating wealth/oil. (Alt: *naphtha cistern*.) |
 
 ---
 
@@ -81,41 +92,41 @@ unchanged). Grouped by gameplay role.
 
 ### Melee infantry
 - **Knight** → فارس · *Fāris* · Cavalier — balanced sword-and-shield man-at-arms (on foot or light horse).
-- **Mini P.E.K.K.A** → مبارز · *Mubāriz* · Champion Duelist — the warrior who fights single combat before a battle; fast, high single-target damage.
+- **Little Steel Guard** → مبارز · *Mubāriz* · Champion Duelist — the warrior who fights single combat before a battle; fast, high single-target damage.
 - **Valkyrie** → سيّافة · *Sayyāfa* · Whirling Swordswoman — Mamluk/Berber axe-or-saber dancer; spin = area sweep. (Female warrior, e.g. inspired by Amazigh fighters.)
-- **P.E.K.K.A** → فارس مدجّج · *Fāris Mudajjaj* · Cataphract — fully-armored heavy cavalryman, slowest/heaviest hitter.
-- **Mega Knight** → أمير المماليك · *Amīr al-Mamālīk* · Mamluk Champion — elite armored amir with a great mace; "jump" = thunderous mounted charge/slam.
+- **Steel Guard** → فارس مدجّج · *Fāris Mudajjaj* · Cataphract — fully-armored heavy cavalryman, slowest/heaviest hitter.
+- **Thunder Knight** → أمير المماليك · *Amīr al-Mamālīk* · Mamluk Champion — elite armored amir with a great mace; "jump" = thunderous mounted charge/slam.
 
 ### Cavalry & raiders
 - **Prince** → فارس بالرمح · *Fāris bi-l-Rumḥ* · Lancer Knight — heavy lance charge (already given a tournament lance). Optional legendary skin: a celebrated general (handle per §2/§9).
-- **Hog Rider** → هجّان · *Hajjān* · Camel Raider — fast Arab camel-corps raider that rushes the bastions.
+- **Boar Rider** → هجّان · *Hajjān* · Camel Raider — fast Arab camel-corps raider that rushes the bastions.
 
 ### Archers & ranged
 - **Archers** → رُماة · *Rumāt* · Archers — the classic two-bowmen card (Rogue model already shows its baked crossbow).
-- **Magic Archer** → كماندار · *Kamāndār* · Master Bowman — elite Persian marksman whose arrow pierces a whole line.
+- **Arrow Mage** → كماندار · *Kamāndār* · Master Bowman — elite Persian marksman whose arrow pierces a whole line.
 - **Princess** → خولة · *Khawla* · Warrior Maiden — long-range fire-arrow heroine (inspired by Khawla bint al-Azwar, a real female warrior). Keep flaming arrow.
 
 ### Fire / "alchemy" (Golden-Age science, NOT magic)
 - **Firecracker** → نفّاط · *Naffāṭ* · Naphtha Thrower — real Islamic incendiary trooper spitting fire-sparks.
 - **Wizard** → كيميائي · *al-Kīmiyāʾī* · Alchemist — hurls incendiary fire-pots (qārūrat naft); the fire-orb attack stays.
-- **Electro Wizard** → نفّاط الصاعق · *Naffāṭ Ṣāʿiq* · Flash Naphtha-Siphon — a siphon crewman whose blast **dazzles/stuns** and splashes to 2 foes (reskin the "lightning" as a blinding flash/fire-arc). *Hardest to keep realistic; this is the recommended framing.*
+- **Lightning Wizard** → نفّاط الصاعق · *Naffāṭ Ṣāʿiq* · Flash Naphtha-Siphon — a siphon crewman whose blast **dazzles/stuns** and splashes to 2 foes (reskin the "lightning" as a blinding flash/fire-arc). *Hardest to keep realistic; this is the recommended framing.*
 - **Ice Wizard** → ساقي الثلج · *Sāqī al-Thalj* · Snow-Bearer / Caltrop Sapper — slows enemies. Two framings: (a) mountain-snow chiller (the medieval ice/sharbat trade was real), or (b) a sapper scattering **caltrops (ḥasak)** that slow movement. Pick one and reskin the projectile to match.
 - **Executioner** → جلّاد · *Jallād* · Axeman — returning war-axe (cf. Ottoman *Baltacı* axemen).
 
 ### Heavy / siege movers
 - **Giant** → فيل الحرب · *Fīl al-Ḥarb* · War Elephant — slow building-targeting tank (Ghaznavid war elephants). Big visual upgrade opportunity.
-- **Royal Giant** → حامل المدفع · *Ḥāmil al-Madfaʿ* · Bombardier — a giant bearing an early great-cannon (Ottoman *Şāhī*/Orban bombard, Siege of Constantinople 1453); long-range tower-breaker.
+- **Cannon Giant** → حامل المدفع · *Ḥāmil al-Madfaʿ* · Bombardier — a giant bearing an early great-cannon (Ottoman *Şāhī*/Orban bombard, Siege of Constantinople 1453); long-range tower-breaker.
 
 ### Swarms / levies (replaces all undead)
 - **Skeletons** → أحداث · *Aḥdāth* · City Militia — cheap volunteer levy swarm.
-- **Skeleton Army** → حشد الأحداث · *Ḥashd al-Aḥdāth* · Militia Horde — the big swarm.
+- **Bone Swarm** → حشد الأحداث · *Ḥashd al-Aḥdāth* · Militia Horde — the big swarm.
 - **Witch** (summoner) → نقيب · *Naqīb* · Recruiting Officer — beats a war-drum to summon militia (replaces necromancy with mustering). Alt: *Tabbāl* (drummer).
 - **Bats** → خفافيش · *Khafāfīsh* · Bats — keep as real animals (cheap flyer swarm), or **desert swifts**.
 
 ### Flyers (folklore & falconry — see §2)
 - **Baby Dragon** → فرخ الرُخّ · *Farkh al-Rukhkh* · Roc Hatchling — young giant bird from *1001 Nights*; flying fire-breath → fiery screech/embers. (Alt: *Sīmurgh* chick.)
 - **Gargoyles** → صقور · *Ṣuqūr* · War Falcons — trained falconry birds; fast flyer pair.
-- **Minions** → سرب الصقور · *Sirb al-Ṣuqūr* · Falcon Flock — ranged flyer swarm (talon/fire-pellet attack).
+- **Imps** → سرب الصقور · *Sirb al-Ṣuqūr* · Falcon Flock — ranged flyer swarm (talon/fire-pellet attack).
 - **Balloon** → طائرة نفط · *Ṭāʾira Naft* · Fire-Kite — a war-kite carrying a naphtha bomb to drop on bastions. *Alt (more realistic, ground unit): Dabbāba (mobile siege tower) — but that breaks the "flyer" niche; recommend the fire-kite/Roc-with-fire-pot to keep an air unit.*
 
 ---
@@ -166,7 +177,7 @@ dresses rigs in turbans and the arena in crescents (default). Build on it.
    Cannon→Manjaniq, Collector→Khan; spell VFX recolor (zap→flash, freeze→caltrops).
 4. **Character art pass.** The hand-built rigs already turban up under `ARABIC`.
    Add the distinctive silhouettes: camel for Hajjān, elephant for Fīl, falcons
-   for Ṣuqūr, Roc for the dragon, bombard for the Royal Giant, drum for Naqīb.
+   for Ṣuqūr, Roc for the dragon, bombard for the Cannon Giant, drum for Naqīb.
    (The GLB western models stay confined to the *normal* theme — never let them
    bleed into the Arabic theme; see `glbModels.ts` gating.)
 5. **Arena & towers.** Citadel keep, archer bastions, oasis canal, arched
@@ -193,16 +204,16 @@ dresses rigs in turbans and the arena in crescents (default). Build on it.
 
 ## 10. Quick mapping cheat-sheet
 
-Knight=Fāris · Archers=Rumāt · Firecracker=Naffāṭ · Magic Archer=Kamāndār ·
-Giant=Fīl · Musketeer=Inkishārī (Janissary) · Mini P.E.K.K.A=Mubāriz ·
-Skeletons=Aḥdāth · Wizard=Kīmiyāʾī · Witch=Naqīb · Hog Rider=Hajjān ·
+Knight=Fāris · Archers=Rumāt · Firecracker=Naffāṭ · Arrow Mage=Kamāndār ·
+Giant=Fīl · Musketeer=Inkishārī (Janissary) · Little Steel Guard=Mubāriz ·
+Skeletons=Aḥdāth · Wizard=Kīmiyāʾī · Witch=Naqīb · Boar Rider=Hajjān ·
 Balloon=Ṭāʾira Naft (Fire-Kite) · Baby Dragon=Farkh al-Rukhkh ·
-Gargoyles=Ṣuqūr · Bats=Khafāfīsh · Minions=Sirb al-Ṣuqūr ·
-Skeleton Army=Ḥashd al-Aḥdāth · Executioner=Jallād · Electro Wizard=Naffāṭ Ṣāʿiq ·
-Ice Wizard=Sāqī al-Thalj · Princess=Khawla · Mega Knight=Amīr al-Mamālīk ·
-Royal Giant=Ḥāmil al-Madfaʿ · Valkyrie=Sayyāfa · Prince=Fāris bi-l-Rumḥ ·
-P.E.K.K.A=Fāris Mudajjaj · Cannon=Manjanīq · Tombstone=Ribāṭ ·
-Elixir Collector=Khān · Fireball=Qārūrat Naft · Arrows=Rashq al-Sihām ·
+Gargoyles=Ṣuqūr · Bats=Khafāfīsh · Imps=Sirb al-Ṣuqūr ·
+Bone Swarm=Ḥashd al-Aḥdāth · Executioner=Jallād · Lightning Wizard=Naffāṭ Ṣāʿiq ·
+Ice Wizard=Sāqī al-Thalj · Princess=Khawla · Thunder Knight=Amīr al-Mamālīk ·
+Cannon Giant=Ḥāmil al-Madfaʿ · Valkyrie=Sayyāfa · Prince=Fāris bi-l-Rumḥ ·
+Steel Guard=Fāris Mudajjaj · Cannon=Manjanīq · Tombstone=Ribāṭ ·
+Spark Well=Khān · Fireball=Qārūrat Naft · Arrows=Rashq al-Sihām ·
 Zap=Wamīḍ · Rage=Naqqāra · Freeze=Ḥasak.
 
 > Note: **Musketeer = إنكشاري · *Inkishārī* · Janissary** (Ottoman gunpowder

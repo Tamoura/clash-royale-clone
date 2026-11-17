@@ -1,5 +1,5 @@
 /**
- * Trophy Road reward table: a node every 50 trophies up to 3000. Gold ramps
+ * Trophy Trail reward table: a node every 50 trophies up to 3000. Gold ramps
  * from 50 to 400 along the road, every 250 trophies adds gems, and each
  * arena gate pays a rare chest. Gates are keyed by arena id from ARENAS,
  * so the arena list (arenas.ts) stays the single source of names and
@@ -25,7 +25,7 @@ const GOLD_FIRST = 50;
 const GOLD_LAST = 400;
 export const ROAD_GEMS_EVERY = 250;
 
-/** Arena id -> the trophy count that opens it (Training Camp excluded). */
+/** Arena id -> the trophy count that opens it (Practice Meadow excluded). */
 export const ROAD_GATES: Readonly<Record<string, number>> = Object.fromEntries(
   ARENAS.filter((a) => a.trophies > 0).map((a) => [a.id, a.trophies]),
 );

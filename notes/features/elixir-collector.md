@@ -1,4 +1,4 @@
-# Elixir Collector (economy building)
+# Spark Well (economy building)
 
 6-elixir rare building, 70s lifetime, never attacks; pays its owner
 1 elixir every 8.5s (capped at ELIXIR_MAX).

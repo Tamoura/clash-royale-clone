@@ -47,7 +47,7 @@ shell) and in measured signals from self-play testing.
       (runs via vite-node; `npm run balance -- 64` for bigger samples)
 - [x] Buff giant/hog/balloon to ~parity, verified by the lab. Post-fix
       (n=128): giant 50.0% · hog 50.0% · balloon 50.8% ✅
-- [ ] Per-card stat audit vs CR reference numbers (M). Lab flags to start
+- [ ] Per-card stat audit against the lab's win rates (M). Lab flags to start
       with: **royal-giant 43.0% (weak) · pekka 57.0% (strong)** as the
       deck's win-con slot
 
@@ -112,15 +112,15 @@ Current characters are procedural toon/"vinyl figurine" rigs in
 `MeshToonMaterial`, ~29 per-card builders). Make them read better and look
 more premium. Uses the installed 3D skills (3d-modeling, 3d-rigging,
 3d-texturing, 3d-animation, three-best-practices).
-ART DIRECTION (decided): **CR chunky-cartoon** (big head, bold cel outline),
+ART DIRECTION (decided): **chunky cartoon** (big head, bold cel outline),
 chosen via a 4-style prototype comparison. Shipped on PR #94:
 - [x] **Material variety / rim light** — Fresnel rim baked into shared
       `toon()` (addRimLight via onBeforeCompile); +20% saturation; cleaner
       grain. All 29 + towers pop.
 - [x] **Lighting** — softer battle shadows + cool back-rim in scene3d.
 - [x] **Hero passes** — Knight (kite shield, plume, gold diamond emblem),
-      Wizard (hat + glowing crystal staff), P.E.K.K.A (glowing sword edge);
-      enhanced Valkyrie, Mini-P.E.K.K.A (glow cleaver), Giant.
+      Wizard (hat + glowing crystal staff), Steel Guard (glowing sword edge);
+      enhanced Valkyrie, Little Steel Guard (glow cleaver), Giant.
 - [ ] **Bloom post** in the BATTLE scene (glows: gems/eyes/visors/orbs/
       projectiles). Deferred — render-pipeline change (EffectComposer +
       UnrealBloomPass + OutputPass); couldn't verify a headless battle
@@ -162,7 +162,7 @@ Final branch: `claude/game-visuals-character-balance-w122wb`.
       retuned challenge stars, the "New cards!" Home sheet and a soft tower
       hit flash.
 - [x] **rewards-legendary** (`rewards-legendary.md`): a Legendary tier (Magic
-      Archer, Electro Wizard, Princess, Mega Knight, Digger, Comet) with
+      Archer, Lightning Wizard, Princess, Thunder Knight, Digger, Comet) with
       rarer odds and a Rare-chest guarantee, a legendary frame and reveal,
       coin-burst claims with a counting wallet, a 3-crown celebration, and
       Golden Age Crown Pass text that reads right.
@@ -206,7 +206,7 @@ and codes, swap mode, trials, the Shop).
 - [ ] Per-arena prop kits
 - [ ] Spring secondary motion
 - [ ] KayKit parity
-- [ ] Balance edges: Mini P.E.K.K.A (~62.6%) and Giant / Royal Giant
+- [ ] Balance edges: Little Steel Guard (~62.6%) and Giant / Cannon Giant
       (~38-40%)
 
 ### Open problems after this round
@@ -214,7 +214,7 @@ and codes, swap mode, trials, the Shop).
       judged on SwiftShader (about 13 fps). Check them on a real GPU.
 - [ ] A Comet that lands on a tower puts its crater and scorch under the
       tower body, so only the airborne part of the blast shows there.
-- [ ] Bridge Spam (3 stars) clears 0/30 for the Easy bot and 9/30 for the
+- [ ] Bridge Rush (3 stars) clears 0/30 for the Easy bot and 9/30 for the
       Normal bot. It is the hardest challenge; watch kids' clear rates.
 - [ ] The 2D painted fallbacks for the new cards (`render/characters.ts`) are
       Classic-only. The Golden Age looks come from the 3D portraits.

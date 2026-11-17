@@ -93,7 +93,7 @@ export interface LockInfo {
 }
 
 /**
- * For a card the player does not own yet: "Unlocks in Bone Pit (200
+ * For a card the player does not own yet: "Unlocks in Fossil Hollow (200
  * trophies)" while its arena is ahead, "Find it in chests" once the player
  * stands in it (the collection's "In chests"). null for an owned card.
  */

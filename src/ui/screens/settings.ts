@@ -5,6 +5,7 @@
  * subscribers (audio, renderer, CSS --text-scale) apply it live.
  * Every control is at least 44px tall.
  */
+import { STUDIO_NAME, STUDIO_NAME_AR } from "../../app/brand";
 import { resetTutorial } from "../../game/tutorial";
 import { loadMode, otherMode, type GameMode as GameVariant } from "../../launcher/mode";
 import { segmented, toast } from "../components";
@@ -203,10 +204,7 @@ function creditsGroup(): HTMLElement {
       "All art, characters, icons, music and sounds are original or procedural.",
       "كل الرسوم والشخصيات والأيقونات والموسيقى والأصوات أصلية أو مولّدة برمجيًا.",
     ],
-    [
-      "A fan-made tribute. Not affiliated with or endorsed by any game studio.",
-      "عمل هواة تكريمي، غير تابع لأي استوديو ألعاب ولا معتمد منه.",
-    ],
+    [`An original game by ${STUDIO_NAME}.`, `لعبة أصلية من «${STUDIO_NAME_AR}».`],
   ];
   for (const [en, ar] of items) {
     const li = document.createElement("li");

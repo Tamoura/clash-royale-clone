@@ -9,7 +9,7 @@ stun on everything it hits.
   `applySpell` into `Entity.stunTimer`. Stunned entities skip their
   whole act phase (no retarget/move/attack) until the timer drains.
   Stuns don't stack — `Math.max` keeps the longer remaining stun.
-- Towers can be zapped too (matches CR), tested implicitly via the
+- Towers can be zapped too, tested implicitly via the
   generic applySpell path.
 - Renderer: jagged sky-bolt + yellow flash ring; synth crackle SFX.
 - Test gotcha: a unit standing mid-river walks *backward* to line up

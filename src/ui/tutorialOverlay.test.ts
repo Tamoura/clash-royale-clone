@@ -3,7 +3,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { createBattle } from "../game/battle";
-import { getCard, type CardId } from "../game/cards";
+import { type CardId } from "../game/cards";
+import { cardNameIn } from "../render/cardNames";
 import { TUTORIAL_CHALLENGE, applyWaves } from "../game/challenges";
 import { tick } from "../game/sim";
 import { TUTORIAL_KEY, TUTORIAL_STEPS, Tutorial, prepareTutorialBattle, tutorialChallenge } from "../game/tutorial";
@@ -20,6 +21,7 @@ import {
   overlayPress,
   pressNudge,
   releaseNudge,
+  stepText,
   touchEndNudge,
 } from "./tutorialOverlay";
 
@@ -73,7 +75,8 @@ async function goldenAgeNames(): Promise<(id: CardId) => string> {
     vi.unstubAllGlobals();
   }
 }
-const classicName = (id: CardId): string => getCard(id).name;
+/** The Classic edition's card names (its display map, not the sim's names). */
+const classicName = (id: CardId): string => cardNameIn(id, false);
 
 /** The lesson each step teaches with a card (its glowing target). */
 const TARGETS: Record<string, CardId> = { deploy: "knight", defend: "musketeer", spell: "fireball", push: "giant" };
@@ -213,7 +216,7 @@ describe("tutorial: a press on the dim screen during a lesson", () => {
     expect(t.current?.id).toBe("spell");
     const before = { step: t.step, time: b.time, elixir: b.player.elixir.amount, units: b.entities.length };
     const st = newNudge();
-    const r = pressNudge(st, t, b, "archers", 1000, (id) => getCard(id).name);
+    const r = pressNudge(st, t, b, "archers", 1000, classicName);
     expect(r).toEqual({ fresh: true, target: "fireball" });
     expect(nudgeLine(st, true, 1001)).toEqual(["Not that one. Use the glowing Fireball card!", expect.stringContaining("Fireball")]);
     // Nothing moved on: same step, the clock still held, nothing played.
@@ -230,7 +233,7 @@ describe("tutorial: a press on the dim screen during a lesson", () => {
   it("a burst of presses wiggles once; a later press wiggles again", () => {
     const { t, b } = heldLesson(3);
     const st = newNudge();
-    const name = (id: CardId): string => getCard(id).name;
+    const name = classicName;
     expect(pressNudge(st, t, b, "archers", 0, name)?.fresh).toBe(true);
     expect(pressNudge(st, t, b, "archers", NUDGE_BURST_MS - 1, name)?.fresh).toBe(false);
     expect(pressNudge(st, t, b, null, NUDGE_BURST_MS * 3, name)?.fresh).toBe(true);
@@ -241,7 +244,7 @@ describe("tutorial: a press on the dim screen during a lesson", () => {
     const { t, b } = heldLesson(5);
     expect(t.current?.id).toBe("king");
     const st = newNudge();
-    expect(pressNudge(st, t, b, "giant", 0, (id) => getCard(id).name)).toEqual({ fresh: true, target: null });
+    expect(pressNudge(st, t, b, "giant", 0, classicName)).toEqual({ fresh: true, target: null });
     expect(nudgeLine(st, true, 1)?.[0]).toBe("Not a card this time. Tap your glowing King power!");
     expect(t.holds(b)).toBe(true);
   });
@@ -334,5 +337,19 @@ describe("tutorial: a wrong drag on a touch screen that the browser takes over",
     const selectors = [...css.matchAll(rule)].flatMap((m) => m[1].split(",").map((s: string) => s.trim()));
     expect(selectors).toContain(".tut-mask.on");
     expect(selectors).toContain(".tut-mask.on .tut-mask-fill");
+  });
+});
+
+describe("tutorial: the resource is Sparks on screen", () => {
+  it("the elixir step's coach line says sparks in both languages (the sim's own text says elixir)", () => {
+    const step = TUTORIAL_STEPS.find((s) => s.id === "elixir")!;
+    const [en, ar] = stepText(step);
+    expect(en).toMatch(/sparks/);
+    expect(ar).toMatch(/شرارات/);
+    expect(`${en} ${ar}`).not.toMatch(/elixir|إكسير/i);
+  });
+
+  it("every other step keeps its own line", () => {
+    for (const step of TUTORIAL_STEPS.filter((s) => s.id !== "elixir")) expect(stepText(step)).toBe(step.text);
   });
 });

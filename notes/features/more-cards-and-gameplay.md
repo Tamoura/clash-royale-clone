@@ -3,8 +3,8 @@
 Branch: `feature/more-cards-and-gameplay` (stacked on
 `feature/3d-characters-and-sound`)
 
-Goal: gameplay closer to Clash Royale + 6 new cards (14 total).
-Original character designs only — archetypes, not Supercell's art.
+Goal: deeper lane-battler gameplay + 6 new cards (14 total).
+Original character designs only — genre archetypes, no other game's art.
 
 ## New mechanics (all TDD'd in the sim)
 

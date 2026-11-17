@@ -23,10 +23,10 @@ untouched, and `SIM_VERSION` and `PROTOCOL_VERSION` are still 3.
   default; a bad move message is dropped; a bad match start ends the
   connection with the message the game already had ("The game server
   didn't understand us"). No new screens or words.
-- **Reference card pictures removed.** `docs/cr-reference` (25 official card
-  pictures and two notes about them) is gone. Nothing in the game, the build
-  or the tests used it. Official game art must not come back
-  (`notes/features/cr-character-design-refs.md`).
+- **Reference card pictures removed.** A folder of 25 reference card pictures
+  from another game, and two notes about them, is gone. Nothing in the game,
+  the build or the tests used it. Such art must not come back
+  (`notes/features/no-outside-art.md`).
 - **One publishing branch.** The Pages workflow now runs only for pushes to
   `claude/game-visuals-character-balance-w122wb` (and manual runs), the same
   branch `render.yaml` follows. The old branches `main` and

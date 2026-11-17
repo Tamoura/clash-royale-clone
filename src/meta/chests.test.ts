@@ -91,7 +91,7 @@ describe("chests", () => {
   });
 
   it("can unlock a new arena-available card from a chest", () => {
-    // At Goblin Stadium trophies, skeletons/zap/cannon are findable.
+    // At Firefly Marsh trophies, skeletons/zap/cannon are findable.
     const owned = ownedSet(DEFAULT_DECK);
     let foundNew = false;
     for (let seed = 0; seed < 80; seed++) {
@@ -181,7 +181,7 @@ describe("first chest", () => {
 
   it("picks from the player's arena when it has unowned cards, else the next arena", () => {
     const starter = ownedSet(starterOwned());
-    // Training Camp has nothing new: the next arena's first unlock.
+    // Practice Meadow has nothing new: the next arena's first unlock.
     expect(firstChestCard(0, starter)).toBe("skeletons");
     const at = firstChestCard(250, starter)!;
     expect(cardsAvailableAt(250)).toContain(at);
@@ -219,7 +219,7 @@ describe("free chest", () => {
 });
 
 describe("legendary odds", () => {
-  // Bone Pit + Barbarian Bowl reached: the Digger (legendary) is findable
+  // Fossil Hollow + Snowdrift Fort reached: the Digger (legendary) is findable
   // next to ordinary new cards.
   const TROPHIES = 450;
   const starter = ownedSet(starterOwned());
@@ -377,7 +377,7 @@ describe("legendary odds", () => {
   it("openChest moves the stored pity counter: up without a legendary, back to 0 with one", () => {
     const kv = memoryKV();
     expect(legendaryPity(kv)).toBe(0);
-    // Training Camp: no legendary can drop, so every chest counts up.
+    // Practice Meadow: no legendary can drop, so every chest counts up.
     for (let i = 0; i < LEGENDARY_PITY_CHESTS; i++) openChest({ rarity: "free", readyAt: 0 }, 0, starter, mulberry32(i), kv);
     expect(legendaryPity(kv)).toBe(LEGENDARY_PITY_CHESTS);
     // A Wooden chest at the Digger's arena does not cash the guarantee in...

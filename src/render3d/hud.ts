@@ -1,5 +1,5 @@
 import "../ui/styles/hud.css";
-import { fmtNum, tr } from "../ui/i18n";
+import { fmtNum, sparks, sparksAr, sparksEn, tr } from "../ui/i18n";
 import type { BattleState } from "../game/battle";
 import { ABILITIES, type AbilityId } from "../game/abilities";
 import { icon, type CrestIndex, type IconName } from "../ui/icons";
@@ -344,7 +344,7 @@ export class Hud {
       if (!id || this.cardBubble.classList.contains("show")) return;
       tip.innerHTML = "";
       const title = document.createElement("b");
-      title.textContent = `${cardDisplayName(id)} · ${tr(`${getCard(id).cost} elixir`, `${fmtNum(getCard(id).cost)} إكسير`)}`;
+      title.textContent = `${cardDisplayName(id)} · ${sparks(getCard(id).cost)}`;
       tip.appendChild(title);
       const blurb = blurbText(id);
       if (blurb) {
@@ -481,12 +481,12 @@ export class Hud {
     this.elixirRow = el("div", "elixir-row", bottom);
     this.elixirRow.dataset.tut = "elixir";
     this.elixirRow.setAttribute("role", "group");
-    this.elixirRow.setAttribute("aria-label", tr("Elixir", "الإكسير"));
+    this.elixirRow.setAttribute("aria-label", tr("Sparks", "الشرارات"));
     this.elixirNum = el("div", "elixir-num", this.elixirRow);
     this.elixirNum.setAttribute("aria-hidden", "true");
     this.elixirBar = el("div", "elixir-bar", this.elixirRow);
     this.elixirBar.setAttribute("role", "progressbar");
-    this.elixirBar.setAttribute("aria-label", tr("Elixir", "الإكسير"));
+    this.elixirBar.setAttribute("aria-label", tr("Sparks", "الشرارات"));
     this.elixirBar.setAttribute("aria-valuemin", "0");
     this.elixirBar.setAttribute("aria-valuemax", "10");
     el("div", "elixir-fill", this.elixirBar);
@@ -752,7 +752,7 @@ export class Hud {
     const cost = document.createElement("span");
     cost.className = "cb-cost";
     cost.innerHTML = icon("elixir");
-    cost.appendChild(document.createTextNode(tr(`${card.cost} elixir`, `${fmtNum(card.cost)} إكسير`)));
+    cost.appendChild(document.createTextNode(sparks(card.cost)));
     text.append(name, cost);
     const blurb = blurbText(id);
     if (blurb) {
@@ -1169,7 +1169,7 @@ export class Hud {
     const card = getCard(id);
     btn.dataset.card = id;
     btn.dataset.rarity = card.rarity;
-    btn.setAttribute("aria-label", tr(`${cardDisplayName(id)}, ${card.cost} elixir`, `${cardDisplayName(id)}، ${fmtNum(card.cost)} إكسير`));
+    btn.setAttribute("aria-label", tr(`${cardDisplayName(id)}, ${sparksEn(card.cost)}`, `${cardDisplayName(id)}، ${sparksAr(card.cost)}`));
     btn.classList.toggle("selected", this.selected === id);
     // No caption on the art: the button's label, the hover tip and the
     // long-press bubble name the card.

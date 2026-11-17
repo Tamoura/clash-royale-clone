@@ -1,5 +1,5 @@
 /**
- * Trophy Road: a vertical road from Training Camp (bottom) to the summit
+ * Trophy Trail: a vertical road from Practice Meadow (bottom) to the summit
  * (top), split by arena gates named in both editions. Reached nodes pulse
  * until claimed; a marker shows where the player stands. Opened from the
  * Home battle tab (a slot button under the arena banner).
@@ -50,7 +50,7 @@ export async function claimRoadNode(ctx: AppCtx, at: number, from?: Element | DO
     const { gold, gems } = ctx.meta.profile;
     await rewardBursts(from, n.gold ?? 0, n.gems ?? 0, { gold, gems });
   }
-  if (n.chest) await openChestFlow(ctx, { kind: "bonus", rarity: n.chest }, tr("Trophy Road", "طريق الكؤوس"));
+  if (n.chest) await openChestFlow(ctx, { kind: "bonus", rarity: n.chest }, tr("Trophy Trail", "سلّم الكؤوس"));
   return true;
 }
 
@@ -105,7 +105,7 @@ export function roadButton(ctx: AppCtx): HTMLElement {
   art.className = "rw-hubcard__art";
   art.innerHTML = icon("trophy");
   const title = document.createElement("b");
-  title.textContent = tr("Trophy Road", "طريق الكؤوس");
+  title.textContent = tr("Trophy Trail", "سلّم الكؤوس");
   const sub = document.createElement("span");
   sub.className = "rw-hubcard__sub";
   sub.textContent =
@@ -113,7 +113,7 @@ export function roadButton(ctx: AppCtx): HTMLElement {
       ? tr(ready === 1 ? "1 reward!" : `${ready} rewards!`, `${fmtNum(ready)} مكافأة!`)
       : next
         ? `${tr("Next", "التالي")} ${fmtNum(next.at)}`
-        : tr("Road complete", "اكتمل الطريق");
+        : tr("Trail complete", "اكتمل السلّم");
   btn.append(art, title, sub);
   if (ready > 0) {
     const dot = document.createElement("span");
@@ -121,7 +121,7 @@ export function roadButton(ctx: AppCtx): HTMLElement {
     dot.textContent = fmtNum(ready);
     btn.appendChild(dot);
   }
-  btn.setAttribute("aria-label", `${tr("Trophy Road", "طريق الكؤوس")}: ${sub.textContent}`);
+  btn.setAttribute("aria-label", `${tr("Trophy Trail", "سلّم الكؤوس")}: ${sub.textContent}`);
   btn.addEventListener("click", () => openRoad(ctx));
   return btn;
 }
@@ -151,7 +151,7 @@ function buildRoad(ctx: AppCtx, scrollToMarker: boolean): void {
   // The wallet claims fly into (trophies stand on the "You" marker below).
   screen.appendChild(
     screenHeader({
-      title: tr("Trophy Road", "طريق الكؤوس"),
+      title: tr("Trophy Trail", "سلّم الكؤوس"),
       onBack: () => ctx.openHome(),
       backLabel: tr("Back", "رجوع"),
       trailing: walletChips(meta.profile.gold, meta.profile.gems),
@@ -166,12 +166,12 @@ function buildRoad(ctx: AppCtx, scrollToMarker: boolean): void {
       ? tr(`${waiting.length} reward${waiting.length === 1 ? "" : "s"} waiting. Tap Claim!`, `${fmtNum(waiting.length)} مكافأة بانتظارك. اضغط استلم!`)
       : next
         ? tr(`Win battles to reach ${next.at} trophies for the next reward.`, `انتصر لتبلغ ${fmtNum(next.at)} كأسًا وتنال المكافأة التالية.`)
-        : tr("You reached the end of the road. Legend!", "بلغت نهاية الطريق. أسطورة!");
+        : tr("You reached the end of the trail. Legend!", "بلغت قمة السلّم. أسطورة!");
   screen.appendChild(intro);
 
   const list = document.createElement("ol");
   list.className = "rw-road";
-  list.setAttribute("aria-label", tr("Trophy Road rewards", "مكافآت طريق الكؤوس"));
+  list.setAttribute("aria-label", tr("Trophy Trail rewards", "مكافآت سلّم الكؤوس"));
   screen.appendChild(list);
   const calm = reducedMotion();
 

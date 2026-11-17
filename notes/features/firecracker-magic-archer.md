@@ -1,4 +1,4 @@
-# Firecracker, Magic Archer & target persistence
+# Firecracker, Arrow Mage & target persistence
 
 Branch: `feature/firecracker-magic-archer` (stacked on `feature/online-1v1`).
 
@@ -6,7 +6,7 @@ Branch: `feature/firecracker-magic-archer` (stacked on `feature/online-1v1`).
 
 1. **Firecracker** — new troop. Full fidelity: spread **splash** + **recoil**
    (hops backward after firing). Squishy, fast, hits air.
-2. **Magic Archer** — new troop. Full fidelity: **piercing** line shot that
+2. **Arrow Mage** — new troop. Full fidelity: **piercing** line shot that
    damages every enemy it passes through (its core identity). Longest range,
    hits air + ground.
 3. **Target persistence** — once any attacker is *engaged* (target within

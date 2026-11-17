@@ -1,4 +1,5 @@
 import type { CardId } from "../game/cards";
+import { ARABIC } from "../render3d/theme";
 
 /**
  * Hand-drawn vector characters, replacing emoji placeholders.
@@ -637,7 +638,61 @@ function drawPekka(ctx: Ctx, _anim: Anim): void {
   });
 }
 
+/**
+ * The Golden Age shows the Tombstone as المعسكر (the camp): a striped tent
+ * on sand with a gold pennant and a lantern by the door, never a grave.
+ */
+function drawCamp(ctx: Ctx): void {
+  // packed sand
+  outlined(ctx, "#c9a96e", () => {
+    ctx.beginPath();
+    ctx.ellipse(0, 6, 7.5, 3, 0, 0, Math.PI * 2);
+  });
+  // pole and pennant
+  ctx.strokeStyle = "#6b4a2c";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(0, -7);
+  ctx.lineTo(0, -11.5);
+  ctx.stroke();
+  outlined(ctx, "#f2c65a", () => {
+    ctx.beginPath();
+    ctx.moveTo(0, -11.5);
+    ctx.lineTo(4.2, -10.4);
+    ctx.lineTo(0, -9.2);
+    ctx.closePath();
+  });
+  // the tent
+  outlined(ctx, "#f0e4c8", () => {
+    ctx.beginPath();
+    ctx.moveTo(-6.2, 6);
+    ctx.lineTo(0, -7.5);
+    ctx.lineTo(6.2, 6);
+    ctx.closePath();
+  });
+  // turquoise band round the skirt
+  outlined(ctx, "#1aa3a0", () => {
+    ctx.beginPath();
+    ctx.moveTo(-5.1, 3.6);
+    ctx.lineTo(5.1, 3.6);
+    ctx.lineTo(6.2, 6);
+    ctx.lineTo(-6.2, 6);
+    ctx.closePath();
+  });
+  // doorway
+  outlined(ctx, "#4a3426", () => {
+    ctx.beginPath();
+    ctx.moveTo(-1.9, 6);
+    ctx.lineTo(0, 0.6);
+    ctx.lineTo(1.9, 6);
+    ctx.closePath();
+  });
+  // lantern by the door
+  circle(ctx, -4.6, 1.6, 0.9, "#ffb347");
+}
+
 function drawTombstone(ctx: Ctx, _anim: Anim): void {
+  if (ARABIC) return drawCamp(ctx);
   // earth mound
   outlined(ctx, "#6b5b45", () => {
     ctx.beginPath();
@@ -688,17 +743,25 @@ function drawCollector(ctx: Ctx, _anim: Anim): void {
   ctx.moveTo(-5.4, 4);
   ctx.lineTo(5.4, 4);
   ctx.stroke();
-  // glowing elixir surface + rising drop
+  // glowing surface + the four-pointed spark it makes (the Sparks resource)
   outlined(ctx, "#d946ef", () => {
     ctx.beginPath();
     ctx.ellipse(0, -3, 5.6, 1.8, 0, 0, Math.PI * 2);
   });
-  const g = ctx.createRadialGradient(0, -8, 0.5, 0, -8, 3);
+  const g = ctx.createRadialGradient(0, -8.5, 0.5, 0, -8.5, 3.6);
   g.addColorStop(0, "#f5d0fe");
   g.addColorStop(1, "#d946ef");
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.arc(0, -8, 2.4, 0, Math.PI * 2);
+  ctx.moveTo(0, -12.4);
+  ctx.lineTo(0.9, -9.4);
+  ctx.lineTo(3.4, -8.5);
+  ctx.lineTo(0.9, -7.6);
+  ctx.lineTo(0, -4.6);
+  ctx.lineTo(-0.9, -7.6);
+  ctx.lineTo(-3.4, -8.5);
+  ctx.lineTo(-0.9, -9.4);
+  ctx.closePath();
   ctx.fill();
 }
 
@@ -1072,7 +1135,12 @@ function drawTornadoArt(ctx: Ctx): void {
   ctx.fill();
 }
 
-/** Skeleton Barrel: a wooden keg with a peeking skull. */
+/**
+ * Skeleton Barrel: a wooden keg with a peeking skull. In the Golden Age it
+ * is برميل المشاة (the foot-soldier barrel), so one of the المشاة peeks
+ * out instead: a turbaned face, two hands on the rim and his spear tip.
+ * That edition has no undead.
+ */
 function drawBarrelArt(ctx: Ctx): void {
   ctx.fillStyle = "#8a5a30";
   ctx.beginPath();
@@ -1086,9 +1154,65 @@ function drawBarrelArt(ctx: Ctx): void {
     ctx.quadraticCurveTo(0, y + 1.6, 7.2, y);
     ctx.stroke();
   }
+  if (ARABIC) return drawBarrelSoldier(ctx);
   circle(ctx, 0, -6.5, 4, "#f5f2ea");
   circle(ctx, -1.5, -7, 1, "#1f2430");
   circle(ctx, 1.5, -7, 1, "#1f2430");
+}
+
+/** Golden Age: a foot soldier (one of المشاة) peeking over the barrel's rim. */
+function drawBarrelSoldier(ctx: Ctx): void {
+  // His spear, held upright behind him: shaft, then the steel tip.
+  ctx.strokeStyle = "#6b4426";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(4.6, -2.5);
+  ctx.lineTo(5.6, -12);
+  ctx.stroke();
+  outlined(ctx, "#d8e2ec", () => {
+    ctx.beginPath();
+    ctx.moveTo(5.75, -15.2);
+    ctx.lineTo(6.75, -11.6);
+    ctx.lineTo(4.65, -11.8);
+    ctx.closePath();
+  });
+  // Face, smiling, with small eyes (never a skull's sockets).
+  circle(ctx, 0, -6, 3.7, SKIN);
+  ctx.fillStyle = "#3a2a1e";
+  ctx.beginPath();
+  ctx.arc(-1.25, -6, 0.55, 0, Math.PI * 2);
+  ctx.arc(1.25, -6, 0.55, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#9a5a3a";
+  ctx.lineWidth = 0.6;
+  ctx.beginPath();
+  ctx.arc(0, -4.9, 1.1, 0.2 * Math.PI, 0.8 * Math.PI);
+  ctx.stroke();
+  // Cream turban with a sand wrap, as on the 3D المشاة.
+  outlined(ctx, "#f5f0e6", () => {
+    ctx.beginPath();
+    ctx.ellipse(0, -8.6, 4.3, 2.9, 0, Math.PI, 0);
+    ctx.lineTo(4.3, -8.1);
+    ctx.ellipse(0, -8.1, 4.3, 1.1, 0, 0, Math.PI);
+    ctx.closePath();
+  });
+  ctx.strokeStyle = "#e8d5a8";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-3.9, -9.4);
+  ctx.quadraticCurveTo(0, -7.6, 3.9, -9.4);
+  ctx.stroke();
+  // The barrel's front rim over his chin, and his hands gripping it.
+  outlined(ctx, "#8a5a30", () => {
+    ctx.beginPath();
+    ctx.ellipse(0, -2.3, 6.9, 1.4, 0, 0, Math.PI * 2);
+  });
+  for (const x of [-4.4, 4.4]) {
+    outlined(ctx, SKIN, () => {
+      ctx.beginPath();
+      ctx.ellipse(x, -3.2, 1.3, 0.8, 0, 0, Math.PI * 2);
+    });
+  }
 }
 
 /** Comet: a dark flaming rock diving down-left, its fire streaming behind it. */

@@ -83,17 +83,20 @@ export const GOLDEN: Record<string, Variant> = {
   valkyrie: {
     file: "rogue",
     scale: 1.02,
-    props: ["Rogue_Cape", "barbarian:2H_Axe"],
+    // سيّافة is a swordswoman: a great sword held in both hands for her spin,
+    // not the axe the Axe Bearer (حامل الفأس) carries, nor the Duelist's
+    // twin scimitars; and a plain headscarf with no cord ring (that reads
+    // as a man's agal).
+    props: ["Rogue_Cape", "knight:2H_Sword"],
     team: /Cape/,
     paint: { "1,0": 0xffa21e, "0,1": 0x8a6a4a, "1,1": "team" },
-    propPaint: { "2,2": 0x8a6a4a },
     // The drape stops above the shoulders (hem 1.56) so both braids hang clear below it from behind.
-    extras: [...headCloth(SAND, GOLD, 1.56), ...braids(0xffa21e)],
+    extras: [...headCloth(SAND, null, 1.56), ...braids(0xffa21e)],
     idle: "2H_Melee_Idle",
     walk: "Walking_A",
     attack: "2H_Melee_Attack_Spin",
     strike: 0.45,
-    back: ["sand headscarf with a gold cord", "two orange braids", "big axe held out"],
+    back: ["plain sand headscarf", "two orange braids", "great sword held out"],
   },
   prince: {
     file: "knight",

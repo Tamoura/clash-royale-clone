@@ -140,8 +140,8 @@ export function buildCollectionGroups(ctx: AppCtx, host: HTMLElement, redraw: ()
     const hint = document.createElement("p");
     hint.className = "v2-hint";
     hint.textContent = tr(
-      "Climb the trophy road: each arena adds new cards to your chests.",
-      "اصعد طريق الكؤوس: كل ساحة تضيف بطاقات جديدة إلى صناديقك.",
+      "Climb the trophy trail: each arena adds new cards to your chests.",
+      "اصعد سلّم الكؤوس: كل ساحة تضيف بطاقات جديدة إلى صناديقك.",
     );
     l.el.appendChild(hint);
     const lg = document.createElement("div");

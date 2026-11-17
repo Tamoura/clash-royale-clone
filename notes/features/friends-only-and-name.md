@@ -1,9 +1,13 @@
-# Friends only, the Crown Rush name, and Golden Age language fixes
+# Friends only, the game's own name, and Golden Age language fixes
 
 Round 1 of `notes/features/enhancement-plan-2026-11.md` ("Fair, kind and never
 stuck"), package "online": the C38 slice (no strangers, guess-proof codes),
 C19 (the name) and C21 (Arabic fixes). Built on `r1/online` from 2054fdb.
-Owner decisions this follows: no strangers online, ever; the name is Crown Rush.
+Owner decisions this follows: no strangers online, ever; the game gets a name of
+its own.
+
+> The name this round shipped was later replaced: the game is now **Banner
+> Lanes** (درب الرايات). This note uses the current name.
 
 ## What a kid and a parent see
 
@@ -23,9 +27,9 @@ Owner decisions this follows: no strangers online, ever; the name is Crown Rush.
   pairing limit (5 tries in 10 s, seconds). A page cached from before this
   update still shows its old line, "Too many tries. Wait a few seconds.",
   for the new ten-minute pause: rare, and it goes once the page updates.
-- **The name is Crown Rush** on the tab, the loading splash, the home-screen
+- **The game's own name** is on the tab, the loading splash, the home-screen
   label and the installed app. In the Golden Age edition the tab and splash say
-  **هجمة التاج** ("the crown's charge").
+  **درب الرايات** ("the path of banners").
 - **Golden Age words and digits:** "win" is فُز (it was افز, not a word) in
   every achievement and quest; the Profile shows "الموسم: نوفمبر ٢٠٢٦" (it was
   the raw key 2026-11); card tooltips and the card sheet, the tower HP plates
@@ -85,13 +89,13 @@ screen offers "Quick match" / "Find a match" in either language.
 ### The name (index.html, manifest, src/app/brand.ts, public/sw.js)
 
 - `index.html`: `<title>`, `apple-mobile-web-app-title` and the boot title
-  say Crown Rush; so do the manifest's `name` and `short_name`.
+  say Banner Lanes; so do the manifest's `name` and `short_name`.
 - `src/app/brand.ts` holds `GAME_NAME` / `GAME_NAME_AR` and, at boot,
   `localizeStaticMarkup` sets the tab title, the splash title and the static
   emote bar's aria-label in the edition's language. `<html>` keeps `lang`
   from theme.ts and gets no `dir`, so the battle HUD stays left to right.
 - The service worker kept a page as the offline shell only if it held
-  `<title>Clash Royale Clone</title>`, so the rename would have quietly
+  the old working title in `<title>`, so the rename would have quietly
   stopped offline play. It now looks for `<meta name="cr-app-shell"
   content="game" />`, which is not the title. sw.test checks the real
   index.html carries it once, that a renamed page with it is kept and that a
@@ -100,7 +104,7 @@ screen offers "Quick match" / "Find a match" in either language.
   without the marker check), activates and drops the old cache.
 - Internal ids stay: `cr-clone-*` storage keys and cache names,
   `data-edition`, the repo, the Render service and its address. No save or
-  link is lost. README title and the two stylesheet headers say Crown Rush.
+  link is lost. README title and the two stylesheet headers say the game's name.
 
 ### Golden Age language (C21)
 
@@ -158,8 +162,8 @@ screenshots in `/tmp/claude-0/r1/online/shots/`.
 - 11 wrong codes in a row from the guest: 1-10 "No game with that code", the
   11th the new message, both editions (`classic-7-wrong-11.png`,
   `golden-7-wrong-11.png`). The relay logs `join-blocked` then `join-limited`.
-- Titles: Classic tab "Crown Rush", Golden Age "هجمة التاج" (boot title too),
-  manifest name and short_name "Crown Rush", `<html lang=ar>` with no `dir`.
+- Titles: Classic tab "Banner Lanes", Golden Age "درب الرايات" (boot title too),
+  manifest name and short_name "Banner Lanes", `<html lang=ar>` with no `dir`.
 - Golden Age digits: Profile season "الموسم: نوفمبر ٢٠٢٦" and فُز
   achievements (`ga-profile.png`), card sheet (`ga-cardinfo.png`), the desktop
   hover tooltip "١٬٤٠٠ صحة · ١٦٠ ضرر" (`ga-battle-tooltip.png`, 1440x900), HP
@@ -201,10 +205,10 @@ screenshots in `/tmp/claude-0/r1/online/shots/`.
 - **Many networks can still guess,** about 1 in 2,000 per address (1 in 670
   per IPv6 /56) per waiting room. Fine at family scale; a confirm step for
   the host would close it fully (not built).
-- **Installed icons** may keep the "CR Clone" label until re-added to the
-  home screen. The boot splash is "Crown Rush" in Latin letters until the
+- **Installed icons** may keep their old label until re-added to the
+  home screen. The boot splash is "Banner Lanes" in Latin letters until the
   game's script runs, then Arabic in the Golden Age edition.
-- **Arabic wording** (هجمة التاج, the wrong-codes and friends-only lines, the
+- **Arabic wording** (the Golden Age title, the wrong-codes and friends-only lines, the
   new labels) should be checked by a native reader, as the plan asks.
 - Not tested on a real phone or on Render itself; everything above ran on
   the local production build.

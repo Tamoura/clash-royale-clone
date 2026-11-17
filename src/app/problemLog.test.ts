@@ -336,7 +336,7 @@ describe("the copied report", () => {
     const text = problemReport(list, header);
     expect(text).toBe(
       [
-        "Crown Rush problem report",
+        "Banner Lanes problem report",
         "Build: abc1234-xyz",
         "Browser: Mozilla/5.0 (Test)",
         "Screen: 390x844, pixel ratio 2",

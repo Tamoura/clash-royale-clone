@@ -8,7 +8,7 @@ Branch: `feature/core-battle-loop`
 - Opponent: **AI bot** (single player, no networking).
 - Scope: **core battle loop** — one arena, towers, elixir, 8 cards,
   3-minute match with win/lose. No meta game (deck builder, trophies).
-- Original placeholder art only; no Supercell assets.
+- Original placeholder art only; no other game's assets.
 
 ## Design notes
 
@@ -16,12 +16,12 @@ Branch: `feature/core-battle-loop`
   enemy back line, y=32 the player back line, river at y=16, bridges
   centered at x=3.5 and x=14.5.
 - Towers per side: 2 princess towers + 1 king tower. King tower is
-  passive until it takes damage or a princess tower falls (like CR).
+  passive until it takes damage or a princess tower falls.
 - Elixir: start 5, +1 per 2.8s, cap 10; double rate in the final 60s.
 - Deck: Knight, Archers (x2 units), Giant (building-only), Musketeer,
-  Mini P.E.K.K.A, Skeletons (x3 units), Fireball, Arrows. Stats are
+  Little Steel Guard, Skeletons (x3 units), Fireball, Arrows. Stats are
   simplified approximations, defined in `src/game/cards.ts`.
-- Spells deal 40% damage to crown towers (CR-like rule).
+- Spells deal 40% damage to crown towers.
 - Pathing is simplified: troops needing to cross the river walk to the
   nearest bridge waypoint first, then to their target. No full A*.
 - Match: 180s; king down = instant 3-crown win; else most crowns; tie

@@ -39,7 +39,11 @@ import { PROGRESS_KEYS, PROGRESS_PREFIXES, isProgressKey, saveKeyDef, valueFits 
 /** The pre-load backup ('Undo the last load'); a device key. */
 export const SAVE_BACKUP_KEY = "cr-clone-save-backup";
 
-/** The game a save belongs to (inside the JSON; "CR" opens the code). */
+/**
+ * The game a save belongs to (inside the JSON; "CR" opens the code). It is
+ * an id, not the game's name: it kept the first name when the game became
+ * Banner Lanes, because every code and file made before is checked against it.
+ */
 export const SAVE_GAME = "crown-rush";
 /** The newest save format this build reads and writes. */
 export const SAVE_FORMAT = 1;
@@ -1336,7 +1340,7 @@ export function undoLastLoad(store: SaveStore, now = Date.now()): ApplyResult {
 
 export interface SaveSummary {
   trophies: number;
-  /** Arena index (0 = Training Camp). */
+  /** Arena index (0 = Practice Meadow). */
   arena: number;
   /** Cards owned. */
   cards: number;
@@ -1366,8 +1370,12 @@ export function summarize(data: Pick<SaveData, "keys" | "who">): SaveSummary {
   };
 }
 
-/** "crown-rush-save-2026-11-13.txt" (local date). */
+/**
+ * "banner-lanes-save-2026-11-13.txt" (local date). Only the download's name:
+ * loading reads the file's text, so a file saved under the old name
+ * ("crown-rush-save-…") still loads.
+ */
 export function saveFileName(now = new Date()): string {
   const p = (n: number): string => String(n).padStart(2, "0");
-  return `crown-rush-save-${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}.txt`;
+  return `banner-lanes-save-${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}.txt`;
 }

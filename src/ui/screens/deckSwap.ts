@@ -12,7 +12,7 @@ import { cardDisplayName } from "../../render/cardNames";
 import { ARABIC } from "../../render3d/theme";
 import { makeCardCanvas } from "../cardFrame";
 import { button, confirmLook } from "../components";
-import { fmtNum, tr } from "../i18n";
+import { sparksAr, sparksEn, tr } from "../i18n";
 
 /** A full battle deck. */
 export const DECK_SIZE = 8;
@@ -96,7 +96,7 @@ export function pickSwapOut(incoming: CardId, deck: readonly CardId[]): Promise<
       const cardName = cardDisplayName(id);
       b.setAttribute(
         "aria-label",
-        tr(`Swap out ${cardName} (${card.cost} elixir)`, `أخرج ${cardName} (${fmtNum(card.cost)} إكسير)`),
+        tr(`Swap out ${cardName} (${sparksEn(card.cost)})`, `أخرج ${cardName} (${sparksAr(card.cost)})`),
       );
       b.appendChild(makeCardCanvas(id, { style: "tile", size: 96 }));
       const label = document.createElement("span");

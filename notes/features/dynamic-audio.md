@@ -11,7 +11,7 @@
   adds ghost strokes on the off-steps and speeds up: steps of 230, 215
   and 195 ms (`MUSIC_STEP_MS`). This replaces the 16-step loop, which
   added hats at 1 and a kick at 2.
-- Deploy sounds scale with card cost (`deployPitch`): a P.E.K.K.A
+- Deploy sounds scale with card cost (`deployPitch`): a Steel Guard
   lands with a long deep thump, skeletons with a light tick.
 - A balloon's death bomb now booms like a fireball instead of the
   generic troop death blip.

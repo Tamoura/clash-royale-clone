@@ -30,7 +30,7 @@ a baked one is at most `MESH_BUDGET` = 14 meshes and at most 5 materials.
   bake their faces in static: at that size a blink is under a pixel and five
   face meshes are five draws. They lose the blink/brow/mouth animation and,
   with no face to find, shatter instead of toppling. Cards that field six or
-  more units (the Skeleton Army) also bake to 5 meshes.
+  more units (the Bone Swarm) also bake to 5 meshes.
 - The first bake of a card costs 30-80 ms (a string-free vertex weld keeps it
   there), so both decks' troop cards are baked one per timer tick when a
   battle's first sync arrives (`prewarmBakes`); a deploy is then a cache hit.

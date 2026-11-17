@@ -361,52 +361,97 @@ export function decorate(b: Battle3D, lights: LightSpot[], surround: THREE.Objec
   return seats;
 }
 
-/** The crescent inlay's colour: the look's emblem gold at this share over the floor plaster. */
+/** The rosette inlay's colour: the look's emblem gold at this share over the floor plaster. */
 export const EMBLEM_CONTRAST = 0.25;
-/** The crescent's size against the old 2.5-unit inlay. */
+/** The rosette's size against the old 2.5-unit inlay (its rim is 2.5 x this). */
 export const EMBLEM_SCALE = 0.62;
+/** Ten-fold: not 5, 6, 8 or 9 points (flags and religious stars; the border's khatam is 8). */
+export const ROSETTE_FOLD = 10;
+
+/** A closed outline through `pts` ([radius, angle] pairs, in order). */
+function polar(pts: readonly (readonly [number, number])[], into: THREE.Shape | THREE.Path): void {
+  pts.forEach(([r, a], i) => {
+    const x = Math.cos(a) * r;
+    const y = Math.sin(a) * r;
+    if (i === 0) into.moveTo(x, y);
+    else into.lineTo(x, y);
+  });
+  into.closePath();
+}
 
 /**
- * Flat crescent moon inlaid in the floor: small and at a quarter of its old
- * contrast (art bible section 3), a hint in the paving that never competes
- * with the units.
+ * The rosette's outlines in the floor plane (shape units are world units;
+ * +y runs down the board's long axis once laid flat): a ten-point star with
+ * a decagon of plaster at its heart, ten kite petals, one per star point,
+ * and a thin rim: about 90 triangles, no more than the crescent's 95.
+ * Outer contours run counter-clockwise, holes clockwise.
+ * Several shapes, so one ShapeGeometry (one mesh, one draw) holds them all.
  */
-export function makeCrescentEmblem(z: number): THREE.Group {
+export function rosetteShapes(): THREE.Shape[] {
+  const k = (2.5 * EMBLEM_SCALE) / 1.55; // the radii below are for a 1.55 rim
+  const n = ROSETTE_FOLD;
+  const step = (Math.PI * 2) / n;
+  // θ0 points along the board's long axis, so a point aims at each King and
+  // the guest's view shows the same motif.
+  const th = (i: number): number => Math.PI / 2 + i * step;
+  const half = step / 2;
+  const shapes: THREE.Shape[] = [];
+
+  // (1) The central star, tips at 0.60 and valleys at 0.38, with a decagon hole.
+  const star = new THREE.Shape();
+  const starPts: [number, number][] = [];
+  for (let i = 0; i < n; i++) starPts.push([0.6 * k, th(i)], [0.38 * k, th(i) + half]);
+  polar(starPts, star);
+  const heart = new THREE.Path();
+  const heartPts: [number, number][] = [];
+  for (let i = n - 1; i >= 0; i--) heartPts.push([0.16 * k, th(i) + half]);
+  polar(heartPts, heart);
+  star.holes.push(heart);
+  shapes.push(star);
+
+  // (2) Ten kite petals, a plaster gap beyond each star point.
+  const shoulder = (10 * Math.PI) / 180;
+  for (let i = 0; i < n; i++) {
+    const a = th(i);
+    const petal = new THREE.Shape();
+    polar([[0.72 * k, a], [1.02 * k, a - shoulder], [1.3 * k, a], [1.02 * k, a + shoulder]], petal);
+    shapes.push(petal);
+  }
+
+  // (3) The rim: a band 0.12 wide on a twenty-sided ring (a vertex on every
+  // star point and valley), which keeps the whole inlay within the
+  // crescent's triangle count; at this size it reads as a circle.
+  const seg = n * 2;
+  const rim = new THREE.Shape();
+  const rimPts: [number, number][] = [];
+  for (let i = 0; i < seg; i++) rimPts.push([1.55 * k, th(0) + i * half]);
+  polar(rimPts, rim);
+  const inner = new THREE.Path();
+  const innerPts: [number, number][] = [];
+  for (let i = seg - 1; i >= 0; i--) innerPts.push([1.43 * k, th(0) + i * half]);
+  polar(innerPts, inner);
+  rim.holes.push(inner);
+  shapes.push(rim);
+  return shapes;
+}
+
+/**
+ * Flat ten-fold geometric rosette (zellige / shamsa style) inlaid in the
+ * Golden Age floor, where the crescent used to be: troops walk here, so the
+ * floor carries ornament, not a religious symbol (the dome finials keep
+ * their crescents). Small and at a quarter of the emblem's contrast (art
+ * bible section 3), a hint in the paving that never competes with the units.
+ * One flat toon mesh, so it merges into the static batch like before.
+ */
+export function makeRosetteEmblem(z: number): THREE.Group {
   const g = new THREE.Group();
-  const R = 2.5 * EMBLEM_SCALE; // outer disc radius
-  const r = 2.2 * EMBLEM_SCALE; // bite disc radius
-  const cx = 1.5 * EMBLEM_SCALE; // bite offset; the crescent opens toward +x
-  // Horn (intersection) points of the two circles.
-  const ix = (cx * cx + R * R - r * r) / (2 * cx);
-  const iy = Math.sqrt(Math.max(0, R * R - ix * ix));
-  const thTop = Math.atan2(iy, ix);
-  const thBot = Math.atan2(-iy, ix);
-  const bTop = Math.atan2(iy, ix - cx);
-  const bBot = Math.atan2(-iy, ix - cx);
-  const steps = 48;
-  const shape = new THREE.Shape();
-  // Outer far arc: top horn, counter-clockwise around the big disc.
-  for (let i = 0; i <= steps; i++) {
-    const a = thTop + (i / steps) * (thBot + Math.PI * 2 - thTop);
-    const x = Math.cos(a) * R;
-    const y = Math.sin(a) * R;
-    if (i === 0) shape.moveTo(x, y);
-    else shape.lineTo(x, y);
-  }
-  // Concave inner arc: back along the bite disc through its left bulge.
-  const span = bBot - (bTop - Math.PI * 2);
-  for (let i = 1; i <= steps; i++) {
-    const a = bBot - (i / steps) * span;
-    shape.lineTo(cx + Math.cos(a) * r, Math.sin(a) * r);
-  }
   const floor = new THREE.Color(LOOK.islamic?.plaster ?? "#efe7cf");
   const inlay = floor.lerp(new THREE.Color(LOOK.islamic?.emblem ?? 0xe8b948), EMBLEM_CONTRAST);
-  const crescent = new THREE.Mesh(new THREE.ShapeGeometry(shape), toon(inlay.getHex()));
-  crescent.rotation.x = -Math.PI / 2;
-  crescent.rotation.z = 0; // open the crescent vertically (down the board)
-  crescent.position.set(0, 0.03, z);
-  crescent.receiveShadow = true;
-  g.add(crescent);
+  const rosette = new THREE.Mesh(new THREE.ShapeGeometry(rosetteShapes()), toon(inlay.getHex()));
+  rosette.rotation.x = -Math.PI / 2;
+  rosette.position.set(0, 0.03, z);
+  rosette.receiveShadow = true;
+  g.add(rosette);
   return g;
 }
 
@@ -590,12 +635,12 @@ export function finishArena(b: Battle3D): RiverHandle {
     b.arenaGroup.add(b.waterSparkles);
   }
 
-  // Gold crescent emblem on each half (Arabic). The normal edition bakes
-  // its faint crown watermark into the floor texture instead.
+  // A gold rosette emblem on each half (Golden Age). The normal edition
+  // bakes its faint crown watermark into the floor texture instead.
   if (arabic) {
     for (const sz of [-1, 1]) {
       const z = sz * (ARENA_HEIGHT / 4 + 0.5);
-      b.arenaGroup.add(makeCrescentEmblem(z));
+      b.arenaGroup.add(makeRosetteEmblem(z));
     }
   }
 

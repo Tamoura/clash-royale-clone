@@ -6,11 +6,12 @@
  * so the one-tap Battle button always plays the saved setup.
  *
  * Options gated by unlocks.ts show a lock with the arena that opens them,
- * by name and trophies ("Goblin Stadium · 100"), never a bare "Arena N".
+ * by name and trophies ("Firefly Marsh · 100"), never a bare "Arena N".
  */
 import type { AppCtx } from "../../app/ctx";
 import { ABILITIES, ABILITY_IDS, saveAbility, type AbilityId } from "../../game/abilities";
-import { TOWER_TROOPS, TOWER_TROOP_IDS, saveTowerTroop, type TowerTroopId } from "../../game/towers";
+import { TOWER_TROOP_IDS, saveTowerTroop, type TowerTroopId } from "../../game/towers";
+import { towerTroopBlurb, towerTroopName } from "../../render/towerTroopText";
 import * as Difficulty from "../../match/difficulty";
 import { GAME_MODES, MODE_KEY, type GameMode } from "../../match/modes";
 import { ARENAS, type ArenaDef } from "../../meta/arenas";
@@ -40,7 +41,7 @@ const DIFF_TEXT: Record<string, { en: string; ar: string; blurbEn: string; blurb
   rookie: { en: "Rookie", ar: "مبتدئ", blurbEn: "Gentle and forgiving", blurbAr: "لطيف ومتسامح" },
   easy: { en: "Easy", ar: "سهل", blurbEn: "Slow to react", blurbAr: "بطيء في الرد" },
   normal: { en: "Normal", ar: "عادي", blurbEn: "A fair fight", blurbAr: "قتال متكافئ" },
-  hard: { en: "Hard", ar: "صعب", blurbEn: "Fast and ruthless", blurbAr: "سريع ولا يرحم" },
+  hard: { en: "Hard", ar: "صعب", blurbEn: "Fast and tough", blurbAr: "سريع وقوي" },
 };
 
 /** Short mode names and icons (the stock names carry emoji we do not show). */
@@ -62,7 +63,7 @@ export function lockArena(f: Feature): ArenaDef {
   return ARENAS[Math.min(ARENAS.length - 1, Math.max(0, featureArena(f)))];
 }
 
-/** The lock caption in words: [English, Arabic], e.g. "Goblin Stadium · 100". */
+/** The lock caption in words: [English, Arabic], e.g. "Firefly Marsh · 100". */
 export function lockCaption(f: Feature, num: (n: number) => string = String): [string, string] {
   const a = lockArena(f);
   return [`${a.name} · ${num(a.trophies)}`, `${a.ar} · ${num(a.trophies)}`];
@@ -70,7 +71,7 @@ export function lockCaption(f: Feature, num: (n: number) => string = String): [s
 
 /**
  * A lock pill naming the arena that opens `f` and its trophies:
- * lock icon, "Goblin Stadium", "·", trophy icon, "100". The parts are
+ * lock icon, "Firefly Marsh", "·", trophy icon, "100". The parts are
  * separate spans so a narrow option can stack them on two lines.
  */
 export function arenaLockBadge(ctx: AppCtx, f: Feature): HTMLElement {
@@ -183,8 +184,7 @@ export function setupChipRow(ctx: AppCtx, onChange: () => void): HTMLButtonEleme
   let html = chip("gauge", difficultyLabel(ctx, meta.difficulty)) + chip(modeIcon(meta.gameMode), modeLabel(ctx, meta.gameMode));
   // Loadout picks show as icons, so the row never truncates.
   if (isUnlocked(ctx, "towerTroops")) {
-    const t = TOWER_TROOPS[meta.towerTroop];
-    html += chip(TOWER_ICON[meta.towerTroop], tr(t.name, t.ar), true);
+    html += chip(TOWER_ICON[meta.towerTroop], towerTroopName(meta.towerTroop), true);
   }
   if (isUnlocked(ctx, "abilities")) {
     const a = ABILITIES[meta.abilityChoice];
@@ -269,8 +269,8 @@ function setupGroup<T>(ctx: AppCtx, o: GroupOpts<T>): HTMLElement {
     const note = document.createElement("p");
     note.className = "v2-setup-locknote";
     note.textContent = ctx.tr(
-      "Win battles to climb the trophy road and unlock this choice.",
-      "انتصر في المعارك لتصعد طريق الكؤوس وتفتح هذا الخيار.",
+      "Win battles to climb the trophy trail and unlock this choice.",
+      "انتصر في المعارك لتصعد سلّم الكؤوس وتفتح هذا الخيار.",
     );
     g.appendChild(note);
   }
@@ -328,8 +328,7 @@ export function openBattleSetup(ctx: AppCtx, onChange: () => void = () => undefi
       title: tr("Tower troop", "حامي الأبراج"),
       lockedBy: "towerTroops",
       options: TOWER_TROOP_IDS.map((id) => {
-        const d = TOWER_TROOPS[id];
-        return { value: id, label: tr(d.name, d.ar), icon: TOWER_ICON[id], blurb: tr(d.blurb, d.blurbAr) };
+        return { value: id, label: towerTroopName(id), icon: TOWER_ICON[id], blurb: towerTroopBlurb(id) };
       }),
       value: meta.towerTroop,
       set: (id) => {

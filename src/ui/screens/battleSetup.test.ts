@@ -4,7 +4,7 @@ import { FEATURES, featureArena } from "../../meta/unlocks";
 import { difficultyKeys, lockArena, lockCaption } from "./battleSetup";
 
 describe("lock captions name the arena and its trophies", () => {
-  it("sandbox opens at Goblin Stadium (100)", () => {
+  it("sandbox opens at Firefly Marsh (100)", () => {
     expect(lockArena("sandbox").trophies).toBe(100);
     expect(lockCaption("sandbox")).toEqual([`${ARENAS[1].name} · 100`, `${ARENAS[1].ar} · 100`]);
   });

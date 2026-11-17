@@ -89,7 +89,9 @@ const PATHS: Record<IconName, string> = {
   bomb: `<circle ${O} fill="#2d3348" cx="11" cy="14" r="7"/><path ${O} fill="#9aa7b8" d="m14.5 6.5 3 3 1.8-1.8-3-3z"/><path ${O} fill="none" stroke="#b87a2e" d="M18.4 5.6c1-1.6 2.6-1.8 3.3-.6"/><circle fill="#ffd23f" cx="21.6" cy="4.6" r="1.3"/><circle fill="#6a7390" cx="8.5" cy="11.5" r="1.6"/>`,
   play: `<circle ${O} fill="#3ee07a" cx="12" cy="12" r="9.5"/><path fill="#fff" stroke="#1a1030" stroke-width="1.4" stroke-linejoin="round" d="m10 7.5 6.5 4.5-6.5 4.5z"/>`,
   // ---- UI glyphs ----
-  elixir: `<path ${O} fill="#e91e9b" d="M12 2.5C9 7 5.5 10.5 5.5 14.5a6.5 6.5 0 0 0 13 0C18.5 10.5 15 7 12 2.5z"/><path fill="#ff8fd0" d="M9 13.8a3.2 3.2 0 0 1 1.7-3.1l.8 1.3a1.7 1.7 0 0 0-.9 1.8z"/>`,
+  // Sparks (the battle resource; the id stays "elixir"): a four-ray spark
+  // with short diagonal glints and a bright core. Not the yellow "sparkle".
+  elixir: `<path fill="none" stroke="#ff8fd0" stroke-width="1.8" stroke-linecap="round" d="M5.6 5.6 7.4 7.4M18.4 5.6l-1.8 1.8M5.6 18.4l1.8-1.8M18.4 18.4l-1.8-1.8"/><path ${O} fill="#e91e9b" d="M12 1.8 14.3 9.7 22.2 12 14.3 14.3 12 22.2 9.7 14.3 1.8 12 9.7 9.7z"/><circle fill="#ffe3f4" cx="12" cy="12" r="2.4"/>`,
   check: line("m4.5 12.5 5 5 10-11", "#3ee07a"),
   lock: `${line("M8 10.5V7.5a4 4 0 0 1 8 0v3", "#9aa7b8")}<rect ${O} fill="#ffd23f" x="5" y="10" width="14" height="11" rx="2"/><path fill="#1a1030" d="M12 13.2a1.7 1.7 0 0 0-.9 3.1V18h1.8v-1.7a1.7 1.7 0 0 0-.9-3.1z"/>`,
   back: line("M19 12H6m5-6-6 6 6 6"),

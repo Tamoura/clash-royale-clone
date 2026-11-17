@@ -2,7 +2,7 @@
 
 - Deploy zone: canDeployTroopAt(side,x,y,open) takes OpenLanes;
   openLanes(state,side) opens a lane into enemy territory once the
-  opponent's princess tower on that side is destroyed (CR rule).
+  opponent's princess tower on that side is destroyed.
   checkDeploy passes it. TDD'd.
 - HP bars: new HP_COLOR — ally GREEN (0x35d04a), enemy RED — so
   the player's own troop health reads clearly (was team blue).

@@ -1,11 +1,11 @@
 # Third-party notices
 
-This game (Crown Rush, this repository) ships a small set of third-party
-assets and libraries. Everything
-else in the game (towers, ground, river and bridges, the court and its crowd,
-creatures, mounts, effects, card buildings, music and sound) is procedural
-and original to this project. No Supercell or Clash Royale assets, logos or
-likenesses are used.
+This game (Banner Lanes, an original game by Pebble Kite Games; this
+repository) ships a small set of third-party assets and libraries.
+Everything else in the game (towers, ground, river and bridges, the court
+and its crowd, creatures, mounts, effects, card buildings, the app icon,
+music and sound) is procedural or drawn for this project. No third-party
+game assets, logos or likenesses are used.
 
 ## 3D models (CC0 1.0)
 

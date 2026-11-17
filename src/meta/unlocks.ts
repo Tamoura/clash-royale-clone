@@ -1,9 +1,9 @@
 /**
- * Feature unlocks along the trophy road. New players start with the plain
+ * Feature unlocks along the trophy trail. New players start with the plain
  * ladder; extra modes and loadout choices open up arena by arena, so the
  * menus grow with the player instead of all landing on day one.
  *
- * Arena numbers are trophy-road indices (0 = Training Camp). A feature
+ * Arena numbers are trophy-road indices (0 = Practice Meadow). A feature
  * stays unlocked once the player has reached its arena, even if trophies
  * later drop (losses, the season soft reset).
  *
@@ -46,9 +46,9 @@ export const FEATURE_LABEL: Readonly<Record<Feature, readonly [string, string]>>
   challenges: ["Challenges", "التحديات"],
   towerTroops: ["Tower troops", "حماة الأبراج"],
   abilities: ["King's abilities", "قدرات الملك"],
-  triple: ["Triple Elixir", "الإكسير الثلاثي"],
+  triple: ["Triple Sparks", "الشرارات الثلاثية"],
   mirror: ["Mirror Match", "مباراة المرآة"],
-  mega: ["Mega Elixir", "الإكسير الهائل"],
+  mega: ["Mega Sparks", "الشرارات الهائلة"],
   crazy: ["Crazy mode", "نمط الجنون"],
   draft: ["Draft", "الانتقاء"],
 });

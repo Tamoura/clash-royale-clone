@@ -1,5 +1,5 @@
 /* ============================================================
-   Crown Rush — Game Stylesheet
+   Banner Lanes — Game Stylesheet
    Extracted from index.html and enhanced with:
      • edition-aware CSS variable usage
      • responsive clamp() sizing
@@ -207,7 +207,7 @@ body {
   z-index: 1;
   background: radial-gradient(circle at 35% 30%, var(--cr-elixir-light), var(--cr-elixir-dark) 70%);
   border: 2.5px solid #fbe3ff;
-  border-radius: 50% 50% 50% 42%;
+  border-radius: 50%;
   width: 40px;
   height: 40px;
   line-height: 35px;
@@ -466,7 +466,7 @@ button.card canvas {
   pointer-events: none;
 }
 
-/* Elixir cost — droplet bubble at the bottom-left (reference layout) */
+/* Spark cost: a round badge at the bottom-left with a spark glint (reference layout) */
 .card-cost {
   position: absolute;
   left: -11px;
@@ -485,15 +485,16 @@ button.card canvas {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
   text-align: center;
 }
-/* Droplet tip pointing upward */
+/* A small four-ray spark glinting on the badge's shoulder */
 .card-cost::before {
   content: "";
   position: absolute;
-  top: -7px;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 5px solid transparent;
-  border-bottom: 8px solid var(--cr-elixir-dark);
+  top: -5px;
+  right: -5px;
+  width: 11px;
+  height: 11px;
+  background: #fff1fa;
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
 }
 
 /* Keyboard shortcut badge (top-right) */
@@ -2054,7 +2055,7 @@ button.card.ready-pop {
 .ability-btn.ready-pop { animation: crownBannerPop 0.5s ease-out; }
 
 /* ══════════════════════════════════════════════════════════════
-   Phase 1 — CR battle chrome: the top bar floats over the arena
+   Phase 1 — battle chrome: the top bar floats over the arena
    ══════════════════════════════════════════════════════════════ */
 #app {
   position: relative;
@@ -2235,7 +2236,7 @@ button.card.ready-pop {
   cursor: pointer;
 }
 
-/* ── Hand: CR cards carry no captions or key hints on phones ── */
+/* ── Hand: cards carry no captions or key hints on phones ── */
 @media (hover: none), (max-width: 480px) {
   .key-chip {
     display: none;
@@ -2286,7 +2287,7 @@ button.card.locked {
   height: 22px;
 }
 
-/* CR text: white, dark outline, hard drop (--cr-outline lives in tokens.css). */
+/* Game text: white, dark outline, hard drop (--cr-outline lives in tokens.css). */
 #topbar .crowns span,
 #topbar .clock,
 .card-cost,
@@ -2412,7 +2413,7 @@ button.card.locked {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   Phase 6 — CR home: resource bar, live arena window, tabs
+   Phase 6 — home: resource bar, live arena window, tabs
    ══════════════════════════════════════════════════════════════ */
 #deckpicker:has(> .home-shell) {
   background: transparent;
@@ -2707,7 +2708,9 @@ button.card.locked {
   border-top-color: #caa23f;
 }
 :root[data-edition="arabic"] #hud::before {
-  content: "\2726 \06DE \2726";
+  /* Plain ornaments. Not U+06DE (the Rub el Hizb, a Quran section mark):
+     sacred marks are never decoration (src/ui/ornaments.test.ts). */
+  content: "\2726 \2756 \2726";
   color: #f0c85a;
   font-size: 13px;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
