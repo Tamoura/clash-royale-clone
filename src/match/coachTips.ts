@@ -2,8 +2,9 @@
  * Defeat coaching: after a solo ladder loss the result screen shows ONE
  * specific, friendly tip, chosen from what actually happened in the match:
  *
- * 1. elixir leaked (4 or more wasted at a full bar): play cards sooner;
- * 2. a tower fell to a building-targeter (Giant, Hog Rider, Balloon…):
+ * 1. sparks leaked (4 or more wasted at a full bar; the sim calls them
+ *    elixir): play cards sooner;
+ * 2. a tower fell to a building-targeter (Giant, Boar Rider, Balloon…):
  *    a front troop with shooters behind it;
  * 3. no spell cast all match (but some card played): the deck's
  *    group-clearing spell;
