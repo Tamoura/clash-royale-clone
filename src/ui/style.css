@@ -2708,7 +2708,9 @@ button.card.locked {
   border-top-color: #caa23f;
 }
 :root[data-edition="arabic"] #hud::before {
-  content: "\2726 \06DE \2726";
+  /* Plain ornaments. Not U+06DE (the Rub el Hizb, a Quran section mark):
+     sacred marks are never decoration (src/ui/ornaments.test.ts). */
+  content: "\2726 \2756 \2726";
   color: #f0c85a;
   font-size: 13px;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
