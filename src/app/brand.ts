@@ -19,13 +19,15 @@ export const GAME_NAME = "Banner Lanes";
 export const GAME_NAME_AR = "درب الرايات";
 
 /**
- * The studio named in the credits. The Arabic writes the name in Arabic
- * letters (a Latin name would break the right-to-left line); it is not
- * translated, because "pebble" in Arabic (حصاة) is already the Golden Age
- * name of the Pebble Golem card.
+ * The studio named in the credits. The Arabic is in Arabic words, since a
+ * Latin name would break the right-to-left line. It is not spelled out
+ * letter for letter: "بيبل" is how Arabic writes "Bible", so "ألعاب بيبل
+ * كايت" could read as "Bible Kite Games". Only "Kite" is translated (a
+ * paper kite, which every child knows), because "pebble" in Arabic (حصاة)
+ * is already the Golden Age name of the Pebble Golem card.
  */
 export const STUDIO_NAME = "Pebble Kite Games";
-export const STUDIO_NAME_AR = "ألعاب بيبل كايت";
+export const STUDIO_NAME_AR = "ألعاب الطائرة الورقية";
 
 /** The game's name in the current edition. */
 export function gameName(): string {

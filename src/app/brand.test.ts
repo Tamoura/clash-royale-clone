@@ -34,6 +34,8 @@ describe("the game's name is Banner Lanes", () => {
   it("names the studio in both languages, the Arabic in Arabic letters", () => {
     expect(STUDIO_NAME).toBe("Pebble Kite Games");
     expect(STUDIO_NAME_AR).toMatch(/^[؀-ۿ ]+$/);
+    // Not "بيبل كايت": "بيبل" is how Arabic writes "Bible".
+    expect(STUDIO_NAME_AR).not.toMatch(/بيبل|بايبل/);
   });
 
   it("keeps the internal ids, so no save is lost", () => {
