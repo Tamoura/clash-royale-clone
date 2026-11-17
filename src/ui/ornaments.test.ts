@@ -5,6 +5,9 @@
  * Bismillah would be disrespectful. This fails if one appears, typed or as a
  * CSS escape, in the stylesheets, index.html or the app's sources.
  */
+// Vitest blanks every stylesheet import (even ?raw), so files are read from
+// disk. The project ships no Node typings (browser code only), hence the directive.
+// @ts-expect-error -- "node:fs" has no type declarations here; Vitest runs in Node.
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -18,14 +21,13 @@ const ROOT = decodeURIComponent(new URL("../../", import.meta.url).pathname);
 /** Every file under src/ whose name passes `keep`, read from disk, by path from the repo root. */
 function read(keep: (name: string) => boolean): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const f of readdirSync(`${ROOT}src`, { recursive: true, encoding: "utf8" })) {
+  for (const f of readdirSync(`${ROOT}src`, { recursive: true, encoding: "utf8" }) as string[]) {
     const name = f.replace(/\\/g, "/");
-    if (keep(name)) out[`src/${name}`] = readFileSync(`${ROOT}src/${name}`, "utf8");
+    if (keep(name)) out[`src/${name}`] = readFileSync(`${ROOT}src/${name}`, "utf8") as string;
   }
   return out;
 }
 
-// Read from disk: vitest serves a stylesheet imported "?raw" as empty text.
 const styles = read((f) => f.endsWith(".css"));
 const sources = read((f) => /\.(ts|html)$/.test(f) && !f.endsWith(".test.ts"));
 const indexHtml = readFileSync(`${ROOT}index.html`, "utf8");
