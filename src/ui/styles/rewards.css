@@ -1,5 +1,5 @@
 /* ============================================================
-   Reward loop: chest room, chest reveal, Trophy Road, Crown Pass,
+   Reward loop: chest room, chest reveal, Trophy Trail, Crown Pass,
    the Home reward hub and the result-screen lines.
    Selectors are scoped .rw-*; colours come from tokens.css (the
    chest woods are local art variables, remapped per edition).
@@ -1136,7 +1136,7 @@
   color: var(--on-surface-dim);
 }
 
-/* ── Trophy Road ── */
+/* ── Trophy Trail ── */
 .rw-road {
   position: relative;
   list-style: none;

@@ -196,7 +196,7 @@ export function onSeasonRollover(fn: (r: SeasonRollover) => void): () => void {
  * The trophies a season reset leaves: anything above the floor is halved
  * back toward it, but never below the floor of the arena the player
  * stands in, so a new season never takes an arena away (1600, the first
- * step of Royal Arena, stays 1600; 1900 trims to 1600; 2500 to 2400).
+ * step of Castle Court, stays 1600; 1900 trims to 1600; 2500 to 2400).
  */
 export function seasonResetTrophies(trophies: number): number {
   if (!(trophies > SEASON_FLOOR)) return trophies;

@@ -1340,7 +1340,7 @@ export function undoLastLoad(store: SaveStore, now = Date.now()): ApplyResult {
 
 export interface SaveSummary {
   trophies: number;
-  /** Arena index (0 = Training Camp). */
+  /** Arena index (0 = Practice Meadow). */
   arena: number;
   /** Cards owned. */
   cards: number;

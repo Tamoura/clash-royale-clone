@@ -1,7 +1,7 @@
 /**
  * Chest room: the free 4-hour chest and the four chest slots with live
  * timers and gem skips. Every opening (slot, free chest, or a bonus chest
- * from the Trophy Road, the Crown Pass or a Draft run) goes through
+ * from the Trophy Trail, the Crown Pass or a Draft run) goes through
  * openChestFlow, which pays the chest and plays the card-by-card reveal.
  * The tiles are reused by the Home slots (Shop and Battle tabs).
  */

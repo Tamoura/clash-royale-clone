@@ -7,7 +7,7 @@
  *   ember cracks, vines, neon strips, bone lintels) from a small switch
  *   table. Roofs and domes are never in here: they are always the live
  *   team colour (teamColors.ts), colour-blind palette included.
- * - Flair tiers from the trophy road (setTowerFlair): gilded, then jeweled.
+ * - Flair tiers from the trophy trail (setTowerFlair): gilded, then jeweled.
  * - Damage stage thresholds.
  * - HP plate placement as screen-space maths: above the tallest roof tip
  *   for the far side's towers, under the gate foot for the near side's,

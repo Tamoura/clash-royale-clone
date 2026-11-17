@@ -4,7 +4,7 @@
  *
  * - "progress": the kid's game. It goes into a save code (meta/saveCode.ts)
  *   and moves to another tablet: trophies, gold, gems, cards, levels,
- *   shards, chests, decks, Crown Pass, Trophy Road, quests, achievements,
+ *   shards, chests, decks, Crown Pass, Trophy Trail, quests, achievements,
  *   season, champion, tutorial, battle setup choices and the edition.
  * - "device": this tablet only. It never goes into a save and a load never
  *   changes it: settings (volumes, graphics, text size, team colours),
@@ -86,7 +86,7 @@ export const SAVE_KEYS: readonly SaveKeyDef[] = [
   { key: "cr-clone-pass", cls: P, shape: "json", note: "Crown Pass (pass.ts)" },
   { key: "cr-clone-tower-flair", cls: P, shape: "json", note: "tower flair won on the pass (pass.ts)" },
   { key: "cr-clone-emotes-unlocked", cls: P, shape: "json", note: "emotes won on the pass (pass.ts)" },
-  { key: "cr-clone-road", cls: P, shape: "json", note: "Trophy Road claims (road.ts)" },
+  { key: "cr-clone-road", cls: P, shape: "json", note: "Trophy Trail claims (road.ts)" },
   { key: "cr-clone-quests", cls: P, shape: "json", note: "daily quests (quests.ts)" },
   { key: "cr-clone-achievements", cls: P, shape: "json", note: "achievements and lifetime counters (achievements.ts)" },
   { key: "cr-clone-season", cls: P, shape: "json", note: "season and its best (achievements.ts)" },

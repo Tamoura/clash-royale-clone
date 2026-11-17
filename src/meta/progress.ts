@@ -249,7 +249,7 @@ export { trophyLossAt };
 
 /**
  * Apply solo match outcome. Online matches must not call this. A loss
- * costs trophyLossAt(trophies): nothing in Training Camp, and never enough
+ * costs trophyLossAt(trophies): nothing in Practice Meadow, and never enough
  * to fall out of the arena the kid stands in.
  */
 export function applyMatchResult(
@@ -421,7 +421,7 @@ export function affordableUpgrades(
 export interface BadgeSources {
   profile: Pick<PlayerProfile, "owned" | "shards" | "gold">;
   levels: CardLevels;
-  /** Trophy Road: best trophies reached and the thresholds already claimed. */
+  /** Trophy Trail: best trophies reached and the thresholds already claimed. */
   road?: { reached: number; claimed: readonly number[] };
   pass?: PassState | null;
   achievements?: AchievementState | null;

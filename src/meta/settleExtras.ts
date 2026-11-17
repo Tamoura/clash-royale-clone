@@ -1,6 +1,6 @@
 /**
  * Pure match-end bookkeeping for the reward loop, on top of the built-in
- * settlement: Crown Pass crowns, Trophy Road nodes the match unlocked, and
+ * settlement: Crown Pass crowns, Trophy Trail nodes the match unlocked, and
  * the Draft run (3 wins in a row pays a rare chest). The rewards wire
  * applies the result to storage and shows it on the result screen.
  */
@@ -32,7 +32,7 @@ export interface SettleExtras {
   pass: PassState;
   /** The pass opened at least one new tier. */
   passTierUp: boolean;
-  /** Trophy Road nodes waiting to be claimed after this match. */
+  /** Trophy Trail nodes waiting to be claimed after this match. */
   roadNowClaimable: RoadNode[];
   /** A rare chest when this win completed a Draft run. */
   draftReward: "rare" | null;

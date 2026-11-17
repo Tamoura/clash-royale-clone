@@ -62,15 +62,15 @@ describe("economy", () => {
     }
   });
 
-  it("trophyLossAt: free in Training Camp, capped at the loss and the arena floor", () => {
+  it("trophyLossAt: free in Practice Meadow, capped at the loss and the arena floor", () => {
     expect(FREE_LOSS_BELOW).toBe(100);
     for (const t of [0, 1, 20, 50, 99]) expect(trophyLossAt(t)).toBe(0);
-    expect(trophyLossAt(100)).toBe(0); // standing on Goblin Stadium's floor
+    expect(trophyLossAt(100)).toBe(0); // standing on Firefly Marsh's floor
     expect(trophyLossAt(105)).toBe(5);
     expect(trophyLossAt(110)).toBe(10);
     expect(trophyLossAt(130)).toBe(-MATCH_TROPHIES.loss);
     expect(trophyLossAt(199)).toBe(20);
-    expect(trophyLossAt(200)).toBe(0); // Bone Pit floor
+    expect(trophyLossAt(200)).toBe(0); // Fossil Hollow floor
     expect(trophyLossAt(215)).toBe(15);
     expect(trophyLossAt(5000)).toBe(20);
     // Junk in, safe out.

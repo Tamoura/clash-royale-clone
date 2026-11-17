@@ -120,7 +120,7 @@ describe("Backup & move on the page", () => {
   });
 
   it("names each side's arena the way that side's edition does", async () => {
-    // A Golden Age save at 640 trophies (Barbarian Bowl, سوق التوابل there) on
+    // A Golden Age save at 640 trophies (Snowdrift Fort, سوق التوابل there) on
     // a tablet in the other edition, and the reverse.
     const here = ARABIC ? "arabic" : "normal";
     const other = ARABIC ? "normal" : "arabic";
@@ -129,8 +129,8 @@ describe("Backup & move on the page", () => {
     await settle();
     const c = sheet()!;
     const [loadCell, hereCell] = c.querySelectorAll('tr[data-row="arena"] td');
-    expect(loadCell.textContent).toBe(other === "arabic" ? "سوق التوابل" : "Barbarian Bowl");
-    expect(hereCell.textContent).toBe(tr("Goblin Stadium", "واحة النخيل")); // 120 trophies
+    expect(loadCell.textContent).toBe(other === "arabic" ? "سوق التوابل" : "Snowdrift Fort");
+    expect(hereCell.textContent).toBe(tr("Firefly Marsh", "واحة النخيل")); // 120 trophies
     // The other edition's name sits in its own bidi island, in its own language.
     const island = loadCell.querySelector("bdi")!;
     expect(island.getAttribute("lang")).toBe(other === "arabic" ? "ar" : "en");
@@ -141,11 +141,11 @@ describe("Backup & move on the page", () => {
 
   it("arenaNameIn: the save's edition names it; no edition falls back to this tablet's", () => {
     expect(arenaNameIn(3, "arabic")).toEqual({ text: "سوق التوابل", arabic: true });
-    expect(arenaNameIn(3, "normal")).toEqual({ text: "Barbarian Bowl", arabic: false });
-    expect(arenaNameIn(3, null)).toEqual({ text: tr("Barbarian Bowl", "سوق التوابل"), arabic: ARABIC });
+    expect(arenaNameIn(3, "normal")).toEqual({ text: "Snowdrift Fort", arabic: false });
+    expect(arenaNameIn(3, null)).toEqual({ text: tr("Snowdrift Fort", "سوق التوابل"), arabic: ARABIC });
     // Out of range or junk clamps to a real arena.
-    expect(arenaNameIn(-4, "normal").text).toBe("Training Camp");
-    expect(arenaNameIn(Number.NaN, "normal").text).toBe("Training Camp");
+    expect(arenaNameIn(-4, "normal").text).toBe("Practice Meadow");
+    expect(arenaNameIn(Number.NaN, "normal").text).toBe("Practice Meadow");
     expect(arenaNameIn(999, "arabic").arabic).toBe(true);
   });
 

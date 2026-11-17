@@ -24,13 +24,13 @@ export const MATCH_TROPHIES = {
 } as const;
 
 /**
- * Below this many trophies (Training Camp) a loss costs nothing: new kids
+ * Below this many trophies (Practice Meadow) a loss costs nothing: new kids
  * learn without watching their first trophies drain away.
  */
 export const FREE_LOSS_BELOW = 100;
 
 /**
- * Trophies a ladder loss costs at `trophies` (0 or more). Training Camp is
+ * Trophies a ladder loss costs at `trophies` (0 or more). Practice Meadow is
  * free, and a loss never drops a kid out of an arena they reached: at most
  * MATCH_TROPHIES.loss, and never below the current arena's floor.
  */

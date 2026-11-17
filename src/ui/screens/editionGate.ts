@@ -120,12 +120,15 @@ export const EDITION_COPY: Record<GameVariant, EditionCopy> = {
   clash: {
     en: "Classic",
     ar: "كلاسيك",
-    tagEn: "Knights, wizards and castle towers",
-    tagAr: "فرسان وسحرة وأبراج القلاع",
+    tagEn: "Knights, dragons and castle towers",
+    // Not سحرة ("sorcerers"): families choose an edition by this line.
+    tagAr: "فرسان وتنانين وأبراج القلاع",
   },
   islamic: {
     en: "Golden Age",
     ar: "العصر الذهبي",
+    // The towers still wear crescent finials on their domes (architecture,
+    // not the floor), so the line stays true.
     tagEn: "Faris riders, camels and crescent towers",
     tagAr: "فرسان وجِمال وأبراج الهلال",
   },

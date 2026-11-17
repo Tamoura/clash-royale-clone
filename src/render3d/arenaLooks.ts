@@ -1,5 +1,5 @@
 /**
- * Trophy Road arena looks: every arena on the ladder is its own world.
+ * Trophy Trail arena looks: every arena on the ladder is its own world.
  * scene3d consumes one ArenaLook per battle — floor, sky, mid-band,
  * crossings, towers, props, lights — so climbing visibly changes the
  * stage you fight on. The Islamic edition climbs its own road of
@@ -348,7 +348,7 @@ const I = ARABIC_LOOK;
 const tiles = (t: Partial<IslamicTiles>): IslamicTiles => ({ ...I.islamic!, ...t });
 
 /**
- * The Islamic trophy road: eleven worlds, each a palette over the shared
+ * The Islamic trophy trail: eleven worlds, each a palette over the shared
  * zellige court, domed towers and crescent emblems.
  */
 export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {

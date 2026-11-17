@@ -114,7 +114,7 @@ export const DIFF_BLURB: Record<string, [string, string]> = {
   rookie: ["Slow and forgiving", "بطيء ومتسامح"],
   easy: ["A gentle opponent", "خصم لطيف"],
   normal: ["A fair fight", "قتال متكافئ"],
-  hard: ["Fast and ruthless", "سريع ولا يرحم"],
+  hard: ["Fast and tough", "سريع وقوي"],
 };
 
 /** The saved choice, or "auto" (the default for new profiles). */

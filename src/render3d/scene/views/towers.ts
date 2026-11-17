@@ -99,7 +99,7 @@ export function towerTeamColors(side: Side, palette: TeamPalette = teamPalette()
 }
 
 /**
- * Cosmetic tower flair tier, set from the player's trophy road: 0 = plain,
+ * Cosmetic tower flair tier, set from the player's trophy trail: 0 = plain,
  * 1 (600+) = gilded trim and finials, 2 (1200+) = a jeweled crest and gold
  * roof bands too. Applies at tower build time (each battle rebuilds its towers).
  */

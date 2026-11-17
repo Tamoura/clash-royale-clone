@@ -437,7 +437,7 @@ export function openLoadSheet(deps: SaveSheetDeps = {}): { close: () => void } {
 
 /**
  * The arena's name as the kid sees it in that edition: each edition names
- * its arenas its own way (Barbarian Bowl is سوق التوابل in the Golden Age),
+ * its arenas its own way (Snowdrift Fort is سوق التوابل in the Golden Age),
  * so a save's arena is named in the save's edition, not this tablet's. No
  * edition (an old save, or none picked yet): this tablet's.
  */

@@ -4,7 +4,7 @@
  */
 import { DEFAULT_DECK, type CardId } from "../game/cards";
 
-/** Index of the arena a trophy count stands in (0 = Training Camp). */
+/** Index of the arena a trophy count stands in (0 = Practice Meadow). */
 export function arenaIndexAt(trophies: number): number {
   let idx = 0;
   for (let i = 0; i < ARENAS.length; i++) {
@@ -14,7 +14,12 @@ export function arenaIndexAt(trophies: number): number {
 }
 
 export interface ArenaDef {
+  /** Stored and matched by id (arena looks, saves): never renamed. */
   id: string;
+  /**
+   * The Classic edition's name, matched to the arena's look (meadow, marsh,
+   * fossils, snow, forge, starlight, workshop, castle, ice, vines, lanterns).
+   */
   name: string;
   /** Name in the Islamic edition, where each arena is its own Islamic world. */
   ar: string;
@@ -28,77 +33,77 @@ export interface ArenaDef {
 export const ARENAS: ArenaDef[] = [
   {
     id: "training-camp",
-    name: "Training Camp",
+    name: "Practice Meadow",
     ar: "ساحة التدريب",
     trophies: 0,
     unlocks: [...DEFAULT_DECK],
   },
   {
     id: "goblin-stadium",
-    name: "Goblin Stadium",
+    name: "Firefly Marsh",
     ar: "واحة النخيل",
     trophies: 100,
     unlocks: ["skeletons", "zap", "cannon"],
   },
   {
     id: "bone-pit",
-    name: "Bone Pit",
+    name: "Fossil Hollow",
     ar: "وادي الرمال",
     trophies: 200,
     unlocks: ["tombstone", "valkyrie", "bats", "stone-golem"],
   },
   {
     id: "barbarian-bowl",
-    name: "Barbarian Bowl",
+    name: "Snowdrift Fort",
     ar: "سوق التوابل",
     trophies: 400,
     unlocks: ["hog-rider", "wizard", "gargoyles", "digger"],
   },
   {
     id: "pekka-playhouse",
-    name: "P.E.K.K.A's Playhouse",
+    name: "Ember Forge",
     ar: "قلعة النحاس",
     trophies: 700,
     unlocks: ["prince", "minions", "elixir-collector"],
   },
   {
     id: "spell-valley",
-    name: "Spell Valley",
+    name: "Starlight Glade",
     ar: "حدائق الأندلس",
     trophies: 1000,
     unlocks: ["witch", "freeze", "rage"],
   },
   {
     id: "builders-workshop",
-    name: "Builder's Workshop",
+    name: "Tinker Yard",
     ar: "دار الصنّاع",
     trophies: 1300,
     unlocks: ["balloon", "royal-giant", "firecracker", "heal"],
   },
   {
     id: "royal-arena",
-    name: "Royal Arena",
+    name: "Castle Court",
     ar: "قصر الحمراء",
     trophies: 1600,
     unlocks: ["skeleton-army", "ice-wizard", "pekka", "tornado"],
   },
   {
     id: "frozen-peak",
-    name: "Frozen Peak",
+    name: "Icicle Ridge",
     ar: "قمم الأطلس",
     trophies: 2000,
     unlocks: ["electro-wizard", "magic-archer", "princess"],
   },
   {
     id: "jungle-arena",
-    name: "Jungle Arena",
+    name: "Vine Valley",
     ar: "بساتين الغوطة",
     trophies: 2400,
     unlocks: ["executioner", "mega-knight", "skeleton-barrel", "mirror"],
   },
   {
     id: "legendary-peak",
-    name: "Legendary Peak",
+    name: "Lantern Summit",
     ar: "مدينة الأهلّة",
     trophies: 3000,
     unlocks: ["comet"],

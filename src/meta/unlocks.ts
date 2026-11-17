@@ -1,9 +1,9 @@
 /**
- * Feature unlocks along the trophy road. New players start with the plain
+ * Feature unlocks along the trophy trail. New players start with the plain
  * ladder; extra modes and loadout choices open up arena by arena, so the
  * menus grow with the player instead of all landing on day one.
  *
- * Arena numbers are trophy-road indices (0 = Training Camp). A feature
+ * Arena numbers are trophy-road indices (0 = Practice Meadow). A feature
  * stays unlocked once the player has reached its arena, even if trophies
  * later drop (losses, the season soft reset).
  *

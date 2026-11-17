@@ -14,7 +14,7 @@ import { ARENAS, arenaIndexAt } from "../meta/arenas";
 export const SEASON_TOAST_MS = 6000;
 
 /**
- * "November 2026 season starts! You kept Royal Arena." `season` is the
+ * "November 2026 season starts! You kept Castle Court." `season` is the
  * season's display name (seasonName in screens/pass.ts), already in the
  * edition's language and digits; `trophies` are the trophies after the
  * reset; `tr` picks the edition's language (ui/i18n.ts tr).

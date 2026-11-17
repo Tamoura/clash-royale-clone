@@ -992,7 +992,7 @@ const ctx: AppCtx = {
     sandboxResetBtn.style.display = "none";
   },
 };
-// Reward loop (chests, Trophy Road, Crown Pass): hooks and Home slots.
+// Reward loop (chests, Trophy Trail, Crown Pass): hooks and Home slots.
 registerRewards(ctx);
 registerNewCards(ctx);
 
