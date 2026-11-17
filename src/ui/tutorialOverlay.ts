@@ -705,6 +705,22 @@ function drawView(s: Session, v: View): void {
   }
 }
 
+/**
+ * Coach lines this layer words differently from the (locked) sim's step
+ * text, by step id: the resource is Sparks on screen, elixir in the sim.
+ */
+const STEP_TEXT: Readonly<Record<string, [string, string]>> = {
+  elixir: [
+    "These are your sparks. Every card costs some, and they refill over time. Keep spending them!",
+    "هذه شراراتك. كل بطاقة تكلّف بعضها، وتزيد مع الوقت. لا تتركها تضيع!",
+  ],
+};
+
+/** A step's own coach line ([English, Arabic]) as this edition shows it. */
+export function stepText(step: Pick<TutorialStep, "id" | "text">): [string, string] {
+  return STEP_TEXT[step.id] ?? step.text;
+}
+
 /** Coach copy for the current state of the step. */
 function coachCopy(step: TutorialStep, b: BattleState, holding: boolean): [string, string] {
   if (step.id === "king" && b.player.ability === null) {
@@ -715,13 +731,14 @@ function coachCopy(step: TutorialStep, b: BattleState, holding: boolean): [strin
   }
   const target = step.target?.(b);
   if (step.target && !target && step.idleText) return step.idleText;
+  const text = stepText(step);
   if (target && !holding && !canPlay(b, target.cardId) && step.hold) {
     return [
-      `${step.text[0]} (Wait for the elixir.)`,
-      `${step.text[1]} (انتظر الإكسير.)`,
+      `${text[0]} (Wait for the sparks.)`,
+      `${text[1]} (انتظر حتى تكفي الشرارات.)`,
     ];
   }
-  return step.text;
+  return text;
 }
 
 function drawCoach(s: Session, b: BattleState, step: TutorialStep, holding: boolean): void {
@@ -894,7 +911,7 @@ function showEnding(s: Session, won: boolean): void {
   s.coachText.textContent = won
     ? tr(
         "Victory! You can deploy, defend, cast spells and win. Your first chest is waiting at Home.",
-        "انتصار! تعرف الآن النشر والدفاع والتعاويذ والفوز. صندوقك الأول بانتظارك في الرئيسية.",
+        "انتصار! تعرف الآن النشر والدفاع والحيل والفوز. صندوقك الأول بانتظارك في الرئيسية.",
       )
     : tr("So close! Let's try that once more.", "اقتربت كثيرًا! لنحاول مرة أخرى.");
   s.coachHint.hidden = true;

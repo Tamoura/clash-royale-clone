@@ -36,8 +36,8 @@ export const CARD_BLURBS: Partial<Record<CardId, CardBlurb>> = {
     watch: ["arrows", "valkyrie"],
   },
   firecracker: {
-    en: "Her firework bursts into sparks that hit a whole group!",
-    ar: "نفّاطة ترمي نارًا تتفرّق شررًا وتصيب مجموعة كاملة!",
+    en: "Her firework bursts into a shower of stars that hits a whole group!",
+    ar: "نفّاطة ترمي نارًا تتناثر وتصيب مجموعة كاملة!",
     good: ["minions", "skeleton-army"],
     watch: ["knight", "arrows"],
   },
@@ -66,8 +66,8 @@ export const CARD_BLURBS: Partial<Record<CardId, CardBlurb>> = {
     watch: ["skeletons", "minions"],
   },
   skeletons: {
-    en: "Three tiny fighters for just 1 elixir. They distract big hitters!",
-    ar: "ثلاثة من الميليشيا بإكسير واحد فقط. يشغلون الأقوياء عن أبراجك!",
+    en: "Three tiny fighters for just 1 spark. They distract big hitters!",
+    ar: "ثلاثة من المشاة بشرارة واحدة فقط. يشغلون الأقوياء عن أبراجك!",
     good: ["mini-pekka", "pekka"],
     watch: ["zap", "arrows"],
   },
@@ -91,7 +91,7 @@ export const CARD_BLURBS: Partial<Record<CardId, CardBlurb>> = {
   },
   rage: {
     en: "Makes your troops in the circle faster and fiercer!",
-    ar: "طبول الحرب تجعل جنودك في الدائرة أسرع وأشد!",
+    ar: "الحماسة تجعل جنودك في الدائرة أسرع وأقوى!",
     good: [],
     watch: [],
   },
@@ -109,7 +109,7 @@ export const CARD_BLURBS: Partial<Record<CardId, CardBlurb>> = {
   },
   witch: {
     en: "Keeps calling skeleton buddies to fight with her!",
-    ar: "قارعة الطبول تنادي رجال الميليشيا ليقاتلوا معها!",
+    ar: "قارعة الطبول تنادي المشاة ليقاتلوا معها!",
     good: ["mini-pekka", "prince"],
     watch: ["fireball", "valkyrie"],
   },
@@ -151,13 +151,13 @@ export const CARD_BLURBS: Partial<Record<CardId, CardBlurb>> = {
   },
   "skeleton-army": {
     en: "A whole army of skeletons! Swarm the big guys.",
-    ar: "حشد كبير من الميليشيا! حاصروا الأقوياء.",
+    ar: "حشد كبير من المشاة! حاصِر بهم الأقوياء.",
     good: ["pekka", "prince"],
     watch: ["valkyrie", "arrows"],
   },
   executioner: {
     en: "Throws a big axe that cuts through a whole line of enemies!",
-    ar: "الجلّاد يرمي فأسًا كبيرة تخترق صفًّا كاملًا من الأعداء!",
+    ar: "حامل الفأس يرمي فأسه الكبيرة فتخترق صفًّا كاملًا من الأعداء!",
     good: ["minions", "skeleton-army"],
     watch: ["mini-pekka", "pekka"],
   },
@@ -175,7 +175,7 @@ export const CARD_BLURBS: Partial<Record<CardId, CardBlurb>> = {
   },
   princess: {
     en: "Shoots flaming arrows from super far away!",
-    ar: "خولة ترمي سهامًا مشتعلة من مسافة بعيدة جدًا!",
+    ar: "صاحبة القوس ترمي سهامًا مشتعلة من مسافة بعيدة جدًا!",
     good: ["minions", "skeleton-army"],
     watch: ["arrows", "zap"],
   },
@@ -187,7 +187,7 @@ export const CARD_BLURBS: Partial<Record<CardId, CardBlurb>> = {
   },
   "royal-giant": {
     en: "A giant with a cannon. Shoots towers from far away!",
-    ar: "مدفعي ضخم يقصف الأبراج من بعيد!",
+    ar: "عملاق المدفع يقصف الأبراج من بعيد!",
     good: ["cannon", "princess"],
     watch: ["mini-pekka", "pekka"],
   },
@@ -217,13 +217,13 @@ export const CARD_BLURBS: Partial<Record<CardId, CardBlurb>> = {
   },
   tombstone: {
     en: "A spooky grave that keeps sending out skeletons!",
-    ar: "رباط يخرج منه رجال الميليشيا مرة بعد مرة!",
+    ar: "المعسكر يخرج منه المشاة مرة بعد مرة!",
     good: ["hog-rider", "prince"],
     watch: ["valkyrie", "arrows"],
   },
   "elixir-collector": {
-    en: "Makes extra elixir for you over time. Keep it safe!",
-    ar: "خان القوافل يجمع لك إكسيرًا إضافيًا مع الوقت. احمِه!",
+    en: "Makes extra sparks for you over time. Keep it safe!",
+    ar: "خان القوافل يجمع لك شرارات إضافية مع الوقت. احمِه!",
     good: [],
     watch: ["fireball", "hog-rider"],
   },
@@ -241,13 +241,13 @@ export const CARD_BLURBS: Partial<Record<CardId, CardBlurb>> = {
   },
   "skeleton-barrel": {
     en: "A barrel that bursts into skeletons right where you aim!",
-    ar: "برميل ينفجر فيخرج منه رجال الميليشيا حيث تختار!",
+    ar: "برميل ينكسر فيخرج منه المشاة حيث تختار!",
     good: ["archers", "princess"],
     watch: ["zap", "arrows"],
   },
   mirror: {
-    en: "Plays the last card you used again, for 1 more elixir!",
-    ar: "المرآة تعيد آخر بطاقة لعبتها مقابل إكسير واحد إضافي!",
+    en: "Plays the last card you used again, for 1 more spark!",
+    ar: "المرآة تعيد آخر بطاقة لعبتها مقابل شرارة واحدة إضافية!",
     good: [],
     watch: [],
   },

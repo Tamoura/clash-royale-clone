@@ -12,7 +12,7 @@ import { on } from "../../app/hooks";
 import { reloadToNewest } from "../../app/offline";
 import { ABILITIES } from "../../game/abilities";
 import type { CardId } from "../../game/cards";
-import { TOWER_TROOPS } from "../../game/towers";
+import { towerTroopName } from "../../render/towerTroopText";
 import { normalizeCode } from "../../net/codewords";
 import type { FailReason, MatchInfo, OnlineSession } from "../../net/session";
 import {
@@ -155,12 +155,11 @@ export function openFriendLobby(ctx: AppCtx, deck: CardId[], opts: LobbyOpts = {
   crest.innerHTML = icon(`crest-${(prefs.crest % 12) as CrestIndex}`);
   const meText = el("div", "lobby-me__text");
   meText.appendChild(el("div", "lobby-me__name", prefs.playerName || tr("You", "أنت")));
-  const tower = TOWER_TROOPS[meta.towerTroop];
   const ability = ABILITIES[meta.abilityChoice];
   const loadoutLine = el("div", "lobby-me__loadout");
   loadoutLine.innerHTML = `${icon("shield")}<span></span>${icon("crown")}<span></span>`;
   const spans = loadoutLine.querySelectorAll("span");
-  spans[0].textContent = tr(tower.name, tower.ar);
+  spans[0].textContent = towerTroopName(meta.towerTroop);
   spans[1].textContent = tr(ability.name, ability.ar);
   meText.appendChild(loadoutLine);
   me.append(crest, meText);

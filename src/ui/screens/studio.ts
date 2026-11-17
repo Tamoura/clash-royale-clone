@@ -23,7 +23,7 @@ import { animateTroop, buildChampionRig, type TroopRig } from "../../render3d/ch
 import { disposeDeep } from "../../render3d/scene3d";
 import { on } from "../../app/hooks";
 import { button } from "../components";
-import { fmtNum, tr } from "../i18n";
+import { fmtNum, sparksAr, sparksEn, tr } from "../i18n";
 import { icon, type IconName } from "../icons";
 import { ask, mountSubscreen } from "./frame";
 
@@ -92,8 +92,8 @@ function buildStudio(ctx: AppCtx, def: ChampionDef): void {
   hint.textContent = hasSavedChampion()
     ? tr("You have one champion. Saving replaces it.", "لديك بطل واحد. الحفظ يستبدله.")
     : tr(
-        "Design your one champion. Its elixir price follows its power.",
-        "صمّم بطلك الواحد. سعر الإكسير يتبع قوته.",
+        "Design your one champion. The stronger it is, the more sparks it costs.",
+        "صمّم بطلك الواحد. كلما زادت قوته زادت كلفته من الشرارات.",
       );
   pickerRoot.appendChild(hint);
 
@@ -108,7 +108,7 @@ function buildStudio(ctx: AppCtx, def: ChampionDef): void {
 
   const costBadge = document.createElement("div");
   costBadge.className = "studio-cost";
-  costBadge.title = tr("Elixir cost — computed from the design", "تكلفة الإكسير — محسوبة من التصميم");
+  costBadge.title = tr("Cost in sparks — worked out from the design", "الكلفة بالشرارات — محسوبة من التصميم");
   previewPane.appendChild(costBadge);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -197,8 +197,8 @@ function buildStudio(ctx: AppCtx, def: ChampionDef): void {
       bits.push(
         `<span class="studio-warning">` +
           tr(
-            `Worth ${fmtNum(info.raw)} elixir, but the bar only holds ${fmtNum(MAX_CHAMPION_COST)}. Tone it down to save.`,
-            `يستحق ${fmtNum(info.raw)} إكسير، والحد الأقصى ${fmtNum(MAX_CHAMPION_COST)}. خفّف القوة للحفظ.`,
+            `Worth ${sparksEn(info.raw)}, but the bar only holds ${fmtNum(MAX_CHAMPION_COST)}. Tone it down to save.`,
+            `يستحق ${sparksAr(info.raw, "acc")}، والحد الأقصى ${fmtNum(MAX_CHAMPION_COST)}. خفّف القوة للحفظ.`,
           ) +
           `</span>`,
       );
@@ -560,14 +560,14 @@ function capText(cap: keyof ChampionDef["abilities"]): string {
     flying: ["Flies", "يطير"],
     targetsAir: ["Hits air", "يضرب الجو"],
     splash: ["Splash", "ضرر منطقة"],
-    charge: ["Charge (2x)", "شحنة (×2)"],
+    charge: ["Charge (2x)", "شحنة (×٢)"],
     stun: ["Stunning hits", "ضربات صاعقة"],
     chill: ["Chilling hits", "ضربات مجمّدة"],
     pierce: ["Piercing shots", "سهام خارقة"],
     jumpsRiver: ["River jump", "قفز النهر"],
-    deathBomb: ["Death bomb", "قنبلة موت"],
+    deathBomb: ["Bursts when it falls", "انفجار عند السقوط"],
     buildingsOnly: ["Building hunter (cheaper!)", "صائد المباني (أرخص!)"],
-    summoner: ["Summons skeletons", "يستدعي الميليشيا"],
+    summoner: ["Summons skeletons", "يستدعي المشاة"],
   };
   return tr(labels[cap][0], labels[cap][1]);
 }

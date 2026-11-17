@@ -43,7 +43,7 @@ export function cardStatLines(id: CardId): string[] {
   const card = getCard(id);
   const lines: string[] = [];
   if (card.id === "mirror") {
-    lines.push(`${tr("Spell", "تعويذة")} · ${rarityLabel(card.rarity)}`);
+    lines.push(`${tr("Spell", "حيلة")} · ${rarityLabel(card.rarity)}`);
     lines.push(
       tr(
         "Replays the last card you played, for its cost +1",
@@ -53,7 +53,7 @@ export function cardStatLines(id: CardId): string[] {
     return lines;
   }
   if (card.kind === "spell") {
-    lines.push(`${tr("Spell", "تعويذة")} · ${rarityLabel(card.rarity)}`);
+    lines.push(`${tr("Spell", "حيلة")} · ${rarityLabel(card.rarity)}`);
     const bits: string[] = [];
     if (card.damage > 0) bits.push(tr(`${card.damage} damage`, `${ar(card.damage)} ضرر`));
     if (card.stunSeconds > 0) {
@@ -119,7 +119,7 @@ export function cardStatLines(id: CardId): string[] {
       ),
     );
   }
-  if (u.deathDamage > 0) powers.push(tr("death bomb", "قنبلة موت"));
+  if (u.deathDamage > 0) powers.push(tr("bursts when it falls", "انفجار عند السقوط"));
   if (u.deathSpawnId && u.deathSpawnCount > 0) {
     const n = u.deathSpawnCount;
     const name = cardDisplayName(u.deathSpawnId);
@@ -131,7 +131,7 @@ export function cardStatLines(id: CardId): string[] {
   }
   if (u.elixirInterval > 0) {
     powers.push(
-      tr(`+1 elixir / ${u.elixirInterval}s`, `+${ar(1)} إكسير كل ${ar(u.elixirInterval)} ث`),
+      tr(`+1 spark / ${u.elixirInterval}s`, `+${ar(1)} شرارة كل ${ar(u.elixirInterval)} ث`),
     );
   }
   if (card.kind === "building") {

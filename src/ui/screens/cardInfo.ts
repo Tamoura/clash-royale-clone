@@ -15,7 +15,7 @@ import { cardStatLines, cardStatsAtLevel, type CardLevelStats } from "../../rend
 import { cardDisplayName } from "../../render/cardNames";
 import { cardBlurb } from "../../render/cardBlurbs";
 import { badge, button, progressBar, toast } from "../components";
-import { fmtNum } from "../i18n";
+import { fmtNum, sparks } from "../i18n";
 import { icon } from "../icons";
 import { cardTileCanvas } from "./common";
 import { arenaLabel, ask, openSheet, refreshTopBars, sfx } from "./frame";
@@ -211,7 +211,7 @@ export function openCardInfo(ctx: AppCtx, id: CardId, opts: CardInfoOpts = {}): 
     const cost = document.createElement("span");
     cost.className = "v2-cost";
     cost.textContent = fmtNum(card.cost);
-    cost.setAttribute("aria-label", tr(`${card.cost} elixir`, `${fmtNum(card.cost)} إكسير`));
+    cost.setAttribute("aria-label", sparks(card.cost));
     art.appendChild(cost);
     head.appendChild(art);
 
@@ -222,7 +222,7 @@ export function openCardInfo(ctx: AppCtx, id: CardId, opts: CardInfoOpts = {}): 
     const rb = badge(rarityLabel(ctx, card.rarity));
     rb.classList.add(`v2-rarity`, `v2-rarity--${card.rarity}`);
     tags.appendChild(rb);
-    const kind = card.kind === "spell" ? tr("Spell", "تعويذة") : card.kind === "building" ? tr("Building", "مبنى") : tr("Troop", "وحدة");
+    const kind = card.kind === "spell" ? tr("Spell", "حيلة") : card.kind === "building" ? tr("Building", "مبنى") : tr("Troop", "وحدة");
     tags.appendChild(badge(kind));
     meta.appendChild(tags);
     const lvl = document.createElement("div");

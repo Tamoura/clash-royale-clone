@@ -8,6 +8,7 @@
 import type { AppCtx } from "../../app/ctx";
 import { CHALLENGES, TRIAL_CHALLENGES, challengeStars, sortedByStars, type Challenge } from "../../game/challenges";
 import { challengesDone } from "../../match/rewards";
+import { challengeBlurbIn, challengeNameIn } from "../../render/challengeText";
 import { makeCardCanvas } from "../cardFrame";
 import { button } from "../components";
 import { fmtNum, fmtTime } from "../i18n";
@@ -67,7 +68,9 @@ function challengeRow(ctx: AppCtx, ch: Challenge, cleared: boolean): HTMLElement
   head.className = "v2-challenge-head";
   const name = document.createElement("div");
   name.className = "challenge-name";
-  name.textContent = tr(ch.name, ch.nameAr);
+  const nameEn = challengeNameIn(ch, false);
+  const nameAr = challengeNameIn(ch, true);
+  name.textContent = tr(nameEn, nameAr);
   head.append(name, starsRow(ctx, stars));
   const chips = document.createElement("div");
   chips.className = "v2-challenge-chips";
@@ -80,7 +83,7 @@ function challengeRow(ctx: AppCtx, ch: Challenge, cleared: boolean): HTMLElement
   }
   const blurb = document.createElement("div");
   blurb.className = "challenge-blurb";
-  blurb.textContent = tr(ch.blurb, ch.blurbAr);
+  blurb.textContent = tr(challengeBlurbIn(ch, false), challengeBlurbIn(ch, true));
   info.append(head, chips, blurb);
   row.appendChild(info);
   const play = button({
@@ -88,8 +91,8 @@ function challengeRow(ctx: AppCtx, ch: Challenge, cleared: boolean): HTMLElement
     icon: "play",
     label: cleared ? tr("Replay", "أعد اللعب") : tr(`Play · +${fmtNum(ch.goldReward)} gold`, `العب (+${fmtNum(ch.goldReward)} ذهب)`),
     ariaLabel: cleared
-      ? tr(`Replay challenge ${ch.name}`, `أعد تحدي ${ch.nameAr}`)
-      : tr(`Play challenge ${ch.name} for ${ch.goldReward} gold`, `العب تحدي ${ch.nameAr} مقابل ${fmtNum(ch.goldReward)} ذهب`),
+      ? tr(`Replay challenge ${nameEn}`, `أعد تحدي ${nameAr}`)
+      : tr(`Play challenge ${nameEn} for ${ch.goldReward} gold`, `العب تحدي ${nameAr} مقابل ${fmtNum(ch.goldReward)} ذهب`),
     onClick: () => ctx.startChallenge(ch),
   });
   play.classList.add("challenge-play");

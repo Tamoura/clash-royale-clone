@@ -70,6 +70,7 @@ import {
   type AbilityId,
 } from "./game/abilities";
 import { applyWaves, challengeStatus, type Challenge } from "./game/challenges";
+import { challengeName } from "./render/challengeText";
 import { dailyDeck, dateKey } from "./game/daily";
 import { checkSeason, loadAchievements, loadSeason, saveSeason, seasonKey } from "./meta/achievements";
 import { SEASON_TOAST_MS, seasonStartText } from "./ui/seasonBanner";
@@ -811,7 +812,7 @@ function startSpecialBattle(
 function startChallenge(ch: Challenge): void {
   activeChallenge = ch;
   waveCursor = { next: 0 };
-  startSpecialBattle("challenge", ch.deck, ch.deck, tr(ch.name, ch.nameAr));
+  startSpecialBattle("challenge", ch.deck, ch.deck, challengeName(ch));
   // The goal is the clock: "SURVIVE 0:45" and a goal card (the tutorial's
   // endless surviveFor keeps the normal clock).
   hud.setClockGoal(battle, challengeClock(ch.surviveFor));
@@ -1513,12 +1514,12 @@ const battleEventSteps: readonly EventStep[] = [
       const mm = Math.floor(battle.time / 60);
       const ss = String(Math.floor(battle.time % 60)).padStart(2, "0");
       const mine = ev.side === localSide();
-      const tower =
-        ev.kind === "king-tower" ? tr("King", "الملك") : tr("Princess", "الأميرة");
+      const king = ev.kind === "king-tower";
       towerTimeline.push(
         `${mm}:${ss} — ${mine ? "🛡️" : "⚔️"} ${
-          mine ? tr(`your ${tower} tower fell`, `سقط برج ${tower} لديك`)
-               : tr(`enemy ${tower} tower fell`, `سقط برج ${tower} للخصم`)
+          king
+            ? mine ? tr("your King tower fell", "سقط برج الملك لديك") : tr("enemy King tower fell", "سقط برج الملك للخصم")
+            : mine ? tr("your side tower fell", "سقط البرج الجانبي لديك") : tr("enemy side tower fell", "سقط البرج الجانبي للخصم")
         }`,
       );
     }

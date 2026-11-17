@@ -15,15 +15,22 @@ describe("card stat lines", () => {
 
   it("describes spells by damage, radius and effects", () => {
     expect(cardStatLines("fireball").join(" ")).toMatch(/570|٥٧٠/);
+    // The Golden Age calls a spell a حيلة (a clever device), never a charm.
+    expect(cardStatLines("fireball")[0]).toMatch(/^(Spell|حيلة) · /);
+    expect(cardStatLines("mirror")[0]).toMatch(/^(Spell|حيلة) · /);
     expect(cardStatLines("freeze").join(" ")).toMatch(/stun|صعق/i);
     expect(cardStatLines("rage").join(" ")).toMatch(/faster|boost|تسريع/i);
   });
 
   it("mentions special powers", () => {
-    // Summon text uses the active mode's name (Skeletons / ميليشيا).
-    expect(cardStatLines("witch").join(" ")).toMatch(/skeleton|militia|ميليشيا/i);
-    expect(cardStatLines("balloon").join(" ")).toMatch(/death|موت/i);
-    expect(cardStatLines("elixir-collector").join(" ")).toMatch(/elixir|إكسير/i);
+    // Summon text uses the active edition's name (Skeletons / المشاة).
+    expect(cardStatLines("witch").join(" ")).toMatch(/skeleton|المشاة/i);
+    expect(cardStatLines("balloon").join(" ")).toMatch(/bursts when it falls|انفجار عند السقوط/);
+    expect(cardStatLines("elixir-collector").join(" ")).toMatch(/spark|شرارة/i);
+    // The battle resource is Sparks on screen, and the death bomb is a burst.
+    for (const id of ["witch", "balloon", "elixir-collector", "tombstone"] as const) {
+      expect(cardStatLines(id).join(" ")).not.toMatch(/elixir|إكسير|ميليشيا|death|موت/i);
+    }
   });
 
   it("covers the whole pool with at least two lines each", () => {
@@ -34,7 +41,7 @@ describe("card stat lines", () => {
 
   it("explains the card wave 3 mechanics", () => {
     expect(cardStatLines("stone-golem").join(" ")).toMatch(/Splits into 2 Pebble Golems|ينقسم إلى ٢ من حصاة/);
-    expect(cardStatLines("tombstone").join(" ")).toMatch(/Releases 4 Skeletons when it falls|يطلق ٤ من ميليشيا عند سقوطه/);
+    expect(cardStatLines("tombstone").join(" ")).toMatch(/Releases 4 Skeletons when it falls|يطلق ٤ من المشاة عند سقوطه/);
     expect(cardStatLines("digger").join(" ")).toMatch(/Digs to any spot|يحفر إلى أي مكان/);
     expect(cardStatLines("digger").join(" ")).toMatch(/35% damage to towers|٣٥٪ ضرر للأبراج/);
     const comet = cardStatLines("comet");

@@ -631,12 +631,12 @@ function towerFellText(mine: boolean, tower: TimelineEntry["tower"], n: number):
   }
   if (n === 1) {
     return mine
-      ? tr("Your Princess tower fell", "سقط برج أميرتك")
-      : tr("Enemy Princess tower fell", "سقط برج أميرة الخصم");
+      ? tr("Your side tower fell", "سقط برجك الجانبي")
+      : tr("Enemy side tower fell", "سقط البرج الجانبي للخصم");
   }
   return mine
-    ? tr(`${count} of your Princess towers fell`, `سقط ${count} من أبراج أميراتك`)
-    : tr(`${count} enemy Princess towers fell`, `سقط ${count} من أبراج أميرات الخصم`);
+    ? tr(`${count} of your side towers fell`, `سقط ${count} من أبراجك الجانبية`)
+    : tr(`${count} enemy side towers fell`, `سقط ${count} من أبراج الخصم الجانبية`);
 }
 
 /**
@@ -680,13 +680,13 @@ export function lossTip(stats: ResultStats, side: Side): string | null {
   if (card.kind === "spell") {
     return tr(
       `Their ${name} chipped your towers. Keep a spell of your own to trade back.`,
-      `${name} الخصم أصاب أبراجك. احتفظ بتعويذة لترد عليه.`,
+      `${name} الخصم أصاب أبراجك. احتفظ بحيلة لترد عليه.`,
     );
   }
   if (card.kind === "building") {
     return tr(
       `Their ${name} hit your towers. Drop a tank or a spell on it early.`,
-      `${name} الخصم ضرب أبراجك. أسقط عليه وحدة قوية أو تعويذة مبكرًا.`,
+      `${name} الخصم ضرب أبراجك. أسقط عليه وحدة قوية أو حيلة مبكرًا.`,
     );
   }
   const u = card.unit;
@@ -705,7 +705,7 @@ export function lossTip(stats: ResultStats, side: Side): string | null {
   if (u.attackRange >= 3) {
     return tr(
       `Their ${name} shot your towers from range. Close in with a fast melee troop or a spell.`,
-      `${name} الخصم رمى أبراجك من بعيد. هاجمه بوحدة سريعة قريبة أو بتعويذة.`,
+      `${name} الخصم رمى أبراجك من بعيد. هاجمه بوحدة سريعة قريبة أو بحيلة.`,
     );
   }
   return tr(

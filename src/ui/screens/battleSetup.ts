@@ -10,7 +10,8 @@
  */
 import type { AppCtx } from "../../app/ctx";
 import { ABILITIES, ABILITY_IDS, saveAbility, type AbilityId } from "../../game/abilities";
-import { TOWER_TROOPS, TOWER_TROOP_IDS, saveTowerTroop, type TowerTroopId } from "../../game/towers";
+import { TOWER_TROOP_IDS, saveTowerTroop, type TowerTroopId } from "../../game/towers";
+import { towerTroopBlurb, towerTroopName } from "../../render/towerTroopText";
 import * as Difficulty from "../../match/difficulty";
 import { GAME_MODES, MODE_KEY, type GameMode } from "../../match/modes";
 import { ARENAS, type ArenaDef } from "../../meta/arenas";
@@ -183,8 +184,7 @@ export function setupChipRow(ctx: AppCtx, onChange: () => void): HTMLButtonEleme
   let html = chip("gauge", difficultyLabel(ctx, meta.difficulty)) + chip(modeIcon(meta.gameMode), modeLabel(ctx, meta.gameMode));
   // Loadout picks show as icons, so the row never truncates.
   if (isUnlocked(ctx, "towerTroops")) {
-    const t = TOWER_TROOPS[meta.towerTroop];
-    html += chip(TOWER_ICON[meta.towerTroop], tr(t.name, t.ar), true);
+    html += chip(TOWER_ICON[meta.towerTroop], towerTroopName(meta.towerTroop), true);
   }
   if (isUnlocked(ctx, "abilities")) {
     const a = ABILITIES[meta.abilityChoice];
@@ -328,8 +328,7 @@ export function openBattleSetup(ctx: AppCtx, onChange: () => void = () => undefi
       title: tr("Tower troop", "حامي الأبراج"),
       lockedBy: "towerTroops",
       options: TOWER_TROOP_IDS.map((id) => {
-        const d = TOWER_TROOPS[id];
-        return { value: id, label: tr(d.name, d.ar), icon: TOWER_ICON[id], blurb: tr(d.blurb, d.blurbAr) };
+        return { value: id, label: towerTroopName(id), icon: TOWER_ICON[id], blurb: towerTroopBlurb(id) };
       }),
       value: meta.towerTroop,
       set: (id) => {

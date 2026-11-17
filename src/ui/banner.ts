@@ -12,7 +12,8 @@
 import type { SoundEngine } from "../audio/sound";
 import { ABILITIES, type AbilityId } from "../game/abilities";
 import type { BattleState } from "../game/battle";
-import { TOWER_TROOPS, type TowerTroopId } from "../game/towers";
+import { type TowerTroopId } from "../game/towers";
+import { towerTroopName } from "../render/towerTroopText";
 import { fmtNum, tr } from "./i18n";
 import { icon } from "./icons";
 import { reducedMotion } from "./prefs";
@@ -234,14 +235,13 @@ export function showVersus(
   const mid = document.createElement("div");
   mid.className = "versus-vs";
   mid.textContent = tr("VS", "ضد");
-  const troop = TOWER_TROOPS[me.towerTroop];
   vs.append(
     side("foe", opponent || tr("Bot", "الروبوت"), `${icon("trophy")} ${fmtNum(foeTrophies)}`),
     mid,
     side(
       "me",
       tr("You", "أنت"),
-      `${icon("trophy")} ${fmtNum(me.trophies)} ${icon("shield")} ${tr(troop.name, troop.ar)} · ${tr(ability.name, ability.ar)}`,
+      `${icon("trophy")} ${fmtNum(me.trophies)} ${icon("shield")} ${towerTroopName(me.towerTroop)} · ${tr(ability.name, ability.ar)}`,
     ),
   );
   document.body.appendChild(vs);
@@ -279,15 +279,15 @@ export function tickCountdown(dt: number, audio: SoundEngine): void {
 export function checkBanners(battle: BattleState, audio: SoundEngine): void {
   if (!lastMinuteShown && battle.time >= 120 && !battle.result) {
     lastMinuteShown = true;
-    showBanner(tr("Last minute!\n2x elixir", "آخر دقيقة!\nإكسير مضاعف"), { priority: "phase" });
+    showBanner(tr("Last minute!\nDouble Sparks!", "آخر دقيقة!\nشرارات مضاعفة!"), { priority: "phase" });
     audio.sting();
   }
   if (!overtimeShown && battle.overtime && !battle.result) {
     overtimeShown = true;
     showBanner(
       tr(
-        "OVERTIME!\n3x elixir\nTroops hit towers 3x!",
-        "وقت إضافي!\nإكسير ثلاثي\nالجنود يضربون الأبراج ×٣",
+        "OVERTIME!\n3x sparks\nTroops hit towers 3x!",
+        "وقت إضافي!\nالشرارات ×٣\nالجنود يضربون الأبراج ×٣",
       ),
       { priority: "phase" },
     );
