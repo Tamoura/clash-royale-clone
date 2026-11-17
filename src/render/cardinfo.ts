@@ -57,11 +57,11 @@ export function cardStatLines(id: CardId): string[] {
     const bits: string[] = [];
     if (card.damage > 0) bits.push(tr(`${card.damage} damage`, `${ar(card.damage)} ضرر`));
     if (card.stunSeconds > 0) {
-      bits.push(tr(`${card.stunSeconds}s stun`, `صعق ${ar(card.stunSeconds)} ث`));
+      bits.push(tr(`${card.stunSeconds}s stun`, `صعق ${ar(card.stunSeconds)}\u00a0ث`));
     }
     if (card.rageSeconds > 0) {
       bits.push(
-        tr(`${card.rageSeconds}s boost: faster troops`, `تسريع الوحدات ${ar(card.rageSeconds)} ث`),
+        tr(`${card.rageSeconds}s boost: faster troops`, `تسريع الوحدات ${ar(card.rageSeconds)}\u00a0ث`),
       );
     }
     if (card.heal > 0) bits.push(tr(`heals ${card.heal}`, `يشفي ${ar(card.heal)}`));
@@ -76,7 +76,7 @@ export function cardStatLines(id: CardId): string[] {
     // Its own line, so the card sheet (which shows lines past the second)
     // tells kids the Comet takes a moment to fall.
     if ((card.landDelay ?? 0) > 0) {
-      lines.push(tr(`Lands after ${card.landDelay} s`, `يسقط بعد ${ar(card.landDelay ?? 0)} ث`));
+      lines.push(tr(`Lands after ${card.landDelay}\u00a0s`, `يسقط بعد ${ar(card.landDelay ?? 0)}\u00a0ث`));
     }
     return lines;
   }
@@ -131,11 +131,11 @@ export function cardStatLines(id: CardId): string[] {
   }
   if (u.elixirInterval > 0) {
     powers.push(
-      tr(`+1 spark / ${u.elixirInterval}s`, `+${ar(1)} شرارة كل ${ar(u.elixirInterval)} ث`),
+      tr(`+1 spark / ${u.elixirInterval}s`, `+${ar(1)} شرارة كل ${ar(u.elixirInterval)}\u00a0ث`),
     );
   }
   if (card.kind === "building") {
-    powers.push(tr(`${card.lifetime}s lifetime`, `يدوم ${ar(card.lifetime)} ث`));
+    powers.push(tr(`${card.lifetime}s lifetime`, `يدوم ${ar(card.lifetime)}\u00a0ث`));
   }
   if (powers.length) lines.push(powers.join(" · "));
   return lines;

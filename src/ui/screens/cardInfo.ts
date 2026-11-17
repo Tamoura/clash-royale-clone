@@ -70,7 +70,7 @@ type StatRow = [label: string, now: string, next: string | null, better: boolean
 function statRows(ctx: AppCtx, a: CardLevelStats, b: CardLevelStats | null): StatRow[] {
   const { tr } = ctx;
   const n = (v: number | null): string => (v === null ? "–" : fmtNum(Math.round(v)));
-  const sec = (v: number | null): string => (v === null ? "–" : tr(`${fmtNum(v)}s`, `${fmtNum(v)} ث`));
+  const sec = (v: number | null): string => (v === null ? "–" : tr(`${fmtNum(v)}s`, `${fmtNum(v)}\u00a0ث`));
   const rows: StatRow[] = [];
   const num = (label: string, x: number | null, y: number | null | undefined): void => {
     if (x === null) return;

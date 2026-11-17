@@ -45,7 +45,8 @@ describe("card stat lines", () => {
     expect(cardStatLines("digger").join(" ")).toMatch(/Digs to any spot|يحفر إلى أي مكان/);
     expect(cardStatLines("digger").join(" ")).toMatch(/35% damage to towers|٣٥٪ ضرر للأبراج/);
     const comet = cardStatLines("comet");
-    expect(comet[2]).toMatch(/Lands after 1\.8 s|يسقط بعد ١٫٨ ث/);
+    // A no-break space keeps the number and its unit on one line.
+    expect(comet[2]).toMatch(/Lands after 1\.8\u00a0s|يسقط بعد ١٫٨\u00a0ث/);
     expect(cardStatLines("knight").join(" ")).not.toMatch(/towers|للأبراج/);
   });
 

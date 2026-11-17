@@ -308,8 +308,8 @@ function chestRow(ctx: AppCtx, guide = -1): HTMLElement {
         left <= 0
           ? tr("Open!", "افتح!")
           : left < 3_600_000
-            ? tr(`${fmtNum(Math.ceil(left / 60000))}m`, `${fmtNum(Math.ceil(left / 60000))} د`)
-            : tr(`${fmtNum(Math.ceil(left / 3_600_000))}h`, `${fmtNum(Math.ceil(left / 3_600_000))} س`);
+            ? tr(`${fmtNum(Math.ceil(left / 60000))}m`, `${fmtNum(Math.ceil(left / 60000))}\u00a0د`)
+            : tr(`${fmtNum(Math.ceil(left / 3_600_000))}h`, `${fmtNum(Math.ceil(left / 3_600_000))}\u00a0س`);
       cell.innerHTML = `${icon("chest")}<span class="home-chest-label">${label}</span>`;
       cell.setAttribute("aria-label", left <= 0 ? tr("Chest ready to open", "صندوق جاهز للفتح") : tr(`Chest: ${label}`, `صندوق: ${label}`));
       if (left <= 0) cell.classList.add("ready");

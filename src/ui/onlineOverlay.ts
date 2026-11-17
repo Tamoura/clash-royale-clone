@@ -178,7 +178,7 @@ export function overlayCard(v: SessionView, prev: SessionView["t"] | null, quick
         key: "dropped",
         icon: "spinner",
         title: tr("Opponent reconnecting…", "الخصم يعيد الاتصال…"),
-        timer: tr(`${v.graceLeft}s`, `${fmtNum(v.graceLeft)} ث`),
+        timer: tr(`${v.graceLeft}s`, `${fmtNum(v.graceLeft)}\u00a0ث`),
         actions: ["leave"],
         blocking: false,
         tone: "wait",

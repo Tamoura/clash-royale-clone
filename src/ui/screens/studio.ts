@@ -186,7 +186,7 @@ function buildStudio(ctx: AppCtx, def: ChampionDef): void {
       ),
       tr(
         `every ${fmtNum(Number(cur.hitSpeed.toFixed(1)))}s · ${cur.range <= 1 ? "melee" : `range ${fmtNum(cur.range)}`} · ${speedName[cur.speed][0]}`,
-        `كل ${fmtNum(Number(cur.hitSpeed.toFixed(1)))} ث · ${cur.range <= 1 ? "التحام" : `مدى ${fmtNum(cur.range)}`} · ${speedName[cur.speed][1]}`,
+        `كل ${fmtNum(Number(cur.hitSpeed.toFixed(1)))}\u00a0ث · ${cur.range <= 1 ? "التحام" : `مدى ${fmtNum(cur.range)}`} · ${speedName[cur.speed][1]}`,
       ),
     ];
     const caps = Object.entries(cur.abilities)
@@ -339,7 +339,7 @@ function buildStudio(ctx: AppCtx, def: ChampionDef): void {
   slider(tr("Damage", "الضرر"), CHAMPION_LIMITS.damage.min, CHAMPION_LIMITS.damage.max, 10,
     () => cur.damage, (v) => (cur.damage = v));
   slider(tr("Hit every", "يضرب كل"), CHAMPION_LIMITS.hitSpeed.min, CHAMPION_LIMITS.hitSpeed.max, 0.1,
-    () => cur.hitSpeed, (v) => (cur.hitSpeed = v), (v) => tr(`${fmtNum(Number(v.toFixed(1)))}s`, `${fmtNum(Number(v.toFixed(1)))} ث`));
+    () => cur.hitSpeed, (v) => (cur.hitSpeed = v), (v) => tr(`${fmtNum(Number(v.toFixed(1)))}s`, `${fmtNum(Number(v.toFixed(1)))}\u00a0ث`));
 
   function select<T extends string | number>(
     label: string,

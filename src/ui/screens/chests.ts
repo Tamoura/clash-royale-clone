@@ -37,9 +37,9 @@ export function fmtRemain(ms: number, tr: AppCtx["tr"]): string {
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
   const pad = (n: number): string => String(n).padStart(2, "0");
-  if (h > 0) return tr(`${h}h ${pad(m)}m`, `${fmtNum(h)} س ${fmtNum(m)} د`);
-  if (m > 0) return tr(`${m}m ${pad(sec)}s`, `${fmtNum(m)} د ${fmtNum(sec)} ث`);
-  return tr(`${sec}s`, `${fmtNum(sec)} ث`);
+  if (h > 0) return tr(`${h}h ${pad(m)}m`, `${fmtNum(h)}\u00a0س ${fmtNum(m)}\u00a0د`);
+  if (m > 0) return tr(`${m}m ${pad(sec)}s`, `${fmtNum(m)}\u00a0د ${fmtNum(sec)}\u00a0ث`);
+  return tr(`${sec}s`, `${fmtNum(sec)}\u00a0ث`);
 }
 
 function currencyChips(ctx: AppCtx): HTMLElement {

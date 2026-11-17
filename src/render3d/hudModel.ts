@@ -264,7 +264,7 @@ export function abilitySecondsLeft(state: BattleState, side: Side): number | nul
 
 /** The bubble over a KING that is not ready yet. */
 export function chargingText(seconds: number): string {
-  return tr(`Charging… ${fmtNum(seconds)}s`, `يشحن… ${fmtNum(seconds)} ث`);
+  return tr(`Charging… ${fmtNum(seconds)}s`, `يشحن… ${fmtNum(seconds)}\u00a0ث`);
 }
 
 // ---- Refused drops -------------------------------------------------------------
