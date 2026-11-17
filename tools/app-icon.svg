@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    Banner Lanes app icon: a plain gold banner over two lanes, on the night
+    navy the boot splash uses. No script or symbol on the cloth. Source of
+    public/icon-192.png, public/icon-512.png (also the maskable icon: the
+    banner sits inside the central safe circle) and public/apple-touch-icon.png,
+    rendered full-bleed at those sizes in a browser.
+  -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2f57"/>
+      <stop offset="1" stop-color="#0f4f5c"/>
+    </linearGradient>
+    <linearGradient id="cloth" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd23f"/>
+      <stop offset="1" stop-color="#d9912b"/>
+    </linearGradient>
+    <linearGradient id="lane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e9d39a" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#e9d39a" stop-opacity="0.9"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#sky)"/>
+  <!-- Two lanes running up the board toward the banner. -->
+  <polygon points="104,512 190,512 236,300 220,300" fill="url(#lane)"/>
+  <polygon points="322,512 408,512 292,300 276,300" fill="url(#lane)"/>
+  <!-- The rod and its two knobs. -->
+  <rect x="166" y="112" width="180" height="16" rx="8" fill="#f3d27a"/>
+  <circle cx="166" cy="120" r="14" fill="#ffd23f"/>
+  <circle cx="346" cy="120" r="14" fill="#ffd23f"/>
+  <!-- The cloth: a swallowtail banner, with a darker hem. -->
+  <polygon points="190,128 322,128 322,352 256,306 190,352" fill="#b8741f"/>
+  <polygon points="200,128 312,128 312,334 256,295 200,334" fill="url(#cloth)"/>
+  <rect x="200" y="150" width="112" height="12" fill="#b8741f" opacity="0.55"/>
+</svg>

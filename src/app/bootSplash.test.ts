@@ -35,7 +35,7 @@ function buildSplash(doc: FakeDocument): FakeElement {
     return node;
   };
   make("div", "boot-crest");
-  make("div", "boot-title", "Crown Rush");
+  make("div", "boot-title", "Banner Lanes");
   make("div", "boot-bar");
   make("p", "boot-note");
   make("button", "boot-retry", "Tap to try again").hidden = true;

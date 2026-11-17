@@ -62,7 +62,7 @@ const relay = spawn(process.execPath, [RELAY_BUNDLE], {
 });
 
 console.log("\n" + "=".repeat(46));
-console.log("  Clash Royale — LAN 1v1 is ready!");
+console.log("  Banner Lanes — LAN 1v1 is ready!");
 console.log("  On each kid's device (same WiFi), open:");
 console.log(`\n      http://${ip}:${VITE_PORT}\n`);
 console.log("  Tap the sliders row under Battle → Play online");

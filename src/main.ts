@@ -179,7 +179,7 @@ import "./ui/keepSafeWire";
 
 // Apply edition-aware CSS variables before any DOM is rendered.
 applyEditionTokens(STORED_EDITION);
-// The tab title, splash and boot labels in the edition's language (Crown Rush).
+// The tab title, splash and boot labels in the edition's language (Banner Lanes).
 localizeStaticMarkup(document);
 // Canvas labels (unit names, banners) are painted once, so warm the
 // Arabic face up front in the Islamic edition.
@@ -432,7 +432,7 @@ let activeChallenge: Challenge | null = null;
 let waveCursor = { next: 0 };
 let draftDecks: { mine: CardId[]; bot: CardId[] } | null = null;
 
-// ---- Game variant (Clash Royale clone vs Islamic version) ---------------
+// ---- Game variant (Classic edition vs Golden Age edition) ---------------
 // The variant is the arena theme under the hood; switching reloads the page.
 // (Named "variant" to avoid colliding with the in-match GameMode rulesets.)
 // Null until the player picks an edition in the lobby.

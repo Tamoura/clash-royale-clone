@@ -523,7 +523,7 @@ describe("summary for the confirm screen", () => {
   });
 
   it("names the file by date", () => {
-    expect(saveFileName(new Date(2026, 10, 3))).toBe("crown-rush-save-2026-11-03.txt");
+    expect(saveFileName(new Date(2026, 10, 3))).toBe("banner-lanes-save-2026-11-03.txt");
   });
 
   it("writes the game name and format into the JSON", () => {

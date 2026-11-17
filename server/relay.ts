@@ -57,7 +57,7 @@ const RELAY_ONLY = process.argv.slice(2).includes("--relay-only");
 const STATIC_DIR = RELAY_ONLY ? "off" : (env.STATIC_DIR ?? "").trim();
 /**
  * Quick match pairs strangers, so it is OFF unless QUICK_MATCH is exactly
- * "on" (for developers testing the queue). Crown Rush is friends-only: the
+ * "on" (for developers testing the queue). Banner Lanes is friends-only: the
  * game has no button for it, and a page that asks anyway gets
  * "quick-disabled". Room codes are the only way to meet someone.
  */

@@ -2,14 +2,15 @@ import { describe, expect, it } from "vitest";
 import indexHtml from "../../index.html?raw";
 import manifestRaw from "../../public/manifest.webmanifest?raw";
 import { ARENA_THEME_KEY } from "../render3d/theme";
-import { GAME_NAME, GAME_NAME_AR, gameName, localizeStaticMarkup } from "./brand";
+import { GAME_NAME, GAME_NAME_AR, STUDIO_NAME, STUDIO_NAME_AR, gameName, localizeStaticMarkup } from "./brand";
 
 /** The text of the first element matching `re` (group 1). */
 const grab = (re: RegExp): string | undefined => re.exec(indexHtml)?.[1];
 
-describe("the game's name is Crown Rush", () => {
+describe("the game's name is Banner Lanes", () => {
   it("on the tab, the home-screen label and the boot splash", () => {
-    expect(GAME_NAME).toBe("Crown Rush");
+    expect(GAME_NAME).toBe("Banner Lanes");
+    expect(GAME_NAME_AR).toBe("درب الرايات");
     expect(grab(/<title>([^<]*)<\/title>/)).toBe(GAME_NAME);
     expect(grab(/<meta name="apple-mobile-web-app-title" content="([^"]*)"/)).toBe(GAME_NAME);
     expect(grab(/<div class="boot-title">([^<]*)<\/div>/)).toBe(GAME_NAME);
@@ -23,10 +24,16 @@ describe("the game's name is Crown Rush", () => {
     expect(m.short_name.length).toBeLessThanOrEqual(12);
   });
 
-  it("never the copied name the game started with", () => {
+  it("never the copied name the game started with, nor its next name", () => {
     for (const text of [indexHtml, manifestRaw]) {
       expect(text).not.toMatch(/Clash Royale|CR Clone/i);
+      expect(text).not.toMatch(/Crown Rush|هجمة التاج/);
     }
+  });
+
+  it("names the studio in both languages, the Arabic in Arabic letters", () => {
+    expect(STUDIO_NAME).toBe("Pebble Kite Games");
+    expect(STUDIO_NAME_AR).toMatch(/^[؀-ۿ ]+$/);
   });
 
   it("keeps the internal ids, so no save is lost", () => {
@@ -38,9 +45,9 @@ describe("the game's name is Crown Rush", () => {
     expect(gameName()).toBe(GAME_NAME_AR);
     expect(GAME_NAME_AR).toMatch(/^[؀-ۿ ]+$/);
     const attrs: Record<string, string> = {};
-    const boot = { textContent: "Crown Rush" };
+    const boot = { textContent: "Banner Lanes" };
     const doc = {
-      title: "Crown Rush",
+      title: "Banner Lanes",
       querySelector: (sel: string) => (sel === "#boot .boot-title" ? boot : null),
       getElementById: (id: string) => (id === "emotes" ? { setAttribute: (k: string, v: string) => void (attrs[k] = v) } : null),
     } as unknown as Document;

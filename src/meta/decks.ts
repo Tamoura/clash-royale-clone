@@ -9,7 +9,7 @@
  * reconciles the two, so neither can drift.
  *
  * Migration: the first load copies the existing saved deck into slot 1
- * (and, like a fresh Clash Royale account, into slots 2 and 3 as starting
+ * (and, like a fresh account, into slots 2 and 3 as starting
  * points), so nobody loses the deck they built.
  *
  * Stored in 'cr-clone-deck-slots'. Pure functions; storage is injected.

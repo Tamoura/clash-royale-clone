@@ -4,7 +4,7 @@
  *
  * - Copy my save code: the code (meta/saveCode.ts) in a read-only box with
  *   a Copy button (and Save to a file).
- * - Save to a file: downloads crown-rush-save-<date>.txt holding the code.
+ * - Save to a file: downloads banner-lanes-save-<date>.txt holding the code.
  * - Load a save: paste a code or pick a file. A friendly line says what is
  *   wrong with a bad code; a good one opens the confirm screen.
  * - Undo the last load: while a pre-load backup exists. An undo keeps what
@@ -227,7 +227,7 @@ export async function currentCode(deps: SaveSheetDeps = {}): Promise<string | nu
   return encodeSave(gatherSave(r.store, r.now()));
 }
 
-/** Download crown-rush-save-<date>.txt holding `shown` (the code on screen) or a fresh code. */
+/** Download banner-lanes-save-<date>.txt holding `shown` (the code on screen) or a fresh code. */
 export async function saveToFile(deps: SaveSheetDeps = {}, shown?: string): Promise<void> {
   const code = shown || (await currentCode(deps));
   if (!code) {

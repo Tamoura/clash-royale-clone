@@ -1,10 +1,10 @@
 /* ============================================================
-   Crown Rush — Shared Design Tokens
+   Banner Lanes — Shared Design Tokens
    imported by main.ts via Vite; apply before style.css.
    Edition overrides live on :root[data-edition="arabic"].
    ============================================================ */
 :root {
-  /* ── Palette: Clash Royale (default) ── */
+  /* ── Palette: Classic edition (default) ── */
   --cr-sky:           #76AEDE;
   --cr-grass:         #6FBF5A;
   --cr-gold:          #F6C14E;

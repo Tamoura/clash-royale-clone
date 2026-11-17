@@ -8,7 +8,7 @@
  *   so nobody is nagged.
  * - On an iPhone or iPad in a browser tab (not opened from the Home
  *   Screen), Safari can clear a site's storage after a week without a
- *   visit, so a one-time tip suggests adding Crown Rush to the Home Screen.
+ *   visit, so a one-time tip suggests adding Banner Lanes to the Home Screen.
  * - But a game opened from the Home Screen keeps its own storage, apart
  *   from Safari's, so it starts empty: the tip says to copy the save code
  *   first, and the Home Screen game, while it has no trophies yet, says
