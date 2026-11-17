@@ -144,7 +144,7 @@ export interface IslamicTiles {
   /** Lane dirt as "r,g,b" (core) and its worn speckle. */
   lane: string;
   laneWear: string;
-  /** Tower cupolas (princess, king) and the crescent floor emblems. */
+  /** Tower cupolas (princess, king) and the rosette floor emblems. */
   dome: number;
   domeKing: number;
   emblem: number;
@@ -349,7 +349,7 @@ const tiles = (t: Partial<IslamicTiles>): IslamicTiles => ({ ...I.islamic!, ...t
 
 /**
  * The Islamic trophy trail: eleven worlds, each a palette over the shared
- * zellige court, domed towers and crescent emblems.
+ * zellige court, domed towers and rosette floor emblems.
  */
 export const ISLAMIC_LOOKS: Record<string, ArenaLook> = {
   souk: I,

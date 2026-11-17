@@ -207,7 +207,7 @@ body {
   z-index: 1;
   background: radial-gradient(circle at 35% 30%, var(--cr-elixir-light), var(--cr-elixir-dark) 70%);
   border: 2.5px solid #fbe3ff;
-  border-radius: 50% 50% 50% 42%;
+  border-radius: 50%;
   width: 40px;
   height: 40px;
   line-height: 35px;
@@ -466,7 +466,7 @@ button.card canvas {
   pointer-events: none;
 }
 
-/* Elixir cost — droplet bubble at the bottom-left (reference layout) */
+/* Spark cost: a round badge at the bottom-left with a spark glint (reference layout) */
 .card-cost {
   position: absolute;
   left: -11px;
@@ -485,15 +485,16 @@ button.card canvas {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
   text-align: center;
 }
-/* Droplet tip pointing upward */
+/* A small four-ray spark glinting on the badge's shoulder */
 .card-cost::before {
   content: "";
   position: absolute;
-  top: -7px;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 5px solid transparent;
-  border-bottom: 8px solid var(--cr-elixir-dark);
+  top: -5px;
+  right: -5px;
+  width: 11px;
+  height: 11px;
+  background: #fff1fa;
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
 }
 
 /* Keyboard shortcut badge (top-right) */

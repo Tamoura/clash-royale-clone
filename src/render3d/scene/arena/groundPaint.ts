@@ -956,8 +956,8 @@ export const ZELLIGE_BAND = 0.9;
  * Golden Age courtyard (art bible section 3): sandstone or plaster
  * flagstones in a running bond, zellige border bands round the court and
  * along the canal (eight-point khatam stars in the look's tile colours,
- * gold strapwork), packed ochre sand lanes with pebble edging. The crescent
- * emblems are 3D inlays (build.ts) at a quarter of their old contrast.
+ * gold strapwork), packed ochre sand lanes with pebble edging. The ten-fold
+ * rosette emblems are 3D inlays (build.ts) at a quarter of their old contrast.
  */
 function paintIslamic(look: ArenaLook, p: Paint, P: number, seed: number, rand: () => number): void {
   const Z = look.islamic!;
